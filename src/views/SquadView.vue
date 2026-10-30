@@ -13,6 +13,9 @@ import SquadPersonalPanel from '../components/squad/SquadPersonalPanel.vue'
 import SquadLiveRecording from '../components/squad/SquadLiveRecording.vue'
 import SquadMemberCompare from '../components/squad/SquadMemberCompare.vue'
 import SquadContributions from '../components/squad/SquadContributions.vue'
+import SquadV3 from './v3/SquadV3.vue'
+import { uiV3 } from '../lib/ui-v3'
+import { readCache, writeCache } from '../lib/stale-cache'
 import type { SquadActivityItem } from '../components/squad/SquadActivityCards.vue'
 import {
   squadPlanBadgeClass,
@@ -204,6 +207,59 @@ async function load() {
   }
 }
 
+/** UI v3 squad snapshot: what SquadV3 needs to draw instantly on a repeat visit. */
+interface SquadSnapshot {
+  team: Team | null
+  activity: SquadActivityItem[]
+  stats: SquadMemberStat[]
+  leaderboard: typeof leaderboard.value
+  presence: Record<number, PresenceEntry>
+}
+const SQUAD_CACHE_KEY = 'squad'
+
+function applySquadSnapshot(s: SquadSnapshot) {
+  team.value = s.team
+  activity.value = s.activity ?? []
+  memberStats.value = s.stats ?? []
+  leaderboard.value = s.leaderboard ?? []
+  if (s.presence) presence.value = s.presence
+}
+
+/**
+ * UI v3 load: draw the cached squad at once, refresh quietly, and wait only on getTeam —
+ * v3 doesn't show the recent analyses/clips the old personal panel needed.
+ */
+async function loadV3() {
+  squadError.value = null
+  const cached = readCache<SquadSnapshot>(SQUAD_CACHE_KEY)
+  if (cached) applySquadSnapshot(cached.value)
+  loading.value = !cached
+  refreshing.value = !!cached
+  try {
+    window.api.squad.syncPresence().catch(() => {})
+    const result = await window.api.squad.getTeam()
+    if (result?.error && !result.team) {
+      if (!cached) { squadError.value = result.error; team.value = null }
+      return
+    }
+    applySquadSnapshot({
+      team: (result?.team as Team) ?? null,
+      activity: (result?.activity as SquadActivityItem[]) ?? [],
+      stats: (result?.stats as SquadMemberStat[]) ?? [],
+      leaderboard: result?.leaderboard ?? [],
+      presence: (result?.presence as Record<number, PresenceEntry>) ?? presence.value,
+    })
+    writeCache<SquadSnapshot>(SQUAD_CACHE_KEY, {
+      team: team.value, activity: activity.value, stats: memberStats.value, leaderboard: leaderboard.value, presence: presence.value,
+    })
+  } catch {
+    if (!cached) { squadError.value = 'Failed to connect to UpForge servers'; team.value = null }
+  } finally {
+    loading.value = false
+    refreshing.value = false
+  }
+}
+
 async function refresh() {
   if (refreshing.value) return
   refreshing.value = true
@@ -215,6 +271,11 @@ async function refresh() {
     if (result?.stats) memberStats.value = result.stats as SquadMemberStat[]
     if (result?.leaderboard) leaderboard.value = result.leaderboard
     if (result?.team) team.value = result.team as Team
+    if (uiV3.value && result?.team) {
+      writeCache<SquadSnapshot>(SQUAD_CACHE_KEY, {
+        team: team.value, activity: activity.value, stats: memberStats.value, leaderboard: leaderboard.value, presence: presence.value,
+      })
+    }
   } catch { /* ignore */ } finally {
     refreshing.value = false
   }
@@ -243,7 +304,8 @@ function openActivityItem(item: SquadActivityItem) {
 }
 
 onMounted(() => {
-  load()
+  if (uiV3.value) void loadV3()
+  else load()
   // refresh() already calls syncPresence() — don't double up every 30s.
   pollTimer = setInterval(() => {
     refresh()
@@ -257,7 +319,36 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col overflow-hidden bg-[#0a0a0a] text-white">
+  <SquadV3
+    v-if="uiV3"
+    :loading="loading"
+    :refreshing="refreshing"
+    :squad-error="squadError"
+    :team="team"
+    :members="sortedMembers"
+    :max-slots="maxSlots"
+    :presence="presence"
+    :online-members="onlineMembers"
+    :week-activity-count="weekActivityCount"
+    :week-record="weekRecord"
+    :briefing-headline="briefingHeadline"
+    :briefing-subline="briefingSubline"
+    :activity="feedItems"
+    :compare-rows="compareRows"
+    :leaderboard="leaderboard"
+    :pending-invites="pendingInvites"
+    :selected-member-id="selectedMemberId"
+    :selected-member-stats="selectedMemberStats"
+    :member-name="memberName"
+    @retry="loadV3"
+    @refresh="refresh"
+    @open-web="openWebTeam()"
+    @invite="submitInvite"
+    @remove-pending="removePendingInvite"
+    @select="selectMember"
+    @open-activity="openActivityItem"
+  />
+  <div v-else class="h-full flex flex-col overflow-hidden bg-[#0a0a0a] text-white">
     <div v-if="loading" class="flex flex-1 items-center justify-center">
       <div class="w-7 h-7 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
     </div>

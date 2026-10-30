@@ -1,56 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+/**
+ * Coach side of Rosters. Logic lives in `useCoachRoster` (moved unchanged); this file renders the
+ * old markup, or `CoachRosterV3` when UI v3 is on. Same `loaded`/`toast` emits and exposed `load`.
+ */
+import { provide } from 'vue'
 import RosterMatchRow from './RosterMatchRow.vue'
-import {
-  rosterFormatDate,
-  type RosterMatchVisual,
-} from '../../lib/roster-match-display'
-import { openWebFeature, WEB_BASE } from '../../lib/web-explore-links'
-import { pendingTimeline } from '../../stores/pendingTimeline'
-
-type RosterSettings = {
-  roster_enabled?: boolean
-  roster_is_live?: boolean
-  roster_requires_pro?: boolean
-  has_active_coach_pro?: boolean
-  roster_connect_ready?: boolean
-  roster_welcome_message?: string | null
-  roster_membership_mode?: 'free' | 'paid'
-  roster_membership_price_cents?: number | null
-  roster_included_reviews_per_month?: number
-  roster_membership_min_price_cents?: number
-  roster_member_count?: number
-  roster_member_limit?: number | null
-  roster_reviews_this_month?: number
-  roster_reviews_limit?: number | null
-  coach_hub_billing_enabled?: boolean
-  pro_price_cents?: number
-}
-
-type RosterStudent = {
-  student: {
-    id: number
-    name: string
-    riot_name: string | null
-    riot_tag: string | null
-  }
-  games_analysed: number
-  open_review_count: number
-  joined_at: string | null
-  last_active_at: string | null
-  top_coaching_tags_30d?: string[]
-}
-
-type CoachReview = {
-  id: number
-  status: string
-  student_question?: string | null
-  requested_at?: string | null
-  analysis_id?: number | null
-  user?: { id: number; name: string } | null
-  analysis?: (RosterMatchVisual & { id?: number }) | null
-}
+import CoachRosterV3 from '../v3/coaches/CoachRosterV3.vue'
+import type { RosterMatchVisual } from '../../lib/roster-match-display'
+import { uiV3 } from '../../lib/ui-v3'
+import { coachRosterKey, useCoachRoster } from './useCoachRoster'
 
 const props = defineProps<{
   active: boolean
@@ -61,219 +19,23 @@ const emit = defineEmits<{
   toast: [message: string]
 }>()
 
-const router = useRouter()
+const roster = useCoachRoster(props, emit)
+provide(coachRosterKey, roster)
 
-const loading = ref(true)
-const error = ref<string | null>(null)
-const saving = ref(false)
-const coachId = ref<number | null>(null)
-const coachName = ref('')
-const settings = ref<RosterSettings | null>(null)
-const students = ref<RosterStudent[]>([])
-const reviews = ref<CoachReview[]>([])
-
-const welcome = ref('')
-const membershipMode = ref<'free' | 'paid'>('paid')
-const priceDollars = ref(9.99)
-const includedReviews = ref(3)
-const settingsOpen = ref(false)
-
-const statusLabel = computed(() => {
-  const s = settings.value
-  if (!s?.roster_enabled) return 'Closed'
-  if (s.roster_is_live) return 'Live'
-  return 'Draft'
-})
-
-const draftReason = computed(() => {
-  const s = settings.value
-  if (!s?.roster_enabled || s.roster_is_live) return null
-  if (membershipMode.value === 'paid' && !s.roster_connect_ready) {
-    return 'Paid community stays Draft until Stripe payouts are set up on the web.'
-  }
-  if (membershipMode.value === 'free' && s.roster_requires_pro && !s.has_active_coach_pro) {
-    return 'Free community stays Draft until Coach Pro is active, or switch to paid.'
-  }
-  return 'Roster is enabled but not live yet. Finish setup on the web if needed.'
-})
-
-const needsSetup = computed(() => Boolean(draftReason.value) || !settings.value?.roster_enabled)
-
-const inviteUrl = computed(() =>
-  coachId.value ? `${WEB_BASE}/coaches/${coachId.value}` : '',
-)
-
-function syncFormFromSettings(s: RosterSettings) {
-  welcome.value = s.roster_welcome_message ?? ''
-  membershipMode.value = s.roster_membership_mode === 'free' ? 'free' : 'paid'
-  const cents = s.roster_membership_price_cents ?? 999
-  priceDollars.value = Math.round(cents) / 100
-  includedReviews.value = s.roster_included_reviews_per_month ?? 3
-}
-
-async function load() {
-  loading.value = true
-  error.value = null
-  try {
-    const [roster, queue] = await Promise.all([
-      window.api.coach.getRoster(),
-      window.api.coach.getReviewRequests(),
-    ])
-    if (!roster) {
-      error.value = 'Coach roster not available for this account.'
-      students.value = []
-      reviews.value = []
-      settings.value = null
-      emit('loaded', { pendingCount: 0 })
-      return
-    }
-    coachId.value = roster.coach.id
-    coachName.value = roster.coach.display_name
-    settings.value = roster.settings as RosterSettings
-    students.value = (roster.students ?? []) as RosterStudent[]
-    syncFormFromSettings(settings.value)
-    settingsOpen.value = !settings.value.roster_is_live
-    reviews.value = (queue ?? []).map((r) => {
-      const row = r as CoachReview
-      const analysisId = row.analysis_id ?? row.analysis?.id ?? null
-      return { ...row, analysis_id: analysisId }
-    })
-    emit('loaded', {
-      pendingCount: reviews.value.filter(r => r.status === 'pending' || r.status === 'in_progress').length,
-    })
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load coach roster'
-    emit('loaded', { pendingCount: 0 })
-  } finally {
-    loading.value = false
-  }
-}
-
-async function toggleEnabled() {
-  if (!settings.value || saving.value) return
-  saving.value = true
-  try {
-    const next = !settings.value.roster_enabled
-    const res = await window.api.coach.updateRosterSettings({ roster_enabled: next })
-    if (!res.ok) {
-      emit('toast', res.error)
-      return
-    }
-    settings.value = res.settings as RosterSettings
-    syncFormFromSettings(settings.value)
-    settingsOpen.value = !settings.value.roster_is_live
-    emit('toast', next ? 'Roster enabled' : 'Roster closed')
-  } finally {
-    saving.value = false
-  }
-}
-
-async function savePricing() {
-  if (saving.value) return
-  saving.value = true
-  try {
-    const cents = Math.round(priceDollars.value * 100)
-    const res = await window.api.coach.updateRosterSettings({
-      roster_membership_mode: membershipMode.value,
-      roster_membership_price_cents: membershipMode.value === 'paid' ? cents : undefined,
-      roster_included_reviews_per_month: includedReviews.value,
-      roster_welcome_message: welcome.value.trim() || null,
-    })
-    if (!res.ok) {
-      emit('toast', res.error)
-      return
-    }
-    settings.value = res.settings as RosterSettings
-    syncFormFromSettings(settings.value)
-    emit('toast', 'Community settings saved')
-  } finally {
-    saving.value = false
-  }
-}
-
-async function copyInvite() {
-  if (!inviteUrl.value) return
-  try {
-    await navigator.clipboard.writeText(inviteUrl.value)
-    emit('toast', 'Invite link copied')
-  } catch {
-    emit('toast', inviteUrl.value)
-  }
-}
-
-async function openPayouts() {
-  await openWebFeature('/coach-dashboard/roster', true)
-}
-
-async function openPro() {
-  await openWebFeature('/coach-dashboard/roster', true)
-}
-
-async function openReviewFeed(reviewId?: number) {
-  const path = reviewId
-    ? `/coach-dashboard/reviews/feed?review=${reviewId}`
-    : '/coach-dashboard/reviews/feed'
-  await openWebFeature(path, true)
-}
-
-async function openAnalysis(review: CoachReview) {
-  const id = review.analysis_id ?? review.analysis?.id
-  if (!id) {
-    await openReviewFeed(review.id)
-    return
-  }
-  try {
-    if (review.status === 'pending') {
-      await window.api.coach.startReview(review.id)
-    }
-  } catch {
-    /* still try to open */
-  }
-  try {
-    const data = await window.api.analyses.getTimeline(id)
-    if (data) {
-      pendingTimeline.value = data
-      await router.push({ path: '/vod-review', query: { timelineId: String(id) } })
-      return
-    }
-  } catch {
-    /* fall through */
-  }
-  await openReviewFeed(review.id)
-}
-
-function studentSubtitle(entry: RosterStudent): string {
-  const parts = [`${entry.games_analysed} analysed`]
-  if (entry.open_review_count > 0) parts.push(`${entry.open_review_count} open`)
-  if (entry.last_active_at) parts.push(`active ${rosterFormatDate(entry.last_active_at)}`)
-  return parts.join(' · ')
-}
-
-function reviewSubtitle(review: CoachReview): string {
-  const parts = [
-    review.user?.name || 'Student',
-    review.status === 'in_progress' ? 'In progress' : 'Pending',
-  ]
-  if (review.requested_at) parts.push(rosterFormatDate(review.requested_at))
-  return parts.join(' · ')
-}
-
-watch(
-  () => props.active,
-  (on) => {
-    if (on) void load()
-  },
-)
-
-onMounted(() => {
-  if (props.active) void load()
-})
+const {
+  loading, error, saving, coachName, settings, students, reviews,
+  welcome, membershipMode, priceDollars, includedReviews, settingsOpen,
+  statusLabel, draftReason, needsSetup,
+  load, toggleEnabled, savePricing, copyInvite, openPayouts, openPro, openReviewFeed, openAnalysis,
+  studentSubtitle, reviewSubtitle,
+} = roster
 
 defineExpose({ load })
 </script>
 
 <template>
-  <div class="space-y-5">
+  <CoachRosterV3 v-if="uiV3" />
+  <div v-else class="space-y-5">
     <div v-if="loading" class="space-y-3">
       <div class="h-14 rounded-xl border border-white/[0.07] bg-white/[0.02] animate-pulse" />
       <div v-for="i in 3" :key="i" class="h-14 rounded-xl border border-white/[0.07] bg-white/[0.02] animate-pulse" />
