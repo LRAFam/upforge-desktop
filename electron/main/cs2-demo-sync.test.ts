@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { cs2DemoRetrievalStatus } from './cs2-demo-retrieval'
+afterEach(() => cs2DemoRetrievalStatus.clear())
+import { afterEach, describe, expect, it } from 'vitest'
 import { getAnalysisReadiness } from './analysis-readiness'
 import {
   shouldDeferPostGameForDemoSync,
@@ -90,11 +92,19 @@ describe('demoSyncMaxMsForGame', () => {
 })
 
 describe('getAnalysisReadiness cs2/deadlock without demo', () => {
-  it('locks Analyse while CS2 demo is still syncing', () => {
+  it('does not invent active sync from recording age', () => {
     const readiness = getAnalysisReadiness(cs2Recording())
     expect(readiness.ready).toBe(false)
-    expect(readiness.state).toBe('syncing')
-    expect(readiness.message).toMatch(/Steam demo|GOTV|Waiting/i)
+    expect(readiness.state).toBe('waiting_match_data')
+    expect(readiness.message).toMatch(/Attach/i)
+  })
+
+  it('shows the actual retrieval status, including failures', () => {
+    cs2DemoRetrievalStatus.set('rec-1', { state: 'syncing', message: 'Downloading the demo (42%).' })
+    expect(getAnalysisReadiness(cs2Recording()).message).toContain('42%')
+    cs2DemoRetrievalStatus.set('rec-1', { state: 'waiting_match_data', message: 'Open Steam and sign in.' })
+    expect(getAnalysisReadiness(cs2Recording()).message).toBe('Open Steam and sign in.')
+    expect(getAnalysisReadiness(cs2Recording()).ready).toBe(false)
   })
 
   it('keeps Analyse locked after the sync window until a demo is attached', () => {

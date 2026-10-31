@@ -46,38 +46,57 @@ export async function downloadValveDemoArchive(
   destPath: string,
   onProgress?: ValveDemoDownloadProgressHandler,
 ): Promise<void> {
-  const res = await fetch(demoUrl, { redirect: 'follow' })
-  if (res.status === 404) {
-    throw new Error('Valve demo download link expired — download the replay in-game.')
-  }
-  if (!res.ok || !res.body) {
-    throw new Error(`Demo download failed (${res.status}).`)
-  }
-
-  const contentLengthHeader = res.headers.get('content-length')
-  const bytesTotal = contentLengthHeader ? Number.parseInt(contentLengthHeader, 10) : null
-  const resolvedTotal = Number.isFinite(bytesTotal) && (bytesTotal as number) > 0
-    ? (bytesTotal as number)
-    : null
-
-  onProgress?.({
-    phase: 'downloading',
-    bytesDone: 0,
-    bytesTotal: resolvedTotal,
-    pct: resolvedTotal ? 0 : null,
-  })
-
+  const controller = new AbortController()
   const tmpPath = `${destPath}.part`
-  const out = createWriteStream(tmpPath)
-  const nodeStream = Readable.fromWeb(res.body as import('stream/web').ReadableStream)
-  const counter = createByteCounterTransform(resolvedTotal, 'downloading', onProgress)
-
-  if (demoUrl.endsWith('.bz2')) {
-    const decompressCounter = createByteCounterTransform(null, 'decompressing', onProgress)
-    await pipeline(nodeStream, counter, b2(), decompressCounter, out)
-  } else {
-    await pipeline(nodeStream, counter, out)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  // Limit inactivity, not total transfer time: slow healthy downloads can finish.
+  const touch = () => {
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => controller.abort(new Error('Demo download stalled. Check your connection and retry.')), 60_000)
   }
+  touch()
+  try {
+    const res = await fetch(demoUrl, { redirect: 'follow', signal: controller.signal })
+    touch()
+    if (res.status === 404) {
+      throw new Error('Valve has not made this demo available, or the link has expired. Try downloading the replay in-game.')
+    }
+    if (!res.ok || !res.body) {
+      throw new Error(`Demo download failed (${res.status}).`)
+    }
 
-  fs.renameSync(tmpPath, destPath)
+    const contentLengthHeader = res.headers.get('content-length')
+    const bytesTotal = contentLengthHeader ? Number.parseInt(contentLengthHeader, 10) : null
+    const resolvedTotal = Number.isFinite(bytesTotal) && (bytesTotal as number) > 0
+      ? (bytesTotal as number)
+      : null
+
+    onProgress?.({
+      phase: 'downloading',
+      bytesDone: 0,
+      bytesTotal: resolvedTotal,
+      pct: resolvedTotal ? 0 : null,
+    })
+
+    const out = createWriteStream(tmpPath)
+    const nodeStream = Readable.fromWeb(res.body as import('stream/web').ReadableStream)
+    const counter = createByteCounterTransform(resolvedTotal, 'downloading', progress => {
+      touch()
+      onProgress?.(progress)
+    })
+
+    if (demoUrl.endsWith('.bz2')) {
+      const decompressCounter = createByteCounterTransform(null, 'decompressing', onProgress)
+      await pipeline(nodeStream, counter, b2(), decompressCounter, out, { signal: controller.signal })
+    } else {
+      await pipeline(nodeStream, counter, out, { signal: controller.signal })
+    }
+
+    fs.renameSync(tmpPath, destPath)
+  } catch (error) {
+    await fs.promises.rm(tmpPath, { force: true })
+    throw controller.signal.aborted ? controller.signal.reason : error
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }

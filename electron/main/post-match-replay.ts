@@ -41,6 +41,11 @@ export async function buildTimelineFromReplay(
   ctx: PostMatchReplayContext,
   options?: import('./source-replay-finder').FindLatestReplayOptions,
 ): Promise<{ timeline: MatchData | null; demoPath: string | null }> {
+  // File modification time cannot establish which CS2 match a demo belongs to.
+  // CS2 auto-attachment resolves the exact file through Steam match identity;
+  // local-only demos remain available through the manual picker.
+  if (ctx.game === 'cs2') return { timeline: null, demoPath: null }
+
   const demoResult = await findLatestReplay(
     ctx.game,
     ctx.matchSessionStart,
@@ -143,6 +148,7 @@ export async function tryAutoUploadSourceReplay(opts: {
   meta?: ReplayUploadMeta
 }): Promise<void> {
   let demoPath = opts.demoPath
+  if (!demoPath && opts.game === 'cs2') return
   if (!demoPath) {
     const found = await findLatestReplay(opts.game, opts.matchSessionStart, opts.customReplayDir)
     demoPath = found.demoPath

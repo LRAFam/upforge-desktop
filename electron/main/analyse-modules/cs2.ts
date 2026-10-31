@@ -1,19 +1,14 @@
+import { cs2DemoRetrievalStatus } from '../cs2-demo-retrieval'
 import { duelMomentsForUpload } from '../moment-picker'
 import {
-  cs2DemoSyncMessage,
   cs2PlayerIdentityMismatch,
-  demoSyncMaxMsForGame,
   hasRichMatchData,
 } from '../match-data-quality'
 import type { AnalyseReadiness, GameAnalyseModule, ReadinessRecording } from './types'
-import { recordingAgeMs } from './types'
 
 export const cs2Module: GameAnalyseModule = {
   id: 'cs2',
   isReady(rec: ReadinessRecording): AnalyseReadiness {
-    const ageMs = recordingAgeMs(rec)
-    const withinSyncWindow = ageMs < demoSyncMaxMsForGame(rec.game)
-
     if (hasRichMatchData(rec.timeline)) {
       const duelMomentCount = duelMomentsForUpload(rec.timeline ?? null).length
       if (cs2PlayerIdentityMismatch(rec.timeline)) {
@@ -27,11 +22,12 @@ export const cs2Module: GameAnalyseModule = {
       return { ready: true, state: 'ready', message: '', duelMomentCount }
     }
 
-    if (withinSyncWindow) {
+    const retrieval = rec.id ? cs2DemoRetrievalStatus.get(rec.id) : undefined
+    if (retrieval) {
       return {
         ready: false,
-        state: 'syncing',
-        message: cs2DemoSyncMessage(ageMs),
+        state: retrieval.state,
+        message: retrieval.message + (retrieval.nextRetryAt ? ' Automatic checks will retry.' : ''),
         duelMomentCount: 0,
       }
     }
