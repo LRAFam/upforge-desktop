@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { momentSnapshot, mmss, numbersView, ofN, roundCells, roundTimeline, storyLines } from './coach-visuals'
+import { focusStepIndex, momentSnapshot, mmss, numbersView, ofN, roundCells, roundReplaySteps, roundTimeline, storyLines } from './coach-visuals'
 
 const ME = 'me'
 const players = [
@@ -108,5 +108,52 @@ describe('ofN', () => {
     expect(ofN('in 3 of your last 10 matches')).toEqual({ x: 3, n: 10 })
     expect(ofN('no counts here')).toBeNull()
     expect(ofN('7 of 5')).toBeNull()
+  })
+})
+
+
+describe('round replay steps', () => {
+  const team = [
+    { puuid: 'me', team: 'Blue', agent: 'Fade' }, { puuid: 'a1', team: 'Blue', agent: 'Omen' },
+    { puuid: 'e1', team: 'Red', agent: 'Chamber' }, { puuid: 'e2', team: 'Red', agent: 'Clove' },
+  ]
+  const pos = (alive: number[]) => alive.map(i => ({ i, x: 0.1 * (i + 1), y: 0.5 }))
+  const md = {
+    puuid: 'me',
+    finalStats: { team: 'Blue' },
+    roundReplay: {
+      map: 'Ascent', ownPlayerIndex: 0, players: team,
+      rounds: [{ r: 0, frames: [
+        { k: 'kill', rt: 18_000, v: 100_000, p: pos([1, 2, 3]), actorIndex: 2, victimIndex: 0 },
+        { k: 'kill', rt: 19_000, v: 101_000, p: pos([2, 3]), actorIndex: 3, victimIndex: 1 },
+        { k: 'plant', rt: 30_000, v: 112_000, p: pos([2, 3]), spike: { x: 0.4, y: 0.4 } },
+      ] }],
+    },
+    killEvents: [
+      { round: 0, killerPuuid: 'e1', victimPuuid: 'me', killerAgent: 'Chamber', victimAgent: 'Fade', videoOffsetMs: 100_000, spatial: { norm: { x: 0.05, y: 0.5 }, callout: 'B Main' } },
+      { round: 0, killerPuuid: 'e2', victimPuuid: 'a1', killerAgent: 'Clove', victimAgent: 'Omen', videoOffsetMs: 101_000 },
+    ],
+  }
+
+  it('builds one step per kill/plant with all players, keeping the dead where they fell', () => {
+    const v = roundReplaySteps(md, 1)!
+    expect(v.steps.map(s => s.caption)).toEqual(['Chamber killed you', 'Clove killed Omen', 'Spike planted'])
+    const last = v.steps[2]
+    expect(last.dots.find(d => d.i === 0)).toMatchObject({ alive: false, x: 0.05 })
+    expect(last.dots.find(d => d.i === 1)?.alive).toBe(false)
+    expect(last.spike).toEqual({ x: 0.4, y: 0.4 })
+    expect(v.players[0].who).toBe('you')
+    expect(v.steps[0].outcome).toBe('death')
+    expect(v.steps[0].callout).toBe('B Main')
+  })
+
+  it('opens on your own death over a teammate death a second later', () => {
+    const v = roundReplaySteps(md, 1)!
+    expect(focusStepIndex(v, 101_000)).toBe(0)
+    expect(focusStepIndex(v, 112_000)).toBe(2)
+  })
+
+  it('returns null when the round has no snapshots', () => {
+    expect(roundReplaySteps({ roundReplay: { players: team, rounds: [] } }, 1)).toBeNull()
   })
 })

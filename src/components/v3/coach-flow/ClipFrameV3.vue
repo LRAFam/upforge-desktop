@@ -36,14 +36,22 @@ async function play(at?: number | null): Promise<void> {
     void v.play().catch(() => {})
   })
 }
-defineExpose({ play })
+const emit = defineEmits<{ time: [sec: number] }>()
+/** Seek the clip if it's already loaded (used when the map steps). */
+function seek(sec: number): boolean {
+  const v = video.value
+  if (!playing.value || !v) return false
+  v.currentTime = Math.max(0, sec)
+  return true
+}
+defineExpose({ play, seek })
 watch(() => props.still, () => { playing.value = false })
 onBeforeUnmount(() => { if (src.value?.startsWith('blob:')) URL.revokeObjectURL(src.value) })
 </script>
 
 <template>
   <div v-if="still || loadClip" class="cf3">
-    <video v-if="playing && src" ref="video" class="cf3-media" :src="src" controls muted playsinline />
+    <video v-if="playing && src" ref="video" class="cf3-media" :src="src" controls muted playsinline @timeupdate="emit('time', ($event.target as HTMLVideoElement).currentTime)" />
     <template v-else>
       <img v-if="still" :src="still" alt="Frame from the match at this moment" class="cf3-media">
       <div v-else class="cf3-media cf3-empty" />

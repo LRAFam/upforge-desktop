@@ -48,7 +48,7 @@ export function roundCells(md: Rec | null | undefined, markedRounds: number[] = 
 
 interface ReplayPlayer { puuid?: string; team?: string; agent?: string | null; name?: string }
 interface ReplayPos { i: number; x: number; y: number; alive?: boolean | null }
-interface ReplayFrame { k?: string; t?: number | null; v?: number; rt?: number; label?: string; p?: ReplayPos[]; spike?: { x: number; y: number } }
+interface ReplayFrame { k?: string; t?: number | null; v?: number; rt?: number; label?: string; p?: ReplayPos[]; spike?: { x: number; y: number }; actorIndex?: number; victimIndex?: number }
 interface ReplayRound { r: number; frames?: ReplayFrame[]; endMs?: number | null }
 interface Replay { map?: string; players?: ReplayPlayer[]; rounds?: ReplayRound[]; ownPlayerIndex?: number }
 interface KillEvent {
@@ -168,6 +168,114 @@ export function momentSnapshot(md: Rec | null | undefined, round: number, videoM
     weapon: str(kill?.weapon),
     caption,
   }
+}
+
+// ── Round replay, step by step ──────────────────────────────────────────────────────────────────
+
+export interface ReplayPlayerView { i: number; agent: string | null; who: Who }
+export interface ReplayDot { i: number; x: number; y: number; alive: boolean }
+export interface ReplayStep {
+  kind: 'kill' | 'plant' | 'defuse'
+  /** Ms into the round. */
+  roundMs: number | null
+  /** Recording time, when known (lets a step seek the clip). */
+  videoMs: number | null
+  dots: ReplayDot[]
+  spike: { x: number; y: number } | null
+  killer: number | null
+  victim: number | null
+  outcome: Outcome | null
+  callout: string | null
+  weapon: string | null
+  /** "Chamber killed you", "Spike planted". */
+  caption: string
+}
+export interface RoundReplayView { map: string; round: number; players: ReplayPlayerView[]; steps: ReplayStep[] }
+
+/**
+ * Every kill, plant and defuse in a round as steps on the map, with all ten players at each step.
+ * Riot drops dead players from later snapshots, so they stay where they fell, marked dead. Null when
+ * the round has no position snapshots.
+ */
+export function roundReplaySteps(md: Rec | null | undefined, round: number): RoundReplayView | null {
+  const replay = replayOf(md)
+  const r = replay?.rounds?.find(x => x.r === round - 1)
+  const frames = (r?.frames ?? []).filter(f => (f.k === 'kill' || f.k === 'plant' || f.k === 'defuse') && Array.isArray(f.p) && f.p.length >= 2)
+  if (!replay || !frames.length) return null
+  const players = replay.players ?? []
+  const { puuid: me, team: myTeam } = you(md)
+  const whoOf = (i: number): Who => {
+    const pl = players[i]
+    return pl?.puuid && pl.puuid === me ? 'you' : pl?.team && myTeam && pl.team === myTeam ? 'ally' : 'enemy'
+  }
+  const teamOf = (p?: string) => (p ? players.find(x => x.puuid === p)?.team ?? null : null)
+  const kills = killsOf(md).filter(k => k.round === round - 1)
+  const ordered = [...frames].sort((a, b) => (num(a.rt) ?? 0) - (num(b.rt) ?? 0))
+
+  const last = new Map<number, { x: number; y: number }>()
+  const dead = new Set<number>()
+  const steps: ReplayStep[] = []
+  for (const f of ordered) {
+    for (const p of f.p ?? []) last.set(p.i, { x: p.x, y: p.y })
+    const videoMs = num(f.v)
+    const k = f.k === 'kill'
+      ? (videoMs != null ? kills.find(x => near(x.videoOffsetMs, videoMs, 250)) : undefined)
+        ?? (typeof f.victimIndex === 'number' ? kills.find(x => x.victimPuuid && x.victimPuuid === players[f.victimIndex as number]?.puuid) : undefined)
+      : undefined
+    const killer = typeof f.actorIndex === 'number' ? f.actorIndex : k ? players.findIndex(p => p.puuid === k.killerPuuid) : -1
+    const victim = typeof f.victimIndex === 'number' ? f.victimIndex : k ? players.findIndex(p => p.puuid === k.victimPuuid) : -1
+    if (f.k === 'kill' && victim >= 0) {
+      const vn = k?.spatial?.norm
+      if (!last.has(victim) && typeof vn?.x === 'number' && typeof vn?.y === 'number') last.set(victim, { x: vn.x, y: vn.y })
+      dead.add(victim)
+    }
+    const dots: ReplayDot[] = [...last.entries()].map(([i, pos]) => ({ i, ...pos, alive: !dead.has(i) }))
+    const name = (i: number) => (i >= 0 ? (whoOf(i) === 'you' ? 'you' : players[i]?.agent ?? 'someone') : 'someone')
+    const outcome = k ? outcomeFor(k, me, myTeam, teamOf) : null
+    const caption = f.k === 'kill'
+      ? `${name(killer).replace(/^you$/, 'You')} killed ${name(victim)}`
+      : f.k === 'plant' ? 'Spike planted' : 'Spike defused'
+    steps.push({
+      kind: f.k as ReplayStep['kind'],
+      roundMs: num(f.rt),
+      videoMs,
+      dots,
+      spike: f.spike && typeof f.spike.x === 'number' ? { x: f.spike.x, y: f.spike.y } : null,
+      killer: killer >= 0 ? killer : null,
+      victim: victim >= 0 ? victim : null,
+      outcome,
+      callout: str(k?.spatial?.callout),
+      weapon: str(k?.weapon),
+      caption,
+    })
+  }
+  return {
+    map: str(replay.map) ?? str(md?.map) ?? '',
+    round,
+    players: players.map((p, i) => ({ i, agent: p.agent ?? null, who: whoOf(i) })),
+    steps,
+  }
+}
+
+/** The step to show first: nearest to a recording time, else your death/kill, else the first. */
+export function focusStepIndex(view: RoundReplayView, videoMs?: number | null): number {
+  if (typeof videoMs === 'number') {
+    // Your own kill/death within a couple of seconds wins over someone else's at the same moment.
+    const close = view.steps.map((s, i) => ({ s, i, gap: s.videoMs == null ? Infinity : Math.abs(s.videoMs - videoMs) }))
+    const mineNear = close.filter(c => c.gap <= 2500 && (c.s.outcome === 'death' || c.s.outcome === 'kill')).sort((a, b) => a.gap - b.gap)[0]
+    if (mineNear) return mineNear.i
+    const nearest = close.filter(c => c.gap <= 6000).sort((a, b) => a.gap - b.gap)[0]
+    if (nearest) return nearest.i
+  }
+  const mine = view.steps.findIndex(s => s.outcome === 'death' || s.outcome === 'kill')
+  return mine >= 0 ? mine : 0
+}
+
+/** Compact outcome of a round for one line: result, your buy, your opening duel. */
+export function roundOutcome(md: Rec | null | undefined, round: number): { result: RoundCell['result']; buy: string | null; opening: RoundCell['opening'] } | null {
+  const c = roundCells(md).find(x => x.round === round)
+  if (!c) return null
+  return { result: c.result, buy: c.buy ? BAND_LABEL[c.buy] : null, opening: c.opening }
 }
 
 // ── Round timeline ──────────────────────────────────────────────────────────────────────────────
