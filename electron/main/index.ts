@@ -3555,7 +3555,7 @@ function setupGameDetection(): void {
         notifyWindow: notifyWin,
         customReplayDir: game === 'cs2' ? config?.cs2DemoDir : undefined,
       })
-      mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('dashboard:refresh', { fresh: true })
     }
     const clipsOnly = config?.fullMatchRecording === false || obsRecorder.isClipsOnlySession()
 
@@ -3581,7 +3581,7 @@ function setupGameDetection(): void {
           captureRecordingStartTime: localClipContext.recordingStartTime,
         }, matchSessionStart)
         logActivity('Match and clips saved locally. Sign in to access them.')
-        mainWindow?.webContents.send('recordings:updated')
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('recordings:updated')
         if (resolvedFile) {
           localMediaWork++
           void (async () => {
@@ -3899,19 +3899,19 @@ function setupGameDetection(): void {
       })
       if (activityRecordingOwner !== null) trackProductActivity('recording_saved', game, activityRecordingOwner)
       setPrepStep('dashboard_row', savedRecording.id)
-      mainWindow?.webContents.send('recordings:updated')
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('recordings:updated')
       logActivity(
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
       )
       if (game === 'cs2' && !richMatchData) {
         logActivity('CS2 match recorded — syncing demo from Steam for kill timeline and clips')
         sendToWindow('post-game:demo-status', { status: 'gc_lookup' })
-        mainWindow?.webContents.send('post-game:demo-status', { status: 'gc_lookup' })
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('post-game:demo-status', { status: 'gc_lookup' })
         void refreshReplayTimelineForRecording(savedRecording.id, { notifyActivity: true })
       } else if (game === 'deadlock' && !richMatchData) {
         logActivity('Deadlock match recorded — syncing replay from Steam for stats and clips')
         sendToWindow('post-game:demo-status', { status: 'downloading' })
-        mainWindow?.webContents.send('post-game:demo-status', { status: 'downloading' })
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('post-game:demo-status', { status: 'downloading' })
         void refreshReplayTimelineForRecording(savedRecording.id, { notifyActivity: true })
       }
       scheduleAnalysisReadinessRefresh(savedRecording.id, game, { force: true })

@@ -195,6 +195,35 @@ describe('durable logged-out media', () => {
     expect(await pipeline.extractMatchClips(mediaFile('unfinished.mp4'), null, null)).toBe(false)
   })
 
+  it('preserves the playable clip when ffmpeg cannot produce a thumbnail', async () => {
+    const clips = new ClipStore()
+    const thumbnail = vi.fn(async () => {
+      throw new Error('ffmpeg exited 4294967274: [out#0/image2] Invalid argument')
+    })
+    const pipeline = new ClipPipeline({
+      clipStore: clips,
+      clipExtractor: {
+        probeWithRetry: async () => ({ ok: true }),
+        probeDurationMs: async () => 120000,
+        extract: async ({ outputPath }: { outputPath: string }) => {
+          fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+          fs.writeFileSync(outputPath, 'clip video')
+        },
+        thumbnail,
+      } as unknown as ClipExtractor,
+      hotkeyBookmarks: [42000], getRecordingStartTime: () => 10000,
+      getClipCapture: () => ({ singleKills: true, multiKills: true, aces: true, clutches: true }),
+      logActivity: vi.fn(), notifySilent: () => true, notifyMainWindow: vi.fn(),
+    })
+
+    expect(await pipeline.extractMatchClips(mediaFile('source.mp4'), null, null)).toBe(true)
+    expect(thumbnail).toHaveBeenCalledTimes(2)
+    const saved = new ClipStore().getAll()
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toMatchObject({ trigger: 'hotkey', thumbPath: null, momentOffsetMs: 32000 })
+    expect(fs.readFileSync(saved[0].path, 'utf8')).toBe('clip video')
+  })
+
   it('retains the last account through credential expiry/restart, but clears it on explicit logout', () => {
     const ownership = new CaptureOwnership()
     expect(ownership.get()).toBeNull()

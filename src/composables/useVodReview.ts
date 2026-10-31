@@ -1,4 +1,5 @@
 import { createReviewSeek } from '../lib/review-seek'
+import { observeVideoArea } from '../lib/observe-video-area'
 import { buildReviewEvents } from '../lib/review-timeline'
 import { boundedMediaTime, reviewVideoUrl, reviewEventStart, EVENT_PRE_ROLL_SECONDS, DEATH_PRE_ROLL_SECONDS } from '../lib/review-media'
 import { PlaybackActivityMeter } from '../lib/playback-activity'
@@ -174,7 +175,8 @@ function createVodReview() {
   const isFullscreen = ref(false)
   const videoAspect = ref(16 / 9)
   const videoFrameSize = ref({ width: 0, height: 0 })
-  let videoAreaObserver: ResizeObserver | null = null
+  let stopObservingVideoArea: (() => void) | null = null
+  let reviewClosed = false
   
   const timeline = ref<RecordingTimeline | null>(null)
   const reviewGame = computed(() => timeline.value?.game ?? null)
@@ -591,9 +593,12 @@ function createVodReview() {
       height = ch
       width = height * aspect
     }
-    videoFrameSize.value = {
+    const size = {
       width: Math.max(1, Math.floor(width)),
       height: Math.max(1, Math.floor(height)),
+    }
+    if (size.width !== videoFrameSize.value.width || size.height !== videoFrameSize.value.height) {
+      videoFrameSize.value = size
     }
   }
   
@@ -1830,27 +1835,29 @@ function createVodReview() {
     }).catch(() => {})
   
     await loadTimeline()
+    if (reviewClosed) return
   
     window.addEventListener('keydown', handleKeyDown)
     document.addEventListener('fullscreenchange', onFullscreenChange)
   
     nextTick(() => {
+      if (reviewClosed) return
       updateVideoFrameSize()
       if (videoAreaEl.value) {
-        videoAreaObserver = new ResizeObserver(() => updateVideoFrameSize())
-        videoAreaObserver.observe(videoAreaEl.value)
+        stopObservingVideoArea = observeVideoArea(videoAreaEl.value, updateVideoFrameSize)
       }
     })
   })
   
   onUnmounted(() => {
+    reviewClosed = true
     cloudSessionCleanups.forEach(fn => fn())
     reviewSeek.cancel()
     window.api.discord.setState('idle').catch(() => {})
     window.removeEventListener('keydown', handleKeyDown)
     document.removeEventListener('fullscreenchange', onFullscreenChange)
-    videoAreaObserver?.disconnect()
-    videoAreaObserver = null
+    stopObservingVideoArea?.()
+    stopObservingVideoArea = null
     if (document.fullscreenElement === videoFrameEl.value) {
       document.exitFullscreen().catch(() => {})
     }
@@ -2271,7 +2278,6 @@ function createVodReview() {
     updateVideoFrameSize,
     userTier,
     videoAreaEl,
-    videoAreaObserver,
     videoAspect,
     videoBuffering,
     videoEl,

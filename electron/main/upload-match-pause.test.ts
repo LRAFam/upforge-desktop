@@ -52,6 +52,43 @@ function setupArchive() {
   return { manager, internal, api, opts, file }
 }
 describe('VOD cloud transfer match protection', () => {
+  it('re-presigns an expired multipart session and completes with the new parts', async () => {
+    const { manager, internal, opts } = setupArchive()
+    let presigns = 0
+    const requests: string[] = []
+    const completed: Record<string, unknown>[] = []
+    internal._apiPost = vi.fn((endpoint, body) => {
+      if (endpoint.endsWith('/presign')) {
+        presigns++
+        return Promise.resolve({
+          job_id: 'test-expired-session',
+          multipart: true,
+          upload_id: `session-${presigns}`,
+          part_size: 1024 * 1024,
+          parts: [{ part_number: 1, upload_url: `${url}/session-${presigns}` }],
+        })
+      }
+      completed.push(JSON.parse(body))
+      return Promise.resolve({})
+    })
+    handle = (req, res) => {
+      requests.push(req.url!)
+      req.resume()
+      req.on('end', () => {
+        res.statusCode = req.url === '/session-1' ? 404 : 200
+        res.setHeader('ETag', 'fresh-etag')
+        res.end(req.url === '/session-1' ? '<Error><Code>NoSuchUpload</Code></Error>' : '')
+      })
+    }
+    await expect(manager.upload(opts)).resolves.toMatchObject({ job_id: 'test-expired-session' })
+    expect(requests).toEqual(['/session-1', '/session-2'])
+    expect(presigns).toBe(2)
+    expect(completed).toEqual([expect.objectContaining({
+      job_id: 'test-expired-session',
+      upload_parts: [{ part_number: 1, etag: 'fresh-etag' }],
+    })])
+  }, 15000)
+
   it('keeps a slow multipart upload alive while bytes are still flowing', async () => {
     const { internal, file } = setupArchive()
     vi.useFakeTimers()
