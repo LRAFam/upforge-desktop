@@ -99,6 +99,7 @@ const {
           <p class="mt-1 text-xs text-gray-500">Bypass OS pointer acceleration</p>
         </div>
         <SettingsToggle
+          label="Raw input"
           :on="!!settings.trainerMouse.rawInput"
           @click="settings.trainerMouse.rawInput = !settings.trainerMouse.rawInput; debouncedSave()"
         />

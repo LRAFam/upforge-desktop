@@ -1,10 +1,33 @@
 <script setup lang="ts">
+import { onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { cloudBytes } from '../../lib/cloud-storage'
 import { capacityLabel } from '../../lib/account-usage'
 import { useAccountUsage } from '../../composables/useAccountUsage'
 const emit = defineEmits<{ upgrade: [] }>()
 const router = useRouter()
 const { usage, error, loading, load } = useAccountUsage()
+const purchasing = ref(false), purchaseNotice = ref('')
+let purchaseGeneration = 0
+const purchaseCleanups = ['session:user-changed', 'auth:session-expired'].map(event => window.api.on(event, () => {
+  purchaseGeneration++; purchasing.value = false; purchaseNotice.value = ''
+}))
+onBeforeUnmount(() => { purchaseGeneration++; purchaseCleanups.forEach(cleanup => cleanup()) })
+async function buyReports() {
+  if (purchasing.value) return
+  const generation = purchaseGeneration
+  purchasing.value = true; purchaseNotice.value = ''
+  try {
+    const result = await window.api.accountUsage.buyReports()
+    if (generation !== purchaseGeneration) return
+    if (!result.ok) { purchaseNotice.value = result.error; return }
+    const url = new URL(result.data.checkout_url)
+    if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com') throw new Error('Invalid checkout')
+    await window.api.app.openUrl(url.toString())
+    if (generation === purchaseGeneration) purchaseNotice.value = 'Complete checkout in your browser, then return here. Refresh usage if your credits have not arrived yet.'
+  } catch { if (generation === purchaseGeneration) purchaseNotice.value = 'Could not open checkout. Check your balance before retrying.' }
+  finally { if (generation === purchaseGeneration) purchasing.value = false }
+}
 const date = (value: string) => new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 </script>
 <template>
@@ -23,9 +46,13 @@ const date = (value: string) => new Date(value).toLocaleDateString(undefined, { 
         </template>
         <p v-else>Review access is unavailable from this server.</p>
       </section>
-      <section><h3>Cloud clips</h3><strong>{{ capacityLabel(usage.clips) }}</strong><p>Saved clips occupy space until removed. This allowance does not reset monthly.</p><button type="button" @click="router.push('/clips')">Manage clips</button></section>
-      <section><h3>Cloud footage</h3><strong>{{ capacityLabel(usage.footage) }}</strong><p>{{ usage.footage.stored }} saved · {{ usage.footage.reserved }} uploads reserved</p><p v-if="usage.footage.stored_bytes !== null">{{ (usage.footage.stored_bytes / 1073741824).toFixed(2) }} GB stored</p><p v-if="usage.footage.retention_days !== null">Kept for {{ usage.footage.retention_days }} days. Local recordings do not use cloud capacity.</p><p v-if="usage.footage.next_expiry_at">Next recording expiry: {{ date(usage.footage.next_expiry_at) }}</p><button type="button" @click="router.push('/recordings')">Manage footage</button></section>
-      <section><h3>AI reports</h3><strong>{{ usage.reports.limit === null ? 'Unlimited reports' : `${usage.reports.remaining} of ${usage.reports.limit} included reports left` }}</strong><p v-if="usage.reports.period === 'lifetime'">Lifetime allowance. It does not reset each month.</p><p v-else-if="usage.reports.resets_at">Resets {{ date(usage.reports.resets_at) }}</p><p v-else-if="usage.reports.reset_on_next_use">Your next report starts a new monthly allowance.</p><p>{{ usage.reports.purchased }} purchased report credits · separate from your included allowance</p></section>
+      <section class="storage-entry">
+        <h3>Need more cloud storage?</h3>
+        <p>Choose extra capacity in GB without changing your plan. Storage is billed monthly, separately from AI credits.</p>
+        <button type="button" @click="router.push('/cloud-storage')">Manage storage and view prices</button>
+      </section>
+      <section><h3>Cloud storage</h3><template v-if="usage.cloud_storage"><strong>{{ cloudBytes(usage.cloud_storage.used_bytes) }} used<span v-if="usage.cloud_storage.capacity_bytes !== null"> / {{ cloudBytes(usage.cloud_storage.capacity_bytes) }}</span></strong><p>Shared by clips and recordings across all games. Local files do not count.</p></template><p v-else>Storage allowance unavailable.</p><button type="button" @click="router.push('/cloud-storage')">Manage storage</button></section>
+      <section><h3>Full-match AI reports</h3><strong>{{ usage.reports.limit === null ? 'Unlimited reports' : `${usage.reports.remaining} of ${usage.reports.limit} included reports left` }}</strong><p v-if="usage.reports.period === 'lifetime'">Lifetime allowance. It does not reset each month.</p><p v-else-if="usage.reports.resets_at">Resets {{ date(usage.reports.resets_at) }}</p><p v-else-if="usage.reports.reset_on_next_use">Your next report starts a new monthly allowance.</p><p>{{ usage.reports.purchased }} purchased report credits · separate from your included allowance</p><button type="button" :disabled="purchasing" @click="buyReports">{{ purchasing ? 'Opening checkout…' : 'Buy 3 report credits' }}</button><p>One-time purchase for full-match reports, separate from Ask AI coach questions. Review the price in Stripe before paying. Purchased reports do not expire.</p><p v-if="purchaseNotice" role="status">{{ purchaseNotice }}</p></section>
       <section><h3>Ask AI coach</h3><strong>{{ usage.coach_credits }} Coach Credits</strong><p>Included questions and match limits appear in Ask AI coach. Coach Credits are separate from full-match reports.</p></section>
       <button type="button" @click="emit('upgrade')">View plans and upgrades</button>
       <p class="updated">Updated {{ new Date(usage.as_of).toLocaleTimeString() }}</p>

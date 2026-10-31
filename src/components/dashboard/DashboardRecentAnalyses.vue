@@ -186,7 +186,7 @@ function toggleFootageDebug(rec: PendingRecording) {
         <span class="text-[10px] text-gray-600">ACS <span class="font-bold text-gray-300">{{ lastFivePerf.avgAcs }}</span></span>
       </template>
       <template v-if="lastFivePerf.avgScore != null">
-        <span class="text-[10px] text-gray-600">AI <span class="font-bold" :class="lastFivePerf.avgScore >= 70 ? 'text-green-400' : lastFivePerf.avgScore >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ lastFivePerf.avgScore }}</span></span>
+        <span class="text-[10px] text-gray-600">AI <span class="font-bold" :class="lastFivePerf.avgScore >= 70 ? 'text-green-400' : lastFivePerf.avgScore >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ lastFivePerf.avgScore * 10 }}</span></span>
       </template>
       <template v-if="lastFivePerf.avgHs != null">
         <span class="text-[10px] text-gray-600">HS <span class="font-bold text-gray-300">{{ lastFivePerf.avgHs }}%</span></span>
@@ -493,7 +493,7 @@ function toggleFootageDebug(rec: PendingRecording) {
                   class="text-sm font-black tabular-nums"
                   :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'"
                   :title="`${scoreGrade(a.overall_score)} — ${scoreLabel(a.overall_score)}`"
-                >{{ a.overall_score }}</span>
+                >{{ a.overall_score * 10 }}</span>
                 <span v-else class="text-[10px] text-gray-700">—</span>
               </template>
             </div>

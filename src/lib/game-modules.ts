@@ -37,8 +37,8 @@ export interface GameModule {
   openHistoryWeb: () => void
 }
 
-const VALORANT_NAV = ['/dashboard', '/training', '/clips', '/recordings', '/squad', '/stats', '/history', '/performance', '/rosters', '/settings'] as const
-const DEMO_GAME_NAV = ['/dashboard', '/clips', '/recordings', '/history', '/rosters', '/settings'] as const
+const VALORANT_NAV = ['/dashboard', '/training', '/clips', '/recordings', '/cloud-storage', '/squad', '/stats', '/matches', '/history', '/performance', '/rosters', '/settings'] as const
+const DEMO_GAME_NAV = ['/dashboard', '/clips', '/recordings', '/cloud-storage', '/matches', '/history', '/rosters', '/settings'] as const
 
 const VALORANT_FEATURES: GameFeatures = {
   vodReviewTimeline: true,

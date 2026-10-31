@@ -256,13 +256,13 @@ const statusItems = computed<StatusItem[]>(() => {
           label="Record game audio"
           hint="Includes in-game sound via OBS"
         >
-          <SettingsToggle :on="!!settings.audioEnabled" @click="toggleAudio()" />
+          <SettingsToggle label="Record game audio" :on="!!settings.audioEnabled" @click="toggleAudio()" />
         </SettingsRow>
         <SettingsRow
           label="Record full match VODs"
           hint="Off = replay-buffer kill clips only. No AI match coaching without a VOD."
         >
-          <SettingsToggle :on="settings.fullMatchRecording !== false" @click="toggleFullMatchRecording()" />
+          <SettingsToggle label="Record full match VODs" :on="settings.fullMatchRecording !== false" @click="toggleFullMatchRecording()" />
         </SettingsRow>
       </div>
     </SettingsSection>
@@ -311,9 +311,8 @@ const statusItems = computed<StatusItem[]>(() => {
           <span>{{ storageSoftLimitLabel }}</span>
         </div>
         <p class="mt-3 text-[11px] leading-relaxed text-gray-600">
-          Uploaded VODs are stored in the cloud and can be reviewed without a local file.
-          Turn on <span class="text-gray-400">Auto-delete after upload</span> below to free disk automatically after each match.
-          <span class="text-gray-500"> Pro plans include higher analysis limits and extended cloud retention.</span>
+          This is storage on your device, separate from your cloud allowance.
+          After confirming a cloud upload, you can remove its local copy and keep reviewing from the cloud.
         </p>
         <div v-if="storageBreakdown.pendingCount > 0 || storageBreakdown.cloudBackedCount > 0 || storageBreakdown.orphanCount > 0 || storageBreakdown.legacyDuplicateBytes > 0" class="mt-3 space-y-2">
           <button
@@ -367,7 +366,7 @@ const statusItems = computed<StatusItem[]>(() => {
               <span class="block text-xs font-medium text-gray-200">{{ opt.label }}</span>
               <span class="block text-[11px] text-gray-600">{{ opt.hint }}</span>
             </span>
-            <SettingsToggle :on="!!settings.clipCapture?.[opt.key]" @click.stop="toggleClipCapture(opt.key)" />
+            <SettingsToggle :label="opt.label" :on="!!settings.clipCapture?.[opt.key]" @click.stop="toggleClipCapture(opt.key)" />
           </button>
         </div>
       </div>

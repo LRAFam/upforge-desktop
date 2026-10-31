@@ -187,7 +187,7 @@ export function setupClipHandlers(
       const extras = timeline && settingsManager
         ? buildCoachingSubmissionExtras(timeline, settingsManager.get(), await auth.fetchRRHistory().catch(() => []))
         : undefined
-      const presignPayload = JSON.stringify(buildClipUploadPayload(clip, timeline, extras))
+      const presignPayload = JSON.stringify({ ...buildClipUploadPayload(clip, timeline, extras), file_size_bytes: fs.statSync(uploadPath).size })
       const { upload_url: uploadUrl, clip_uuid: clipUuid } = await apiPost(
         apiBase, '/api/clips/presign', presignPayload, token
       ) as { upload_url: string; clip_uuid: string }

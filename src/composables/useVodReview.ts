@@ -107,6 +107,10 @@ interface TeamPlayerSnapshot {
 }
 
 export interface RecordingTimeline {
+  archiveAnalysisState?: string
+  archiveAnalysisReady?: boolean
+  archiveAnalysisMessage?: string
+  matchDataAvailable?: boolean
   id: string
   jobId?: string | null
   analysisId?: number | null
@@ -1731,6 +1735,7 @@ function createVodReview() {
     timeline.value = null
     playbackDurationRetryDone.value = false
     try {
+      const archiveId = route.query.archiveId as string
       const id = route.query.id as string
       const timelineId = route.query.timelineId as string
       const numericTimelineId = Number(timelineId)
@@ -1740,6 +1745,11 @@ function createVodReview() {
         pendingTimeline.value = null
         videoSyncOffsetMs.value = timeline.value?.videoSyncOffsetMs
           ?? defaultSyncMsForGame(timeline.value?.game)
+      } else if (archiveId) {
+        const result = await window.api.archives.review(archiveId)
+        if (!result.ok) { timelineError.value = result.error; return }
+        timeline.value = result.timeline
+        videoSyncOffsetMs.value = timeline.value.videoSyncOffsetMs ?? defaultSyncMsForGame(timeline.value.game)
       } else if (id) {
         recordingId.value = id
         timeline.value = await window.api.recordings.getTimeline(id)
@@ -1763,9 +1773,10 @@ function createVodReview() {
         return
       }
   
-      if (timelineId && !Number.isNaN(numericTimelineId)) {
-        coachingDetail.value = await window.api.analyses.getDetail(numericTimelineId).catch(() => null)
-        const review = await window.api.coach.getAnalysisReview(numericTimelineId).catch(() => null)
+      const detailId = timeline.value?.analysisId ?? numericTimelineId
+      if (Number.isFinite(detailId) && detailId > 0) {
+        coachingDetail.value = await window.api.analyses.getDetail(detailId).catch(() => null)
+        const review = await window.api.coach.getAnalysisReview(detailId).catch(() => null)
         if (review?.id) {
           const detail = await window.api.coach.getReviewAnnotations(review.id).catch(() => null)
           coachReview.value = {
@@ -1802,6 +1813,13 @@ function createVodReview() {
     }
   }
   
+  const cloudSessionCleanups = ['session:user-changed', 'auth:session-expired'].map(event => window.api.on(event, () => {
+    if (!route.query.archiveId) return
+    videoEl.value?.pause()
+    timeline.value = null
+    coachingDetail.value = null
+    timelineError.value = 'Your account changed. Reopen cloud storage to continue.'
+  }))
   onMounted(async () => {
     loadSpatialPreviewState()
     loadSpatialUiPrefs()
@@ -1825,6 +1843,7 @@ function createVodReview() {
   })
   
   onUnmounted(() => {
+    cloudSessionCleanups.forEach(fn => fn())
     reviewSeek.cancel()
     window.api.discord.setState('idle').catch(() => {})
     window.removeEventListener('keydown', handleKeyDown)

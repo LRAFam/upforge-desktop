@@ -7,6 +7,7 @@ const { timeline, currentTime, activeRoundNumber, seekToTime, formatSeconds, vid
 const source = computed<PersonalReviewSource | null>(() => {
   const t = timeline.value
   if (!t) return null
+  if (t.archiveAnalysisState !== undefined && t.archiveId) return { kind: 'recording', id: t.archiveId, game: t.game }
   if (t.analysisId) return { kind: 'analysis', id: String(t.analysisId), game: t.game }
   return t.id ? { kind: 'recording', id: t.id, game: t.game } : null
 })

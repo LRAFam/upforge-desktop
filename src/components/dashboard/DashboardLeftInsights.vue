@@ -62,7 +62,7 @@ const {
             <span v-if="scoreTrend !== null" class="text-xs font-bold" :class="scoreTrend >= 0 ? 'text-green-400' : 'text-red-400'">
               {{ scoreTrend >= 0 ? '↑' : '↓' }} {{ Math.round(Math.abs(scoreTrend) * 10) }} pts
             </span>
-            <span v-if="avgScore !== null" class="text-[10px] text-gray-600 ml-auto">avg {{ avgScore }}</span>
+            <span v-if="avgScore !== null" class="text-[10px] text-gray-600 ml-auto">avg {{ avgScore * 10 }}</span>
           </div>
           <svg width="100%" :viewBox="`0 0 ${scoreChartData.W} ${scoreChartData.H}`" preserveAspectRatio="none" class="h-9 block">
             <defs>

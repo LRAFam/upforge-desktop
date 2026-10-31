@@ -16,8 +16,8 @@ export interface WindowLayout {
 }
 
 export const LOGIN_LAYOUT: WindowLayout = {
-  width: 780,
-  height: 720,
+  width: 1040,
+  height: 780,
   minWidth: 720,
   minHeight: 680,
   compact: true,

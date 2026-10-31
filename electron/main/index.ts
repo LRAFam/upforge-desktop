@@ -1,3 +1,5 @@
+import { getApiBaseUrl } from './api-base'
+import { setupCloudStorageHandlers } from './ipc/cloud-storage-ipc'
 import { APP_VERSION } from './app-version'
 import { setupReviewNotebookHandlers } from './ipc/review-notebook-ipc'
 import { registeredLocalRecordingPaths } from './local-media-paths'
@@ -336,6 +338,16 @@ import {
 } from './late-clip-retry'
 import { downloadCs2ValveDemoForSession } from './cs2-valve-demo-downloader'
 import { clearDemoDownloadProgress, sendDemoDownloadProgress } from './demo-download-notify'
+// Keep sandbox sessions separate from the normal desktop account and recordings.
+if (!app.isPackaged && process.env.UPFORGE_SANDBOX_USER_DATA) {
+  const api = new URL(getApiBaseUrl())
+  if (!['127.0.0.1', 'localhost'].includes(api.hostname)) {
+    throw new Error('Sandbox user data requires a localhost API')
+  }
+  fs.mkdirSync(process.env.UPFORGE_SANDBOX_USER_DATA, { recursive: true })
+  app.setPath('userData', process.env.UPFORGE_SANDBOX_USER_DATA)
+}
+
 // Keep software rendering as the dev default. Opt in to GPU rendering when
 // diagnosing stale software-composited video frames in the macOS preview.
 if (!app.isPackaged) {
@@ -1273,6 +1285,7 @@ function logActivity(message: string, explicitGame?: string): void {
     message,
     game: explicitGame ?? gameDetector.currentGame() ?? undefined,
   }
+  log.info('[Activity]', entry.game ?? 'app', message)
   activityLog.push(entry)
   recordErrorActivity(message, entry.time)
   if (activityLog.length > MAX_LOG_ENTRIES) activityLog.shift()
@@ -4277,18 +4290,8 @@ function setupGameDetection(): void {
       mainWindow.minimize()
     }
 
-    const recordedModesEarly = getRecordedModesForGame(
-      config?.recordedModesByGame,
-      game,
-      config?.recordedModes,
-    )
-    if (Array.isArray(recordedModesEarly) && recordedModesEarly.length === 0) {
-      logActivity('No game modes selected — recording disabled')
-      notifyRecordingUx('Select at least one game mode in Settings → Recording to record matches.')
-      tray?.setToolTip(idleTooltip(game))
-      await rearmGameDetection(game, true)
-      return
-    }
+    // Keep watching when no modes are selected: the user may enable a mode
+    // in the lobby. The saved selection is checked once the match is detected.
 
     // Auto-kill user-configured background apps before the game starts
     if (config?.pregameKillList?.length && performanceManager) {
@@ -4297,7 +4300,7 @@ function setupGameDetection(): void {
       }
     }
 
-    const recorderConfig = config ? buildRecorderConfig(config, hasProAccess(authManager.getUser()), captureOwnerId()) : undefined
+    let recorderConfig = config ? buildRecorderConfig(config, hasProAccess(authManager.getUser()), captureOwnerId()) : undefined
 
     // Check disk space now so the warning shows while in lobby
     const savePath = recordingSavePath()
@@ -4360,16 +4363,6 @@ function setupGameDetection(): void {
     let matchWaitCancelReason: string | null = null
     cancelMatchWait = () => { cancelled = true }
     waitingForMatch = true
-
-    const recordedModes = getRecordedModesForGame(
-      config?.recordedModesByGame,
-      game,
-      config?.recordedModes,
-    )
-    const allRecordableModes = recordableModesForGame(game)
-    // Empty list = record nothing (dashboard/settings copy). Non-empty partial list = filter.
-    const filterByMode = recordedModes.length > 0 &&
-      !allRecordableModes.every(m => recordedModes.includes(m))
 
     // CS2 — GSI live match (process open ≠ in a match).
     // Deadlock — Steam httpcache match signals; no Valve GSI.
@@ -4888,6 +4881,32 @@ function setupGameDetection(): void {
       } else if (gameMode) {
         modeConfident = true
       }
+    }
+
+    // Settings can change while we wait in the lobby. Decide from the saved
+    // selection at match start, rather than the earlier game-detection snapshot.
+    const matchStartSettings = settingsManager?.get()
+    recorderConfig = matchStartSettings
+      ? buildRecorderConfig(matchStartSettings, hasProAccess(authManager.getUser()), captureOwnerId())
+      : undefined
+    const recordedModes = getRecordedModesForGame(
+      matchStartSettings?.recordedModesByGame,
+      game,
+      matchStartSettings?.recordedModes,
+    )
+    const allRecordableModes = recordableModesForGame(game)
+    // Empty list = record nothing (dashboard/settings copy). Non-empty partial list = filter.
+    const filterByMode = recordedModes.length > 0 &&
+      !allRecordableModes.every(m => recordedModes.includes(m))
+
+    log.info('[RecordingDecision]', { game, gameMode, modeConfident, recordedModes, filterByMode })
+
+    if (recordedModes.length === 0) {
+      logActivity('No game modes selected — recording disabled')
+      notifyRecordingUx('Select at least one game mode in Settings → Recording to record matches.')
+      tray?.setToolTip(idleTooltip(game))
+      await rearmGameDetection(game, true)
+      return
     }
 
     if (filterByMode && !modeConfident) {
@@ -6613,6 +6632,11 @@ async function startApp(): Promise<void> {
     else discordRPC.setIdle()
   })
   setupReviewNotebookHandlers(ipcMain, authManager)
+  setupCloudStorageHandlers(ipcMain, authManager, (file) => {
+    if (file.kind === 'clip') {
+      for (const clip of clipStore.getAll()) if (String(clip.apiClipId) === file.id) clipStore.update(clip.id, { apiClipId: null, uploadStatus: 'local' })
+    }
+  })
   ipcMain.handle('coaching:preferences', async () => {
     return (await authManager.getApi().get('/api/user/coaching-preferences')).data
   })

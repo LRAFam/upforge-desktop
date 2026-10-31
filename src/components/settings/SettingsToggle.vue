@@ -1,5 +1,6 @@
 <script setup lang="ts">
 defineProps<{
+  label: string
   on: boolean
   disabled?: boolean
 }>()
@@ -12,6 +13,9 @@ defineEmits<{
 <template>
   <button
     type="button"
+    role="switch"
+    :aria-label="label"
+    :aria-checked="on"
     class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
     :class="on ? '' : 'bg-white/20'"
     :style="on ? { backgroundColor: 'var(--game-accent, #ef4444)' } : undefined"

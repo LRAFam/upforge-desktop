@@ -20,7 +20,21 @@ export function validReviewAccess(value: unknown): value is ReviewAccess {
     && ['preview', 'plan', 'existing_account', 'upgrade_required', 'free_trial'].includes(access.comparison_access_reason)
 }
 export interface Capacity { used: number; limit: number | null; remaining: number | null }
+export interface CloudStorageUsage {
+  included_bytes: number | null; addon_bytes: number; capacity_bytes: number | null
+  used_bytes: number; reserved_bytes: number; remaining_bytes: number | null; unknown_size_files: number
+}
+export function validCloudStorageUsage(value: unknown): value is CloudStorageUsage {
+  if (!value || typeof value !== 'object') return false
+  const q = value as CloudStorageUsage
+  const n = (x: unknown) => Number.isSafeInteger(x) && Number(x) >= 0
+  return [q.addon_bytes, q.used_bytes, q.reserved_bytes, q.unknown_size_files].every(n)
+    && (q.included_bytes === null ? q.capacity_bytes === null && q.remaining_bytes === null
+      : n(q.included_bytes) && q.capacity_bytes === q.included_bytes + q.addon_bytes
+        && q.remaining_bytes === Math.max(0, q.capacity_bytes - q.used_bytes - q.reserved_bytes))
+}
 export interface AccountUsage {
+  cloud_storage?: CloudStorageUsage | null
   version: 1; as_of: string
   review_access?: ReviewAccess
   reports: Capacity & { period: 'monthly' | 'lifetime' | 'unlimited'; resets_at: string | null; reset_on_next_use: boolean; purchased: number }
@@ -34,7 +48,7 @@ export function validAccountUsage(value: unknown): value is AccountUsage {
   const count = (x: unknown) => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0
   const date = (x: unknown) => x === null || (typeof x === 'string' && Number.isFinite(Date.parse(x)))
   const capacity = (c: Capacity) => c && count(c.used) && (c.limit === null ? c.remaining === null : count(c.limit) && c.remaining === Math.max(0, c.limit - c.used))
-  return (v.review_access === undefined || validReviewAccess(v.review_access)) && v.version === 1 && typeof v.as_of === 'string' && date(v.as_of)
+  return (v.cloud_storage == null || validCloudStorageUsage(v.cloud_storage)) && (v.review_access === undefined || validReviewAccess(v.review_access)) && v.version === 1 && typeof v.as_of === 'string' && date(v.as_of)
     && !!capacity(v.reports) && !!capacity(v.clips) && !!capacity(v.footage)
     && ['monthly', 'lifetime', 'unlimited'].includes(v.reports.period)
     && date(v.reports.resets_at) && typeof v.reports.reset_on_next_use === 'boolean' && count(v.reports.purchased)

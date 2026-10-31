@@ -4,12 +4,13 @@ import CoachingHistoryToolbar from '../components/coaching-history/CoachingHisto
 import CoachingHistoryList from '../components/coaching-history/CoachingHistoryList.vue'
 import CoachingHistoryDetail from '../components/coaching-history/CoachingHistoryDetail.vue'
 
+defineProps<{ embedded?: boolean }>()
 provideCoachingHistory()
 </script>
 
 <template>
   <div class="flex flex-1 min-h-0 flex-col overflow-hidden bg-[#111111] text-white">
-    <CoachingHistoryToolbar />
+    <CoachingHistoryToolbar :embedded="embedded" />
     <div class="flex min-h-0 flex-1 flex-col lg:flex-row">
       <CoachingHistoryList />
       <CoachingHistoryDetail />

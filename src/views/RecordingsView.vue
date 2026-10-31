@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { mergeFootage, footageUnavailable, type LibraryRecording } from '../lib/footage-library'
+import { validCloudPage, type CloudFile } from '../lib/cloud-storage'
+import StorageIndicator from '../components/shared/StorageIndicator.vue'
 import LibraryPageHeader from '../components/shared/LibraryPageHeader.vue'
 import CloudUsageNotice from '../components/shared/CloudUsageNotice.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -31,8 +34,38 @@ const router = useRouter()
 const route = useRoute()
 const { theme, cssVars } = useGameTheme()
 
-const recordings = ref<PendingRecording[]>([])
+defineProps<{ embedded?: boolean }>()
+const localRecordings = ref<PendingRecording[]>([])
+const cloudFiles = ref<CloudFile[]>([])
+const recordings = computed(() => mergeFootage(localRecordings.value, cloudFiles.value))
+const cloudError = ref('')
+let cloudRequest = 0
+async function loadCloud() {
+  const request = ++cloudRequest
+  cloudError.value = ''
+  const files: CloudFile[] = []
+  try {
+    let page = 1
+    let lastPage = 1
+    do {
+      const result = await window.api.cloudStorage.list({ kind: 'recording', game: 'all', sort: 'newest', page })
+      if (request !== cloudRequest) return
+      if (!result.ok) throw new Error(result.error)
+      if (!validCloudPage(result.data) || result.data.page !== page) throw new Error('Cloud footage could not be verified.')
+      files.push(...result.data.items)
+      lastPage = result.data.last_page
+      page++
+    } while (page <= lastPage)
+    cloudFiles.value = files
+  } catch (error) {
+    if (request === cloudRequest) cloudError.value = error instanceof Error ? error.message : 'Cloud footage is unavailable.'
+  }
+}
+const sessionCleanups = ['session:user-changed', 'auth:session-expired'].map(event => window.api.on(event, () => {
+  cloudRequest++; cloudFiles.value = []; localRecordings.value = []; cloudError.value = 'Sign in to load cloud footage.'
+}))
 const loading = ref(true)
+const libraryError = ref('')
 const busyId = ref<string | null>(null)
 const message = ref<string | null>(null)
 const gameFilter = ref<string>(route.query.game === 'lol' ? 'lol' : 'all')
@@ -68,8 +101,12 @@ async function loadStorage() {
 
 async function load() {
   loading.value = true
+  libraryError.value = ''
   try {
-    recordings.value = await window.api.recordings.listAll().catch(() => [] as PendingRecording[])
+    localRecordings.value = await window.api.recordings.listAll()
+    void loadCloud()
+  } catch {
+    libraryError.value = 'Could not load footage. Your files have not been removed.'
   } finally {
     loading.value = false
   }
@@ -83,12 +120,11 @@ const gamesPresent = computed(() => {
 })
 
 const filtered = computed(() => {
-  if (gameFilter.value === 'all') return recordings.value
-  return recordings.value.filter(r => r.game === gameFilter.value)
+  return recordings.value.filter(r => (gameFilter.value === 'all' || r.game === gameFilter.value))
 })
 
 const chipFiltered = computed(() =>
-  filtered.value.filter(r => matchesRecordingLibraryChip(r, statusChip.value)),
+  filtered.value.filter(r => statusChip.value === 'cloud' ? !!r.archiveId || !!r.cloudUploaded : matchesRecordingLibraryChip(r, statusChip.value)),
 )
 
 const dateGroups = computed(() => groupRecordingsByDate(chipFiltered.value))
@@ -123,7 +159,7 @@ function showMoreInGroup(label: string) {
 }
 
 function groupVisibility(group: RecordingDateGroup) {
-  return visibleGroupItems(group.items, showAllByGroup.value.has(group.label))
+  return visibleGroupItems(group.items as LibraryRecording[], showAllByGroup.value.has(group.label))
 }
 
 function openFolder() {
@@ -143,11 +179,16 @@ function relativeDate(ms: number): string {
   return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
 
-function watchRecording(rec: PendingRecording) {
+function watchRecording(rec: LibraryRecording) {
+  if (!rec.hasLocalFile && rec.archiveId) { void openBest(rec); return }
   void router.push({ path: '/vod-review', query: { id: rec.id } })
 }
 
-async function openBest(rec: PendingRecording) {
+async function openBest(rec: LibraryRecording) {
+  if (footageUnavailable(rec)) { message.value = footageUnavailable(rec); return }
+  if (rec.cloudOnly || (!rec.hasLocalFile && rec.archiveId)) {
+    void router.push({ path: '/vod-review', query: { archiveId: rec.archiveId } }); return
+  }
   message.value = null
   if (rec.analysisId != null) {
     busyId.value = rec.id
@@ -274,22 +315,23 @@ onMounted(async () => {
   void load()
 })
 
-onUnmounted(() => { cleanup?.() })
+onUnmounted(() => { cleanup?.(); cloudRequest++; sessionCleanups.forEach(fn => fn()) })
 </script>
 
 <template>
   <div class="flex h-full flex-col overflow-hidden text-white" :style="cssVars">
-    <LibraryPageHeader title="Footage" description="Watch and manage your local recordings and cloud backups.">
+    <LibraryPageHeader v-if="!embedded" title="Matches" description="Review your recordings, on this device or in the cloud.">
       <span>{{ chipFiltered.length }} {{ chipFiltered.length === 1 ? 'recording' : 'recordings' }}</span>
       <button type="button" class="rounded-md border border-white/15 px-3 text-gray-300 hover:border-white/30" @click="openFolder">Open folder</button>
     </LibraryPageHeader>
     <CloudUsageNotice kind="footage" />
 
+
     <div v-if="gameFilter === 'lol'" class="mx-4 mt-3 rounded-lg border border-white/10 px-4 py-3 text-sm text-gray-300">
       <p>Watch your saved League recordings here without Riot account verification.</p>
       <p class="mt-1 text-xs text-gray-400">Keep UpForge and OBS running while you play to capture gameplay. Captured-stat coaching uses only the local League snapshot, not video, rank or vision analysis. Older recordings without that snapshot remain watchable. Screenshots and .rofl replay imports are not supported.</p>
     </div>
-    <nav v-if="gamesPresent.length > 1" class="flex flex-shrink-0 gap-1 overflow-x-auto scrollbar-hide border-b border-white/[0.09] bg-[#161616]/80 px-4 py-2.5">
+    <nav v-if="gamesPresent.length > 0" class="flex flex-shrink-0 gap-1 overflow-x-auto scrollbar-hide border-b border-white/[0.09] bg-[#161616]/80 px-4 py-2.5">
       <button
         class="rounded-xl px-3 py-1.5 text-xs font-medium transition-colors"
         :class="gameFilter === 'all' ? `${theme.accentBg} ${theme.accentText} ring-1 ${theme.accentBorder}` : 'text-gray-500 hover:bg-white/[0.04] hover:text-gray-300'"
@@ -341,17 +383,20 @@ onUnmounted(() => { cleanup?.() })
     </div>
 
     <div class="flex-1 scroll-col px-4 py-4">
+      <p v-if="cloudError" role="alert" class="mb-3 text-xs text-amber-200">{{ cloudError }} <button class="underline" @click="loadCloud">Retry cloud footage</button></p>
       <p v-if="message" class="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200">{{ message }}</p>
 
       <div v-if="loading" class="flex h-40 items-center justify-center text-sm text-gray-500">Loading footage…</div>
 
+      <div v-else-if="libraryError" role="alert" class="py-8 text-center text-sm text-amber-200"><p>{{ libraryError }}</p><button class="mt-3 underline" @click="load">Retry loading footage</button></div>
       <div v-else-if="!filtered.length" class="flex h-56 flex-col items-center justify-center text-center gap-2">
-        <p class="text-sm font-semibold text-gray-400">No footage yet</p>
+        <p class="text-sm font-semibold text-gray-400">No recordings in this view</p>
         <p class="text-xs text-gray-600 max-w-sm">
           {{ obsConnected === false
-            ? 'OBS is not connected. Set up recording so match VODs appear here.'
-            : 'Play a match to capture a VOD.' }}
+            ? 'Connect OBS to record new matches on this device. Cloud recordings appear here too.'
+            : 'Play a match to record footage on this device, or browse your cloud recordings.' }}
         </p>
+        <button type="button" class="mt-2 rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white" @click="router.push('/cloud-storage?kind=recording')">Browse cloud footage</button>
         <button
           v-if="obsConnected === false"
           type="button"
@@ -394,10 +439,10 @@ onUnmounted(() => { cleanup?.() })
                 :class="selecting && selectedIds.has(rec.id)
                   ? 'border-red-500/40 ring-1 ring-red-500/20'
                   : 'border-white/[0.08] hover:border-white/[0.16]'"
-                @click="selecting ? toggleSelected(rec.id) : undefined"
+                @click="selecting && !rec.cloudOnly ? toggleSelected(rec.id) : undefined"
               >
                 <div
-                  v-if="selecting"
+                  v-if="selecting && !rec.cloudOnly"
                   class="absolute left-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded border"
                   :class="selectedIds.has(rec.id) ? 'border-red-500 bg-red-500' : 'border-white/30 bg-black/50'"
                 >
@@ -405,7 +450,7 @@ onUnmounted(() => { cleanup?.() })
                     <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
                   </svg>
                 </div>
-                <div class="relative h-24 overflow-hidden bg-black/40">
+                <div class="relative h-28 overflow-hidden bg-black/40">
                   <img
                     v-if="recordingMapImage(rec)"
                     :src="recordingMapImage(rec)"
@@ -417,7 +462,7 @@ onUnmounted(() => { cleanup?.() })
                     <span
                       class="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ring-1"
                       :class="recordingStatusBadge(rec).class"
-                    >{{ recordingStatusBadge(rec).label }}</span>
+                    >{{ footageUnavailable(rec) || recordingStatusBadge(rec).label }}</span>
                     <span
                       v-if="rec.productionFixture"
                       class="rounded-md border border-amber-500/30 bg-black/60 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-amber-300"
@@ -436,7 +481,7 @@ onUnmounted(() => { cleanup?.() })
                     </div>
                     <div class="min-w-0">
                       <p class="truncate text-sm font-bold text-white">{{ recordingPlayerLabel(rec) }}</p>
-                      <p class="truncate text-[11px] text-gray-400">{{ recordingMapLabel(rec) }}</p>
+                      <p class="truncate text-[11px] text-gray-400">{{ recordingMapLabel(rec) }}</p><StorageIndicator :cloud="!!rec.archiveId || !!rec.cloudUploaded" :local="!!rec.hasLocalFile" />
                     </div>
                   </div>
                 </div>
@@ -455,7 +500,7 @@ onUnmounted(() => { cleanup?.() })
                     </div>
                     <div v-if="!selecting" class="flex flex-shrink-0 items-center gap-1.5">
                       <button
-                        v-if="recordingNeedsAttention(rec)"
+                        v-if="!rec.cloudOnly && recordingNeedsAttention(rec)"
                         class="rounded-lg bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-gray-200 transition-colors hover:bg-white/[0.12] disabled:opacity-50"
                         :disabled="busyId === rec.id"
                         @click.stop="continueInMatches(rec)"
@@ -468,12 +513,13 @@ onUnmounted(() => { cleanup?.() })
                       <button
                         class="rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-50"
                         :class="`${theme.accentBg} ${theme.accentText} ring-1 ${theme.accentBorder}`"
-                        :disabled="busyId === rec.id || (!canWatchRawRecording(rec) && rec.analysisId == null)"
+                        :disabled="!!footageUnavailable(rec) || busyId === rec.id || (!canWatchRawRecording(rec) && rec.analysisId == null)"
                         @click.stop="openBest(rec)"
-                      >{{ rec.analysisId != null || canOpenTimeline(rec) ? 'Review' : 'Watch' }}</button>
+                      >{{ footageUnavailable(rec) || (rec.cloudOnly || rec.analysisId != null || canOpenTimeline(rec) ? 'Review' : 'Watch') }}</button>
                       <button
                         type="button"
                         class="rounded-lg border border-white/[0.08] p-1.5 text-gray-500 transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                        v-if="!rec.cloudOnly"
                         title="Delete recording"
                         :disabled="busyId === rec.id"
                         @click.stop="deleteRecording(rec)"

@@ -53,7 +53,8 @@ export function recordingPlayerLabel(rec: Pick<PendingRecording, 'game' | 'agent
 
 export function recordingPlayerImage(rec: Pick<PendingRecording, 'game' | 'agent' | 'timeline'>): string {
   const agent = resolveRecordingAgent(rec)
-  if (rec.game === 'valorant' && agent) return getAgentImage(agent) ?? ''
+  // Legacy cloud inventory omits game; an exact known agent name still identifies its artwork.
+  if ((rec.game === 'valorant' || rec.game === 'unknown') && agent) return getAgentImage(agent)
   if (rec.game === 'lol' && agent) return getChampionImage(agent) ?? ''
   return ''
 }
@@ -68,5 +69,5 @@ export function recordingPlayerAccent(rec: Pick<PendingRecording, 'game' | 'agen
 }
 
 export function recordingGameTitle(rec: Pick<PendingRecording, 'game'>): string {
-  return recordingGameLabel(rec.game)
+  return rec.game === 'unknown' ? 'Game not recorded' : recordingGameLabel(rec.game)
 }

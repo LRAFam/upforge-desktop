@@ -101,7 +101,7 @@ async function startWeeklyDrill() {
       <div class="flex items-center justify-between">
         <span class="text-xs text-gray-500">{{ sessionReview.wins }}W · {{ sessionReview.losses }}L</span>
         <div v-if="sessionReview.avgScore != null" class="flex items-baseline gap-1">
-          <span class="text-lg font-black tabular-nums">{{ Math.round(sessionReview.avgScore) }}</span>
+          <span class="text-lg font-black tabular-nums">{{ Math.round(sessionReview.avgScore * 10) }}</span>
           <span class="text-[9px] font-black px-1 py-px rounded-full" :class="scoreGradeBadgeClass(sessionReview.avgScore)">{{ sessionReview.grade }}</span>
         </div>
       </div>

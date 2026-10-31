@@ -1,10 +1,11 @@
 <template>
   <div
     class="product-shell relative h-screen bg-[#111111] text-white flex flex-col overflow-hidden select-none"
+    :class="{ 'login-shell': route.path === '/login' }"
     :style="cssVars"
   >
     <!-- Subtle branded background texture -->
-    <img v-if="!isPostGameRoute" src="./assets/upforge-bg.webp" alt="" class="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover opacity-[0.045] select-none" />
+    <img v-if="!isPostGameRoute && route.path !== '/login'" src="./assets/upforge-bg.webp" alt="" class="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover opacity-[0.045] select-none" />
     <Transition name="busy-bar">
       <div v-if="busyActive && route.path !== '/splash'" class="pointer-events-none absolute inset-x-0 top-0 z-50 h-[2px] bg-white/[0.04]">
         <div
@@ -835,4 +836,8 @@ function previewOnboarding() {
   0% { background-position: 200% 50%; }
   100% { background-position: 0% 50%; }
 }
+</style>
+
+<style>
+body:has(.login-shell), .product-shell.login-shell { background: transparent; }
 </style>

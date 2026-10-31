@@ -1,13 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
+  storageAddon: { request: (request: import('../../src/lib/storage-addon').StorageAddonRequest) => ipcRenderer.invoke('storage-addon:request', request) },
+  cloudClip: { review: (id: number, analyse = false) => ipcRenderer.invoke('cloud-clip:review', id, analyse) },
+  cloudStorage: { download: (file: { kind: 'clip' | 'recording'; id: string }) => ipcRenderer.invoke('cloud-storage:download', file), playback: (file: { kind: 'clip' | 'recording'; id: string }) => ipcRenderer.invoke('cloud-storage:playback', file), list: (query: import('../../src/lib/cloud-storage').CloudQuery) => ipcRenderer.invoke('cloud-storage:list', query) },
   workspaceCoach: {
     history: (id: number) => ipcRenderer.invoke('workspace-coach:history', id),
     ask: (id: number, body: import('../../src/lib/workspace-coach').CoachQuestion) => ipcRenderer.invoke('workspace-coach:ask', id, body),
     credits: (pack: string) => ipcRenderer.invoke('workspace-coach:credits', pack),
   },
   personalReview: { get: (source: unknown) => ipcRenderer.invoke('personal-review:get', source), save: (document: unknown) => ipcRenderer.invoke('personal-review:save', document) },
-  accountUsage: { get: () => ipcRenderer.invoke('account:usage') },
+  accountUsage: { get: () => ipcRenderer.invoke('account:usage'), buyReports: () => ipcRenderer.invoke('account:report-checkout') },
   reviewNotebook: {
     remove: (id: string, revision: number) => ipcRenderer.invoke('review-notebook:remove', id, revision),
     list: () => ipcRenderer.invoke('review-notebook:list'),
@@ -117,6 +120,7 @@ const api = {
       ipcRenderer.invoke('funnel:track-report-opened', props) as Promise<{ ok: boolean }>,
   },
   archives: {
+    review: (id: string, analyse = false) => ipcRenderer.invoke('archives:review', id, analyse),
     refreshPlayback: (archiveId: string) =>
       ipcRenderer.invoke('archives:refresh-playback', { archiveId }),
   },

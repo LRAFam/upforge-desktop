@@ -26,4 +26,7 @@ it('only identifies unambiguous nearby events, without assigning a round across 
   expect(nearbyReviewEvent(events, 380)).toBeNull()
   expect(nearbyReviewEvent([{ seconds: 369 }, { seconds: 373 }], 371)).toBeNull()
   expect(nearbyReviewEvent(events, NaN)).toBeNull()
+  expect(nearbyReviewEvent(events, 365, 10)?.label).toBe('R4 kill')
+  expect(nearbyReviewEvent(events, 350, 10)).toBeNull()
+  expect(nearbyReviewEvent([{ seconds: 360 }, { seconds: 370 }], 365, 10)).toBeNull()
 })

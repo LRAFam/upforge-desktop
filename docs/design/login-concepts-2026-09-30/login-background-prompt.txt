@@ -1,0 +1,6 @@
+Asset: src/assets/login-tactical-bg.png
+Reference: 02-minimal-tactical.png
+
+Edit the approved UpForge login concept into a production background texture. Keep outer tactical arena blueprint linework, asymmetric angular graphite framing and thin crimson edge accents. Remove all user interface, logo, typography, form fields, icons and buttons. Fill the centre with continuous near-black charcoal fine material texture and a wide calm zone for a real HTML login form. Add subtle brushed graphite material depth and grazing lighting on the outer framing. No bright glows or purple. Fill the whole rectangular canvas. Landscape 16:10.
+
+The application applies its own transparent polygon silhouette and accessible form over this artwork.

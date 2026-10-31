@@ -3,6 +3,8 @@ import LibraryPageHeader from '../shared/LibraryPageHeader.vue'
 import { openGameHistoryWeb } from '../../lib/game-modules'
 import { useCoachingHistory } from '../../composables/useCoachingHistory'
 
+defineProps<{ embedded?: boolean }>()
+
 const {
   RESULT_FILTERS,
   activeFilter,
@@ -21,7 +23,7 @@ const {
 
 <template>
     <div class="flex-shrink-0 border-b border-white/[0.08] bg-[#111111]">
-      <LibraryPageHeader title="Matches" description="Pick a match, revisit a moment, and build your next-match focus.">
+      <LibraryPageHeader v-if="!embedded" title="Matches" description="Pick a match, revisit a moment, and build your next-match focus.">
         <span>{{ pendingRecordings.length }} awaiting coaching · {{ allAnalyses.length }} reviewed</span>
       </LibraryPageHeader>
       <div v-if="primaryGame === 'lol'" class="flex items-center justify-between gap-3 px-4 py-2 text-xs text-gray-400">

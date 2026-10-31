@@ -738,7 +738,7 @@ function createSettings() {
   const captureBackendDescription = computed(() => {
     return obsStatus.value?.connected
       ? `OBS WebSocket · ${obsStatus.value.obsVersion ?? 'connected'}`
-      : 'OBS not connected — open Settings → Recording to connect'
+      : 'OBS not connected. Connect in the OBS recording section.'
   })
   
   // tierClass and formatMode are imported from valorant.ts (shared helpers)

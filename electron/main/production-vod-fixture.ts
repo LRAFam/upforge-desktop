@@ -85,7 +85,7 @@ export function parseProductionArchiveSummary(value: unknown): ProductionArchive
   }
 }
 
-function parseProductionArchiveDetail(value: unknown): ProductionArchiveDetail {
+export function parseProductionArchiveDetail(value: unknown): ProductionArchiveDetail {
   const summary = parseProductionArchiveSummary(value)
   if (!isRecord(value)) throw new Error('Production archive detail is invalid')
   if (value.match_data !== null && !isRecord(value.match_data)) {

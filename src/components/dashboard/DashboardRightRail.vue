@@ -13,7 +13,6 @@ const {
   profileLoading,
   isValorant,
   weeklyFocus,
-  totalSessionsAnalysed,
   avgScore,
   currentStreak,
   dashboardAnalyses,
@@ -207,14 +206,14 @@ async function runDrill() {
           <p class="text-[9px] uppercase tracking-wide text-gray-600">HS%</p>
         </div>
         <div class="bg-[#141414] px-3 py-2.5">
-          <p class="text-lg font-black text-white tabular-nums">{{ totalSessionsAnalysed }}</p>
+          <p class="text-lg font-black text-white tabular-nums">{{ dashboardAnalyses.length }}</p>
           <p class="text-[9px] uppercase tracking-wide text-gray-600">Matches</p>
         </div>
       </div>
       <button
         type="button"
         class="w-full py-2 text-[10px] font-semibold text-gray-500 border-t border-white/[0.07] hover:text-gray-300 hover:bg-white/[0.02]"
-        @click="router.push('/history')"
+        @click="router.push('/stats')"
       >
         View all analytics →
       </button>
@@ -229,7 +228,7 @@ async function runDrill() {
 
     <div v-if="avgScore != null" class="dash-panel px-3.5 py-2.5 flex items-center justify-between flex-shrink-0">
       <span class="text-[10px] font-bold uppercase tracking-wide text-gray-500">Avg AI score</span>
-      <span class="text-sm font-black tabular-nums text-gray-200">{{ avgScore }}</span>
+      <span class="text-sm font-black tabular-nums text-gray-200">{{ avgScore * 10 }}</span>
     </div>
     <details class="dash-panel overflow-hidden flex-shrink-0 web-extras">
       <summary class="px-3.5 py-3 text-xs font-semibold text-gray-300 cursor-pointer">Explore web tools</summary>
