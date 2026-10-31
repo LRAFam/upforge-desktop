@@ -120,7 +120,7 @@
             <div class="flex items-center justify-between mb-1.5">
               <p class="text-[9px] font-bold uppercase tracking-[0.16em] text-gray-600">Rank progress</p>
               <p class="text-[10px] font-semibold tabular-nums" :class="rankDelta >= 0 ? 'text-green-400' : 'text-red-400'">
-                {{ rankDelta >= 0 ? '+' : '' }}{{ rankDelta }} RR
+                {{ rankDelta >= 0 ? '+' : '' }}{{ rankDelta }} rating
               </p>
             </div>
             <svg width="100%" height="44" :viewBox="`0 0 ${RANK_W} 44`" preserveAspectRatio="none" class="block">
@@ -427,9 +427,14 @@ const sparkArea = computed(() => buildSparkPath(true))
 
 const RANK_W = 400
 const RANK_H = 44
-const rankPoints = computed(() => rankHistory.value.slice(-12).map(entry => entry.rr))
-const rankStartLabel = computed(() => rankHistory.value.slice(-12)[0]?.rank ?? 'Earlier')
-const rankEndLabel = computed(() => rankHistory.value.slice(-12)[rankHistory.value.slice(-12).length - 1]?.rank ?? 'Latest')
+// Plot elo (a continuous rating). RR resets to 0-100 at every tier change, so an RR line jumps
+// down on a rank-up. Snapshots without a usable elo are skipped rather than mixed with RR.
+const rankSeries = computed(() =>
+  rankHistory.value.filter(entry => Number.isFinite(entry.elo) && entry.elo > 0).slice(-12),
+)
+const rankPoints = computed(() => rankSeries.value.map(entry => entry.elo))
+const rankStartLabel = computed(() => rankSeries.value[0]?.rank ?? 'Earlier')
+const rankEndLabel = computed(() => rankSeries.value[rankSeries.value.length - 1]?.rank ?? 'Latest')
 const rankDelta = computed(() => {
   const points = rankPoints.value
   if (points.length < 2) return 0

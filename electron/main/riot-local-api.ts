@@ -30,7 +30,7 @@ import { deriveMatchScore } from './match-score'
 import { riotStatsToAcs } from './combat-score'
 import { resolvePlantLocationFromRound } from './plant-location'
 import { logPlantCoordStats } from './match-plant-telemetry'
-import { gameTimeToVideoOffsetMs, lolGameTimeToVideoOffsetMs } from './recording-sync'
+import { emptyMatchData, gameTimeToVideoOffsetMs, lolGameTimeToVideoOffsetMs } from './recording-sync'
 import {
   recoveredMatchStartAligns,
   shouldApplyMatchDetails,
@@ -117,6 +117,8 @@ export class RiotLocalApi {
   private _consecutiveMenusPolls = 0
   /** Consecutive polls with no core-game / pregame session while we were in-match. */
   private _externalEndPolls = 0
+  /** Missing sessions only prove an end after core-game was observed for this match. */
+  private _seenCoreGameSinceStart = false
   /** Highest round count seen this match (ally+enemy) — detects stale INGAME + 0-0 in lobby. */
   private _peakRoundCount = 0
   /** Shipping.exe was seen while tracking — used when process exits before presence updates. */
@@ -238,6 +240,11 @@ export class RiotLocalApi {
     if (!scores?.length) return null
     const last = scores[scores.length - 1]!
     return last.allyScore + last.enemyScore
+  }
+
+  /** Evidence for confirming stale INGAME after a session or scored match ends. */
+  hasMatchEndSessionEvidence(): boolean {
+    return this.matchData !== null && (this._seenCoreGameSinceStart || this._peakRoundCount >= 2)
   }
 
   /** Map live-client EventTime (seconds) to absolute recording offset ms. */
@@ -890,8 +897,11 @@ export class RiotLocalApi {
         : null
 
       if (coreActive === true || pregameActive === true) {
+        if (coreActive === true) this._seenCoreGameSinceStart = true
         this._externalEndPolls = 0
-      } else if (coreActive === false && pregameActive === false) {
+      } else if (coreActive === false && pregameActive === false && this._seenCoreGameSinceStart) {
+        // Range and unsupported routes may return 404 for the entire session.
+        // Absence without a previously observed live core-game is not an end.
         this._externalEndPolls++
         const required = this._peakRoundCount >= 1
           ? RiotLocalApi.EXTERNAL_END_POLLS
@@ -899,6 +909,9 @@ export class RiotLocalApi {
         if (this._externalEndPolls >= required) {
           return 'core-game and pregame sessions ended (presence may still show INGAME)'
         }
+      } else {
+        // An unavailable probe breaks the consecutive confirmed-absence streak.
+        this._externalEndPolls = 0
       }
     }
     return null
@@ -1031,6 +1044,7 @@ export class RiotLocalApi {
     this._seenIngameSinceStart = false
     this._consecutiveMenusPolls = 0
     this._externalEndPolls = 0
+    this._seenCoreGameSinceStart = false
     this._peakRoundCount = 0
     this._shippingSeen = false
     this._shippingGoneStreak = 0
@@ -1950,6 +1964,56 @@ export class RiotLocalApi {
       return null
     }
     return this._fetchMatchDetails(matchId)
+  }
+
+  /**
+   * Dev proof of concept: build debrief-ready timelines for recent matches straight
+   * from Riot history, with no recording. Uses the same conversion as uploads.
+   */
+  async fetchRecentMatchTimelines(limit: number): Promise<{
+    ok: boolean
+    reason?: string
+    matches: Array<{
+      matchId: string
+      gameStartTimeMs: number | null
+      fetchMs: number
+      timeline: MatchData | null
+      error?: string
+    }>
+  }> {
+    if (!this.accessToken || !this.entitlementsToken) await this.initAuth()
+    else { try { await this._refreshTokens() } catch { /* best-effort */ } }
+    if (!this.region && this.lockfileData) await this._refreshRegionFromClient('poc-recent')
+    if (!this.region || !this.ownPuuid || !this.accessToken || !this.entitlementsToken) {
+      return { ok: false, reason: 'riot_auth_missing — open the Riot Client and sign in', matches: [] }
+    }
+
+    const history = await this._fetchRecentMatchHistory(Math.max(1, Math.min(limit, 20)))
+    if (!history) return { ok: false, reason: 'match_history_unavailable', matches: [] }
+
+    const matches = []
+    for (const entry of history) {
+      const started = Date.now()
+      const details = await this._fetchMatchDetails(entry.matchId)
+      if (!details) {
+        matches.push({ matchId: entry.matchId, gameStartTimeMs: entry.gameStartTimeMs, fetchMs: Date.now() - started, timeline: null, error: 'match_details_unavailable' })
+        continue
+      }
+      const timeline = emptyMatchData('valorant', entry.gameStartTimeMs ?? Date.now())
+      timeline.matchId = entry.matchId
+      timeline.puuid = this.ownPuuid
+      timeline.region = this.region
+      this.populateMatchDataFromDetails(timeline, details)
+      const hasData = timeline.killEvents.length > 0 || timeline.roundSummaries.length > 0
+      matches.push({
+        matchId: entry.matchId,
+        gameStartTimeMs: entry.gameStartTimeMs,
+        fetchMs: Date.now() - started,
+        timeline: hasData ? timeline : null,
+        error: hasData ? undefined : 'conversion_empty',
+      })
+    }
+    return { ok: true, matches }
   }
 
   /**

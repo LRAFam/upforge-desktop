@@ -327,6 +327,11 @@
             >{{ testingRiot ? 'Testing…' : 'Test Riot API' }}</button>
             <button
               class="px-3 py-1.5 rounded-lg text-xs bg-white/[0.05] hover:bg-white/[0.09] text-gray-300 hover:text-white transition-colors"
+              :disabled="fetchingRecent"
+              @click="pocRecentMatches"
+            >{{ fetchingRecent ? 'Fetching…' : 'PoC: Save Recent Matches' }}</button>
+            <button
+              class="px-3 py-1.5 rounded-lg text-xs bg-white/[0.05] hover:bg-white/[0.09] text-gray-300 hover:text-white transition-colors"
               :disabled="probingLcu"
               @click="probeLolLcu"
             >{{ probingLcu ? 'Probing…' : 'Probe League LCU' }}</button>
@@ -526,6 +531,21 @@ function formatTime(ts: number): string {
 }
 
 // ── Tools ─────────────────────────────────────────────────────────────────────
+
+const fetchingRecent = ref(false)
+
+async function pocRecentMatches() {
+  fetchingRecent.value = true
+  toolResult.value = null
+  try {
+    const result = await window.api.debug.pocRecentMatches(10)
+    toolResult.value = JSON.stringify(result, null, 2)
+  } catch (err: unknown) {
+    toolResult.value = `Error: ${err instanceof Error ? err.message : String(err)}`
+  } finally {
+    fetchingRecent.value = false
+  }
+}
 
 async function testRiotApi() {
   testingRiot.value = true

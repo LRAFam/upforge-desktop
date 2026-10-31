@@ -399,10 +399,11 @@
           </div>
           <div class="space-y-2 p-3">
             <div class="flex items-start justify-between gap-2">
-              <p class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-100">{{ clip.title || defaultTitle(clip) }}</p><StorageIndicator :cloud="clip.uploadStatus === 'uploaded'" :local="!clip.id.startsWith('cloud:')" />
+              <p class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-100">{{ clip.title || defaultTitle(clip) }}</p><StorageIndicator :cloud="clip.uploadStatus === 'uploaded'" :local="!clip.id.startsWith('cloud:') && clip.hasLocalFile !== false" />
               <span class="text-[11px] text-gray-600">{{ timeAgo(clip.savedAt) }}</span>
             </div>
             <div class="flex items-center gap-2 text-xs text-gray-500">
+              <span v-if="clip.hasLocalFile === false" class="text-amber-400">File unavailable</span>
               <span v-if="clip.map">{{ clip.map }}</span>
               <span v-if="clip.map && clip.agent" class="text-gray-700">•</span>
               <span v-if="clip.agent">{{ clip.agent }}</span>
@@ -492,10 +493,11 @@
             <div class="space-y-2">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm font-semibold text-white">{{ clip.title || defaultTitle(clip) }}</p><StorageIndicator :cloud="clip.uploadStatus === 'uploaded'" :local="!clip.id.startsWith('cloud:')" />
+                  <p class="truncate text-sm font-semibold text-white">{{ clip.title || defaultTitle(clip) }}</p><StorageIndicator :cloud="clip.uploadStatus === 'uploaded'" :local="!clip.id.startsWith('cloud:') && clip.hasLocalFile !== false" />
                   <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                     <span>{{ timeAgo(clip.savedAt) }}</span>
                     <span v-if="clip.map" class="text-gray-700">•</span>
+                    <span v-if="clip.hasLocalFile === false" class="text-amber-400">File unavailable</span>
                     <span v-if="clip.map">{{ clip.map }}</span>
                     <span v-if="clip.agent" class="text-gray-700">•</span>
                     <span v-if="clip.agent">{{ clip.agent }}</span>
@@ -771,7 +773,9 @@
         <button class="text-white underline" @click="downloadCloudClip">Download clip</button>
       </div>
       <p v-if="cloudOnly && ['queued', 'processing'].includes(playingClip.analysisStatus)" role="status" class="px-4 py-2 text-sm text-orange-300">AI coaching {{ playingClip.analysisStatus === 'queued' ? 'queued' : 'in progress' }}. Results will appear here.</p>
+      <p v-if="!cloudOnly && playingClip.hasLocalFile === false" role="status" class="px-4 py-8 text-sm text-amber-300">Local file unavailable. Check that its drive is connected, then reopen the Clips library.</p>
       <video
+        v-else
         ref="videoEl"
         class="flex-1 w-full object-contain"
         controls

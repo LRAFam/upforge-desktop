@@ -16,3 +16,4 @@ scripts/.cache/
 .DS_Store
 /tmp-*.png
 .worktrees/
+scripts/windows-release/pc-readiness.json

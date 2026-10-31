@@ -127,6 +127,7 @@ export function setupIpcHandlers(
   onLoginSuccess?: () => void,
   onLogout?: () => void,
   getLocalRecordingPathByJobId?: (jobId: string) => string | null,
+  waitForObsStartup?: () => Promise<void>,
 ): void {
   setupAuthHandlers(
     ipcMain,
@@ -150,7 +151,7 @@ export function setupIpcHandlers(
   setupMediaHandlers(
     ipcMain, getActiveRecorder, settingsManager, obsRecorder,
     endMatchRecording, () => gameDetector.currentGame(),
-    getAudioDetectRecorder,
+    getAudioDetectRecorder, waitForObsStartup,
   )
 
   setupGamingHandlers(ipcMain, auth, settingsManager, gameDetector, performanceManager, trainerBridge)

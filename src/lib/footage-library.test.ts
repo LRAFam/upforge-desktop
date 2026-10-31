@@ -5,6 +5,13 @@ import type { PendingRecording } from '../env.d'
 const file: CloudFile = { id: 'archive-1', kind: 'recording', game: 'valorant', agent: 'Fade', map: 'Summit', title: null, status: 'archived', created_at: '2026-09-01T00:00:00Z', expires_at: '2026-09-10T00:00:00Z', bytes: 100 }
 const local: PendingRecording = { id: 'local-1', archiveId: file.id, path: '/recording.mp4', game: 'valorant', map: 'Summit', agent: 'Fade', gameMode: '', recordedAt: 1, analysed: false, hasLocalFile: true }
 describe('one footage library', () => {
+  it('keeps disconnected footage visible, blocks playback, and allows it again after reconnect', () => {
+    const unavailable = { ...local, archiveId: undefined, hasLocalFile: false }
+    expect(mergeFootage([unavailable], [])).toHaveLength(1)
+    expect(footageUnavailable(unavailable)).toBe('File unavailable')
+    expect(footageUnavailable({ ...unavailable, hasLocalFile: true })).toBeNull()
+    expect(footageUnavailable({ ...unavailable, jobId: 'cloud-job' })).toBeNull()
+  })
   it('joins only by archive identity and keeps the local review source', () => {
     const rows = mergeFootage([local], [file, { ...file, id: 'other-archive' }])
     expect(rows).toHaveLength(2)

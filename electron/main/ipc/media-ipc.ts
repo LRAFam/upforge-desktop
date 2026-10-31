@@ -9,7 +9,7 @@ import path from 'path'
 import log from 'electron-log'
 import { broadcastObsConnection, probeObsConnection } from '../obs-health'
 import { ensureObsConnected } from '../obs-ensure'
-import { readGuidedObsOutputs, runGuidedObsSetup, type GuidedObsSetupResult } from '../obs-guided-setup'
+import { createGuidedObsSetupRunner, readGuidedObsOutputs, runGuidedObsSetup } from '../obs-guided-setup'
 import { isObsProcessRunning } from '../obs-process'
 import { explainObsConnectionFailure } from '../obs-connect'
 import { installObsViaWinget, isObsInstalled } from '../obs-installer'
@@ -62,21 +62,17 @@ export function setupMediaHandlers(
   endMatchRecording?: (game: string) => Promise<{ ok: boolean; reason?: string }>,
   getCurrentGame?: () => string | null,
   getAudioDetectRecorder?: () => MatchRecorder,
+  waitForObsStartup: () => Promise<void> = async () => {},
 ): void {
-  let guidedSetup: Promise<GuidedObsSetupResult> | null = null
-  ipcMain.handle('obs:guided-setup', async (event, game: string) => {
+  const checkRecording = createGuidedObsSetupRunner(waitForObsStartup, async (game, progress) => {
     if (!obsRecorder) return { ok: false, error: 'OBS recorder not available' }
-    if (!['valorant', 'cs2', 'deadlock', 'lol'].includes(game)) {
-      return { ok: false, error: 'Choose a supported game before setting up recording.' }
-    }
-    if (guidedSetup) return { ok: false, error: 'Recording setup is already running. Wait for it to finish.' }
     const cfg = settingsManager.get()
     const password = resolveObsWebSocketPassword(cfg.obsPassword)
     const port = cfg.obsPort ?? 4455
     settingsManager.save({ obsPreflightPassed: false })
     const obs = obsRecorder.getObsClient()
     trackRecordingSetupStarted(game)
-    guidedSetup = runGuidedObsSetup({
+    const result = await runGuidedObsSetup({
       isRecording: () => obsRecorder.isRecording(),
       isConnected: () => obsRecorder.isConnected(),
       isRunning: isObsProcessRunning,
@@ -100,23 +96,24 @@ export function setupMediaHandlers(
         })
         return { ok: result.ok, error: result.userMessage }
       },
-      progress: (stage) => {
-        if (!event.sender.isDestroyed()) event.sender.send('obs:setup-progress', stage)
-      },
+      progress,
     })
-    try {
-      // A file test is not proof that the game is visible. The following
-      // onboarding capture preview still requires the player's confirmation.
-      const result = await guidedSetup
-      if (result.ok) trackRecordingSetupPassed(game)
-      else trackRecordingSetupFailed(result.error, game)
-      return result
-    } catch (error) {
-      trackRecordingSetupFailed(error instanceof Error ? error.message : 'Recording setup failed', game)
-      throw error
-    } finally {
-      guidedSetup = null
+    // This proves a local file can be recorded, not that the game picture is visible.
+    if (result.ok) {
+      settingsManager.save({ obsPreflightPassed: true, obsSetupPassedAt: new Date().toISOString() })
+      trackRecordingSetupPassed(game)
+    } else {
+      trackRecordingSetupFailed(result.error, game)
     }
+    return result
+  })
+  ipcMain.handle('obs:guided-setup', (event, game: string) => {
+    if (!['valorant', 'cs2', 'deadlock', 'lol'].includes(game)) {
+      return { ok: false, error: 'Choose a supported game before checking recording.' }
+    }
+    return checkRecording(game, stage => {
+      if (!event.sender.isDestroyed()) event.sender.send('obs:setup-progress', stage)
+    })
   })
 
   // ── Recorder ──────────────────────────────────────────────────────────────

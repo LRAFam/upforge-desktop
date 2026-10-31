@@ -24,3 +24,8 @@ describe('capture readiness gate', () => {
     expect(deriveCaptureReadiness({ ...ready, recording: true })).toBe('recording')
   })
 })
+
+it('does not describe unconfirmed footage as verified recording', () => {
+  expect(deriveCaptureReadiness({ ...ready, recording: true, captureVerified: false })).toBe('recording_unverified')
+  expect(deriveCaptureReadiness({ ...ready, recording: true, error: 'wrong_picture' })).toBe('recording_unverified')
+})

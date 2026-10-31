@@ -481,6 +481,10 @@ export interface ProfileData {
 
 export interface ClipRecord {
   id: string
+  /** Exact parent recording in the same account; absent on legacy/unlinked clips. */
+  recordingId?: string | null
+  /** Current local availability, refreshed when the library is read. */
+  hasLocalFile?: boolean
   /** Path to the extracted clip MP4 on disk */
   path: string
   /** Path to thumbnail JPG on disk, if generated */
@@ -790,7 +794,7 @@ declare global {
         sample: (payload: { feature: string | null; active: boolean; visit: boolean }) => Promise<void>
       }
       productActivity: {
-        watched: (kind: 'clip_watched' | 'replay_watched', game: string) => Promise<{ ok: boolean }>
+        watched: (kind: 'clip_watched' | 'replay_watched' | 'comparison_watched', game: string) => Promise<{ ok: boolean }>
       }
       funnel: {
         trackReportOpened: (props?: Record<string, unknown>) => Promise<{ ok: boolean }>
@@ -1113,6 +1117,23 @@ declare global {
       }
       debug: {
         testRiotApi: () => Promise<{ portOpen: boolean; gameMode: string | null; processRunning: boolean }>
+        pocRecentMatches: (limit?: number) => Promise<{
+          ok: boolean
+          reason?: string
+          totalMs: number
+          folder: string
+          matches: Array<{
+            matchId: string
+            ok: boolean
+            error?: string
+            fetchMs: number
+            map: string | null
+            agent: string | null
+            mode: string | null
+            kills: number
+            rounds: number
+          }>
+        }>
         probeLolLcu: () => Promise<{
           ok: boolean
           platform: string

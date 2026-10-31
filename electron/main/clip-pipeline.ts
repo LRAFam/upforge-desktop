@@ -74,6 +74,8 @@ export { detectClutchRounds } from './demo-clutch'
 
 export interface ClipPipelineContext {
   clipStore: ClipStore
+  /** Parent recording captured with the same account scope as clipStore. */
+  recordingId?: string | null
   clipExtractor: ClipExtractor
   /** Mutable array — pipeline reads and resets this after extracting hotkey clips. */
   hotkeyBookmarks: number[]
@@ -195,7 +197,7 @@ export class ClipPipeline {
       const offsetMs = bookmarkedAt - recordingStart
       const startMs = Math.max(0, offsetMs - 25_000)
       try {
-        const rec = clipStore.add({ path: '', thumbPath: null, trigger: 'hotkey', map, agent, durationSeconds: 30, round: null, killCount: null, analysisJobId, game, ...baseMeta })
+        const rec = clipStore.add({ recordingId: this.ctx.recordingId ?? null, path: '', thumbPath: null, trigger: 'hotkey', map, agent, durationSeconds: 30, round: null, killCount: null, analysisJobId, game, ...baseMeta })
         const clipPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}.mp4`)
         const thumbPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}_thumb.jpg`)
         await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 30_000, outputPath: clipPath }, vodDurationMs)
@@ -242,6 +244,7 @@ export class ClipPipeline {
         const durationMs = 13_000
         try {
           const rec = clipStore.add({
+            recordingId: this.ctx.recordingId ?? null,
             path: '', thumbPath: null, trigger: 'kill', map, agent, durationSeconds: 13,
             round: kill.round ?? null, killCount: null, analysisJobId, game, ...clipMatchMeta(timeline, kill),
           })
@@ -278,6 +281,7 @@ export class ClipPipeline {
         const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + postBuffer, 120_000)
         try {
           const rec = clipStore.add({
+            recordingId: this.ctx.recordingId ?? null,
             path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId, game,
             ...clipMatchMeta(timeline, first),
           })
@@ -318,6 +322,7 @@ export class ClipPipeline {
           const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
           try {
             const rec = clipStore.add({
+              recordingId: this.ctx.recordingId ?? null,
               path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round,
               killCount: clutchKills.length, analysisJobId, game, ...clipMatchMeta(timeline, first),
             })
@@ -433,6 +438,7 @@ export class ClipPipeline {
       const durationMs = 13_000
       try {
         const rec = clipStore.add({
+          recordingId: this.ctx.recordingId ?? null,
           path: '', thumbPath: null, trigger: 'kill', map, agent, durationSeconds: 13,
           round: kill.round ?? null, killCount: null, analysisJobId, game, ...clipMatchMeta(timeline, kill),
         })
@@ -469,6 +475,7 @@ export class ClipPipeline {
       const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + postBuffer, 120_000)
       try {
         const rec = clipStore.add({
+          recordingId: this.ctx.recordingId ?? null,
           path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId, game,
           ...clipMatchMeta(timeline, first),
         })
@@ -507,6 +514,7 @@ export class ClipPipeline {
       const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
       try {
         const rec = clipStore.add({
+          recordingId: this.ctx.recordingId ?? null,
           path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round,
           killCount: clutchKills.length, analysisJobId, game, ...clipMatchMeta(timeline, first),
         })

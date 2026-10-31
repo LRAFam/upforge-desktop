@@ -40,6 +40,8 @@ export const DEFAULT_CLIP_CAPTURE: ClipCaptureSettings = {
 }
 
 export interface AppSettings {
+  /** User-selected shortcuts, restored after restarting the desktop app. */
+  hotkeyBindings?: import('./hotkey-manager').HotkeyBindings
   /** Active game context — drives dashboard copy, settings sections, and web links. */
   primaryGame: PrimaryGame
   /** Coaching (720p) or creator (1080p60) recording preset. */

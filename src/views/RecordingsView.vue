@@ -214,6 +214,7 @@ function continueInMatches(rec: PendingRecording) {
 }
 
 function attentionHint(rec: PendingRecording): string | null {
+  if (rec.path && rec.hasLocalFile === false) return 'Local file unavailable. Check that its drive is connected.'
   if (!recordingNeedsAttention(rec)) return null
   if (rec.lastAnalysisError) return rec.lastAnalysisError
   if (!canWatchRawRecording(rec) && rec.analysisId == null) return 'File missing'

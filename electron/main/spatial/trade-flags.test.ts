@@ -72,7 +72,7 @@ describe('trade flags', () => {
     expect(isUntradedDeath({ alliesNearby: 0, alliesAlive: 1, traded: true })).toBe(false)
   })
 
-  it('marks traded when ally kills nearby enemy (proximity fallback)', () => {
+  it('does not count a nearby kill of a different enemy as a trade (report 652 R3)', () => {
     const death = {
       videoOffsetMs: 5000,
       round: 0,
@@ -88,6 +88,14 @@ describe('trade flags', () => {
         spatial: { victimWorld: { x: 500, y: 0 } },
       },
     ]
-    expect(deathWasTraded(death, kills, allies)).toBe(true)
+    expect(deathWasTraded(death, kills, allies)).toBe(false)
+  })
+
+  it.each([
+    { round: 1, videoOffsetMs: 6000, killerPuuid: 'ally1', victimPuuid: 'enemy1' },
+    { round: 0, videoOffsetMs: 6000, killerPuuid: 'enemy2', victimPuuid: 'enemy1' },
+    { round: 0, videoOffsetMs: 4000, killerPuuid: 'ally1', victimPuuid: 'enemy1' },
+  ])('requires a subsequent allied kill in the same round: %j', (kill) => {
+    expect(deathWasTraded({ round: 0, videoOffsetMs: 5000, killerPuuid: 'enemy1' }, [kill], allies)).toBe(false)
   })
 })

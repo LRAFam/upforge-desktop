@@ -1,7 +1,7 @@
 import log from 'electron-log'
 import type { AuthManager } from './auth-manager'
 
-export const PRODUCT_ACTIVITY_EVENTS = ['app_foreground', 'recording_saved', 'clip_created', 'manual_clip_created', 'clip_share_link_created', 'clip_watched', 'replay_watched'] as const
+export const PRODUCT_ACTIVITY_EVENTS = ['app_foreground', 'recording_saved', 'clip_created', 'manual_clip_created', 'clip_share_link_created', 'clip_watched', 'replay_watched', 'comparison_watched'] as const
 export type ProductActivityEvent = typeof PRODUCT_ACTIVITY_EVENTS[number]
 export const PRODUCT_ACTIVITY_GAMES = ['valorant', 'cs2', 'deadlock', 'lol', 'unknown'] as const
 export type ProductActivityGame = typeof PRODUCT_ACTIVITY_GAMES[number]

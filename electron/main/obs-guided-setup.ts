@@ -29,6 +29,49 @@ export type GuidedObsSetupResult =
   | { ok: true; studioVersion: string }
   | { ok: false; error: string }
 
+/** Startup and onboarding must finish their OBS work in order, never run two tests at once. */
+export function createGuidedObsSetupRunner(
+  waitForStartup: () => Promise<void>,
+  run: (game: string, progress: (stage: ObsSetupStage) => void) => Promise<GuidedObsSetupResult>,
+) {
+  let active: {
+    game: string
+    promise: Promise<GuidedObsSetupResult>
+    listeners: Set<(stage: ObsSetupStage) => void>
+    stage: ObsSetupStage
+  } | null = null
+
+  return async (game: string, progress: (stage: ObsSetupStage) => void): Promise<GuidedObsSetupResult> => {
+    while (active) {
+      if (active.game === game) {
+        active.listeners.add(progress)
+        progress(active.stage)
+        return active.promise
+      }
+      await active.promise
+    }
+
+    const listeners = new Set([progress])
+    const promise = (async () => {
+      try {
+        await waitForStartup()
+        return await run(game, stage => {
+          if (active) active.stage = stage
+          for (const listener of listeners) listener(stage)
+        })
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : 'Recording check could not finish. Try again.' } as const
+      }
+    })()
+    active = { game, promise, listeners, stage: 'checking' }
+    try {
+      return await promise
+    } finally {
+      if (active?.promise === promise) active = null
+    }
+  }
+}
+
 type Result = { ok: boolean; error?: string }
 
 export interface GuidedObsSetupDependencies {

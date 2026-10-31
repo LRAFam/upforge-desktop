@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
+vi.mock('electron-log', () => ({ default: { warn: vi.fn() } }))
+
 vi.mock('./obs-process', () => ({
   isObsProcessRunning: vi.fn(),
   terminateObsProcess: vi.fn(),
@@ -33,6 +35,7 @@ function mockRecorder(overrides: {
   const results = [...(overrides.connectResults ?? [{ ok: true as const }])]
   return {
     isConnected: () => connected,
+    isRecording: vi.fn(() => false),
     connect: vi.fn(async () => {
       const next = results.shift() ?? { ok: true as const }
       if (next.ok) connected = true
@@ -181,5 +184,75 @@ describe('ensureObsConnected', () => {
   it('uses a longer post-launch connect schedule', () => {
     expect(obsPostLaunchConnectDelaysMs(8000).length).toBeGreaterThanOrEqual(6)
     expect(obsPostLaunchConnectDelaysMs(8000)[0]).toBe(8000)
+  })
+
+  it('shares simultaneous startup and recovery requests instead of launching twice', async () => {
+    vi.mocked(isObsProcessRunning).mockResolvedValue(false)
+    vi.mocked(launchObsStudio).mockResolvedValue({ ok: true })
+    const rec = mockRecorder()
+    const opts = { password: 'upforge', port: 4455 }
+    const results = await Promise.all([
+      ensureObsConnected(rec as never, opts),
+      ensureObsConnected(rec as never, opts),
+    ])
+    expect(results.every(result => result.ok)).toBe(true)
+    expect(launchObsStudio).toHaveBeenCalledTimes(1)
+    expect(rec.connect).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not let concurrent recovery override a caller that forbids restart', async () => {
+    vi.mocked(isObsProcessRunning).mockResolvedValue(true)
+    vi.mocked(terminateObsProcess).mockResolvedValue({ ok: true })
+    vi.mocked(launchObsStudio).mockResolvedValue({ ok: true })
+    const rec = mockRecorder()
+    rec.connect.mockResolvedValue(fail())
+    const opts = { password: 'upforge', port: 4455 }
+    await Promise.all([
+      ensureObsConnected(rec as never, { ...opts, allowProcessRestart: true }),
+      ensureObsConnected(rec as never, { ...opts, allowProcessRestart: false }),
+    ])
+    expect(terminateObsProcess).not.toHaveBeenCalled()
+    expect(launchObsStudio).not.toHaveBeenCalled()
+  })
+
+  it('rechecks recording ownership after connection retries before restarting', async () => {
+    vi.mocked(isObsProcessRunning).mockResolvedValue(true)
+    vi.mocked(terminateObsProcess).mockResolvedValue({ ok: true })
+    vi.mocked(launchObsStudio).mockResolvedValue({ ok: true })
+    const rec = mockRecorder()
+    rec.connect.mockImplementation(async () => {
+      rec.isRecording.mockReturnValue(true)
+      return fail()
+    })
+    await ensureObsConnected(rec as never, { password: 'upforge', port: 4455 })
+    expect(terminateObsProcess).not.toHaveBeenCalled()
+  })
+
+  it('rechecks the caller policy after retries, including a newly active match', async () => {
+    vi.mocked(isObsProcessRunning).mockResolvedValue(true)
+    vi.mocked(terminateObsProcess).mockResolvedValue({ ok: true })
+    vi.mocked(launchObsStudio).mockResolvedValue({ ok: true })
+    let mayRestart = true
+    const rec = mockRecorder()
+    rec.connect.mockImplementation(async () => {
+      mayRestart = false
+      return fail()
+    })
+    await ensureObsConnected(rec as never, {
+      password: 'upforge', port: 4455, canRestartProcess: () => mayRestart,
+    })
+    expect(terminateObsProcess).not.toHaveBeenCalled()
+  })
+
+  it('releases a failed startup so a deliberate retry can launch again', async () => {
+    vi.mocked(isObsProcessRunning).mockResolvedValue(false)
+    vi.mocked(launchObsStudio)
+      .mockResolvedValueOnce({ ok: false, error: 'Launch blocked' })
+      .mockResolvedValueOnce({ ok: true })
+    const rec = mockRecorder()
+    const opts = { password: 'upforge', port: 4455 }
+    expect(await ensureObsConnected(rec as never, opts)).toMatchObject({ ok: false })
+    expect(await ensureObsConnected(rec as never, opts)).toMatchObject({ ok: true })
+    expect(launchObsStudio).toHaveBeenCalledTimes(2)
   })
 })

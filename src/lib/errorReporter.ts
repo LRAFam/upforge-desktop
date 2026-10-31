@@ -42,7 +42,7 @@ export async function reportError(payload: {
   } catch { /* null explicitly means activity could not be captured */ }
 
   const body = {
-    platform: hasDesktopApi() ? 'desktop' : 'renderer',
+    platform: hasDesktopApi() ? 'desktop' : 'web',
     message: redactSensitiveString(payload.message).slice(0, 1000),
     stack: payload.stack ? redactSensitiveString(payload.stack).slice(0, 5000) : undefined,
     component: payload.component,
@@ -128,11 +128,13 @@ export function setupRendererErrorReporter(app: App): void {
       const cloned = response.clone()
       let responseBody: string | undefined
       try {
-        const json = await cloned.json()
-        responseBody = json?.message || JSON.stringify(json)
-      } catch {
-        try { responseBody = await cloned.text() } catch { /* ignore */ }
-      }
+        // Read once: JSON parsing consumes the stream even when parsing fails.
+        responseBody = await cloned.text()
+        try {
+          const json = JSON.parse(responseBody)
+          if (typeof json?.message === 'string') responseBody = json.message
+        } catch { /* Proxy errors may be plain text; preserve their original body. */ }
+      } catch { /* The failed response may have an unreadable body. */ }
 
       try {
         const pathname = new URL(url).pathname

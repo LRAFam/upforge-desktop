@@ -83,7 +83,6 @@ export class TrainerBridge {
   private _socket: net.Socket | null = null
   private _buffer: string = ''
   private _mainWindow: (() => BrowserWindow | null)
-  private _pendingConfig: DrillConfig | null = null
   private _authManager: AuthManager | null = null
 
   private _onResultCallback?: (result: SessionResult) => void
@@ -160,8 +159,6 @@ export class TrainerBridge {
 
   /** Launch a drill. Spawns Godot if not running, then sends config. */
   async launch(config: DrillConfig): Promise<void> {
-    this._pendingConfig = config
-
     // Always kill any lingering process before spawning a fresh one.
     // A previous drill may still be in its post-completion quit delay (up to 1.5s),
     // which would cause the new config to be sent to a dying process — resulting in
@@ -178,22 +175,25 @@ export class TrainerBridge {
     if (this._socket && !this._socket.destroyed) {
       this._sendConfig(config)
     }
-    // If socket not yet connected, _pendingConfig will be sent once connected
   }
 
   private async _spawnGodot(): Promise<void> {
     const { cmd, args } = this._resolveSpawnArgs()
 
     log.info('[TrainerBridge] Spawning trainer:', cmd, args)
-    this._process = spawn(cmd, args, { detached: false })
+    const child = spawn(cmd, args, { detached: false })
+    this._process = child
 
-    this._process.on('exit', (code) => {
+    child.on('exit', (code) => {
       log.info('[TrainerBridge] Trainer exited with code:', code)
+      // A killed trainer may exit after its replacement has already connected.
+      if (this._process !== child) return
       this._process = null
+      this._socket?.destroy()
       this._socket = null
     })
 
-    this._process.stderr?.on('data', (d) => log.warn('[Godot]', d.toString()))
+    child.stderr?.on('data', (d) => log.warn('[Godot]', d.toString()))
 
     // Wait for Godot to start its TCP server, then connect
     await this._connectWithRetry()
@@ -211,15 +211,11 @@ export class TrainerBridge {
           socket.on('data', (data) => this._onData(data.toString()))
           socket.on('close', () => {
             log.info('[TrainerBridge] Godot socket closed')
-            this._socket = null
+            if (this._socket === socket) this._socket = null
           })
           socket.on('error', (err) => log.warn('[TrainerBridge] Socket error:', err.message))
 
-          // Send pending config if any
-          if (this._pendingConfig) {
-            this._sendConfig(this._pendingConfig)
-            this._pendingConfig = null
-          }
+          // launch() sends the drill once this connection promise resolves.
           resolve()
         })
 

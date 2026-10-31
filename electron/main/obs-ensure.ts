@@ -23,6 +23,8 @@ export interface EnsureObsConnectedOptions {
    * then relaunch. Disable mid-match so we do not kill an active recording.
    */
   allowProcessRestart?: boolean
+  /** Recheck live match state immediately before a destructive restart. */
+  canRestartProcess?: () => boolean
   onActivity?: (msg: string) => void
 }
 
@@ -46,6 +48,11 @@ export type EnsureObsConnectedResult =
 const OBS_LAUNCH_COOLDOWN_MS = 90_000
 
 let lastObsLaunchAt = 0
+
+const pendingConnections = new WeakMap<OBSRecorder, {
+  callers: EnsureObsConnectedOptions[]
+  promise: Promise<EnsureObsConnectedResult>
+}>()
 
 /** Test helper — reset launch cooldown between specs. */
 export function resetObsLaunchCooldownForTests(): void {
@@ -78,11 +85,35 @@ export function obsPostLaunchConnectDelaysMs(firstDelayMs: number): number[] {
 /**
  * Connect to OBS, launching (and if needed restarting a hung process) as required.
  */
-export async function ensureObsConnected(
+export function ensureObsConnected(
   obsRecorder: OBSRecorder,
   opts: EnsureObsConnectedOptions,
 ): Promise<EnsureObsConnectedResult> {
-  const allowProcessRestart = opts.allowProcessRestart !== false
+  const pending = pendingConnections.get(obsRecorder)
+  if (pending) {
+    pending.callers.push(opts)
+    return pending.promise
+  }
+
+  const callers = [opts]
+  // Socket connection alone is already shared by OBSRecorder. Launch and recovery
+  // must share the whole operation too, including installation and process probes.
+  const promise = Promise.resolve().then(() => ensureObsConnectedOnce(obsRecorder, opts, () =>
+    !obsRecorder.isRecording() && callers.every(caller =>
+      caller.allowProcessRestart !== false && caller.canRestartProcess?.() !== false,
+    ),
+  )).finally(() => {
+    if (pendingConnections.get(obsRecorder)?.promise === promise) pendingConnections.delete(obsRecorder)
+  })
+  pendingConnections.set(obsRecorder, { callers, promise })
+  return promise
+}
+
+async function ensureObsConnectedOnce(
+  obsRecorder: OBSRecorder,
+  opts: EnsureObsConnectedOptions,
+  canRestartProcess: () => boolean,
+): Promise<EnsureObsConnectedResult> {
   const win = () => opts.getWindow?.() ?? null
 
   const connectAfterLaunch = async (): Promise<EnsureObsConnectedResult> => {
@@ -131,7 +162,12 @@ export async function ensureObsConnected(
       return { ok: true, alreadyRunning: true, processRunning: true }
     }
 
-    if (!allowProcessRestart || recentlyLaunchedObs()) {
+    // A match or another connection attempt can have progressed during the waits.
+    if (obsRecorder.isConnected()) {
+      broadcastObsConnection(win(), obsRecorder)
+      return { ok: true, alreadyConnected: true, processRunning: true }
+    }
+    if (!canRestartProcess() || recentlyLaunchedObs()) {
       if (recentlyLaunchedObs()) {
         log.warn('[OBS Ensure] Process up but WebSocket still down during launch cooldown — not killing')
         opts.onActivity?.('OBS still starting — waiting for connection…')

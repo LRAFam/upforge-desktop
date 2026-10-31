@@ -84,7 +84,7 @@ export function setupAppHandlers(
     if (!isTrustedRendererUrl(event.senderFrame?.url ?? '')) return { ok: false }
     if (typeof payload !== 'object' || payload === null) return { ok: false }
     const { kind, game } = payload as { kind?: unknown; game?: unknown }
-    if (kind !== 'clip_watched' && kind !== 'replay_watched') return { ok: false }
+    if (kind !== 'clip_watched' && kind !== 'replay_watched' && kind !== 'comparison_watched') return { ok: false }
     if (typeof game !== 'string' || !PRODUCT_ACTIVITY_GAMES.includes(game as typeof PRODUCT_ACTIVITY_GAMES[number])) return { ok: false }
     trackProductActivity(kind, game)
     trackUsageAction(event.sender.id, kind === 'clip_watched' ? 'clips' : 'report')

@@ -25,3 +25,10 @@ export function resolveUnauthenticatedRoute(settings: {
 }): '/onboarding' | '/login' {
   return needsDesktopOnboarding(settings) ? '/onboarding' : '/login'
 }
+
+/** The first-report action must behave the same for real users and previews. */
+export function resolveOnboardingCompletionRoute(options?: { destination?: 'dashboard' | 'analysis'; recordingId?: string }) {
+  return options?.destination === 'analysis' && options.recordingId
+    ? { path: '/vod-review', query: { id: options.recordingId } }
+    : { path: '/dashboard' }
+}
