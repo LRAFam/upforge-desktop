@@ -1,6 +1,8 @@
 <script setup lang="ts">
 /** One recording as a hairline row: map art · agent · title · result · status · actions. */
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { matchReportPath } from '../../../lib/match-report'
 import type { LibraryRecording } from '../../../lib/footage-library'
 import { footageUnavailable } from '../../../lib/footage-library'
 import { canOpenTimeline, canWatchRawRecording } from '../../../lib/recording-demo-status'
@@ -17,6 +19,10 @@ import { matchRowSummary, relativeTime, storageLine } from './match-row'
 import type { AnalysisItem } from '../../../env.d.ts'
 
 const props = defineProps<{ rec: LibraryRecording; busy: boolean; selecting: boolean; selected: boolean; hint: string | null; analysis?: AnalysisItem | null }>()
+const router = useRouter()
+/** Free data report for this match (Valorant, League, Deadlock by match id; CS2 by recording). */
+const reportPath = computed(() => matchReportPath(props.rec.game, (props.rec as { matchId?: string | null }).matchId, props.rec.id))
+function openReport(): void { if (reportPath.value) router.push(reportPath.value).catch(() => {}) }
 const emit = defineEmits<{ open: []; watch: []; continue: []; delete: []; toggle: []; prefetch: [] }>()
 
 // Cloud-only rows carry their own score from the cloud inventory (API round 7).
@@ -86,6 +92,7 @@ async function startReview() {
       <button v-if="review === 'available'" type="button" class="uf-link" :disabled="busy" @click="confirmOpen = true">Review replay</button>
       <span v-else-if="review === 'in_progress'" class="uf-t4">Replay review in progress</span>
       <button v-if="rec.analysisId != null && canWatchRawRecording(rec)" type="button" class="uf-link" @click="emit('watch')">Watch</button>
+      <button v-if="reportPath" type="button" class="uf-link" title="Free data report for this match" @click.stop="openReport">Report</button>
       <button type="button" class="uf-btn-secondary uf-open" :disabled="!canOpen || busy" @click="emit('open')">
         <UfIcon :name="openLabel === 'Watch' ? 'play' : 'map'" :size="15" />{{ openLabel }}
       </button>

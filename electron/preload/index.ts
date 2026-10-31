@@ -11,6 +11,12 @@ const api = {
   },
   personalReview: { get: (source: unknown) => ipcRenderer.invoke('personal-review:get', source), save: (document: unknown) => ipcRenderer.invoke('personal-review:save', document) },
   accountUsage: { get: () => ipcRenderer.invoke('account:usage'), buyReports: () => ipcRenderer.invoke('account:report-checkout') },
+  roundReview: {
+    allowance: () => ipcRenderer.invoke('round-review:allowance'),
+    list: (jobId: string) => ipcRenderer.invoke('round-review:list', jobId),
+    get: (jobId: string, round: number) => ipcRenderer.invoke('round-review:get', jobId, round),
+    request: (jobId: string, round: number) => ipcRenderer.invoke('round-review:request', jobId, round),
+  },
   reviewNotebook: {
     remove: (id: string, revision: number) => ipcRenderer.invoke('review-notebook:remove', id, revision),
     list: () => ipcRenderer.invoke('review-notebook:list'),
@@ -94,6 +100,14 @@ const api = {
       source: string,
     ) => ipcRenderer.invoke('billing:start-checkout', { intent, source }),
     getFocus: () => ipcRenderer.invoke('focus:get'),
+    getMatchReport: (matchId: string) => ipcRenderer.invoke('match-report:get', matchId),
+    listMatchReports: (limit?: number) => ipcRenderer.invoke('match-report:list', limit),
+    getGameMatchReport: (game: 'lol' | 'deadlock', matchId: string) => ipcRenderer.invoke('match-report:get-game', game, matchId),
+    getGameMatchNotes: (game: 'lol' | 'deadlock' | 'cs2', matchId: string, facts?: unknown) => ipcRenderer.invoke('match-report:game-notes', game, matchId, facts),
+    getStartingReport: (game: 'valorant' | 'lol' | 'deadlock' | 'cs2') => ipcRenderer.invoke('starting-report:get', game),
+    generateStartingReport: (game: 'valorant' | 'lol' | 'deadlock' | 'cs2') => ipcRenderer.invoke('starting-report:generate', game),
+    dismissStartingReport: (game: 'valorant' | 'lol' | 'deadlock' | 'cs2') => ipcRenderer.invoke('starting-report:dismiss', game),
+    startStartingFocus: (game: 'valorant' | 'lol') => ipcRenderer.invoke('starting-report:start-focus', game),
     syncFocus: () => ipcRenderer.invoke('focus:sync'),
     onFocusUpdated: (cb: (payload: unknown) => void) => {
       const listener = (_e: unknown, payload: unknown) => cb(payload)
@@ -184,6 +198,28 @@ const api = {
   },
   dialog: {
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory')
+  },
+  // After-match coach flow (production): allowances, key-moment results, live updates.
+  coachFlow: {
+    allowances: () => ipcRenderer.invoke('coach:allowances'),
+    moments: (matchId: string) => ipcRenderer.invoke('coach-flow:moments', matchId),
+    onUpdate: (cb: (u: unknown) => void) => {
+      const listener = (_e: unknown, u: unknown) => cb(u)
+      ipcRenderer.on('coach-flow:update', listener)
+      return () => { ipcRenderer.removeListener('coach-flow:update', listener) }
+    },
+  },
+  coachFlowDemo: {
+    info: () => ipcRenderer.invoke('coach-flow-demo:info'),
+    list: () => ipcRenderer.invoke('coach-flow-demo:list'),
+    run: (analysisId: number, opts?: { cached?: boolean; instant?: boolean }) => ipcRenderer.invoke('coach-flow-demo:run', analysisId, opts),
+    clip: (key: string) => ipcRenderer.invoke('coach-flow-demo:clip', key) as Promise<Uint8Array | null>,
+    reviewRound: () => ipcRenderer.invoke('coach-flow-demo:review-round'),
+    onEvent: (cb: (e: unknown) => void) => {
+      const listener = (_: unknown, e: unknown) => cb(e)
+      ipcRenderer.on('coach-flow-demo:event', listener)
+      return () => { ipcRenderer.removeListener('coach-flow-demo:event', listener) }
+    },
   },
   dev: {
     simulateGame: (game?: string, durationMs?: number) =>

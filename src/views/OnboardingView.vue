@@ -340,6 +340,8 @@
               <p class="uf-t2" :class="{ 'ob3-gold': !recordingSetupReady }">{{ missionCopy.body }}</p>
               <!-- Roster flow: optional reminder; does not change the step's logic. -->
               <label class="ob3-coach uf-t4"><input v-model="coachInviteLater" type="checkbox"> I have a coach. Remind me to join their roster.</label>
+              <!-- Starting report: the AI read of this player's last matches for the game they picked. -->
+              <StartingReportCardV3 v-if="isAuthed" :game="selectedGame" mode="onboarding" />
 
               <template v-if="missionActive">
                 <p v-if="isAdmin && missionIsAdminTest" class="ob3-status uf-t4">
@@ -1222,6 +1224,7 @@ import {
 } from '../lib/onboarding-match-mission'
 import { deriveCaptureReadiness } from '../lib/capture-readiness'
 import { hasVerifiedOnboardingRecording } from '../lib/onboarding-recording-readiness'
+import StartingReportCardV3 from '../components/v3/starting/StartingReportCardV3.vue'
 import {
   findLatestOnboardingRecording,
   shouldMinimizeOnboardingForRecording,

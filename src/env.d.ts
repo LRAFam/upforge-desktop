@@ -707,6 +707,12 @@ declare global {
       cloudClip: { review: (id: number, analyse?: boolean) => Promise<{ ok: true; data: import('./lib/cloud-clip-review').CloudClipReview } | { ok: false; error: string; needsUpgrade?: boolean }> }
       cloudStorage: { download: (file: { kind: 'clip' | 'recording'; id: string }) => Promise<{ ok: true } | { ok: false; error: string }>; playback: (file: { kind: 'clip' | 'recording'; id: string }) => Promise<{ ok: true; url: string } | { ok: false; error: string }>; list: (query: import('./lib/cloud-storage').CloudQuery) => Promise<{ ok: true; data: unknown } | { ok: false; error: string }> }
       accountUsage: { get: () => Promise<{ ok: true; data: unknown } | { ok: false; error: string }>; buyReports: () => Promise<import('./lib/review-notebook').NotebookResult<{ checkout_url: string }>> }
+      roundReview: {
+        allowance: () => Promise<{ ok: true; allowance: import('./lib/round-review').RoundReviewAllowance } | { ok: false; error: string; status?: number }>
+        list: (jobId: string) => Promise<{ ok: true; reviews: import('./lib/round-review').RoundReview[]; allowance: import('./lib/round-review').RoundReviewAllowance } | { ok: false; error: string; status?: number }>
+        get: (jobId: string, round: number) => Promise<{ ok: true; review: import('./lib/round-review').RoundReview } | { ok: false; error: string; status?: number }>
+        request: (jobId: string, round: number) => Promise<{ ok: true; review: import('./lib/round-review').RoundReview; charged: boolean; allowance: import('./lib/round-review').RoundReviewAllowance } | { ok: false; error: string; status?: number; allowance?: import('./lib/round-review').RoundReviewAllowance }>
+      }
       reviewNotebook: {
         remove: (id: string, revision: number) => Promise<import('./lib/review-notebook').NotebookResult<{ id: string; deleted: true }>>
         list: () => Promise<import('./lib/review-notebook').NotebookResult<{ items: import('./lib/review-notebook').SavedComparison[] }>>
@@ -806,6 +812,14 @@ declare global {
           source: string,
         ) => Promise<{ ok: boolean; opened: 'stripe' | 'pricing' | 'billing'; reason?: string }>
         getFocus: () => Promise<import('./lib/focus').FocusResponse | null>
+        getMatchReport: (matchId: string) => Promise<{ ok: true; report: import('./lib/match-report').MatchReportResponse } | { ok: false; error: string }>
+        getGameMatchReport: (game: 'lol' | 'deadlock', matchId: string) => Promise<{ ok: true; report: unknown } | { ok: false; error: string }>
+        getGameMatchNotes: (game: 'lol' | 'deadlock' | 'cs2', matchId: string, facts?: unknown) => Promise<{ ok: true; notes: unknown; notes_source: string | null; capped: boolean } | { ok: false; error: string }>
+        getStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: true; report: import('./lib/starting-report').StartingReportResponse } | { ok: false; error: string }>
+        generateStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: true; report: import('./lib/starting-report').StartingReportResponse } | { ok: false; error: string }>
+        dismissStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: boolean }>
+        startStartingFocus: (game: 'valorant' | 'lol') => Promise<{ ok: boolean; focus?: unknown }>
+        listMatchReports: (limit?: number) => Promise<{ ok: true; reports: Array<{ match_id: string; played_at: string | null; map: string | null; agent: string | null; won: boolean | null; score: { ally: number; enemy: number } | null; headline: string | null; notes_source: string | null }> } | { ok: false; error: string }>
         syncFocus: () => Promise<import('./lib/focus').FocusSyncResult | null>
         onFocusUpdated: (cb: (payload: import('./lib/focus').FocusUpdate) => void) => () => void
         refreshDashboard: () => Promise<{ ok: boolean }>
@@ -970,6 +984,20 @@ declare global {
       }
       dialog: {
         openDirectory: () => Promise<string | null>
+      }
+      /** Dev only: "Replay a real match" coach-flow demo. */
+      coachFlow: {
+        allowances: () => Promise<import('./lib/coach-allowances').CoachAllowances | null>
+        moments: (matchId: string) => Promise<{ moments: import('./lib/coach-allowances').LiveMoment[]; allowance: import('./lib/coach-allowances').Allowance | null } | null>
+        onUpdate: (cb: (u: import('./lib/coach-allowances').LiveUpdate) => void) => () => void
+      }
+      coachFlowDemo?: {
+        info: () => Promise<{ aiUrl: string; budgetUsd: number }>
+        list: () => Promise<Array<{ id: number; map: string | null; agent: string | null; created_at: string | null; rounds_won: number | null; rounds_lost: number | null; status: string | null; cached?: boolean }>>
+        run: (analysisId: number, opts?: { cached?: boolean; instant?: boolean }) => Promise<{ ok: boolean; error?: string; cached?: boolean }>
+        clip: (key: string) => Promise<Uint8Array | null>
+        reviewRound: () => Promise<{ ok: boolean; error?: string }>
+        onEvent: (cb: (e: import('./lib/coach-flow-demo').FlowEvent) => void) => () => void
       }
       dev: {
         simulateGame: (game?: string, durationMs?: number) => Promise<{ ok: boolean }>

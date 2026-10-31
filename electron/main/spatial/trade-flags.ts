@@ -93,6 +93,20 @@ export function deathWasTraded(
   return false
 }
 
+/**
+ * Trades can only be judged when the kill list covers other players and we know who the
+ * allies are. Without that every death would read as "untraded" — leave it unmeasured.
+ */
+export function tradesMeasurable(
+  kills: ReadonlyArray<{ killerPuuid?: string; victimPuuid?: string }>,
+  own: string,
+  allyPuids: ReadonlySet<string>,
+): boolean {
+  const me = own.toLowerCase()
+  const others = (p?: string) => !!p && p.toLowerCase() !== me
+  return [...allyPuids].some(p => p !== me) && kills.some(k => others(k.killerPuuid) && others(k.victimPuuid))
+}
+
 /** Spacing issue with a living partner available. */
 export function farFromTeam(s: TradeFlagSpatial): boolean {
   return (s.alliesNearby ?? 0) === 0 && (s.alliesAlive ?? 0) >= 1

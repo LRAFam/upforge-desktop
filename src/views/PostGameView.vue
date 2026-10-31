@@ -37,10 +37,12 @@
       :clip-count="sessionClipCount"
       :send-coach-name="sendCoachName"
       :review-round="gameInfo.game === 'valorant' ? reviewRoundShown : null"
+      :report-match-id="gameInfo.game === 'valorant' && matchId && matchId !== 'preview-match-id' ? matchId : null"
       @primary="handleCompactPrimary"
       @secondary="viewFullAnalysis"
       @send-to-coach="sendToCoach"
       @review-round="openReviewRound"
+      @open-report="openMatchReport"
       @close="dismiss"
       @feedback-positive="submitAnalysisFeedback('thumbs_up')"
       @feedback-negative="selectNegativeFeedback"
@@ -2348,16 +2350,21 @@ async function handleCompactPrimary() {
 }
 
 /** v3: open the match page at the round worth reviewing (analysis if there is one, else the recording). */
+/** Free data report for this match in the main window (Valorant). */
+async function openMatchReport(): Promise<void> {
+  if (matchId.value) await handoffToMain({ path: `/report/${matchId.value}` })
+}
+
 async function openReviewRound(): Promise<void> {
   const round = localReviewRound.value == null ? null : roundToQuery(localReviewRound.value)
   if (!round) return
   const analysisId = result.value?.analysis_id
   if (analysisId) {
-    await handoffToMain({ path: '/vod-review', query: { timelineId: String(analysisId), round } })
+    await handoffToMain({ path: '/vod-review', query: { timelineId: String(analysisId), round, review: '1' } })
     return
   }
   const id = vodRecordingId.value
-  if (id) await handoffToMain({ path: '/vod-review', query: { id, round } })
+  if (id) await handoffToMain({ path: '/vod-review', query: { id, round, review: '1' } })
 }
 
 async function openNativeAnalysisReview(): Promise<void> {

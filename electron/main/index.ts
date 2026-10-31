@@ -6,6 +6,7 @@ import { resolveMatchEndCapture, shouldFinalizeMatchMedia } from './match-end-ca
 import { setupCloudStorageHandlers } from './ipc/cloud-storage-ipc'
 import { APP_VERSION } from './app-version'
 import { setupReviewNotebookHandlers } from './ipc/review-notebook-ipc'
+import { setupRoundReviewHandlers } from './ipc/round-review-ipc'
 import { setupMarketplaceHandlers } from './ipc/marketplace-ipc'
 import { buildTimelineFromDemo } from './demo-timeline'
 import { Cs2DemoRetrieval, cs2DemoRetrievalStatus } from './cs2-demo-retrieval'
@@ -342,6 +343,9 @@ import {
 import { recordingHeroLabel, resolveDeadlockRecordingHero } from './deadlock-recording-hero'
 import { linkDeadlockAutoReview } from './deadlock-auto-review-link'
 import { FaceitLinkStore, registerCs2FaceitMatchIpc } from './cs2-faceit-match'
+import { setupCoachFlowDemoHandlers } from './ipc/coach-flow-demo-ipc'
+import { setupCoachFlowLiveHandlers, startLiveCoachFlow } from './ipc/coach-flow-live-ipc'
+import { prepareMatchDataForUpload } from './match-data-payload'
 import { registerEnemyHabitsIpc } from './ipc/enemy-habits-ipc'
 import { pregameKey, pregameQuery, sanitizePregameContext } from './pregame-view'
 import { DEEP_LINK_SCHEME, PendingDeepLink, findDeepLinkInArgv } from './deep-link'
@@ -4214,6 +4218,22 @@ function setupGameDetection(): void {
           return result
         })
 
+      // After-match coach flow (production): key moments from short clips cut on this PC, within the
+      // player's allowance. Runs in the background; the report shows its facts regardless.
+      void enrichPromise.then(() => {
+        if (game !== 'valorant' || !timeline || !hasRichMatchData(timeline)) return
+        startLiveCoachFlow({
+          auth: authManager,
+          matchId: timeline.matchId,
+          videoPath: savedRecording.path,
+          matchData: prepareMatchDataForUpload(timeline) as Record<string, unknown> | undefined,
+          send: (update) => {
+            mainWindow?.webContents.send('coach-flow:update', update)
+            if (thisPostGameWindow && !thisPostGameWindow.isDestroyed()) thisPostGameWindow.webContents.send('coach-flow:update', update)
+          },
+        })
+      }).catch(() => { /* enrichment errors are logged below */ })
+
       void enrichPromise.then(() => {
         if (!thisPostGameWindow || thisPostGameWindow.isDestroyed()) return
         if (!user?.riot_name || !timeline || !shouldRequestDebrief(timeline, gameMode)) return
@@ -7009,6 +7029,18 @@ async function startApp(): Promise<void> {
     return result
   })
   setupReviewNotebookHandlers(ipcMain, authManager)
+  // ── Dev only: "Replay a real match" coach-flow demo (local AI, production data read-only) ──
+  if (is.dev) {
+    setupCoachFlowDemoHandlers(ipcMain, authManager, (event) => {
+      const url = event.senderFrame?.url
+      return !!url && isTrustedRendererUrl(url)
+    })
+  }
+  setupRoundReviewHandlers(ipcMain, authManager)
+  setupCoachFlowLiveHandlers(ipcMain, authManager, (event) => {
+    const url = event.senderFrame?.url
+    return !!url && isTrustedRendererUrl(url)
+  })
   // Coach marketplace (UI v3): read-only browse + my bookings
   setupMarketplaceHandlers(ipcMain, authManager)
   registerCs2FaceitMatchIpc(ipcMain, () => authManager.getApi(), new FaceitLinkStore(app.getPath('userData')))
@@ -7431,6 +7463,92 @@ async function startApp(): Promise<void> {
     }
   }
   ipcMain.handle('focus:sync', () => runFocusSync('manual'))
+  // Match report (free, data-only): read the stored report for one of the player's own matches.
+  ipcMain.handle('match-report:get', async (_event, matchId: unknown) => {
+    if (typeof matchId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(matchId)) return { ok: false, error: 'invalid_match' }
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    const r = await authManager.getApi().get(`/api/match-report/${matchId}`, { validateStatus: () => true }).catch(() => null)
+    if (r?.status === 404) return { ok: false, error: 'not_found' }
+    if (r?.status !== 200 || !r.data?.success) return { ok: false, error: 'unavailable' }
+    return { ok: true, report: r.data }
+  })
+  // League / Deadlock free data reports: facts computed by the API from data it already caches.
+  ipcMain.handle('match-report:get-game', async (_event, game: unknown, matchId: unknown) => {
+    const ok = (game === 'lol' && typeof matchId === 'string' && /^[A-Z0-9]{2,8}_\d{1,20}$/i.test(matchId))
+      || (game === 'deadlock' && typeof matchId === 'string' && /^\d{1,20}$/.test(matchId))
+    if (!ok) return { ok: false, error: 'invalid_match' }
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    const r = await authManager.getApi().get(`/api/${game}/match-report/${matchId}`, { validateStatus: () => true }).catch(() => null)
+    if (r?.status === 404) return { ok: false, error: 'not_found' }
+    if (r?.status !== 200 || !r.data?.success) return { ok: false, error: 'unavailable' }
+    return { ok: true, report: r.data }
+  })
+  // AI coach notes for League / Deadlock (facts recomputed by the API) and CS2 (facts from the parsed demo).
+  ipcMain.handle('match-report:game-notes', async (_event, game: unknown, matchId: unknown, facts: unknown) => {
+    const idOk = (game === 'lol' && typeof matchId === 'string' && /^[A-Z0-9]{2,8}_\d{1,20}$/i.test(matchId))
+      || (game === 'deadlock' && typeof matchId === 'string' && /^\d{1,20}$/.test(matchId))
+      || (game === 'cs2' && typeof matchId === 'string' && /^[A-Za-z0-9_.:-]{1,64}$/.test(matchId))
+    if (!idOk) return { ok: false, error: 'invalid_match' }
+    if (game === 'cs2' && (!facts || typeof facts !== 'object')) return { ok: false, error: 'invalid_facts' }
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    const r = game === 'cs2'
+      ? await authManager.getApi().post('/api/cs2/match-report/notes', { match_key: matchId, facts }, { validateStatus: () => true, timeout: 90000 }).catch(() => null)
+      : await authManager.getApi().post(`/api/${game}/match-report/${matchId}/notes`, {}, { validateStatus: () => true, timeout: 90000 }).catch(() => null)
+    if (r?.status !== 200 || !r.data?.success) return { ok: false, error: r?.status === 404 ? 'not_found' : 'unavailable' }
+    return { ok: true, notes: r.data.notes ?? null, notes_source: r.data.notes_source ?? null, capped: !!r.data.capped }
+  })
+  // Starting report: the first-join AI read of the player's last matches, one per game (stored by the API).
+  const STARTING_GAMES = ['valorant', 'lol', 'deadlock', 'cs2'] as const
+  const startingGame = (g: unknown): g is typeof STARTING_GAMES[number] => (STARTING_GAMES as readonly unknown[]).includes(g)
+  ipcMain.handle('starting-report:get', async (_event, game: unknown) => {
+    if (!startingGame(game)) return { ok: false, error: 'invalid_game' }
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    const r = await authManager.getApi().get(`/api/starting-report/${game}`, { validateStatus: () => true }).catch(() => null)
+    if (r?.status !== 200 || !r.data?.success) return { ok: false, error: 'unavailable' }
+    return { ok: true, report: r.data }
+  })
+  ipcMain.handle('starting-report:generate', async (_event, game: unknown) => {
+    if (!startingGame(game)) return { ok: false, error: 'invalid_game' }
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    let body: Record<string, unknown> = {}
+    if (game === 'cs2') {
+      // CS2: only matches whose demo was parsed on this PC (newest first, max 10).
+      const matches = recordingsStore.getAll()
+        .filter(rec => rec.game === 'cs2')
+        .map(rec => ({ rec, stats: (rec.timeline as unknown as { match_stats?: { player_stats?: unknown } } | null | undefined)?.match_stats }))
+        .filter(({ stats }) => !!stats && typeof stats === 'object' && !!stats.player_stats)
+        .slice(0, 10)
+        .map(({ rec, stats }) => ({
+          match_key: String(rec.matchId ?? rec.id).slice(0, 80),
+          map: rec.map ?? null,
+          won: (() => { const w = (rec.timeline as unknown as { finalStats?: { won?: unknown } } | null)?.finalStats?.won; return typeof w === 'boolean' ? w : null })(),
+          match_stats: { player_stats: (stats as { player_stats: unknown }).player_stats },
+        }))
+      if (matches.length < 3) return { ok: true, report: { success: true, game, status: 'insufficient', matches_available: matches.length, report: null } }
+      body = { matches }
+    }
+    const r = await authManager.getApi().post(`/api/starting-report/${game}`, body, { validateStatus: () => true, timeout: 120000 }).catch(() => null)
+    if (r?.status !== 200 || !r.data?.success) return { ok: false, error: 'unavailable' }
+    return { ok: true, report: r.data }
+  })
+  ipcMain.handle('starting-report:dismiss', async (_event, game: unknown) => {
+    if (!startingGame(game) || !authManager.isAuthenticated()) return { ok: false }
+    const r = await authManager.getApi().post(`/api/starting-report/${game}/dismiss`, {}, { validateStatus: () => true }).catch(() => null)
+    return { ok: r?.status === 200 }
+  })
+  ipcMain.handle('starting-report:start-focus', async (event, game: unknown) => {
+    if (!startingGame(game) || !authManager.isAuthenticated()) return { ok: false }
+    if (mainWindow && event.sender !== mainWindow.webContents) return { ok: false }
+    const r = await authManager.getApi().post(`/api/starting-report/${game}/focus`, {}, { validateStatus: () => true }).catch(() => null)
+    return { ok: r?.status === 200 && !!r.data?.success, focus: r?.data?.focus ?? null }
+  })
+  ipcMain.handle('match-report:list', async (_event, limit: unknown) => {
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    const n = Number.isInteger(limit) ? Math.min(Math.max(limit as number, 1), 50) : 20
+    const r = await authManager.getApi().get('/api/match-reports', { params: { limit: n }, validateStatus: () => true }).catch(() => null)
+    if (r?.status !== 200 || !r.data?.success) return { ok: false, error: 'unavailable' }
+    return { ok: true, reports: Array.isArray(r.data.reports) ? r.data.reports : [] }
+  })
   ipcMain.handle('focus:get', async () => {
     const userId = getActiveUserId()
     if (!authManager.isAuthenticated() || userId == null) return null

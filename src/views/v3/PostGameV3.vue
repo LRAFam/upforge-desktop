@@ -7,6 +7,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Focus } from '../../lib/focus'
 import UfButton from '../../components/v3/UfButton.vue'
+import { foundLine, type LiveUpdate } from '../../lib/coach-allowances'
 import UfIcon from '../../components/v3/UfIcon.vue'
 import SessionCoachV3 from '../../components/v3/ideas/SessionCoachV3.vue'
 import {
@@ -45,6 +46,8 @@ const props = defineProps<{
   sendCoachName?: string | null
   /** On-screen number of the round worth reviewing (your first opening death in a lost round). */
   reviewRound?: number | null
+  /** Riot match id with a free data report (Valorant); shows "Open report". */
+  reportMatchId?: string | null
 }>()
 
 defineEmits<{
@@ -58,6 +61,7 @@ defineEmits<{
   'update:feedbackText': [value: string]
   sendToCoach: []
   reviewRound: []
+  openReport: []
 }>()
 
 const portrait = computed(() => agentPortraitUrl(props.agentArt))
@@ -83,6 +87,17 @@ onMounted(async () => {
   }) ?? null
 })
 onBeforeUnmount(() => offFocus?.())
+
+// After-match coach flow: "Your coach found 2 things" once key moments are coached (main process sends updates).
+const coachFlow = ref<LiveUpdate | null>(null)
+const coachFound = computed(() => foundLine(coachFlow.value))
+let offCoachFlow: (() => void) | null = null
+onMounted(() => {
+  offCoachFlow = window.api?.coachFlow?.onUpdate?.((u) => {
+    if (!props.reportMatchId || u.matchId === props.reportMatchId) coachFlow.value = u
+  }) ?? null
+})
+onBeforeUnmount(() => offCoachFlow?.())
 
 const clipsLine = computed(() => {
   const n = props.clipCount ?? 0
@@ -123,6 +138,8 @@ const clipsLine = computed(() => {
           <p v-if="coachSub" class="uf-t4">{{ coachSub }}</p>
           <button v-if="sendCoachName" type="button" class="uf-link pg3-send" @click="$emit('sendToCoach')">Send to {{ sendCoachName }} →</button>
           <button v-if="reviewRound" type="button" class="uf-link pg3-send" :title="`You died first in round ${reviewRound} and lost it`" @click="$emit('reviewRound')">Review round {{ reviewRound }} →</button>
+          <p v-if="coachFound" class="uf-t3" aria-live="polite">{{ coachFound }}</p>
+          <button v-if="reportMatchId" type="button" class="uf-link pg3-send" @click="$emit('openReport')">Open match report →</button>
         </div>
         <p v-if="clipsLine" class="uf-t4 uf-rise uf-d2s">{{ clipsLine }}</p>
         <div v-if="focusStrip" class="pg3-focus uf-rise uf-d2s" :title="focusStrip.line">

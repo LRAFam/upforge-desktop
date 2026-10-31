@@ -5,6 +5,7 @@ import ts from 'typescript'
 import * as vue from 'vue'
 import { describe, expect, it } from 'vitest'
 import * as helpers from '../../components/v3/postgame/post-game-v3'
+import * as coachAllowances from '../../lib/coach-allowances'
 
 const Stub = { name: 'Stub' }
 
@@ -18,6 +19,7 @@ function render(props: Record<string, unknown>): string {
     require: (id: string) => {
       if (id === 'vue') return vue
       if (id.endsWith('/post-game-v3')) return helpers
+      if (id.endsWith('/coach-allowances')) return coachAllowances
       if (id.endsWith('.vue')) return Stub
       throw new Error(`Unexpected import: ${id}`)
     },

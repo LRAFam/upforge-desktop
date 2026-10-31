@@ -57,6 +57,8 @@ const router = createRouter({
     { path: '/squad', component: SquadView },
     { path: '/performance', component: PerformanceView },
     { path: '/vod-review', component: VODReviewView },
+    { path: '/report/:matchId', component: () => import('./views/v3/MatchReportV3.vue') },
+    { path: '/starting-report/:game', component: () => import('./views/v3/StartingReportV3.vue') },
     { path: '/training', component: TrainingHubView },
     { path: '/training/calibration', component: () => import('./views/ValorantCalibrationView.vue') },
     { path: '/trainer-results', component: TrainerResultsView },
@@ -65,6 +67,8 @@ const router = createRouter({
     { path: '/matches', redirect: to => ({ path: '/recordings', query: to.query }) },
     { path: '/rosters', component: RostersView },
     { path: '/dev', component: DevView },
+    // Dev builds only: the coach-flow replay demo talks to a local AI service.
+    ...(import.meta.env.DEV ? [{ path: '/dev/coach-flow', component: () => import('./views/v3/dev/CoachFlowDemoV3.vue') }] : []),
     // Dev builds only: v3 match page on the real Bind match data (no recording, no network).
     ...(import.meta.env.DEV ? [{ path: '/dev/match-fixture', component: () => import('./views/DevMatchFixtureView.vue') }] : []),
   ]

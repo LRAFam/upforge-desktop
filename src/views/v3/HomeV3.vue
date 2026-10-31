@@ -5,6 +5,7 @@ import { plural } from '../../lib/plural'
  * one red action → recent form → focus → evidence. Real data only; honest empty states.
  */
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useDashboard } from '../../composables/useDashboard'
 import HomePregameV3 from '../../components/v3/home/HomePregameV3.vue'
 import { recordingNeedsUserAction } from '../../lib/recording-library'
@@ -19,6 +20,7 @@ import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import HomeFocusPanel from '../../components/v3/home/HomeFocusPanel.vue'
 import HomeLiveStatus from '../../components/v3/home/HomeLiveStatus.vue'
 import HomeRankStrip from '../../components/v3/home/HomeRankStrip.vue'
+import StartingReportCardV3 from '../../components/v3/starting/StartingReportCardV3.vue'
 import SessionCoachV3 from '../../components/v3/ideas/SessionCoachV3.vue'
 import DashboardBanners from '../../components/dashboard/DashboardBanners.vue'
 import GameSetup from '../../components/v3/games/GameSetup.vue'
@@ -41,6 +43,7 @@ import CoachRepliesV3 from '../../components/v3/roster-flow/CoachRepliesV3.vue'
 import CoachInvitePromptV3 from '../../components/v3/roster-flow/CoachInvitePromptV3.vue'
 
 const d = useDashboard()
+const router = useRouter()
 const focusLatest = ref<FocusUpdate | null>(null)
 /** The focus panel has answered at least once (cache or network). Until then the coach line waits. */
 const focusAnswered = ref(false)
@@ -126,6 +129,8 @@ async function runWeeklyDrill() {
 
 // Round shape of the last synced match (derived on the PC from the Riot match; Valorant focus loop).
 const rounds = computed(() => focusLatest.value?.rounds ?? null)
+const reportMatchId = computed(() => (d.isValorant.value ? focusLatest.value?.match_id ?? null : null))
+function openReport(): void { if (reportMatchId.value) router.push(`/report/${reportMatchId.value}`).catch(() => {}) }
 const roundsTitle = computed(() => {
   const r = rounds.value
   if (!r) return ''
@@ -191,6 +196,7 @@ async function runPrimary() {
           <button type="button" class="uf-link" @click="d.retryRefresh()">Retry</button>
         </p>
         <HomePregameV3 />
+        <StartingReportCardV3 :game="d.primaryGame.value" mode="home" />
         <HomeLiveStatus v-if="live" :status="live" :busy="d.stopping.value" @stop="d.stopRecording()" @open="d.router.push('/recordings')" />
         <section class="uf-rise uf-d2s home3-coach" aria-label="Coach">
           <p class="home3-coach-k"><img :src="upforgeIcon" alt="" width="16" height="16"><span class="uf-t4" style="color: var(--uf-muted)">Your coach</span></p>
@@ -203,6 +209,8 @@ async function runPrimary() {
           <template v-else-if="coach">
             <p class="uf-t1" :class="{ 'uf-reveal': fromSkeleton }">{{ coach.headline }}</p>
             <p v-if="coach.next" class="uf-t2">{{ coach.next }}</p>
+            <!-- Match report: the full free data report for the match this note came from -->
+            <button v-if="reportMatchId" type="button" class="uf-link" style="align-self: flex-start" @click="openReport">Open match report →</button>
           </template>
           <template v-else>
             <p class="uf-t1">{{ d.status.value.obsConnected ? 'Play a match and your coach will read it.' : 'Set up recording and play a match. Your coach reads it straight after.' }}</p>
