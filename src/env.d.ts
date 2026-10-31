@@ -986,6 +986,11 @@ declare global {
         openDirectory: () => Promise<string | null>
       }
       /** Dev only: "Replay a real match" coach-flow demo. */
+      coachFlow: {
+        allowances: () => Promise<import('./lib/coach-allowances').CoachAllowances | null>
+        moments: (matchId: string) => Promise<{ moments: import('./lib/coach-allowances').LiveMoment[]; allowance: import('./lib/coach-allowances').Allowance | null } | null>
+        onUpdate: (cb: (u: import('./lib/coach-allowances').LiveUpdate) => void) => () => void
+      }
       coachFlowDemo?: {
         info: () => Promise<{ aiUrl: string; budgetUsd: number }>
         list: () => Promise<Array<{ id: number; map: string | null; agent: string | null; created_at: string | null; rounds_won: number | null; rounds_lost: number | null; status: string | null; cached?: boolean }>>

@@ -344,6 +344,8 @@ import { recordingHeroLabel, resolveDeadlockRecordingHero } from './deadlock-rec
 import { linkDeadlockAutoReview } from './deadlock-auto-review-link'
 import { FaceitLinkStore, registerCs2FaceitMatchIpc } from './cs2-faceit-match'
 import { setupCoachFlowDemoHandlers } from './ipc/coach-flow-demo-ipc'
+import { setupCoachFlowLiveHandlers, startLiveCoachFlow } from './ipc/coach-flow-live-ipc'
+import { prepareMatchDataForUpload } from './match-data-payload'
 import { registerEnemyHabitsIpc } from './ipc/enemy-habits-ipc'
 import { pregameKey, pregameQuery, sanitizePregameContext } from './pregame-view'
 import { DEEP_LINK_SCHEME, PendingDeepLink, findDeepLinkInArgv } from './deep-link'
@@ -4216,6 +4218,22 @@ function setupGameDetection(): void {
           return result
         })
 
+      // After-match coach flow (production): key moments from short clips cut on this PC, within the
+      // player's allowance. Runs in the background; the report shows its facts regardless.
+      void enrichPromise.then(() => {
+        if (game !== 'valorant' || !timeline || !hasRichMatchData(timeline)) return
+        startLiveCoachFlow({
+          auth: authManager,
+          matchId: timeline.matchId,
+          videoPath: savedRecording.path,
+          matchData: prepareMatchDataForUpload(timeline) as Record<string, unknown> | undefined,
+          send: (update) => {
+            mainWindow?.webContents.send('coach-flow:update', update)
+            if (thisPostGameWindow && !thisPostGameWindow.isDestroyed()) thisPostGameWindow.webContents.send('coach-flow:update', update)
+          },
+        })
+      }).catch(() => { /* enrichment errors are logged below */ })
+
       void enrichPromise.then(() => {
         if (!thisPostGameWindow || thisPostGameWindow.isDestroyed()) return
         if (!user?.riot_name || !timeline || !shouldRequestDebrief(timeline, gameMode)) return
@@ -7019,6 +7037,10 @@ async function startApp(): Promise<void> {
     })
   }
   setupRoundReviewHandlers(ipcMain, authManager)
+  setupCoachFlowLiveHandlers(ipcMain, authManager, (event) => {
+    const url = event.senderFrame?.url
+    return !!url && isTrustedRendererUrl(url)
+  })
   // Coach marketplace (UI v3): read-only browse + my bookings
   setupMarketplaceHandlers(ipcMain, authManager)
   registerCs2FaceitMatchIpc(ipcMain, () => authManager.getApi(), new FaceitLinkStore(app.getPath('userData')))

@@ -7,6 +7,15 @@ import { cloudBytes } from '../../lib/cloud-storage'
 import { capacityLabel } from '../../lib/account-usage'
 import { useAccountUsage } from '../../composables/useAccountUsage'
 import { uiV3 } from '../../lib/ui-v3'
+import { momentsLine, notesLine, roundReviewsLine, type CoachAllowances } from '../../lib/coach-allowances'
+// Coaching allowances (new design): daily coach notes, monthly key moments, round reviews.
+const coach = ref<CoachAllowances | null>(null)
+const coachLines = () => [
+  ['Coach notes', notesLine(coach.value?.notes)],
+  ['Key-moment reviews', momentsLine(coach.value?.key_moments)],
+  ['Round reviews', roundReviewsLine(coach.value?.round_reviews)],
+].filter((r): r is [string, string] => !!r[1])
+if (uiV3.value) void window.api?.coachFlow?.allowances?.().then(a => { coach.value = a }).catch(() => {})
 const emit = defineEmits<{ upgrade: [] }>()
 const router = useRouter()
 const { usage, error, loading, load } = useAccountUsage()
@@ -42,6 +51,9 @@ const date = (value: string) => new Date(value).toLocaleDateString(undefined, { 
       <button type="button" class="uf-link" :disabled="loading" @click="load">{{ loading ? (usage ? 'Refreshing…' : 'Loading…') : 'Refresh usage' }}</button>
     </div>
     <p v-if="error" role="status" class="uf-note is-bad">{{ error }}</p>
+    <div v-for="[label, line] in coachLines()" :key="label" class="uf-set-row">
+      <div class="uf-set-row-text"><p class="uf-t3">{{ label }}</p><p class="uf-t4">{{ line }}</p></div>
+    </div>
     <!-- First-ever load: placeholder rows in the shape of the usage rows (title + value, meter, note). -->
     <div v-if="!usage && !error" aria-busy="true" aria-label="Loading usage">
       <div v-for="i in 3" :key="i" class="uf-usage-row">

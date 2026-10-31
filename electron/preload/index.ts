@@ -199,6 +199,16 @@ const api = {
   dialog: {
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory')
   },
+  // After-match coach flow (production): allowances, key-moment results, live updates.
+  coachFlow: {
+    allowances: () => ipcRenderer.invoke('coach:allowances'),
+    moments: (matchId: string) => ipcRenderer.invoke('coach-flow:moments', matchId),
+    onUpdate: (cb: (u: unknown) => void) => {
+      const listener = (_e: unknown, u: unknown) => cb(u)
+      ipcRenderer.on('coach-flow:update', listener)
+      return () => { ipcRenderer.removeListener('coach-flow:update', listener) }
+    },
+  },
   coachFlowDemo: {
     info: () => ipcRenderer.invoke('coach-flow-demo:info'),
     list: () => ipcRenderer.invoke('coach-flow-demo:list'),

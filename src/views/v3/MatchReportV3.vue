@@ -6,7 +6,7 @@
  * computes from cached match data (match-report:get-game); CS2 reads the recording's parsed demo.
  * Never generates an AI report.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UfHeroBand from '../../components/v3/UfHeroBand.vue'
 import UfButton from '../../components/v3/UfButton.vue'
@@ -23,6 +23,7 @@ import UfRoundsLine from '../../components/v3/UfRoundsLine.vue'
 import RoundStripV3 from '../../components/v3/coach-flow/RoundStripV3.vue'
 import NumbersV3 from '../../components/v3/coach-flow/NumbersV3.vue'
 import { numbersView, roundCells } from '../../components/v3/coach-flow/coach-visuals'
+import { momentsLine, notesLine, type CoachAllowances, type LiveMoment, type LiveUpdate } from '../../lib/coach-allowances'
 
 const route = useRoute()
 const router = useRouter()
@@ -132,6 +133,40 @@ const meta = computed(() => view.value?.metaLine
   ?? [view.value?.map ? formatMapLabel(view.value.map) : null, view.value?.agent].filter(Boolean).join(' · '))
 const isValorant = computed(() => (view.value?.game ?? 'valorant') === 'valorant')
 
+// After-match coach flow: key-moment reviews (video, within the allowance) + allowance lines.
+const allowances = ref<CoachAllowances | null>(null)
+const moments = ref<LiveMoment[]>([])
+const flowState = ref<LiveUpdate['state'] | null>(null)
+const shownMoments = computed(() => moments.value.filter(m => m.status === 'completed' && m.fixes.length > 0))
+const pendingMoments = computed(() => moments.value.filter(m => m.status === 'queued' || m.status === 'processing').length
+  || (flowState.value && ['planning', 'cutting', 'uploading', 'reviewing'].includes(flowState.value) ? 1 : 0))
+const allowanceLines = computed(() => [notesLine(allowances.value?.notes), momentsLine(allowances.value?.key_moments)].filter((x): x is string => !!x))
+function fixTitle(f: LiveMoment['fixes'][number]): string { return typeof f === 'string' ? f : (f.title ?? '') }
+function fixDetail(f: LiveMoment['fixes'][number]): string { return typeof f === 'string' ? '' : (f.detail ?? '') }
+function momentLabel(m: LiveMoment): string {
+  const kind = m.kind === 'death' ? 'Your death' : m.kind === 'kill' ? 'Your kill' : 'Your decision'
+  return `Round ${m.round_number} · ${kind}`
+}
+async function loadCoachFlow(): Promise<void> {
+  const id = matchId.value
+  allowances.value = await window.api?.coachFlow?.allowances?.().catch(() => null) ?? null
+  if (game.value !== 'valorant') return
+  const res = await window.api?.coachFlow?.moments?.(id).catch(() => null)
+  if (res && id === matchId.value) moments.value = res.moments
+}
+let stopUpdates: (() => void) | null = null
+onMounted(() => {
+  void loadCoachFlow()
+  stopUpdates = window.api?.coachFlow?.onUpdate?.((u) => {
+    if (u.matchId !== matchId.value) return
+    flowState.value = u.state
+    if (u.moments.length) moments.value = u.moments
+    if (u.state === 'done') void loadCoachFlow()
+  }) ?? null
+})
+onBeforeUnmount(() => { stopUpdates?.() })
+watch(matchId, () => { moments.value = []; flowState.value = null; void loadCoachFlow() })
+
 function practise(): void { router.push('/training').catch(() => {}) }
 function back(): void { if (window.history.length > 1) router.back(); else router.push('/dashboard').catch(() => {}) }
 </script>
@@ -185,6 +220,21 @@ function back(): void { if (window.history.length > 1) router.back(); else route
           <p v-if="view.isAlt" class="uf-t4">Played on an alt account: coached, not counted for your focus.</p>
         </section>
 
+        <section v-if="isValorant && (shownMoments.length || pendingMoments)" class="mr3-moments" aria-live="polite">
+          <span class="uf-label">Key moments your coach watched</span>
+          <article v-for="m in shownMoments" :key="m.id" class="mr3-moment uf-reveal">
+            <p class="uf-t4">{{ momentLabel(m) }}</p>
+            <p v-if="m.story" class="uf-t2">{{ m.story }}</p>
+            <ol class="mr3-fixes">
+              <li v-for="(f, i) in m.fixes" :key="i"><span class="uf-t3">{{ fixTitle(f) }}</span><span v-if="fixDetail(f)" class="uf-t4"> {{ fixDetail(f) }}</span></li>
+            </ol>
+          </article>
+          <div v-if="pendingMoments" class="mr3-moment mr3-moment--pending">
+            <UfSkeleton :lines="2" />
+            <p class="uf-t4">Your coach is watching the key moments…</p>
+          </div>
+        </section>
+
         <section v-if="cells.length" class="mr3-visual">
           <span class="uf-label">Your match, round by round</span>
           <RoundStripV3 :cells="cells" />
@@ -224,6 +274,7 @@ function back(): void { if (window.history.length > 1) router.back(); else route
             <!-- Reserved: "Review a round" (paid, visual). Hidden until round-review pricing is decided. -->
           </section>
         </div>
+        <p v-for="line in allowanceLines" :key="line" class="uf-t4 mr3-allowance">{{ line }}</p>
       </div>
     </template>
   </div>
@@ -242,6 +293,11 @@ function back(): void { if (window.history.length > 1) router.back(); else route
 .mr3-row { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--uf-line); }
 .mr3-row dd { margin: 0; }
 .mr3-side { display: flex; flex-direction: column; gap: 24px; }
+.mr3-moments { display: flex; flex-direction: column; gap: 14px; padding-top: 18px; border-top: 1px solid var(--uf-line); }
+.mr3-moment { display: flex; flex-direction: column; gap: 6px; max-width: 72ch; }
+.mr3-moment + .mr3-moment { padding-top: 14px; border-top: 1px solid var(--uf-line); }
+.mr3-fixes { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.mr3-allowance { margin: 0; }
 .mr3-focus, .mr3-next { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--uf-line); }
 .mr3-next ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .mr3-next :deep(button) { align-self: flex-start; margin-top: 6px; }
