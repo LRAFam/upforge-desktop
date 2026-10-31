@@ -35,6 +35,8 @@ export interface FocusUpdate {
   match_id: string
   focus: Focus | null
   focus_event: 'created' | 'checked' | 'achieved' | 'missed' | null
+  /** Which linked account played the match. Alt-account games are coached but never checked against the focus. */
+  account?: { is_main: boolean } | null
   /** Last observed focus before a rotation; its status is not inferred. */
   previous_focus?: Focus | null
   report?: {

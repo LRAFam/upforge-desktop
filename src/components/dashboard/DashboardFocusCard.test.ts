@@ -74,6 +74,15 @@ it('renders the latest coach headline and Next game after updates happen away fr
   reopened.unmount()
 })
 
+it('says an alt-account game was coached but not counted for the focus', async () => {
+  const altGame = { ...snapshot, latest: { ...report, focus_event: null, account: { is_main: false } } }
+  const view = card({ getFocus: async () => altGame, onFocusUpdated: () => () => {}, syncFocus: vi.fn() })
+  await view.mount()
+  expect(view.text()).toContain('Alt-account game: coached, not counted for your focus')
+  expect(view.text()).not.toContain('Checked against your last match')
+  view.unmount()
+})
+
 it('keeps a valid headline visible even if the report has no Next game action', async () => {
   const partial = { ...snapshot, latest: { ...report, report: { notes: { headline: report.report!.notes!.headline } } } }
   const view = card({ getFocus: async () => partial, onFocusUpdated: () => () => {}, syncFocus: vi.fn() })
