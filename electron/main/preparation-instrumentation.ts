@@ -9,6 +9,7 @@ import { trackFunnelEvent, trackPreparationStarted, trackPreparationCompleted } 
 
 export type PrepStepName =
   | 'file_ready'
+  | 'video_sync'
   | 'dashboard_row'
   | 'vod_probe'
   | 'compress'

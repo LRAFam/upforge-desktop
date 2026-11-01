@@ -222,7 +222,8 @@ import {
   buildOrphanValorantTimeline,
   inspectOrphanRecordingTiming,
 } from './orphan-recording-recovery'
-import { ClipExtractor } from './clip-extractor'
+import { ClipExtractor, ffmpegBinaryPath } from './clip-extractor'
+import { alignValorantTimelineByRoundTimer, ffmpegFrameReader } from './valorant-timer-sync'
 import { ClipStore } from './clip-store'
 import { HotkeyManager } from './hotkey-manager'
 import { createOverlayWindow, requestOverlayToggle, destroyOverlay, sendOverlayData, isOverlayVisible, showOverlay, hideOverlay } from './overlay-window'
@@ -2692,6 +2693,8 @@ function finalizeTimelineOffsetsForClips(timeline: MatchData | null): void {
 
 function lateClipRetryDeps(): LateClipRetryDeps {
   return {
+    alignByRoundTimer: (timeline, videoPath) =>
+      alignValorantTimelineByRoundTimer(timeline, videoPath, ffmpegFrameReader(ffmpegBinaryPath()), log),
     waitUntilAllowed: async () => {
       await obsRecorder.releaseStaleMatchOwnership()
       await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
@@ -4136,6 +4139,7 @@ function setupGameDetection(): void {
       const matchId = timeline?.matchId
       const richMatchData = hasRichMatchData(timeline)
 
+
       // Register on the dashboard immediately — before compression/upload can take minutes.
       setPrepStep('dashboard_row')
       finalizeTimelineOffsetsForClips(timeline)
@@ -4161,6 +4165,20 @@ function setupGameDetection(): void {
       if (activityRecordingOwner !== null) trackProductActivity('recording_saved', game, activityRecordingOwner)
       setPrepStep('dashboard_row', savedRecording.id)
       mainWindow?.webContents.send('recordings:updated')
+
+      // Valorant: measure where the game clock sits in this recording from the round timer, so clips
+      // and video reviews land on the right seconds (the loading-time guess was off by up to ~15 s).
+      // Runs after the dashboard row so the row still appears immediately.
+      if (game === 'valorant' && timeline && richMatchData) {
+        setPrepStep('video_sync', savedRecording.id)
+        const synced = await alignValorantTimelineByRoundTimer(timeline, readyPath, ffmpegFrameReader(ffmpegBinaryPath()), log)
+          .catch((err) => { log.warn('[TimerSync] Skipped:', err); return null })
+        if (synced) {
+          finalizeTimelineOffsetsForClips(timeline)
+          captureStore.updateTimeline(savedRecording.id, timeline)
+          mainWindow?.webContents.send('recordings:updated')
+        }
+      }
       logActivity(
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
       )

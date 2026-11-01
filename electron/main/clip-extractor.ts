@@ -30,6 +30,11 @@ function ffmpegPath(): string {
   return join(process.resourcesPath, 'ffmpeg', IS_WIN ? 'ffmpeg.exe' : 'ffmpeg')
 }
 
+/** The bundled ffmpeg binary (PATH ffmpeg in dev). */
+export function ffmpegBinaryPath(): string {
+  return ffmpegPath()
+}
+
 export interface ExtractOptions {
   /** Path to the source recording */
   sourcePath: string
