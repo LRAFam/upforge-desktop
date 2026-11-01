@@ -32,6 +32,8 @@ export interface LateClipRetryOptions {
 }
 
 export interface LateClipRetryDeps {
+  /** Valorant: measure the recording offset from the in-game round timer (optional). */
+  alignByRoundTimer?: (timeline: MatchData, videoPath: string) => Promise<unknown>
   waitUntilAllowed: () => Promise<void>
   retryCs2DemoClips: (opts: {
     readyPath: string
@@ -147,6 +149,9 @@ export async function runLateClipRetry(
 
   timeline.matchDetails = details
   deps.riotLocalApi.populateMatchDataFromDetails(timeline, details)
+  if (game === 'valorant' && deps.alignByRoundTimer) {
+    await deps.alignByRoundTimer(timeline, ctx.readyPath).catch((err) => log.warn('[LateClipExtract] Timer sync failed:', err))
+  }
   deps.finalizeTimelineOffsetsForClips(timeline)
   deps.recordingsStore.updateTimeline(ctx.savedRecordingId, timeline)
   deps.mainWindow?.webContents.send('recordings:updated')

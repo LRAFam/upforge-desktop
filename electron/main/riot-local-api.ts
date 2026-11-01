@@ -2346,8 +2346,17 @@ export function effectiveVideoSyncOffsetMs(timeline: MatchData): number {
 
 /** Total ms from recording start to Riot game-clock zero, including manual nudge. */
 export function totalRecordingOffsetMs(timeline: MatchData): number {
+  if (timeline.roundTimerOffsetMs != null) {
+    // Measured from the round timer; a manual nudge is the change from the default sync offset.
+    return timeline.roundTimerOffsetMs + manualSyncNudgeMs(timeline)
+  }
   const { offset } = computeRecordingOffsetMeta(timeline)
   return offset + effectiveVideoSyncOffsetMs(timeline)
+}
+
+/** How far the user has nudged sync away from the default (0 when untouched or reset). */
+export function manualSyncNudgeMs(timeline: MatchData): number {
+  return effectiveVideoSyncOffsetMs(timeline) - defaultVideoSyncOffsetMs(timeline)
 }
 
 function gameTimeToEventVideoOffsetMs(timeline: MatchData, gameTimeMs: number): number {

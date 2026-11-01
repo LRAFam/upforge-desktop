@@ -25,7 +25,8 @@ export function setClipsMediaDir(dir: string | null): void {
   clipsMediaDirOverride = dir
 }
 
-function ffmpegPath(): string {
+/** The bundled ffmpeg binary (PATH ffmpeg in dev). */
+export function ffmpegPath(): string {
   if (is.dev) return IS_WIN ? 'ffmpeg.exe' : 'ffmpeg'
   return join(process.resourcesPath, 'ffmpeg', IS_WIN ? 'ffmpeg.exe' : 'ffmpeg')
 }

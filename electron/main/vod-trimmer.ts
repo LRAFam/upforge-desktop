@@ -28,6 +28,7 @@ export function applyVodTrimToTimeline(timeline: MatchData, range: VodTrimRange)
   if (timeline.gameplayStartTime != null) timeline.gameplayStartTime += startMs
   if (timeline.matchStartTime != null) timeline.matchStartTime += startMs
   if (timeline.startTime != null) timeline.startTime += startMs
+  if (timeline.roundTimerOffsetMs != null) timeline.roundTimerOffsetMs -= startMs
 
   recomputeTimelineVideoOffsets(timeline)
 
