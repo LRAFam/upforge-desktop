@@ -149,7 +149,7 @@ export async function runLateClipRetry(
 
   timeline.matchDetails = details
   deps.riotLocalApi.populateMatchDataFromDetails(timeline, details)
-  if (ctx.game === 'valorant' && deps.alignByRoundTimer) {
+  if (game === 'valorant' && deps.alignByRoundTimer) {
     await deps.alignByRoundTimer(timeline, ctx.readyPath).catch((err) => log.warn('[LateClipExtract] Timer sync failed:', err))
   }
   deps.finalizeTimelineOffsetsForClips(timeline)

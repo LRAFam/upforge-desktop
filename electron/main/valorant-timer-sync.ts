@@ -13,6 +13,7 @@
 import { spawn } from 'child_process'
 import templatesJson from './valorant-timer-templates.json'
 import { observedRoundStarts } from './riot-event-time'
+import { manualSyncNudgeMs, recomputeTimelineVideoOffsets, totalRecordingOffsetMs } from './riot-local-api'
 import type { MatchData } from './riot-types'
 
 /** Timer digits as fractions of a 16:9 frame: left x, top y, width w, height h. */
@@ -179,6 +180,14 @@ export function isTrustworthy(e: OffsetEstimate | null): e is OffsetEstimate {
   return !!e && e.samples >= 6 && e.rounds >= 2 && e.spreadMs <= 150 && e.samples >= 2 * e.outliers
 }
 
+/** Resolve to null when the work takes longer than the budget (the work itself is bounded by ffmpeg's timeout). */
+function withBudget<T>(work: Promise<T>, budgetMs: number): Promise<T | null> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(null), budgetMs)
+    work.then((v) => { clearTimeout(timer); resolve(v) }, (e) => { clearTimeout(timer); reject(e) })
+  })
+}
+
 export type FrameReader = (videoPath: string, startSec: number, durationSec: number) => Promise<Uint8Array[]>
 
 /** ffmpeg -> timer crops (RGB) at SCAN_FPS, scaled to CROP_W x CROP_H. */
@@ -186,8 +195,10 @@ export function ffmpegFrameReader(ffmpegBin: string, timeoutMs = 60_000): FrameR
   return (videoPath, startSec, durationSec) => new Promise((resolve, reject) => {
     const c = TIMER_CROP
     const vf = `fps=${SCAN_FPS},crop=iw*${c.w}:ih*${c.h}:iw*${c.x}:ih*${c.y},scale=${CROP_W}:${CROP_H}`
-    const proc = spawn(ffmpegBin, ['-v', 'error', '-ss', startSec.toFixed(3), '-t', durationSec.toFixed(3), '-i', videoPath,
-      '-vf', vf, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { stdio: ['ignore', 'pipe', 'pipe'] })
+    // Two threads like clip extraction, so a scan right after a match doesn't hitch the next one.
+    const proc = spawn(ffmpegBin, ['-v', 'error', '-threads', '2', '-filter_threads', '2', '-ss', startSec.toFixed(3),
+      '-t', durationSec.toFixed(3), '-i', videoPath, '-vf', vf, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'],
+    { stdio: ['ignore', 'pipe', 'pipe'] })
     const chunks: Buffer[] = []
     let stderr = ''
     proc.stdout.on('data', (c: Buffer) => chunks.push(c))
@@ -221,11 +232,11 @@ export async function measureRoundTimerOffset(
 ): Promise<OffsetEstimate | null> {
   const decode = opts.decode ?? ((rgb: Uint8Array) => readTimer(whiteness(rgb, CROP_W, CROP_H), CROP_W, CROP_H))
   const samples: Array<{ round: number; videoMs: number; shown: number }> = []
-  const rounds = [...roundStartGameMs.keys()].sort((a, b) => a - b).slice(0, opts.maxRounds ?? 4)
+  const rounds = [...roundStartGameMs.keys()].sort((a, b) => a - b).slice(0, opts.maxRounds ?? 3)
   for (const round of rounds) {
     const startGame = roundStartGameMs.get(round)!
     const windowStartSec = Math.max(0, (startGame + approxOffsetMs) / 1000 - 18)
-    const frames = await readFrames(videoPath, windowStartSec, 50)
+    const frames = await readFrames(videoPath, windowStartSec, 40)
     const values = frames.map(decode)
     for (const t of findTicks(values)) {
       samples.push({ round, videoMs: (windowStartSec + (t.frame + 0.5) / SCAN_FPS) * 1000, shown: t.shown })
@@ -248,19 +259,24 @@ export async function alignValorantTimelineByRoundTimer(
   readFrames: FrameReader,
   log: { info: (...a: unknown[]) => void; warn: (...a: unknown[]) => void } = console,
   decode?: (frame: Uint8Array) => number | null,
+  budgetMs = 45_000,
 ): Promise<OffsetEstimate | null> {
   if (timeline.roundTimerOffsetMs != null) return null
-  // Loaded lazily: riot-local-api pulls in Electron, and the helpers above must stay testable without it.
-  const { manualSyncNudgeMs, recomputeTimelineVideoOffsets, totalRecordingOffsetMs } = await import('./riot-local-api')
   if (manualSyncNudgeMs(timeline) !== 0) return null  // the user already lined this recording up by hand
+  const nudgeBefore = manualSyncNudgeMs(timeline)
+  const recordingStartBefore = timeline.recordingStartTime
   const starts = observedRoundStarts((timeline.killEvents ?? []) as unknown as Array<Record<string, unknown>>)
   if (starts.size < 2) return null
   const current = totalRecordingOffsetMs(timeline)
   let est: OffsetEstimate | null = null
   try {
-    est = await measureRoundTimerOffset(videoPath, starts, current, readFrames, { decode })
+    est = await withBudget(measureRoundTimerOffset(videoPath, starts, current, readFrames, { decode }), budgetMs)
   } catch (err) {
     log.warn('[TimerSync] Could not read the recording:', err instanceof Error ? err.message : err)
+    return null
+  }
+  if (manualSyncNudgeMs(timeline) !== nudgeBefore || timeline.recordingStartTime !== recordingStartBefore) {
+    log.info('[TimerSync] Recording was nudged or trimmed during the scan; keeping it as the user left it')
     return null
   }
   if (!isTrustworthy(est)) {

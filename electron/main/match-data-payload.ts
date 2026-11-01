@@ -285,6 +285,8 @@ export function prepareMatchDataForUpload(
     recordingStartTime: timeline.recordingStartTime,
     recordingDurationMs: timeline.recordingDurationMs,
     videoSyncOffsetMs: effectiveVideoSyncOffsetMs(timeline),
+    // Measured from the round timer; lets anything that rebuilds offsets from match_data match the clips.
+    roundTimerOffsetMs: timeline.roundTimerOffsetMs,
     roundScores: timeline.roundScores,
     finalScore: timeline.finalScore ?? deriveMatchScore(timeline) ?? null,
     killEvents: timeline.killEvents,

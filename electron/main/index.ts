@@ -4165,19 +4165,6 @@ function setupGameDetection(): void {
       setPrepStep('dashboard_row', savedRecording.id)
       mainWindow?.webContents.send('recordings:updated')
 
-      // Valorant: measure where the game clock sits in this recording from the round timer, so clips
-      // and video reviews land on the right seconds (the loading-time guess was off by up to ~15 s).
-      // Runs in the background; clip cutting and the upload wait for it after preparation completes.
-      const timerSync: Promise<void> = game === 'valorant' && timeline && richMatchData
-        ? alignValorantTimelineByRoundTimer(timeline, readyPath, ffmpegFrameReader(ffmpegPath()), log)
-          .then((synced) => {
-            if (!synced) return
-            finalizeTimelineOffsetsForClips(timeline)
-            captureStore.updateTimeline(savedRecording.id, timeline)
-            mainWindow?.webContents.send('recordings:updated')
-          })
-          .catch((err) => { log.warn('[TimerSync] Skipped:', err) })
-        : Promise.resolve()
       logActivity(
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
       )
@@ -4228,13 +4215,23 @@ function setupGameDetection(): void {
         completePreparation(game)
       }
 
-      // Preparation is done; clips and the upload need the synced offsets.
-      await timerSync
-
       let coachingExtras: CoachingSubmissionExtras | undefined
+      // Valorant: once Riot's details are in (they can land after the recording is saved), measure where
+      // the game clock sits in this recording from the round timer, so clips, key moments and video
+      // review land on the right seconds (the loading-time guess was off by up to ~15 s).
+      const syncByRoundTimer = async () => {
+        if (game !== 'valorant' || !timeline) return
+        const synced = await alignValorantTimelineByRoundTimer(timeline, readyPath, ffmpegFrameReader(ffmpegPath()), log)
+          .catch((err) => { log.warn('[TimerSync] Skipped:', err); return null })
+        if (!synced) return
+        finalizeTimelineOffsetsForClips(timeline)
+        captureStore.updateTimeline(savedRecording.id, timeline)
+        mainWindow?.webContents.send('recordings:updated')
+      }
       const enrichPromise = prepareTimelineForCoaching(timeline, game, savedRecording.id, ownerId)
-        .then((result) => {
+        .then(async (result) => {
           coachingExtras = result.extras
+          await syncByRoundTimer()
           return result
         })
 
@@ -4403,8 +4400,12 @@ function setupGameDetection(): void {
       const jobId = null
       const needLateRetry = shouldScheduleLateClipRetry(game, timeline, matchId ?? timeline?.matchId ?? null)
 
-      finalizeTimelineOffsetsForClips(timeline)
-      extractMatchClips(readyPath, timeline, jobId, game)
+      // Valorant clips wait for enrichment, which includes the round-timer sync.
+      void (game === 'valorant' ? enrichPromise.catch(() => {}) : Promise.resolve())
+        .then(() => {
+          finalizeTimelineOffsetsForClips(timeline)
+          return extractMatchClips(readyPath, timeline, jobId, game)
+        })
         .then(() => syncScoutMomentsForJob(jobId, readyPath, timeline))
         .catch(err => log.warn('[ClipExtract] Background extraction error:', err))
 

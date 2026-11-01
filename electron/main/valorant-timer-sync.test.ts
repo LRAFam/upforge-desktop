@@ -120,6 +120,19 @@ describe('alignValorantTimelineByRoundTimer', () => {
     expect(nudged.roundTimerOffsetMs).toBeUndefined()
   })
 
+  it('discards the measurement when the user nudges or trims while it runs', async () => {
+    const { alignValorantTimelineByRoundTimer } = await import('./valorant-timer-sync')
+    const starts = new Map([[0, 40_000], [1, 150_000], [2, 260_000]])
+    const timeline = live([[0, 40_000], [1, 150_000], [2, 260_000]])
+    const recording = fakeRecording(-4875, starts)
+    const nudgingReader: FrameReader = async (...args) => {
+      timeline.videoSyncOffsetMs = -5000  // user nudges +3 s in VOD review mid-scan
+      return recording(...args)
+    }
+    expect(await alignValorantTimelineByRoundTimer(timeline, 'rec.mp4', nudgingReader, { info: vi.fn(), warn: vi.fn() }, decodeFake)).toBeNull()
+    expect(timeline.roundTimerOffsetMs).toBeUndefined()
+  })
+
   it('keeps the estimated offset when the timer cannot be read', async () => {
     const { alignValorantTimelineByRoundTimer } = await import('./valorant-timer-sync')
     const timeline = live([[0, 40_000], [1, 150_000]])
