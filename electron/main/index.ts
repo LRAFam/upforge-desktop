@@ -222,7 +222,7 @@ import {
   buildOrphanValorantTimeline,
   inspectOrphanRecordingTiming,
 } from './orphan-recording-recovery'
-import { ClipExtractor, ffmpegBinaryPath } from './clip-extractor'
+import { ClipExtractor, ffmpegPath } from './clip-extractor'
 import { alignValorantTimelineByRoundTimer, ffmpegFrameReader } from './valorant-timer-sync'
 import { ClipStore } from './clip-store'
 import { HotkeyManager } from './hotkey-manager'
@@ -2694,7 +2694,7 @@ function finalizeTimelineOffsetsForClips(timeline: MatchData | null): void {
 function lateClipRetryDeps(): LateClipRetryDeps {
   return {
     alignByRoundTimer: (timeline, videoPath) =>
-      alignValorantTimelineByRoundTimer(timeline, videoPath, ffmpegFrameReader(ffmpegBinaryPath()), log),
+      alignValorantTimelineByRoundTimer(timeline, videoPath, ffmpegFrameReader(ffmpegPath()), log),
     waitUntilAllowed: async () => {
       await obsRecorder.releaseStaleMatchOwnership()
       await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
@@ -4139,7 +4139,6 @@ function setupGameDetection(): void {
       const matchId = timeline?.matchId
       const richMatchData = hasRichMatchData(timeline)
 
-
       // Register on the dashboard immediately — before compression/upload can take minutes.
       setPrepStep('dashboard_row')
       finalizeTimelineOffsetsForClips(timeline)
@@ -4168,17 +4167,17 @@ function setupGameDetection(): void {
 
       // Valorant: measure where the game clock sits in this recording from the round timer, so clips
       // and video reviews land on the right seconds (the loading-time guess was off by up to ~15 s).
-      // Runs after the dashboard row so the row still appears immediately.
-      if (game === 'valorant' && timeline && richMatchData) {
-        setPrepStep('video_sync', savedRecording.id)
-        const synced = await alignValorantTimelineByRoundTimer(timeline, readyPath, ffmpegFrameReader(ffmpegBinaryPath()), log)
-          .catch((err) => { log.warn('[TimerSync] Skipped:', err); return null })
-        if (synced) {
-          finalizeTimelineOffsetsForClips(timeline)
-          captureStore.updateTimeline(savedRecording.id, timeline)
-          mainWindow?.webContents.send('recordings:updated')
-        }
-      }
+      // Runs in the background; clip cutting and the upload wait for it after preparation completes.
+      const timerSync: Promise<void> = game === 'valorant' && timeline && richMatchData
+        ? alignValorantTimelineByRoundTimer(timeline, readyPath, ffmpegFrameReader(ffmpegPath()), log)
+          .then((synced) => {
+            if (!synced) return
+            finalizeTimelineOffsetsForClips(timeline)
+            captureStore.updateTimeline(savedRecording.id, timeline)
+            mainWindow?.webContents.send('recordings:updated')
+          })
+          .catch((err) => { log.warn('[TimerSync] Skipped:', err) })
+        : Promise.resolve()
       logActivity(
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
       )
@@ -4228,6 +4227,9 @@ function setupGameDetection(): void {
       } else {
         completePreparation(game)
       }
+
+      // Preparation is done; clips and the upload need the synced offsets.
+      await timerSync
 
       let coachingExtras: CoachingSubmissionExtras | undefined
       const enrichPromise = prepareTimelineForCoaching(timeline, game, savedRecording.id, ownerId)

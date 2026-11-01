@@ -15,7 +15,7 @@ import templatesJson from './valorant-timer-templates.json'
 import { observedRoundStarts } from './riot-event-time'
 import type { MatchData } from './riot-types'
 
-/** Timer digits as a fraction of a 16:9 frame: x0, y0, x1, y1. */
+/** Timer digits as fractions of a 16:9 frame: left x, top y, width w, height h. */
 export const TIMER_CROP = { x: 0.465, y: 0.012, w: 0.07, h: 0.04 }
 /** Crops are scaled to this size before reading, so any recording resolution reads the same. */
 export const CROP_W = 160
@@ -37,9 +37,17 @@ export function whiteness(rgb: Uint8Array, w: number, h: number): Uint8Array {
   return out
 }
 
+/** p-th percentile of 0-255 values via a histogram (no copy or sort per frame). */
 function percentile(values: Uint8Array, p: number): number {
-  const sorted = Array.from(values).sort((a, b) => a - b)
-  return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * (sorted.length - 1)))]!
+  const hist = new Uint32Array(256)
+  for (let i = 0; i < values.length; i++) hist[values[i]!]!++
+  const target = Math.floor((p / 100) * (values.length - 1))
+  let seen = 0
+  for (let v = 0; v < 256; v++) {
+    seen += hist[v]!
+    if (seen > target) return v
+  }
+  return 255
 }
 
 /** Bright strokes -> column runs -> glyphs normalised to GW x GH (colon and noise dropped). */
@@ -122,10 +130,16 @@ export function findTicks(values: Array<number | null>): TimerTick[] {
 
 export interface OffsetEstimate {
   offsetMs: number
+  /** Samples in the agreeing group. */
   samples: number
   rounds: number
   spreadMs: number
+  /** Samples outside the agreeing group (misreads). */
+  outliers: number
 }
+
+/** Samples within this many ms of each other count as agreeing. */
+const CLUSTER_MS = 400
 
 /**
  * Recording offset (ms from recording start to game-clock zero) from ticks.
@@ -136,39 +150,55 @@ export function estimateOffset(
   roundStartGameMs: Map<number, number>,
 ): OffsetEstimate | null {
   const offsets: number[] = []
-  const rounds = new Set<number>()
+  const roundOf: number[] = []
   for (const s of samples) {
     const start = roundStartGameMs.get(s.round)
     if (start == null) continue
     offsets.push(s.videoMs - (start + (ROUND_SECONDS - s.shown) * 1000))
-    rounds.add(s.round)
+    roundOf.push(s.round)
   }
   if (offsets.length === 0) return null
-  const sorted = [...offsets].sort((a, b) => a - b)
-  const median = sorted[Math.floor(sorted.length / 2)]!
-  const deviations = offsets.map(o => Math.abs(o - median)).sort((a, b) => a - b)
-  return { offsetMs: Math.round(median), samples: offsets.length, rounds: rounds.size, spreadMs: Math.round(deviations[Math.floor(deviations.length / 2)]!) }
+  // Largest group of agreeing samples: a misread or a buy-phase value lands far away and is ignored.
+  const sorted = offsets.map((o, i) => [o, roundOf[i]!] as const).sort((a, b) => a[0] - b[0])
+  let best: Array<readonly [number, number]> = []
+  for (let i = 0, j = 0; i < sorted.length; i++) {
+    while (sorted[i]![0] - sorted[j]![0] > CLUSTER_MS) j++
+    if (i - j + 1 > best.length) best = sorted.slice(j, i + 1)
+  }
+  const values = best.map(([o]) => o)
+  const median = values[Math.floor(values.length / 2)]!
+  const deviations = values.map(o => Math.abs(o - median)).sort((a, b) => a - b)
+  return {
+    offsetMs: Math.round(median), samples: values.length, rounds: new Set(best.map(([, r]) => r)).size,
+    spreadMs: Math.round(deviations[Math.floor(deviations.length / 2)]!), outliers: offsets.length - values.length,
+  }
 }
 
 /** Trust the estimate only when several ticks from more than one round agree closely. */
 export function isTrustworthy(e: OffsetEstimate | null): e is OffsetEstimate {
-  return !!e && e.samples >= 6 && e.rounds >= 2 && e.spreadMs <= 150
+  return !!e && e.samples >= 6 && e.rounds >= 2 && e.spreadMs <= 150 && e.samples >= 2 * e.outliers
 }
 
 export type FrameReader = (videoPath: string, startSec: number, durationSec: number) => Promise<Uint8Array[]>
 
 /** ffmpeg -> timer crops (RGB) at SCAN_FPS, scaled to CROP_W x CROP_H. */
-export function ffmpegFrameReader(ffmpegBin: string): FrameReader {
+export function ffmpegFrameReader(ffmpegBin: string, timeoutMs = 60_000): FrameReader {
   return (videoPath, startSec, durationSec) => new Promise((resolve, reject) => {
     const c = TIMER_CROP
     const vf = `fps=${SCAN_FPS},crop=iw*${c.w}:ih*${c.h}:iw*${c.x}:ih*${c.y},scale=${CROP_W}:${CROP_H}`
     const proc = spawn(ffmpegBin, ['-v', 'error', '-ss', startSec.toFixed(3), '-t', durationSec.toFixed(3), '-i', videoPath,
       '-vf', vf, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { stdio: ['ignore', 'pipe', 'pipe'] })
     const chunks: Buffer[] = []
+    let stderr = ''
     proc.stdout.on('data', (c: Buffer) => chunks.push(c))
-    proc.on('error', reject)
-    proc.on('close', (code) => {
-      if (code !== 0) return reject(new Error(`ffmpeg exited ${code}`))
+    // Always drain stderr: a full pipe would block ffmpeg on a damaged file.
+    proc.stderr.on('data', (c: Buffer) => { stderr = (stderr + c.toString()).slice(-2000) })
+    const timer = setTimeout(() => proc.kill('SIGKILL'), timeoutMs)
+    proc.on('error', (err) => { clearTimeout(timer); reject(err) })
+    proc.on('close', (code, signal) => {
+      clearTimeout(timer)
+      if (signal === 'SIGKILL') return reject(new Error(`ffmpeg timed out after ${timeoutMs} ms`))
+      if (code !== 0) return reject(new Error(`ffmpeg exited ${code}: ${stderr.trim().split('\n').slice(-3).join(' | ')}`))
       const all = Buffer.concat(chunks)
       const size = CROP_W * CROP_H * 3
       const frames: Uint8Array[] = []
@@ -207,9 +237,10 @@ export async function measureRoundTimerOffset(
 }
 
 /**
- * Align a Valorant recording's timeline to its video. Sets videoSyncOffsetMs so every later offset
- * (clips, uploads, video review) uses the measured value. Skips timelines already synced or nudged
- * by hand, and leaves the timeline untouched unless the measurement is consistent.
+ * Align a Valorant recording's timeline to its video. Stores the measured offset as
+ * roundTimerOffsetMs, which totalRecordingOffsetMs prefers, so clips, uploads and video review all
+ * use it. Skips timelines already measured or nudged by hand, and changes nothing unless the
+ * measurement is consistent.
  */
 export async function alignValorantTimelineByRoundTimer(
   timeline: MatchData,
@@ -218,9 +249,10 @@ export async function alignValorantTimelineByRoundTimer(
   log: { info: (...a: unknown[]) => void; warn: (...a: unknown[]) => void } = console,
   decode?: (frame: Uint8Array) => number | null,
 ): Promise<OffsetEstimate | null> {
-  if (timeline.videoSyncOffsetMs != null) return null
+  if (timeline.roundTimerOffsetMs != null) return null
   // Loaded lazily: riot-local-api pulls in Electron, and the helpers above must stay testable without it.
-  const { nudgeTimelineSyncOffset, totalRecordingOffsetMs } = await import('./riot-local-api')
+  const { manualSyncNudgeMs, recomputeTimelineVideoOffsets, totalRecordingOffsetMs } = await import('./riot-local-api')
+  if (manualSyncNudgeMs(timeline) !== 0) return null  // the user already lined this recording up by hand
   const starts = observedRoundStarts((timeline.killEvents ?? []) as unknown as Array<Record<string, unknown>>)
   if (starts.size < 2) return null
   const current = totalRecordingOffsetMs(timeline)
@@ -235,8 +267,8 @@ export async function alignValorantTimelineByRoundTimer(
     log.info('[TimerSync] Not enough consistent timer ticks; keeping the estimated offset', est)
     return null
   }
-  nudgeTimelineSyncOffset(timeline, est.offsetMs - current)
-  timeline.videoSyncSource = 'round_timer'
+  timeline.roundTimerOffsetMs = est.offsetMs
+  recomputeTimelineVideoOffsets(timeline)
   log.info(`[TimerSync] Offset ${current} -> ${est.offsetMs} ms from ${est.samples} timer ticks in ${est.rounds} rounds (spread ${est.spreadMs} ms)`)
   return est
 }

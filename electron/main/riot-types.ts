@@ -349,8 +349,11 @@ export interface MatchData {
    * Persisted so VOD review and uploads stay aligned after manual sync nudges.
    */
   videoSyncOffsetMs?: number
-  /** Set when videoSyncOffsetMs was measured from the in-game round timer. */
-  videoSyncSource?: 'round_timer'
+  /**
+   * Recording offset measured from the in-game round timer (ms from recording start to game-clock
+   * zero). When set it replaces the loading-time estimate; manual sync nudges still apply on top.
+   */
+  roundTimerOffsetMs?: number
 
   // Round score progression from presence polling
   roundScores: RoundScore[]

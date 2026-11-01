@@ -5,11 +5,12 @@ import {
   type FrameReader,
 } from './valorant-timer-sync'
 
+// Mirrors riot-local-api: live Valorant timelines start with the default sync offset (-8000) already set.
 vi.mock('./riot-local-api', () => ({
-  totalRecordingOffsetMs: (t: { videoSyncOffsetMs?: number }) => -8000 + (t.videoSyncOffsetMs ?? 0),
-  nudgeTimelineSyncOffset: (t: { videoSyncOffsetMs?: number }, delta: number) => {
-    t.videoSyncOffsetMs = (t.videoSyncOffsetMs ?? 0) + delta
-  },
+  manualSyncNudgeMs: (t: { videoSyncOffsetMs?: number }) => (t.videoSyncOffsetMs ?? -8000) - -8000,
+  totalRecordingOffsetMs: (t: { videoSyncOffsetMs?: number; roundTimerOffsetMs?: number }) =>
+    t.roundTimerOffsetMs != null ? t.roundTimerOffsetMs : (t.videoSyncOffsetMs ?? -8000),
+  recomputeTimelineVideoOffsets: vi.fn(),
 }))
 
 const crop = (i: number) => Uint8Array.from(Buffer.from(fixture.frames[i]!, 'base64'))
@@ -43,13 +44,23 @@ describe('estimateOffset', () => {
   it('turns ticks into the recording offset', () => {
     // Round 1 starts at game 30 s; the tick to 1:35 (5 s in) is seen 21 s into the recording -> offset -14 s.
     const e = estimateOffset([{ round: 1, videoMs: 21_000, shown: 95 }, { round: 2, videoMs: 131_000, shown: 95 }], starts)
-    expect(e).toEqual({ offsetMs: -14_000, samples: 2, rounds: 2, spreadMs: 0 })
+    expect(e).toEqual({ offsetMs: -14_000, samples: 2, rounds: 2, spreadMs: 0, outliers: 0 })
+  })
+
+  it('ignores misreads and buy-phase values far from the agreeing group', () => {
+    const good = [1, 1, 1, 2, 2, 2].map((round, i) => ({ round, videoMs: (round === 1 ? 21_000 : 131_000) + i * 3, shown: 95 }))
+    const misread = { round: 1, videoMs: 21_000, shown: 32 }  // e.g. 0:32 read in a long buy phase
+    const e = estimateOffset([...good, misread], starts)
+    expect(Math.abs(e!.offsetMs - -14_000)).toBeLessThan(20)
+    expect(e!.outliers).toBe(1)
+    expect(isTrustworthy(e)).toBe(true)
   })
 
   it('trusts only several agreeing ticks from more than one round', () => {
-    expect(isTrustworthy({ offsetMs: 0, samples: 10, rounds: 1, spreadMs: 0 })).toBe(false)
-    expect(isTrustworthy({ offsetMs: 0, samples: 10, rounds: 2, spreadMs: 400 })).toBe(false)
-    expect(isTrustworthy({ offsetMs: 0, samples: 10, rounds: 2, spreadMs: 20 })).toBe(true)
+    expect(isTrustworthy({ offsetMs: 0, samples: 10, rounds: 1, spreadMs: 0, outliers: 0 })).toBe(false)
+    expect(isTrustworthy({ offsetMs: 0, samples: 10, rounds: 2, spreadMs: 400, outliers: 0 })).toBe(false)
+    expect(isTrustworthy({ offsetMs: 0, samples: 10, rounds: 2, spreadMs: 20, outliers: 8 })).toBe(false)
+    expect(isTrustworthy({ offsetMs: 0, samples: 10, rounds: 2, spreadMs: 20, outliers: 0 })).toBe(true)
   })
 })
 
@@ -82,30 +93,37 @@ describe('alignValorantTimelineByRoundTimer', () => {
     round, timeSinceGameStartMillis: start + 20_000, timeSinceRoundStartMillis: 20_000,
   }))
 
-  it('stores the measured offset as the sync offset', async () => {
+  type Timeline = import('./riot-types').MatchData
+  // A live timeline as riot-local-api creates it: the default sync offset is already set.
+  const live = (rounds: Array<[number, number]>, extra: Partial<Timeline> = {}) =>
+    ({ killEvents: kills(rounds), videoSyncOffsetMs: -8000, ...extra }) as never as Timeline
+
+  it('measures a live timeline that only has the default sync offset', async () => {
     const { alignValorantTimelineByRoundTimer } = await import('./valorant-timer-sync')
     const starts = new Map([[0, 40_000], [1, 150_000], [2, 260_000]])
-    const timeline = { killEvents: kills([[0, 40_000], [1, 150_000], [2, 260_000]]) } as never as import('./riot-types').MatchData
-    const log = { info: vi.fn(), warn: vi.fn() }
-    const est = await alignValorantTimelineByRoundTimer(timeline, 'rec.mp4', fakeRecording(-4875, starts), log, decodeFake)
+    const timeline = live([[0, 40_000], [1, 150_000], [2, 260_000]])
+    const est = await alignValorantTimelineByRoundTimer(timeline, 'rec.mp4', fakeRecording(-4875, starts), { info: vi.fn(), warn: vi.fn() }, decodeFake)
     expect(est).not.toBeNull()
-    // mocked total = -8000 + videoSyncOffsetMs
-    expect(Math.abs(-8000 + timeline.videoSyncOffsetMs! - -4875)).toBeLessThanOrEqual(250)
-    expect(timeline.videoSyncSource).toBe('round_timer')
+    expect(Math.abs(timeline.roundTimerOffsetMs! - -4875)).toBeLessThanOrEqual(250)
+    expect(timeline.videoSyncOffsetMs).toBe(-8000)  // the manual-nudge channel is untouched
   })
 
-  it('leaves a timeline alone when it was already synced or nudged by hand', async () => {
+  it('leaves a recording alone when it was already measured or nudged by hand', async () => {
     const { alignValorantTimelineByRoundTimer } = await import('./valorant-timer-sync')
-    const timeline = { killEvents: kills([[0, 40_000], [1, 150_000]]), videoSyncOffsetMs: 1200 } as never as import('./riot-types').MatchData
-    expect(await alignValorantTimelineByRoundTimer(timeline, 'rec.mp4', fakeRecording(0, new Map()), undefined, decodeFake)).toBeNull()
-    expect(timeline.videoSyncOffsetMs).toBe(1200)
+    const read = vi.fn(fakeRecording(0, new Map()))
+    const measured = live([[0, 40_000], [1, 150_000]], { roundTimerOffsetMs: -9000 })
+    const nudged = live([[0, 40_000], [1, 150_000]], { videoSyncOffsetMs: -6800 })
+    expect(await alignValorantTimelineByRoundTimer(measured, 'rec.mp4', read, undefined, decodeFake)).toBeNull()
+    expect(await alignValorantTimelineByRoundTimer(nudged, 'rec.mp4', read, undefined, decodeFake)).toBeNull()
+    expect(read).not.toHaveBeenCalled()
+    expect(measured.roundTimerOffsetMs).toBe(-9000)
+    expect(nudged.roundTimerOffsetMs).toBeUndefined()
   })
 
-  it('keeps the old offset when the timer cannot be read', async () => {
+  it('keeps the estimated offset when the timer cannot be read', async () => {
     const { alignValorantTimelineByRoundTimer } = await import('./valorant-timer-sync')
-    const timeline = { killEvents: kills([[0, 40_000], [1, 150_000]]) } as never as import('./riot-types').MatchData
-    const log = { info: vi.fn(), warn: vi.fn() }
-    expect(await alignValorantTimelineByRoundTimer(timeline, 'rec.mp4', async () => [], log, decodeFake)).toBeNull()
-    expect(timeline.videoSyncOffsetMs).toBeUndefined()
+    const timeline = live([[0, 40_000], [1, 150_000]])
+    expect(await alignValorantTimelineByRoundTimer(timeline, 'rec.mp4', async () => [], { info: vi.fn(), warn: vi.fn() }, decodeFake)).toBeNull()
+    expect(timeline.roundTimerOffsetMs).toBeUndefined()
   })
 })
