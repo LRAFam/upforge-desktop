@@ -4,6 +4,7 @@ export type SettingsSectionId =
   | 'obs'
   | 'storage'
   | 'discord'
+  | 'discord-link'
   | 'developer'
   | 'capture'
   | 'usage'
@@ -21,6 +22,7 @@ const SECTION_IDS: ReadonlySet<string> = new Set([
   'obs',
   'storage',
   'discord',
+  'discord-link',
   'developer',
   'capture',
   'usage',
@@ -77,7 +79,7 @@ export const SETTINGS_CATEGORY_META: ReadonlyArray<{
   {
     id: 'app',
     label: 'App',
-    purpose: 'Primary game, startup, and automation',
+    purpose: 'Startup, automation, and privacy',
     icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.5 6h9m-9 6h9m-9 6h9M4.5 6h.008v.008H4.5V6zm0 6h.008v.008H4.5V12zm0 6h.008v.008H4.5V18z"/>',
   },
   {

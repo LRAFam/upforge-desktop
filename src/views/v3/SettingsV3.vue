@@ -48,8 +48,7 @@ const status = computed(() => settingsStatusLine({
       <div class="uf-settings-pad">
         <header class="uf-settings-head uf-rise">
           <div class="uf-settings-titles">
-            <span class="uf-label">Settings</span>
-            <h1 class="uf-d2">{{ activeMeta.label }}</h1>
+            <h1 class="uf-d2">Settings</h1>
             <p class="uf-t2">{{ activeMeta.purpose }}</p>
           </div>
           <dl class="uf-settings-status" aria-label="Status">

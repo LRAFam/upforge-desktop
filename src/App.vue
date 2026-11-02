@@ -22,9 +22,10 @@
       :is-mac="isMac"
       :show-window-controls="desktopApiAvailable"
       :recording="status.recording"
-      :obs-connected="showObsStatusChip || status.recording ? obsConnected : null"
+      :obs-connected="v3TitleBarObs"
       :obs-title="obsStatusChipTitle"
-      :identity="titleBarIdentity"
+      :identity="v3AccountLabel"
+      :avatar="v3AccountIdentity"
       @minimize="minimizeWindow()"
       @close="closeWindow()"
       @account="router.push({ path: '/settings', query: { tab: 'account' } })"
@@ -255,8 +256,16 @@
       @upgrade="openRiotLinkUpgrade"
     />
 
-    <!-- Dev toolbar (dev mode only, always visible) -->
-    <div v-if="!isPostGameRoute && isDev && route.path !== '/login'" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
+    <!-- Dev toolbar (dev builds only: isDev = electron-toolkit is.dev, false when packaged) -->
+    <div v-if="uiV3 && !isPostGameRoute && isDev && route.path !== '/login'" class="uf-devbar" aria-label="Developer tools">
+      <span class="uf-devbar-tag">Dev</span>
+      <button type="button" class="uf-link" @click="simulateGame">Simulate Valorant</button>
+      <button type="button" class="uf-link" @click="openPostGame">Post-game UI</button>
+      <button type="button" class="uf-link" @click="router.push('/dev/coach-flow')">Replay a real match</button>
+      <button type="button" class="uf-link" @click="previewOnboarding">Onboarding</button>
+      <span v-if="simStatus" class="uf-t4">{{ simStatus }}</span>
+    </div>
+    <div v-else-if="!isPostGameRoute && isDev && route.path !== '/login'" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
       <span class="text-[10px] text-yellow-500/60 font-mono uppercase tracking-wider">Dev</span>
       <button
         class="px-2 py-0.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded border border-yellow-500/20 transition-colors"
@@ -286,7 +295,7 @@ import { uiV3 } from './lib/ui-v3'
 import { openWebFeature } from './lib/web-explore-links'
 import { deepLinkRoute } from './lib/deep-link-route'
 import { setCacheScope } from './lib/stale-cache'
-import { updateBannerLine } from './lib/shell-v3'
+import { titleBarAccountLabel, titleBarObsConnected, updateBannerLine, v3AllowedRoutes } from './lib/shell-v3'
 import { openUpgrade as startUpgrade } from './lib/upgrade'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -300,7 +309,8 @@ import { accountLinkSettingsPath } from './lib/account-link-navigation'
 import { getDesktopApi, hasDesktopApi } from './lib/desktop-api'
 import { resolveUnauthenticatedRoute } from './lib/onboarding-gate'
 import { isPostGameWindowRoute, shouldInitializeFullAppShell } from './lib/window-work-policy'
-import type { ClipRecord, ProfileData } from './env.d.ts'
+import type { ClipRecord, ProfileData, ValorantStats } from './env.d.ts'
+import { playerIdentity } from './lib/player-identity'
 
 const route = useRoute()
 const router = useRouter()
@@ -326,7 +336,12 @@ let versionCopiedTimer: ReturnType<typeof setTimeout> | null = null
 const simStatus = ref('')
 const riotId = ref<string | null>(null)
 const userName = ref<string | null>(null)
+// UI v3 title bar: in-game identity for CS2 (Steam name) and League (main Riot ID).
+const cs2SteamName = ref<string | null>(null)
+const lolRiotId = ref<string | null>(null)
 const userAvatarUrl = ref('')
+/** Latest Valorant snapshot for the title-bar avatar (player card, rank badge). */
+const userValorantStats = ref<ValorantStats | null>(null)
 const clipCount = ref(0)
 const clipCountAvailable = ref(false)
 const hasClipIndicator = ref(false)
@@ -453,7 +468,7 @@ const showTitleBar = computed(() =>
 
 const isPostGameRoute = computed(() => isPostGameWindowRoute(route.path))
 const isFullHeightView = computed(() =>
-  ['/vod-review', '/dashboard', '/training', '/history', '/clips', '/stats', '/squad', '/performance', '/settings', '/rosters', '/login', '/dev'].includes(route.path),
+  ['/vod-review', '/dashboard', '/training', '/history', '/clips', '/stats', '/squad', '/performance', '/settings', '/rosters', '/students', '/login', '/dev'].includes(route.path),
 )
 
 const showNav = computed(() =>
@@ -484,6 +499,41 @@ const titleBarIdentity = computed(() => {
   if (!isValorant.value && userName.value) return `${userName.value} · ${primaryGame.value.toUpperCase()}`
   return riotId.value
 })
+
+// UI v3: one label format for every game (in-game identity when linked, else the UpForge username).
+const v3AccountLabel = computed(() => titleBarAccountLabel(primaryGame.value, {
+  riotId: riotId.value, lolRiotId: lolRiotId.value, cs2SteamName: cs2SteamName.value, userName: userName.value,
+}))
+// Player card + rank badge on Valorant; other games have no stored profile art yet, so the letter.
+const v3AccountIdentity = computed(() => {
+  const s = primaryGame.value === 'valorant' ? userValorantStats.value : null
+  return playerIdentity({
+    game: primaryGame.value, name: v3AccountLabel.value || userName.value,
+    playerCardId: s?.player_card_id, agent: s?.most_played_agent, rank: s?.current_rank,
+  })
+})
+// UI v3: the OBS banner (with its actions) and the title-bar status never say the same thing twice.
+const v3TitleBarObs = computed(() => titleBarObsConnected({
+  recording: status.value.recording,
+  obsConnected: obsConnected.value,
+  showChip: showObsStatusChip.value,
+  bannerShown: showObsBanner.value,
+}))
+
+/** Read-only: refresh the current game's in-game identity for the v3 title bar. */
+async function loadGameIdentity(): Promise<void> {
+  if (!uiV3.value) return
+  try {
+    if (primaryGame.value === 'cs2') {
+      const s = await window.api.settings.get() as { cs2SteamName?: string } | null
+      cs2SteamName.value = s?.cs2SteamName?.trim() || null
+    } else if (primaryGame.value === 'lol') {
+      const res = await window.api.lol.listAccounts()
+      const main = res?.ok ? (res.accounts.find(a => a.is_main) ?? res.accounts[0]) : null
+      lolRiotId.value = main ? `${main.riot_name}#${main.riot_tag}` : null
+    }
+  } catch { /* keep the last known label */ }
+}
 
 const busyActive = computed(() =>
   isNavigating.value || ['checking', 'downloading', 'installing'].includes(appUpdatePhase.value)
@@ -516,6 +566,7 @@ async function loadUserProfile() {
   try {
     const profile = await window.api.profile.get() as ProfileData | null
     userName.value = profile?.user?.name ?? userName.value
+    userValorantStats.value = profile?.latest_stats ?? null
     if (profile?.latest_stats?.player_card_id) {
       userAvatarUrl.value = `https://media.valorant-api.com/playercards/${profile.latest_stats.player_card_id}/smallart.png`
       return
@@ -543,7 +594,10 @@ async function applySessionUser(userId: number | null) {
   if (userId == null) {
     riotId.value = null
     userName.value = null
+    cs2SteamName.value = null
+    lolRiotId.value = null
     userAvatarUrl.value = ''
+    userValorantStats.value = null
     isAdmin.value = false
     clipCount.value = 0
     clipCountAvailable.value = false
@@ -562,7 +616,7 @@ async function applySessionUser(userId: number | null) {
   } catch {
     // ignore
   }
-  await Promise.all([loadClipSummary(), loadUserProfile()])
+  await Promise.all([loadClipSummary(), loadUserProfile(), loadGameIdentity()])
 }
 
 router.beforeEach((to, from, next) => {
@@ -589,9 +643,10 @@ router.afterEach((to) => {
 })
 
 watch(primaryGame, () => {
+  void loadGameIdentity()
   if (!showNav.value) return
-  // UI v3 keeps Progress for every game (per-game stats). Squad stays Valorant-only as shipped; Coaches (/rosters) is in every game's nav.
-  const allowed: readonly string[] = uiV3.value ? [...gameNavRoutes(primaryGame.value), '/stats'] : gameNavRoutes(primaryGame.value)
+  // UI v3 keeps the nav stable across games: Progress, Practice and Squad (members) stay for every game; Coaches (/rosters) too.
+  const allowed: readonly string[] = uiV3.value ? v3AllowedRoutes(gameNavRoutes(primaryGame.value)) : gameNavRoutes(primaryGame.value)
   if (!allowed.includes(route.path)) {
     router.push('/dashboard').catch(() => {})
   }
@@ -625,6 +680,7 @@ onMounted(async () => {
   } catch { /* ignore */ }
 
   await Promise.all([loadClipSummary(), loadUserProfile(), loadFromSettings()])
+  void loadGameIdentity()
   const initialUserId = (status.value as { user?: { id?: number } }).user?.id
   sessionUserKey.value = initialUserId != null ? `user-${initialUserId}` : 'guest'
   setCacheScope(initialUserId ?? null)
@@ -687,9 +743,10 @@ onMounted(async () => {
 
   // React to settings changes (e.g. dev mode toggled in Settings)
   const settingsCleanup = api.on('settings:changed', (...args: unknown[]) => {
-    const s = args[0] as { devModeEnabled?: boolean; primaryGame?: string; trainerMouse?: { game?: string } } | undefined
+    const s = args[0] as { devModeEnabled?: boolean; primaryGame?: string; trainerMouse?: { game?: string }; cs2SteamName?: string } | undefined
     if (!s) return
     if (typeof s.devModeEnabled === 'boolean') devModeEnabled.value = s.devModeEnabled
+    if (typeof s.cs2SteamName === 'string') cs2SteamName.value = s.cs2SteamName.trim() || null
     applyFromSettings(s)
   })
   ;(window as Window & { _settingsCleanup?: () => void })._settingsCleanup = settingsCleanup

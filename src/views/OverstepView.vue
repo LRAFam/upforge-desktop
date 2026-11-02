@@ -41,8 +41,7 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
   <main v-if="uiV3" class="uf-os">
     <header class="uf-os-head uf-rise">
       <div class="uf-os-col">
-        <span class="uf-label">Local playtest · Overstep</span>
-        <h1 class="uf-d2" style="margin: 0">Overstep integration</h1>
+        <h1 class="uf-d2" style="margin: 0">Overstep</h1>
         <p class="uf-t2">Choose which modes to record. Match and weapon stats are collected for every connected match.</p>
       </div>
       <UfButton :variant="status.enabled ? 'secondary' : 'primary'" :disabled="busy" @click="toggle">{{ busy ? 'Updating…' : status.enabled ? 'Disable integration' : 'Enable integration' }}</UfButton>
@@ -50,16 +49,23 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
     <p class="uf-t4">Windows: set up OBS in UpForge, enable the integration, then start a new Overstep match. Your integration and mode settings are saved. Files stay on this computer.</p>
     <fieldset class="uf-os-modes">
       <legend class="uf-label">Record video for</legend>
-      <label class="uf-t3"><input v-model="policy.recordedModes" type="checkbox" value="circuit" @change="savePolicy" /> Circuit</label>
-      <label class="uf-t3"><input v-model="policy.recordedModes" type="checkbox" value="crosscurrent" @change="savePolicy" /> Crosscurrent</label>
+      <div class="uf-os-checks">
+        <label class="uf-t3"><input v-model="policy.recordedModes" type="checkbox" class="uf-check" value="circuit" @change="savePolicy" /> Circuit</label>
+        <label class="uf-t3"><input v-model="policy.recordedModes" type="checkbox" class="uf-check" value="crosscurrent" @change="savePolicy" /> Crosscurrent</label>
+      </div>
       <span class="uf-t4">Changes apply to the next match. Unchecked modes still collect match stats.</span>
     </fieldset>
     <p v-if="status.enabled" role="status" class="uf-t4 uf-os-ok"><span class="uf-os-dot" :class="status.sessions.some(s => ['starting', 'recording', 'finalizing'].includes(s.state)) ? 'uf-live' : ''" />Ready for native Overstep match events. {{ status.sessions.some(s => ['starting', 'recording', 'finalizing'].includes(s.state)) ? 'A capture is in progress.' : 'Start a new match in the game.' }}</p>
     <p v-if="error || status.error" role="alert" class="uf-t4 uf-os-bad">{{ error || status.error }}</p>
-    <div class="uf-os-layout">
+    <!-- No matches yet: one plain empty state instead of an empty list beside an empty review column -->
+    <section v-if="!status.sessions.length" class="uf-os-empty" aria-label="Recorded matches">
+      <span class="uf-label">Matches</span>
+      <p class="uf-t3">No Overstep matches yet</p>
+      <p class="uf-t4">Keep UpForge open and start a match. It appears here when Overstep connects, with a timeline you can click to review what happened.</p>
+    </section>
+    <div v-else class="uf-os-layout">
       <aside class="uf-os-list" aria-label="Recorded matches">
         <span class="uf-label">Matches</span>
-        <p v-if="!status.sessions.length" class="uf-t4">Your first match will appear here when Overstep connects.</p>
         <button v-for="s in status.sessions" :key="s.manifest.matchId" type="button" class="uf-os-match" :aria-pressed="selected === s.manifest.matchId" @click="selected = s.manifest.matchId; currentTime = 0">
           <span class="uf-t3">{{ s.manifest.map }} · {{ s.manifest.mode }}</span>
           <span class="uf-t4">{{ new Date(s.manifest.startedAtMs).toLocaleString() }}</span>
@@ -83,7 +89,7 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
         <ol class="uf-os-timeline"><li v-for="m in markers" :key="m.event.seq"><button type="button" :disabled="m.ms === null || !session.videoUrl" :class="{ current: m.event.seq === activeEvent }" @click="seek(m.ms)"><time class="uf-t3 uf-num">{{ clock(m.event.elapsedMs) }}</time><span class="uf-t3">Round {{ m.event.round }} · {{ eventLabel(m.event) }}</span><small class="uf-t4">{{ m.ms === null ? 'Outside verified video' : 'Play moment' }}</small></button></li></ol>
         <p class="uf-t4 uf-os-scope">Native match facts only. Cloud upload and automated Overstep coaching are not enabled.</p>
       </section>
-      <section v-else class="uf-os-col uf-os-empty"><p class="uf-t3">Review the moments that matter</p><p class="uf-t4">Keep UpForge open during your match. Completed recordings include a timeline you can click to review what happened.</p></section>
+      <section v-else class="uf-os-col"><p class="uf-t4">Pick a match on the left to review it.</p></section>
     </div>
   </main>
   <template v-else>
@@ -127,10 +133,10 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 .uf-os-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
 .uf-os-head > button { flex: none; white-space: nowrap; }
 .uf-os-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.uf-os-modes { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 24px; border: 0; border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); padding: 14px 0; margin: 0; }
-.uf-os-modes legend { float: left; margin-right: 8px; padding: 0; }
-.uf-os-modes label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
-.uf-os-modes input { accent-color: var(--uf-red); width: 16px; height: 16px; }
+.uf-os-modes { display: flex; flex-direction: column; gap: 10px; border: 0; border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); padding: 14px 0; margin: 0; min-width: 0; }
+.uf-os-modes legend { float: left; width: 100%; padding: 0 0 10px; }
+.uf-os-checks { display: flex; flex-wrap: wrap; gap: 10px 28px; }
+.uf-os-modes label { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
 .uf-os-ok { display: flex; align-items: center; gap: 8px; color: var(--uf-muted); }
 .uf-os-dot { width: 6px; height: 6px; background: var(--uf-win); flex: none; }
 .uf-os-bad { color: var(--uf-loss); }
@@ -154,6 +160,6 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 .uf-os-timeline time { min-width: 48px; color: var(--uf-muted); }
 .uf-os-timeline small { margin-left: auto; }
 .uf-os-scope { padding-top: 14px; border-top: 1px solid var(--uf-line); }
-.uf-os-empty { padding: 40px 0; }
+.uf-os-empty { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; max-width: 560px; }
 @media (max-width: 850px) { .uf-os-layout { grid-template-columns: 1fr; } .uf-os-list { border-right: 0; padding-right: 0; border-bottom: 1px solid var(--uf-line); padding-bottom: 14px; } }
 </style>

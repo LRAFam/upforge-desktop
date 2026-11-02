@@ -4,17 +4,21 @@
  * Pure view: SquadView keeps all data loading, polling and presence;
  * this renders it to the rulebook (docs/design/ui-v3.md · board 24).
  */
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import UfButton from '../../components/v3/UfButton.vue'
+import EmptyArt from '../../components/v3/empty/EmptyArt.vue'
 import UfIcon from '../../components/v3/UfIcon.vue'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import UfStatRow from '../../components/v3/UfStatRow.vue'
-import { gameMixLabel, initial, pctLabel, presenceLabel, presenceTone } from '../../components/v3/squad/squad-format'
+import { gameMixLabel, pctLabel, presenceLabel, presenceTone, SQUAD_ACTIVITY_PREVIEW, weekCountLabel } from '../../components/v3/squad/squad-format'
 import type { SquadActivityItem } from '../../components/squad/SquadActivityCards.vue'
 import type { SquadLineupMember, SquadPresenceEntry } from '../../components/squad/SquadLineupRow.vue'
 import type { SquadMemberStat } from '../../components/squad/SquadMemberPanel.vue'
-import { squadGameMixCounts, squadPlanBadgeLabel, squadTimeAgo, type SquadCompareRow } from '../../lib/squad-ui'
-import { formatMapLabel } from '../../lib/valorant'
+import { inferActivityGame, squadGameMixCounts, squadPlanBadgeLabel, squadTimeAgo, type SquadCompareRow } from '../../lib/squad-ui'
+import { formatMapLabel, getAgentImage, getMapListViewImage } from '../../lib/valorant'
+import { playerIdentity } from '../../lib/player-identity'
+import PlayerAvatar from '../../components/v3/identity/PlayerAvatar.vue'
+import RankIcon from '../../components/v3/identity/RankIcon.vue'
 import { plural } from '../../lib/plural'
 
 interface Team {
@@ -39,9 +43,10 @@ const props = defineProps<{
   weekRecord: { wins: number; losses: number }
   briefingHeadline: string
   briefingSubline: string
+  /** Latest analyses across the squad (the API returns a fixed-size sample, newest first). */
   activity: SquadActivityItem[]
+  memberStats: SquadMemberStat[]
   compareRows: SquadCompareRow[]
-  leaderboard: Array<{ user_id: number; name: string; analyses_count?: number }>
   pendingInvites: Array<{ value: string; createdAt: number }>
   selectedMemberId: number | null
   selectedMemberStats: SquadMemberStat | null
@@ -50,7 +55,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   retry: []
-  refresh: []
   openWeb: []
   invite: [value: string]
   removePending: [value: string]
@@ -59,7 +63,41 @@ const emit = defineEmits<{
 }>()
 
 const inviteTarget = ref('')
+const inviteOpen = ref(false)
+const inviteInput = ref<HTMLInputElement | null>(null)
+
+async function openInvite() {
+  inviteOpen.value = true
+  await nextTick()
+  inviteInput.value?.focus()
+}
 const copied = ref(false)
+const showAllActivity = ref(false)
+
+const statsById = computed(() => new Map(props.memberStats.map(s => [s.user_id, s])))
+
+/** One identity per member (player card → main agent → letter; rank icon) from their latest Valorant stats. */
+const identities = computed(() => new Map(props.members.map((m) => {
+  const s = statsById.value.get(m.id)
+  return [m.id, playerIdentity({
+    name: m.name, playerCardId: s?.player_card_id, agent: s?.most_played_agent,
+    rank: s?.current_rank ?? m.competitive_rank ?? m.rank,
+  })]
+})))
+function memberIdentity(userId: number, name?: string | null) {
+  return identities.value.get(userId) ?? playerIdentity({ name: name ?? props.memberName(userId) })
+}
+
+function memberLine(m: SquadLineupMember): { text: string; icon: string | null } {
+  const id = memberIdentity(m.id, m.name)
+  const agent = statsById.value.get(m.id)?.most_played_agent?.trim()
+  const parts = [id.rankLabel, agent].filter((x): x is string => !!x)
+  if (parts.length) return { text: parts.join(' · '), icon: id.rankIcon }
+  if (m.riot_name) return { text: `${m.riot_name}#${m.riot_tag ?? ''}`, icon: null }
+  return { text: 'No rank yet', icon: null }
+}
+
+const shownActivity = computed(() => (showAllActivity.value ? props.activity : props.activity.slice(0, SQUAD_ACTIVITY_PREVIEW)))
 
 /** Who is in which game right now (from presence), as the old stats strip showed. */
 const gameMix = computed(() => gameMixLabel(squadGameMixCounts(props.presence)))
@@ -71,7 +109,7 @@ const stats = computed(() => {
   if (!t) return []
   const items: Array<{ value: string; caption: string; sub?: string }> = [
     { value: `${props.onlineMembers}/${t.members.length}`, caption: 'Online now', sub: gameMix.value ?? `${props.maxSlots} seats` },
-    { value: String(props.weekActivityCount), caption: 'Matches this week', sub: 'Across the squad' },
+    { value: weekCountLabel(props.weekActivityCount, props.activity.length), caption: 'Analysed this week', sub: 'Across the squad' },
   ]
   if (props.weekRecord.wins + props.weekRecord.losses > 0) {
     items.push({ value: `${props.weekRecord.wins}–${props.weekRecord.losses}`, caption: 'Week record', sub: 'Wins–losses' })
@@ -89,6 +127,7 @@ function sendInvite() {
   if (!v) return
   emit('invite', v)
   inviteTarget.value = ''
+  inviteOpen.value = false
 }
 
 async function copyCode() {
@@ -101,15 +140,22 @@ async function copyCode() {
 }
 
 function activityTitle(a: SquadActivityItem): string {
-  const map = a.map ? formatMapLabel(a.map) || a.map : 'Match'
-  return a.agent ? `${map} · ${a.agent}` : map
+  return a.map ? formatMapLabel(a.map) || a.map : 'Match'
+}
+
+/** Map art and agent portrait exist for Valorant only. */
+function activityArt(a: SquadActivityItem): { map: string; agent: string } {
+  if (inferActivityGame(a) !== 'valorant') return { map: '', agent: '' }
+  return { map: getMapListViewImage(a.map), agent: getAgentImage(a.agent) }
 }
 
 function activityResult(a: SquadActivityItem): { text: string; tone: 'win' | 'loss' | null } | null {
   const r = (a.result ?? '').toLowerCase()
-  if (r.startsWith('w') || r === 'victory') return { text: 'Win', tone: 'win' }
-  if (r.startsWith('l') || r === 'defeat') return { text: 'Loss', tone: 'loss' }
-  return null
+  const won = a.won ?? (r.startsWith('w') || r === 'victory' ? true : r.startsWith('l') || r === 'defeat' ? false : null)
+  if (won == null) return null
+  // The round score when the API sends it ("13–10"), else the word.
+  const score = a.rounds_won != null && a.rounds_lost != null ? `${a.rounds_won}–${a.rounds_lost}` : null
+  return { text: score ?? (won ? 'Win' : 'Loss'), tone: won ? 'win' : 'loss' }
 }
 
 function kda(a: SquadActivityItem): string | null {
@@ -168,23 +214,19 @@ function kda(a: SquadActivityItem): string | null {
       </div>
 
       <template v-else>
-        <header class="uf-squad-head uf-rise" :class="{ 'uf-refreshing': refreshing }">
+        <!-- One heading: the squad's name. The view refreshes itself every 30 s, so no refresh button. -->
+        <header class="uf-squad-head uf-rise">
           <div class="uf-squad-titles">
             <span class="uf-label">Squad plan · {{ squadPlanBadgeLabel(team.plan) }}</span>
             <h1 class="uf-d2">{{ team.name }}</h1>
+            <p class="uf-t2">
+              <template v-if="briefingHeadline"><span class="uf-squad-live">{{ briefingHeadline }}.</span> </template>{{ briefingSubline }}
+            </p>
           </div>
           <div class="uf-squad-actions">
-            <button type="button" class="uf-icon-btn" :class="{ 'is-spinning': refreshing }" aria-label="Refresh squad" @click="emit('refresh')">
-              <UfIcon name="swap" :size="16" />
-            </button>
             <UfButton variant="link" @click="emit('openWeb')">Manage on website</UfButton>
           </div>
         </header>
-
-        <section class="uf-squad-brief uf-rise uf-d1s">
-          <p class="uf-t1">{{ briefingHeadline }}</p>
-          <p class="uf-t2">{{ briefingSubline }}</p>
-        </section>
 
         <UfStatRow v-if="stats.length" class="uf-rise uf-d2s" :items="stats" />
 
@@ -194,10 +236,12 @@ function kda(a: SquadActivityItem): string | null {
               <div class="uf-sec-head"><span class="uf-label">Members</span><span class="uf-t4">{{ members.length }} of {{ maxSlots }}</span></div>
               <button v-for="m in members" :key="m.id" type="button" class="uf-member" :class="{ 'is-on': selectedMemberId === m.id }"
                 :aria-pressed="selectedMemberId === m.id" @click="emit('select', m)">
-                <span class="uf-member-mark">{{ initial(m.name) }}</span>
+                <PlayerAvatar :identity="memberIdentity(m.id, m.name)" :size="48" />
                 <span class="uf-member-name">
                   <span class="uf-t3">{{ m.name }}</span>
-                  <span class="uf-t4">{{ m.competitive_rank || m.rank || (m.riot_name ? `${m.riot_name}#${m.riot_tag ?? ''}` : 'No rank yet') }}</span>
+                  <span class="uf-t4 uf-member-rank">
+                    <RankIcon :src="memberLine(m).icon" :size="16" />{{ memberLine(m).text }}
+                  </span>
                 </span>
                 <span class="uf-member-presence" :class="`is-${presenceTone(presence[m.id])}`">
                   <span class="uf-dot" :class="{ 'uf-live': presenceTone(presence[m.id]) === 'live' }" />{{ presenceLabel(presence[m.id]) }}
@@ -220,9 +264,9 @@ function kda(a: SquadActivityItem): string | null {
             </section>
 
             <section v-if="compareRows.length">
-              <div class="uf-sec-head"><span class="uf-label">Member compare</span><span class="uf-t4">Win rate · analyses</span></div>
+              <div class="uf-sec-head"><span class="uf-label">Member compare</span><span class="uf-t4">Analyses (all time) · win rate (last 20 matches)</span></div>
               <div v-for="r in compareRows" :key="r.userId" class="uf-cmp">
-                <span class="uf-t3">{{ r.name }}</span>
+                <span class="uf-cmp-who"><PlayerAvatar :identity="memberIdentity(r.userId, r.name)" :size="24" /><span class="uf-t3">{{ r.name }}</span></span>
                 <span class="uf-cmp-bar"><span class="uf-fill" :style="{ width: `${(r.analysesCount / maxAnalyses) * 100}%` }" /></span>
                 <span class="uf-t4 uf-num">{{ plural(r.analysesCount, 'analysis', 'analyses') }}</span>
                 <b class="uf-d4">{{ pctLabel(r.winRate) ?? '—' }}</b>
@@ -230,13 +274,20 @@ function kda(a: SquadActivityItem): string | null {
             </section>
 
             <section>
-              <div class="uf-sec-head"><span class="uf-label">Squad activity</span><UfButton variant="link" @click="emit('openWeb')">View all</UfButton></div>
-              <p v-if="!activity.length" class="uf-t2">No squad matches yet. They show up here after a teammate’s match is analysed.</p>
-              <button v-for="a in activity" :key="a.id" type="button" class="uf-act" @click="emit('openActivity', a)">
-                <span class="uf-member-mark">{{ initial(a.user_name || memberName(a.user_id)) }}</span>
+              <div class="uf-sec-head">
+                <span class="uf-label">Squad activity</span>
+                <UfButton v-if="activity.length > SQUAD_ACTIVITY_PREVIEW" variant="link" :aria-expanded="showAllActivity" @click="showAllActivity = !showAllActivity">
+                  {{ showAllActivity ? 'Show fewer' : `View all ${activity.length}` }}
+                </UfButton>
+              </div>
+              <EmptyArt v-if="!activity.length" size="section" game="valorant" title="No squad matches yet" text="They show up here after a teammate’s match is analysed." />
+              <button v-for="a in shownActivity" :key="a.id" type="button" class="uf-act" @click="emit('openActivity', a)">
+                <span class="uf-act-art"><img v-if="activityArt(a).map" :src="activityArt(a).map" alt="" loading="lazy" decoding="async"></span>
+                <img v-if="activityArt(a).agent" :src="activityArt(a).agent" :alt="a.agent ?? ''" class="uf-act-agent" loading="lazy" decoding="async">
+                <span v-else class="uf-act-agent" aria-hidden="true" />
                 <span class="uf-member-name">
                   <span class="uf-t3">{{ activityTitle(a) }}</span>
-                  <span class="uf-t4">{{ a.user_name || memberName(a.user_id) }}<template v-if="a.created_at"> · {{ squadTimeAgo(a.created_at) }}</template></span>
+                  <span class="uf-t4 uf-act-who"><PlayerAvatar :identity="memberIdentity(a.user_id, a.user_name)" :size="24" /><template v-if="a.agent">{{ a.agent }} · </template>{{ a.user_name || memberName(a.user_id) }}<template v-if="a.played_at || a.created_at"> · {{ squadTimeAgo((a.played_at || a.created_at)!) }}</template></span>
                 </span>
                 <span v-if="kda(a)" class="uf-t4 uf-num">{{ kda(a) }}</span>
                 <b v-if="activityResult(a)" class="uf-d4" :style="{ color: activityResult(a)!.tone === 'win' ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ activityResult(a)!.text }}</b>
@@ -246,13 +297,19 @@ function kda(a: SquadActivityItem): string | null {
 
           <aside class="uf-squad-side">
             <section>
-              <span class="uf-label">Invite a teammate</span>
-              <form class="uf-invite" @submit.prevent="sendInvite">
-                <label class="uf-sr" for="uf-invite-input">Riot ID or email</label>
-                <input id="uf-invite-input" v-model="inviteTarget" class="uf-input" placeholder="Riot ID or email" autocomplete="off">
-                <UfButton variant="secondary" icon="team" :disabled="!inviteTarget.trim()" @click="sendInvite">Send invite</UfButton>
-              </form>
-              <p class="uf-t4">Invites finish on upforge.gg.</p>
+              <UfButton v-if="!inviteOpen" variant="secondary" icon="team" @click="openInvite">Invite a teammate</UfButton>
+              <template v-else>
+                <span class="uf-label">Invite a teammate</span>
+                <form id="uf-invite-form" class="uf-invite" @submit.prevent="sendInvite">
+                  <label class="uf-sr" for="uf-invite-input">Riot ID or email</label>
+                  <input id="uf-invite-input" ref="inviteInput" v-model="inviteTarget" class="uf-input" placeholder="Riot ID or email" autocomplete="off" @keydown.esc="inviteOpen = false">
+                  <div class="uf-invite-actions">
+                    <UfButton variant="secondary" icon="team" :disabled="!inviteTarget.trim()" @click="sendInvite">Send invite</UfButton>
+                    <UfButton variant="link" @click="inviteOpen = false">Cancel</UfButton>
+                  </div>
+                </form>
+                <p class="uf-t4">Invites finish on upforge.gg.</p>
+              </template>
               <div v-for="p in pendingInvites" :key="p.value" class="uf-pending">
                 <span class="uf-t3">{{ p.value }}</span>
                 <span class="uf-t4">{{ squadTimeAgo(new Date(p.createdAt).toISOString()) }}</span>
@@ -270,15 +327,6 @@ function kda(a: SquadActivityItem): string | null {
               </div>
             </section>
 
-            <section v-if="leaderboard.length">
-              <span class="uf-label">Most active this week</span>
-              <div v-for="(l, i) in leaderboard" :key="l.user_id" class="uf-lb">
-                <span class="uf-d4" :style="{ color: i === 0 ? 'var(--uf-gold)' : 'var(--uf-faint)' }">{{ i + 1 }}</span>
-                <UfIcon v-if="i === 0" name="star" :size="14" class="uf-lb-star" />
-                <span class="uf-t3">{{ l.name }}</span>
-                <span class="uf-t4 uf-num">{{ l.analyses_count ?? 0 }}</span>
-              </div>
-            </section>
           </aside>
         </div>
       </template>
@@ -288,10 +336,11 @@ function kda(a: SquadActivityItem): string | null {
 
 <style scoped>
 .uf-squad { height: 100%; overflow-y: auto; background: var(--uf-bg); }
-.uf-squad-pad { max-width: 1240px; padding: 22px 40px 40px; display: flex; flex-direction: column; gap: 26px; }
+.uf-squad-pad { padding: 22px 40px 40px; display: flex; flex-direction: column; gap: 26px; }
 .uf-squad-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
 .uf-squad-titles { display: flex; flex-direction: column; gap: 10px; }
-.uf-squad-titles h1 { margin: 0; }
+.uf-squad-titles h1, .uf-squad-titles p { margin: 0; }
+.uf-squad-live { color: var(--uf-bone); }
 .uf-squad-actions { display: flex; align-items: center; gap: 16px; }
 .uf-squad-brief { display: flex; flex-direction: column; gap: 8px; max-width: 820px; }
 .uf-squad-brief p, .uf-squad-state p { margin: 0; }
@@ -308,7 +357,13 @@ function kda(a: SquadActivityItem): string | null {
 .uf-member, .uf-act { width: 100%; display: flex; align-items: center; gap: 14px; padding: 10px 0; background: none; border: 0; border-top: 1px solid var(--uf-line); color: inherit; cursor: pointer; text-align: left; }
 .uf-member:hover, .uf-act:hover { background: var(--uf-hover); }
 .uf-member.is-on { box-shadow: inset 2px 0 0 var(--uf-red); padding-left: 10px; }
-.uf-member-mark { width: 34px; height: 34px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--uf-raised); font: 700 26px/1 var(--uf-display); color: var(--uf-bone); }
+.uf-member-rank { display: inline-flex; align-items: center; gap: 6px; }
+.uf-cmp-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.uf-cmp-who .uf-t3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uf-act-who { display: inline-flex; align-items: center; gap: 8px; }
+.uf-act-art { width: 96px; height: 54px; flex: none; background: var(--uf-raised); overflow: hidden; }
+.uf-act-art img { width: 100%; height: 100%; object-fit: cover; filter: saturate(0.7); }
+.uf-act-agent { width: 32px; height: 32px; flex: none; object-fit: cover; }
 .uf-member-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .uf-member-name > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .uf-member-presence { display: inline-flex; align-items: center; gap: 8px; font: 400 13px/1 var(--uf-body); color: var(--uf-faint); white-space: nowrap; }
@@ -320,21 +375,20 @@ function kda(a: SquadActivityItem): string | null {
 .uf-member-more { display: flex; flex-direction: column; gap: 10px; padding: 14px 0 6px 48px; border-top: 1px solid var(--uf-line); }
 .uf-member-more p { margin: 0; }
 .uf-member-detail { display: flex; gap: 32px; }
-.uf-lb-star { color: var(--uf-gold); flex: none; }
 .uf-member-detail > span { display: flex; flex-direction: column; gap: 4px; }
 .uf-cmp { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) 110px 70px; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px solid var(--uf-line); }
 .uf-cmp-bar { height: 8px; background: rgba(236, 232, 225, 0.08); }
 .uf-cmp-bar > span { display: block; height: 8px; background: var(--uf-bone); opacity: 0.55; }
 .uf-cmp .uf-d4 { text-align: right; }
 .uf-invite { display: flex; flex-direction: column; gap: 10px; }
+.uf-invite-actions { display: flex; align-items: center; gap: 16px; }
 .uf-input { height: 40px; padding: 0 12px; background: var(--uf-chrome); border: 1px solid var(--uf-line-2); color: var(--uf-bone); font: 400 16px/1 var(--uf-body); }
 .uf-input:focus { outline: none; border-color: var(--uf-red); }
-.uf-pending, .uf-lb { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--uf-line); }
-.uf-pending .uf-t3, .uf-lb .uf-t3 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uf-pending { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--uf-line); }
+.uf-pending .uf-t3 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uf-code { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); }
 .uf-code code { font: 700 26px/1 var(--uf-display); letter-spacing: 0.12em; color: var(--uf-bone); }
 .uf-icon-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; background: none; border: 1px solid var(--uf-line-2); color: var(--uf-muted); cursor: pointer; }
 .uf-icon-btn:hover { color: var(--uf-bone); background: var(--uf-hover); }
-.uf-icon-btn.is-spinning { opacity: 0.5; }
 .uf-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>

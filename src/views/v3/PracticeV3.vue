@@ -6,17 +6,19 @@ import { plural } from '../../lib/plural'
  * Renders the header + tabs for every tab, and the Train body; other tab bodies stay in the view.
  */
 import UfTabs from '../../components/v3/UfTabs.vue'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import UfButton from '../../components/v3/UfButton.vue'
-import PracticeDrillTile from '../../components/v3/practice/PracticeDrillTile.vue'
 import { scenarioIconUrl, TRAINING_ARTWORK } from '../../lib/training-icons'
 import {
   PRACTICE_TABS,
+  difficultyLabel,
+  durationLabel,
+  noBestCaption,
+  practiceGameScope,
   practiceStatItems,
-  practiceTitle,
   sessionMinutes,
-  showRecommended,
+  type MatchDrillRow,
   type PracticeCategory,
   type PracticeStats,
   type PracticeTab,
@@ -24,6 +26,8 @@ import {
 import { focusDrillPlan } from '../../components/v3/practice/focus-drills'
 import { focusBeforeAfter } from '../../lib/focus'
 import { usePracticeFocus } from '../../components/v3/practice/usePracticeFocus'
+import { usePrimaryGame } from '../../composables/usePrimaryGame'
+import '../../components/v3/practice/practice-v3.css'
 
 export interface PracticeDrillCard {
   scenario: string
@@ -32,6 +36,8 @@ export interface PracticeDrillCard {
   difficulty: string
   durationSeconds: number
   personalBest: number | null
+  /** Best from before the scoring update (doesn't count as a personal best). */
+  oldBest: number | null
   globalRank: number | null
   completed: boolean
 }
@@ -42,8 +48,11 @@ const props = defineProps<{
   sessionSteps: Array<{ phaseLabel: string; scenario: string; duration_seconds: number }>
   sessionFocusReason: string | null
   sessionDisabled: boolean
-  recommended: Array<{ scenario: string; reason: string }>
-  recommendedFromApi: boolean
+  matchDrills: MatchDrillRow[]
+  /** "Your 29 runs from before … used the old scoring" or null. */
+  scoringNote: string | null
+  /** Valorant calibration is an admin measuring tool; the link shows only for admins. */
+  showCalibration: boolean
   categories: Array<{ id: PracticeCategory; label: string }>
   activeCategory: PracticeCategory
   drills: PracticeDrillCard[]
@@ -61,7 +70,7 @@ const emit = defineEmits<{
   'update:activeCategory': [category: PracticeCategory]
   'update:freePlayScenario': [scenario: string]
   'start-session': []
-  'play-recommended': [index: number]
+  'play-match-drill': [id: number]
   'play-drill': [scenario: string]
   'play-daily': []
   'launch-free': []
@@ -73,10 +82,17 @@ const hasStats = computed(() => statItems.value.some(s => !['0', '—', '-', '']
 const tabItems = PRACTICE_TABS.map(t => ({ key: t.id, label: t.label }))
 const categoryItems = computed(() => props.categories.map(c => ({ key: c.id, label: c.label })))
 const minutes = computed(() => sessionMinutes(props.sessionSteps))
-const recommendedVisible = computed(() => showRecommended(props.recommendedFromApi, props.recommended.length))
+const openSteps = ref<number | null>(null)
+const drillMeta = (d: PracticeDrillCard) => [difficultyLabel(d.difficulty), durationLabel(d.durationSeconds)].filter(Boolean).join(' · ')
+const stepCaption = (d: PracticeDrillCard) => d.personalBest != null ? `Best ${Math.round(d.personalBest)}` : noBestCaption(d.oldBest)
 
 // "Today's session, from your focus": the player's active focus mapped to drills in this catalogue.
 const { focus } = usePracticeFocus(typeof window === 'undefined' ? undefined : window.api?.app)
+// One rule for every game: focus, match drills and calibration come from Valorant analyses (practiceGameScope).
+const { primaryGame } = usePrimaryGame()
+const scope = computed(() => practiceGameScope(primaryGame.value))
+const matchCoaching = computed(() => scope.value.matchCoaching)
+const showSensLink = computed(() => primaryGame.value === 'cs2' || primaryGame.value === 'deadlock')
 const focusPlan = computed(() => focusDrillPlan(focus.value?.metric, props.drills.map(d => d.scenario)))
 const focusProgress = computed(() => focusBeforeAfter(focus.value))
 const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
@@ -88,10 +104,7 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
   <div class="uf-practice" :class="{ 'is-train': activeTab === 'train' }">
     <header class="uf-practice-head">
       <div class="uf-practice-titlerow uf-rise">
-        <div class="uf-practice-title">
-          <span class="uf-label">Training hub</span>
-          <h1 class="uf-d2" style="margin: 0">{{ practiceTitle(activeTab) }}</h1>
-        </div>
+        <h1 class="uf-d2" style="margin: 0">Practice</h1>
         <dl v-if="hasStats" class="uf-practice-stats">
           <div v-for="s in statItems" :key="s.label" class="uf-practice-stat" :title="s.title">
             <dt class="uf-t4">{{ s.label }}</dt>
@@ -104,13 +117,17 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
     </header>
 
     <div v-if="activeTab === 'train'" class="uf-practice-body">
+      <p v-if="scope.note" class="uf-t4" style="margin: 0; max-width: 760px">
+        {{ scope.note }}
+        <RouterLink v-if="showSensLink" to="/settings?tab=trainer" class="uf-link">Trainer settings →</RouterLink>
+      </p>
       <!-- Hero: today's guided session (the one red action on this screen) -->
       <section class="uf-session uf-rise uf-d1s">
         <img :src="TRAINING_ARTWORK.guidedSessionHero" alt="" class="uf-session-art">
         <div class="uf-session-scrim" />
-        <div v-if="focusPlan && focus" class="uf-session-body">
+        <div v-if="focusPlan && focus && matchCoaching" class="uf-session-body">
           <span class="uf-label">Today’s session · from your focus</span>
-          <p class="uf-t1" style="margin: 0; max-width: 760px">From your focus: {{ focus.label }}</p>
+          <p class="uf-t1" style="margin: 0; max-width: 760px">{{ focus.label }}</p>
           <p class="uf-t2" style="margin: 0; max-width: 620px">{{ focusPlan.caption }}</p>
           <p v-if="focusProgress" class="uf-t4" style="margin: 0">
             Before: {{ focusProgress.before }} · Since: {{ focusProgress.since }} over {{ focusProgress.games }} game{{ focusProgress.games === 1 ? '' : 's' }}
@@ -120,7 +137,7 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
             <ol class="uf-session-steps">
               <li v-for="(d, i) in focusDrills" :key="d.scenario">
                 <span class="uf-d4" style="color: var(--uf-faint)">{{ String(i + 1).padStart(2, '0') }}</span>
-                <span class="uf-session-step-text"><span class="uf-t4">{{ d.personalBest != null ? `Best ${Math.round(d.personalBest)}` : 'Not played yet' }}</span><span class="uf-t3">{{ d.label }}</span></span>
+                <span class="uf-session-step-text"><span class="uf-t4">{{ stepCaption(d) }}</span><span class="uf-t3">{{ d.label }}</span></span>
               </li>
             </ol>
             <div class="uf-session-actions">
@@ -132,7 +149,7 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
         <div v-else class="uf-session-body">
           <span class="uf-label">Today’s session<template v-if="minutes"> · {{ minutes }} min</template></span>
           <p v-if="sessionSteps.length" class="uf-t1" style="margin: 0; max-width: 760px">
-            {{ sessionFocusReason || 'Warm up, practise your focus drill, then cool down.' }}
+            {{ (matchCoaching && sessionFocusReason) || 'Warm up, practise your focus drill, then cool down.' }}
           </p>
           <p v-else class="uf-t2" style="margin: 0; max-width: 620px">
             Your session plan isn’t ready yet. Play any drill below and the coach builds one from your results.
@@ -151,13 +168,22 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
 
       <div class="uf-practice-grid">
         <div class="uf-practice-main">
-          <section v-if="recommendedVisible" class="uf-rise uf-d2s">
-            <span class="uf-label">Recommended from your matches</span>
+          <section v-if="matchDrills.length && matchCoaching" class="uf-rise uf-d2s">
+            <span class="uf-label">Drills from your matches</span>
             <ul class="uf-reco">
-              <li v-for="(r, i) in recommended" :key="`${r.scenario}:${i}`">
-                <img :src="scenarioIconUrl(r.scenario)" alt="" class="uf-reco-icon">
-                <span class="uf-reco-text"><span class="uf-t3">{{ scenarioLabel(r.scenario) }}</span><span class="uf-t4">{{ r.reason }}</span></span>
-                <UfButton variant="link" :disabled="busy" @click="emit('play-recommended', i)">Play</UfButton>
+              <li v-for="r in matchDrills" :key="r.id">
+                <div class="uf-reco-row">
+                  <img v-if="r.trainerScenario" :src="scenarioIconUrl(r.trainerScenario)" alt="" class="uf-reco-icon">
+                  <img v-else :src="TRAINING_ARTWORK.vodRecommend" alt="" class="uf-reco-icon">
+                  <span class="uf-reco-text"><span class="uf-t3">{{ r.title }}</span><span class="uf-t4">{{ r.meta }}</span></span>
+                  <UfButton v-if="r.trainerScenario" variant="link" :disabled="busy" @click="emit('play-match-drill', r.id)">Play</UfButton>
+                  <UfButton v-else-if="r.steps || r.goal" variant="link" :aria-expanded="openSteps === r.id"
+                    @click="openSteps = openSteps === r.id ? null : r.id">{{ openSteps === r.id ? 'Hide steps' : 'Steps' }}</UfButton>
+                </div>
+                <div v-if="openSteps === r.id" class="uf-reco-steps">
+                  <p v-if="r.steps" class="uf-t4" style="margin: 0; color: var(--uf-bone); line-height: 1.5">{{ r.steps }}</p>
+                  <p v-if="r.goal" class="uf-t4" style="margin: 0; line-height: 1.5">Goal: {{ r.goal }}</p>
+                </div>
               </li>
             </ul>
           </section>
@@ -169,12 +195,41 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
                 @update:model-value="emit('update:activeCategory', $event as PracticeCategory)" />
               <span class="uf-t4 uf-library-count">{{ plural(drills.length, 'drill') }}</span>
             </div>
-            <div class="uf-library">
-              <PracticeDrillTile v-for="d in drills" :key="d.scenario" :label="d.label" :description="d.description"
-                :icon-src="scenarioIconUrl(d.scenario)" :difficulty="d.difficulty" :duration-seconds="d.durationSeconds"
-                :personal-best="d.personalBest" :global-rank="d.globalRank" :completed="d.completed"
-                :running="runningScenario === d.scenario" :disabled="busy" @play="emit('play-drill', d.scenario)" />
-            </div>
+            <p v-if="scoringNote" class="uf-t4" style="margin: 0 0 10px">{{ scoringNote }}</p>
+            <table class="uf-library">
+              <thead>
+                <tr>
+                  <th scope="col" class="uf-t4"><span class="uf-sr">Drill</span></th>
+                  <th scope="col" class="uf-t4" />
+                  <th scope="col" class="uf-t4 uf-lib-what">What it trains</th>
+                  <th scope="col" class="uf-t4 uf-lib-pb">Personal best</th>
+                  <th scope="col"><span class="uf-sr">Play</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="d in drills" :key="d.scenario" :class="{ 'is-running': runningScenario === d.scenario }">
+                  <td class="uf-lib-icon"><img :src="scenarioIconUrl(d.scenario)" alt=""></td>
+                  <td class="uf-lib-name">
+                    <span class="uf-t3">{{ d.label }}</span>
+                    <span class="uf-t4">{{ drillMeta(d) }}</span>
+                  </td>
+                  <td class="uf-t4 uf-lib-what">{{ d.description }}</td>
+                  <td class="uf-lib-pb">
+                    <span v-if="d.personalBest != null" class="uf-d4" style="color: var(--uf-gold)"><span aria-hidden="true">★ </span>{{ Math.round(d.personalBest) }}</span>
+                    <template v-else>
+                      <span class="uf-d4" style="color: var(--uf-faint)">—</span>
+                      <span class="uf-t4">{{ noBestCaption(d.oldBest) }}</span>
+                    </template>
+                    <span v-if="runningScenario === d.scenario" class="uf-t4 uf-live" style="color: var(--uf-red)">Running</span>
+                    <span v-else-if="d.completed" class="uf-t4" style="color: var(--uf-win)">Played today</span>
+                    <span v-else-if="d.globalRank" class="uf-t4">Rank #{{ d.globalRank }}</span>
+                  </td>
+                  <td class="uf-lib-play">
+                    <UfButton variant="link" :disabled="busy" :aria-label="`Play ${d.label}`" @click="emit('play-drill', d.scenario)">Play</UfButton>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </section>
         </div>
 
@@ -192,7 +247,7 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
           <section class="uf-aside-block">
             <span class="uf-label">Quick play</span>
             <label class="uf-t4" for="uf-free-play">Drill</label>
-            <select id="uf-free-play" class="uf-select" :value="freePlayScenario"
+            <select id="uf-free-play" class="uf-pselect" :value="freePlayScenario"
               @change="emit('update:freePlayScenario', ($event.target as HTMLSelectElement).value)">
               <option v-for="o in freePlayOptions" :key="o.key" :value="o.key">{{ o.label }}</option>
             </select>
@@ -203,6 +258,7 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
             <span class="uf-label">Loadout</span>
             <span class="uf-t4">Crosshair and sensitivity used in drills.</span>
             <UfButton variant="link" @click="emit('update:activeTab', 'loadouts')">Open loadouts</UfButton>
+            <RouterLink v-if="showCalibration && matchCoaching" to="/training/calibration" class="uf-link uf-t4">Valorant calibration (admin) →</RouterLink>
           </section>
           <template v-if="insights.length">
             <div class="uf-hair" />
@@ -211,7 +267,6 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
               <p v-for="(line, i) in insights" :key="i" class="uf-t4" style="margin: 0; color: var(--uf-bone); line-height: 1.5">{{ line }}</p>
             </section>
           </template>
-          <RouterLink to="/training/calibration" class="uf-link" style="margin-top: auto">Valorant calibration →</RouterLink>
         </aside>
       </div>
     </div>
@@ -223,7 +278,6 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
 .uf-practice.is-train { flex: 1; }
 .uf-practice-head { flex: none; padding: 26px 40px 0; display: flex; flex-direction: column; gap: 18px; }
 .uf-practice-titlerow { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
-.uf-practice-title { display: flex; flex-direction: column; gap: 10px; }
 .uf-practice-stats { display: flex; gap: 28px; margin: 0; }
 .uf-practice-stat { display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 4px; }
 .uf-practice-stat dd { margin: 0; }
@@ -243,18 +297,34 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
 .uf-practice-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 36px; align-items: start; }
 .uf-practice-main { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
 .uf-reco { list-style: none; margin: 10px 0 0; padding: 0; }
-.uf-reco li { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--uf-line); }
-.uf-reco-icon { width: 36px; height: 36px; flex: none; }
+.uf-reco li { padding: 10px 0; border-top: 1px solid var(--uf-line); }
+.uf-reco-row { display: flex; align-items: center; gap: 14px; }
+.uf-reco-icon { width: 40px; height: 40px; flex: none; object-fit: contain; }
+.uf-reco-steps { display: flex; flex-direction: column; gap: 6px; padding: 10px 0 2px 54px; max-width: 760px; }
 .uf-reco-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .uf-library-head { display: flex; align-items: baseline; gap: 12px 24px; margin-bottom: 14px; flex-wrap: wrap; }
 .uf-library-count { margin-left: auto; white-space: nowrap; }
-.uf-library { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.uf-library { width: 100%; border-collapse: collapse; }
+.uf-library th { text-align: left; font-weight: 400; padding: 0 12px 8px 0; white-space: nowrap; }
+.uf-library td { padding: 10px 12px 10px 0; border-top: 1px solid var(--uf-line); vertical-align: middle; }
+.uf-library tr.is-running td:first-child { box-shadow: inset 2px 0 0 var(--uf-red); }
+.uf-lib-icon { width: 56px; }
+.uf-lib-icon img { width: 48px; height: 48px; display: block; object-fit: contain; }
+.uf-lib-name { width: 200px; }
+.uf-lib-name, .uf-lib-pb { white-space: nowrap; }
+.uf-lib-name > span, .uf-lib-pb > span { display: block; }
+.uf-lib-what { line-height: 1.45; }
+td.uf-lib-what { min-width: 180px; }
+.uf-lib-pb { width: 120px; text-align: right; }
+.uf-library th.uf-lib-pb { text-align: right; }
+.uf-lib-play { width: 1%; text-align: right; white-space: nowrap; padding-right: 0 !important; }
+.uf-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 1100px) { .uf-lib-what { display: none; } }
 
 .uf-practice-aside { display: flex; flex-direction: column; gap: 18px; padding-left: 28px; border-left: 1px solid var(--uf-line); align-self: stretch; }
 .uf-aside-block { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .uf-daily { display: flex; gap: 12px; align-items: center; }
 .uf-daily-icon { width: 36px; height: 36px; flex: none; }
-.uf-select { width: 100%; height: 40px; padding: 0 10px; background: var(--uf-raised); color: var(--uf-bone); border: 1px solid var(--uf-line-2); border-radius: 0; font: 400 16px/1 var(--uf-body); }
 </style>
 
 <style>

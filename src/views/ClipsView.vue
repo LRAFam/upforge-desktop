@@ -1,11 +1,10 @@
 <template>
   <div class="flex flex-col h-full" :class="uiV3 ? 'uf-clips-v3' : 'px-4 pt-4 pb-4 gap-3'">
     <template v-if="uiV3">
-      <MatchesTabsV3 active="clips" title="Clips" :count="`${clips.length} clips · ${showAllGames ? 'All games' : theme.shortName}`">
-        <span class="uf-t4">{{ saveClipHotkey }} bookmarks a moment in a match</span>
+      <MatchesTabsV3 active="clips" :count="v3CountLine">
         <button type="button" class="uf-link" @click="toggleAllGames">{{ showAllGames ? `${theme.shortName} only` : 'All games' }}</button>
+        <button type="button" class="uf-link" @click="router.push('/cloud-storage')">Manage storage</button>
       </MatchesTabsV3>
-      <CloudUsageNotice kind="clips" />
       <div class="uf-cl-filters">
         <div class="uf-cl-row" role="group" aria-label="Clip type">
           <UfTabs :items="v3FilterItems" :model-value="activeFilter" size="filter" label="Clip type" @update:model-value="activeFilter = $event" />
@@ -194,10 +193,16 @@
           <p class="uf-t3">{{ clipsLoadError }}</p>
           <button type="button" class="uf-btn-secondary" @click="loadClips">Retry loading clips</button>
         </div>
-        <div v-else-if="displayedClips.length === 0" class="uf-cl-empty">
-          <p class="uf-t1" style="margin: 0">{{ showAllGames ? 'No clips yet' : `No ${theme.shortName} clips yet` }}</p>
-          <p class="uf-t2" style="margin: 0; max-width: 560px">{{ emptyStateHint.replace(/^No .+? clips yet\. /, '') }}</p>
+        <div v-else-if="displayedClips.length === 0 && clips.length > 0" class="uf-cl-state">
+          <p class="uf-t3">No clips match this filter</p>
+          <button type="button" class="uf-link" @click="activeFilter = 'all'">Show all clips</button>
         </div>
+        <EmptyArt v-else-if="displayedClips.length === 0"
+          :title="showAllGames ? 'No clips on this PC yet' : `No ${theme.shortName} clips on this PC yet`"
+          :text="`Press ${saveClipHotkey} during a match to bookmark a moment. UpForge saves the clip when the match ends and it shows up here.`">
+          <UfButton v-if="cloudClipCount" variant="secondary" icon="matches" @click="router.push('/cloud-storage?kind=clip')">Browse {{ cloudClipCount }} cloud {{ cloudClipCount === 1 ? 'clip' : 'clips' }}</UfButton>
+          <button v-if="!showAllGames" type="button" class="uf-link" @click="toggleAllGames">Show clips from all games</button>
+        </EmptyArt>
         <div v-else class="uf-cl-sections">
           <section v-for="(section, si) in librarySections" :key="section.key" class="uf-rise" :class="`uf-d${Math.min(si + 1, 6)}s`">
             <button type="button" class="uf-cl-head" :aria-expanded="section.matchKey ? isMatchExpanded(section.matchKey) : true"
@@ -1268,10 +1273,14 @@ import StorageIndicator from '../components/shared/StorageIndicator.vue'
 import LibraryPageHeader from '../components/shared/LibraryPageHeader.vue'
 import CloudUsageNotice from '../components/shared/CloudUsageNotice.vue'
 import MatchesTabsV3 from '../components/v3/matches/MatchesTabsV3.vue'
+import { storageSummary } from '../components/v3/matches/match-row'
+import { useAccountUsage } from '../composables/useAccountUsage'
+import { cloudBytes, validCloudPage } from '../lib/cloud-storage'
 import ClipTileV3 from '../components/v3/matches/ClipTileV3.vue'
 import { uiV3 } from '../lib/ui-v3'
 import UfTabs from '../components/v3/UfTabs.vue'
 import UfButton from '../components/v3/UfButton.vue'
+import EmptyArt from '../components/v3/empty/EmptyArt.vue'
 import UfDialog from '../components/v3/UfDialog.vue'
 import { PlaybackActivityMeter } from '../lib/playback-activity'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
@@ -1299,6 +1308,28 @@ const { primaryGame, isValorant } = usePrimaryGame()
 const { theme } = useGameTheme()
 const showAllGames = ref(false)
 const clips = ref<ClipRecord[]>([])
+/** v3 header: one quiet line (clips on this PC + account-wide cloud storage). */
+const { usage: accountUsage } = useAccountUsage()
+const v3CountLine = computed(() => {
+  const cloud = accountUsage.value?.cloud_storage
+  const scope = showAllGames.value ? '' : `${theme.value.shortName} `
+  return storageSummary({
+    count: clips.value.length,
+    noun: [`${scope}clip on this PC`, `${scope}clips on this PC`],
+    cloudUsed: cloud ? cloudBytes(cloud.used_bytes) : null,
+    cloudCapacity: cloud?.capacity_bytes != null ? cloudBytes(cloud.capacity_bytes) : null,
+    full: cloud?.remaining_bytes === 0,
+  })
+})
+/** v3 empty state: clips saved to the cloud from any device (read-only count, one page request). */
+const cloudClipCount = ref(0)
+async function loadCloudClipCount() {
+  if (!uiV3.value) return
+  try {
+    const result = await window.api.cloudStorage.list({ kind: 'clip', game: 'all', sort: 'newest', page: 1 })
+    if (result.ok && validCloudPage(result.data)) cloudClipCount.value = result.data.total
+  } catch { /* the cloud link just stays hidden */ }
+}
 const clipsLoading = ref(true)
 const clipsLoadError = ref('')
 let clipsLoadRequest = 0
@@ -1634,6 +1665,7 @@ onMounted(async () => {
   else if (agentQ) sessionAgentFilter.value = agentQ
 
   saveClipHotkey.value = await loadSaveClipHotkey()
+  void loadCloudClipCount()
   await loadClips()
   if (route.query.cloudClip) await openCloudClip()
   window.api.app.getStatus().then(s => {
@@ -2207,12 +2239,12 @@ function timeAgo(ts: number): string {
 .uf-cl-filters { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 18px 40px 6px; }
 .uf-cl-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
 .uf-cl-opt { display: inline-flex; align-items: center; gap: 14px; flex: none; }
+/* Filters are secondary to the view tabs above: the active one is bone with a thin bone line (no red). */
 .uf-cl-note { margin: 0; }
 .uf-cl-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 40px 32px; }
 .uf-cl-error { margin: 10px 0; color: var(--uf-loss); }
 .uf-cl-stats { display: flex; align-items: center; gap: 18px; padding: 10px 0 14px; border-bottom: 1px solid var(--uf-line); }
 .uf-cl-state { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding: 40px 0; }
-.uf-cl-empty { display: flex; flex-direction: column; gap: 16px; padding: 56px 0; }
 .uf-cl-sections { display: flex; flex-direction: column; gap: 30px; padding-top: 22px; }
 .uf-cl-head { width: 100%; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; background: none; border: 0; padding: 0 0 12px; cursor: pointer; text-align: left; }
 .uf-cl-head-text { display: flex; flex-direction: column; gap: 6px; }

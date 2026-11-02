@@ -62,7 +62,7 @@ async function undoFixed(): Promise<void> {
       <div v-for="r in rows" :key="r.id" class="rh3-row uf-reveal">
         <div class="rh3-main">
           <span class="uf-t3">{{ r.title }}</span>
-          <span v-if="r.detail" class="uf-t4">{{ r.detail }}</span>
+          <span v-if="r.detail" class="uf-t4" :title="r.maps.length ? `Seen on ${r.maps.join(', ')}` : undefined">{{ r.detail }}</span>
         </div>
         <div class="rh3-meta">
           <span class="uf-t4">{{ r.seen }}<template v-if="r.lastSeen"> · last {{ r.lastSeen }}</template></span>

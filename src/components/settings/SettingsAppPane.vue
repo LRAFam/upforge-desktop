@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettings } from '../../composables/useSettings'
 import SettingsCoachingBriefs from './SettingsCoachingBriefs.vue'
@@ -12,12 +12,16 @@ import { gameBrand } from '../../lib/game-branding'
 const {
   PRIMARY_GAMES,
   highlightSection,
+  isMac,
   selectPrimaryGame,
   settings,
   toggleKey,
   toggleLaunchOnStartup,
+  toggleTrainingConsent,
   toggles,
 } = useSettings()
+
+const currentGameLabel = computed(() => PRIMARY_GAMES.find(g => g.id === settings.primaryGame)?.label ?? 'Valorant')
 
 const router = useRouter()
 
@@ -57,26 +61,14 @@ function onToggle(key: (typeof toggles)[number]['key']): void {
 <template>
   <div class="space-y-4">
     <SettingsCoachingBriefs />
+    <!-- v3: the title bar's game switcher is the one place to change game (docs/design/ui-v3.md);
+         Settings only says which game is on. -->
     <SettingsSection
+      v-if="!uiV3"
       title="Your game"
       hint="Switches dashboard, settings, and web links, same as upforge.gg."
     >
-      <div v-if="uiV3" class="uf-choices is-grid" role="radiogroup" aria-label="Your game">
-        <button
-          v-for="game in PRIMARY_GAMES"
-          :key="game.id"
-          type="button"
-          role="radio"
-          class="uf-choice"
-          :aria-checked="settings.primaryGame === game.id"
-          @click="selectPrimaryGame(game.id)"
-        >
-          <img :src="gameBrand(game.id).logo" alt="" class="uf-link-logo">
-          <span class="uf-choice-text"><span class="uf-t3">{{ game.label }}</span></span>
-          <span v-if="settings.primaryGame === game.id" class="uf-choice-tag">Current</span>
-        </button>
-      </div>
-      <div v-else class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <button
           v-for="game in PRIMARY_GAMES"
           :key="game.id"
@@ -102,6 +94,16 @@ function onToggle(key: (typeof toggles)[number]['key']): void {
       divided
       :highlight-id="highlightSection"
     >
+      <SettingsRow
+        v-if="uiV3"
+        label="Your game"
+        hint="Coaching, recording and web links follow this game. Switch it with the game logos in the title bar."
+      >
+        <span class="uf-set-ctl">
+          <img :src="gameBrand(settings.primaryGame).logo" alt="" class="uf-link-logo">
+          <span class="uf-t3">{{ currentGameLabel }}</span>
+        </span>
+      </SettingsRow>
       <SettingsRow
         v-for="toggle in toggles"
         :key="toggle.key"
@@ -137,7 +139,7 @@ function onToggle(key: (typeof toggles)[number]['key']): void {
         <SettingsToggle :label="toggle.label" :on="!!settings[toggle.key]" @click="onToggle(toggle.key)" />
       </SettingsRow>
       <SettingsRow
-        v-if="uiV3"
+        v-if="uiV3 && !isMac"
         label="PC performance"
         hint="Raises game priority, switches the power plan and closes apps you choose while you play (Windows)."
       >
@@ -149,6 +151,19 @@ function onToggle(key: (typeof toggles)[number]['key']): void {
         hint="Switch back to the previous look if something doesn't work for you. You can turn the new design on again here."
       >
         <SettingsToggle label="Use the classic design" :on="!uiV3" @click="setUiV3(!uiV3)" />
+      </SettingsRow>
+    </SettingsSection>
+
+    <SettingsSection
+      v-if="uiV3"
+      title="Privacy &amp; data"
+      divided
+    >
+      <SettingsRow
+        label="Help improve UpForge AI"
+        hint="Allow anonymised use of cloud-archived VODs for model training. Separate from saving to cloud. Off by default."
+      >
+        <SettingsToggle label="Help improve UpForge AI" :on="!!settings.trainingConsent" @click="toggleTrainingConsent" />
       </SettingsRow>
     </SettingsSection>
   </div>

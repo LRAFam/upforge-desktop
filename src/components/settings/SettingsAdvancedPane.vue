@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettings } from '../../composables/useSettings'
 import SettingsRow from './SettingsRow.vue'
+import SettingsToggle from './SettingsToggle.vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsStatusStrip from './SettingsStatusStrip.vue'
 import type { StatusItem } from './SettingsStatusStrip.vue'
@@ -144,13 +145,12 @@ function previewOnboarding(): void {
         <div class="uf-usage-head"><span class="uf-t3">Replay buffer (kill clips)</span><span class="uf-t4 uf-num">{{ settings.obsReplayBufferSeconds }}s</span></div>
         <input v-model.number="settings.obsReplayBufferSeconds" type="range" min="10" max="120" step="5" aria-label="Replay buffer seconds" class="uf-range" @input="debouncedSave()">
       </div>
-      <label class="uf-checkrow">
-        <input v-model="settings.obsPreserveActiveScene" type="checkbox" class="uf-check" @change="debouncedSave()">
-        <span class="uf-set-row-text">
-          <span class="uf-t3">Keep my active OBS scene when a match starts</span>
-          <span class="uf-t4">Off by default so matches record the UpForge scene (gameplay). Turn on if you stream with face cam and overlays; UpForge still retargets game capture but will not force-switch scenes.</span>
-        </span>
-      </label>
+      <SettingsRow
+        label="Keep my active OBS scene when a match starts"
+        hint="Off by default so matches record the UpForge scene (gameplay). Turn on if you stream with face cam and overlays; UpForge still retargets game capture but will not force-switch scenes."
+      >
+        <SettingsToggle label="Keep my active OBS scene when a match starts" :on="!!settings.obsPreserveActiveScene" @click="settings.obsPreserveActiveScene = !settings.obsPreserveActiveScene; debouncedSave()" />
+      </SettingsRow>
       <p class="uf-t4">UpForge starts/stops OBS and applies the recording preset on connect and before each match.</p>
       <p v-if="obsDisconnectedHint" class="uf-note is-bad">{{ obsDisconnectedHint }}</p>
     </SettingsSection>

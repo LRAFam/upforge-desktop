@@ -90,11 +90,11 @@ function submit() {
 </script>
 
 <template>
-  <UfDialog v-if="uiV3" :open="open" kicker="Ask my coach" :title="matchLabel" :width="480" @close="emit('close')">
+  <UfDialog v-if="uiV3" :open="open" kicker="Send this match" :title="matchLabel" :width="480" @close="emit('close')">
     <p v-if="!eligible.length" class="uf-t2 uf-send-empty">{{ emptyEligibleMessage }}</p>
     <div v-else class="uf-send">
       <div class="uf-send-field">
-        <span id="uf-send-coach-label" class="uf-label">Coach</span>
+        <span id="uf-send-coach-label" class="uf-label">Send to</span>
         <div role="radiogroup" aria-labelledby="uf-send-coach-label" class="uf-send-coaches">
           <button v-for="(coach, i) in eligible" :key="coach.coach_id" type="button" role="radio"
             class="uf-send-coach" :class="{ 'is-on': coachId === coach.coach_id }"

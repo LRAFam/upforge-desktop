@@ -1,10 +1,10 @@
 <script setup lang="ts">
-/** Home: "Your coach replied" — newest unopened coach review (last 14 days). Hidden when there is none. */
+/** Home: "{name} replied" — newest unopened coach review (last 14 days). Hidden when there is none. */
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import UfButton from '../UfButton.vue'
 import { openAnalysisVodReview } from '../../../lib/open-vod-review'
-import { markReplySeen, readSeenReplies, replySentence, unseenReplies } from './roster-flow'
+import { markReplySeen, readSeenReplies, replySentence, replyTitle, unseenReplies } from './roster-flow'
 import { useStudentHub } from './useStudentHub'
 
 const router = useRouter()
@@ -34,9 +34,9 @@ onMounted(() => { void refresh() })
 
 <template>
   <section v-if="latest" class="cr3 uf-reveal" aria-label="Coach reply">
-    <span class="uf-label">Your coach replied</span>
+    <span class="uf-label">{{ replyTitle(latest) }}</span>
     <p class="uf-t3 cr3-line">{{ replySentence(latest) }}</p>
-    <p v-if="more" class="uf-t4 cr3-meta">{{ more }} more {{ more === 1 ? 'review' : 'reviews' }} waiting in Coaches</p>
+    <p v-if="more" class="uf-t4 cr3-meta">{{ more }} more {{ more === 1 ? 'match has' : 'matches have' }} new notes in Coaches</p>
     <div class="cr3-actions">
       <UfButton variant="link" @click="open">Open notes</UfButton>
       <button type="button" class="cr3-dismiss uf-t4" @click="forget(latest.reviewId)">Dismiss</button>

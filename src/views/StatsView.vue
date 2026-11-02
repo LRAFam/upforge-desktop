@@ -7,10 +7,11 @@
     :refresh-failed="refreshFailed"
     :ranges="ranges"
     :game-count="filteredAnalyses.length"
+    :last-analysed-at="lastAnalysedAt"
     :is-valorant="primaryGame === 'valorant'"
     :rank-history="rankHistory"
     :win-rate="winRate"
-    :avg-score="avgScoreDisplay"
+    :score-stat="v3ScoreStat"
     :avg-kda="avgKda"
     :avg-hs="avgHs"
     :deltas="statDeltas"
@@ -297,6 +298,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import ProgressV3 from './v3/ProgressV3.vue'
 import { uiV3 } from '../lib/ui-v3'
+import { averageMatchScore, matchScore } from '../lib/upforge-score'
 import { readCache, writeCache } from '../lib/stale-cache'
 import { useRouter } from 'vue-router'
 import type { AnalysisItem } from '../env.d.ts'
@@ -352,6 +354,25 @@ const avgScore = computed((): number | null => {
 })
 
 const avgScoreDisplay = computed(() => (avgScore.value != null ? avgScore.value * 10 : null))
+// v3: the stats-based UpForge score averaged over scored matches only. With none scored yet, the coach's
+// average rating out of 10 under its own name (never mixed, never shown as an UpForge score).
+const v3ScoreStat = computed(() => {
+  const uf = averageMatchScore(filteredAnalyses.value)
+  if (uf) {
+    return {
+      value: String(uf.value),
+      caption: 'UpForge score',
+      delta: buildDelta([...filteredAnalyses.value].reverse().map(a => a.upforge_score ?? null)),
+    }
+  }
+  const coach = matchScore({ overall_score: avgScore.value })
+  if (!coach) return null
+  // statDeltas.score is in stored 0–100 points; the rating is out of 10.
+  const d = buildDelta([...filteredAnalyses.value].reverse().map(a => a.overall_score ?? null))
+  return { value: coach.text, caption: 'Coach rating', delta: d == null ? null : d / 10 }
+})
+// The newest analysis of any date.
+const lastAnalysedAt = computed(() => allAnalyses.value.reduce<string | null>((best, a) => (a.created_at && (!best || a.created_at > best) ? a.created_at : best), null))
 
 const avgKda = computed((): string => {
   const withKd = filteredAnalyses.value.filter(a => a.kills != null && a.deaths != null)

@@ -26,7 +26,7 @@ export const PRIMARY_GAMES: PrimaryGameOption[] = [
   { id: 'valorant', label: 'Valorant', shortLabel: 'VAL', accent: '#ff4655', live: true },
   { id: 'cs2', label: 'CS2', shortLabel: 'CS2', accent: '#f97316', live: true },
   { id: 'deadlock', label: 'Deadlock', shortLabel: 'DL', accent: '#14b8a6', live: true },
-  { id: 'lol', label: 'League of Legends', shortLabel: 'LoL', accent: '#c89b3c', live: true },
+  { id: 'lol', label: 'League of Legends', shortLabel: 'League', accent: '#c89b3c', live: true },
 ]
 
 export function isPrimaryGame(value: string | null | undefined): value is PrimaryGame {

@@ -6,6 +6,8 @@ import { gameBrand } from '../../lib/game-branding'
 import { uiV3 } from '../../lib/ui-v3'
 import type { PrimaryGame } from '../../lib/games'
 import type { LolLinkedAccount } from '../../env'
+import UfSkeleton from '../v3/UfSkeleton.vue'
+import { defaultLolPlatform, defaultValorantRegion, valorantAccountsView, type RegionHints } from '../v3/settings/settings-display'
 
 const props = defineProps<{ focus?: PrimaryGame | null }>()
 const router = useRouter()
@@ -16,6 +18,7 @@ const {
   accountLinkFocus,
   reloadAccountLinks,
   riotAccounts,
+  riotAccountsLoaded,
   riotAccountsAtCap,
   riotAccountsCanAdd,
   riotAccountsCapLabel,
@@ -23,11 +26,12 @@ const {
   showSaved,
   cs2FaceitLinked,
   cs2FaceitNickname,
+  cs2SteamNameField,
 } = useSettings()
 
 const riotName = ref('')
 const riotTag = ref('')
-const riotRegion = ref('na')
+const riotRegion = ref<string>('na')
 const riotBusy = ref(false)
 const riotError = ref('')
 const riotSuccess = ref('')
@@ -61,9 +65,22 @@ const panelRefs: Partial<Record<PrimaryGame, HTMLElement | null>> = {
   lol: null,
 }
 
-const valorantLinked = computed(() => riotAccounts.value.length > 0)
+// Until the account list lands, the signed-in user's own Riot ID stands in as the main (v3),
+// so a linked account never flashes an empty "Link Riot account" form.
+const valorantRows = computed(() => valorantAccountsView(riotAccounts.value, riotAccountsLoaded.value, user.value))
+const valorantLinked = computed(() => valorantRows.value.length > 0)
+const valorantChecking = computed(() => !riotAccountsLoaded.value && !valorantLinked.value)
+
+// Region defaults: the account's own region/server, else the other Riot game's, else the device time zone, else NA.
+function regionHints(): RegionHints {
+  let timeZone: string | null = null
+  try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone } catch { /* unavailable */ }
+  return { riotRegion: user.value?.riot_region, lolPlatform: user.value?.lol_platform, timeZone }
+}
+const riotRegionDefault = () => defaultValorantRegion(regionHints())
+const lolPlatformDefault = () => defaultLolPlatform(regionHints())
 const cs2Linked = computed(() => Boolean(
-  settings.cs2SteamName?.trim()
+  cs2SteamNameField.value
   || cs2FaceitLinked.value,
 ))
 const deadlockLinked = computed(() => Boolean(user.value?.deadlock_account_id))
@@ -71,7 +88,7 @@ const lolLinked = computed(() => Boolean(user.value?.lol_riot_name?.trim() && us
 
 const lolName = ref('')
 const lolTag = ref('')
-const lolPlatform = ref('EUW1')
+const lolPlatform = ref<string>('EUW1')
 const lolBusy = ref(false)
 const lolError = ref('')
 const lolSuccess = ref('')
@@ -93,6 +110,12 @@ const LOL_PLATFORMS = [
 ] as const
 
 const activeFocus = computed(() => props.focus ?? accountLinkFocus.value)
+
+// Pre-fill the region/server selects from what the account already knows (only while the form is untouched).
+watch(() => [user.value?.riot_region, user.value?.lol_platform], () => {
+  if (!riotName.value && !riotTag.value) riotRegion.value = riotRegionDefault()
+  if (!lolName.value && !lolTag.value && !lolEditing.value) lolPlatform.value = lolPlatformDefault()
+}, { immediate: true })
 
 async function afterLinked() {
   await reloadAccountLinks()
@@ -200,7 +223,7 @@ function cancelRiotAddForm() {
   showRiotAddForm.value = false
   riotName.value = ''
   riotTag.value = ''
-  riotRegion.value = 'na'
+  riotRegion.value = riotRegionDefault()
   riotError.value = ''
   riotSuccess.value = ''
 }
@@ -228,7 +251,7 @@ async function linkValorant() {
     riotSuccess.value = 'Riot account linked. Syncing stats in the background.'
     riotName.value = ''
     riotTag.value = ''
-    riotRegion.value = 'na'
+    riotRegion.value = riotRegionDefault()
     showRiotAddForm.value = false
     await reloadAccountLinks()
     await window.api.app.refreshDashboard().catch(() => null)
@@ -259,7 +282,7 @@ function startRiotEdit(account: RiotAccountRow) {
   riotConfirmRemoveId.value = null
   riotEditName.value = account.riot_name
   riotEditTag.value = account.riot_tag
-  riotEditRegion.value = account.riot_region ?? 'na'
+  riotEditRegion.value = account.riot_region ?? riotRegionDefault()
 }
 
 function cancelRiotEdit() {
@@ -314,7 +337,10 @@ async function removeRiotAccount(id: number) {
 
 async function saveCs2Steam() {
   faceitError.value = ''
-  await window.api.cs2.syncIdentity(settings.cs2SteamName?.trim() ?? '')
+  const name = cs2SteamNameField.value.trim()
+  // Saved on this PC as well as the account, so the box isn't empty next time (it only went to the account before).
+  await window.api.settings.save({ cs2SteamName: name })
+  await window.api.cs2.syncIdentity(name)
   showSaved()
   await reloadAccountLinks()
   await window.api.app.refreshDashboard().catch(() => null)
@@ -391,7 +417,7 @@ function startLolEdit() {
   lolSuccess.value = ''
   lolName.value = user.value?.lol_riot_name ?? ''
   lolTag.value = user.value?.lol_riot_tag ?? ''
-  lolPlatform.value = user.value?.lol_platform ?? 'EUW1'
+  lolPlatform.value = user.value?.lol_platform ?? lolPlatformDefault()
 }
 
 function cancelLolEdit() {
@@ -465,10 +491,10 @@ async function unlinkLol() {
       <div class="uf-link-game-head">
         <img :src="gameBrand('valorant').logo" alt="" class="uf-link-logo">
         <p class="uf-t3">Valorant</p>
-        <p class="uf-t4">{{ valorantLinked ? riotAccountsCapLabel : 'Link Valorant accounts to track stats. One account is your main at a time.' }}</p>
+        <p class="uf-t4">{{ riotAccountsLoaded && valorantLinked ? riotAccountsCapLabel : 'Link Valorant accounts to track stats. One account is your main at a time.' }}</p>
       </div>
       <div v-if="valorantLinked" class="uf-link-list">
-        <div v-for="account in riotAccounts" :key="account.id" class="uf-link-acc">
+        <div v-for="account in valorantRows" :key="account.id" class="uf-link-acc">
           <div class="uf-set-row">
             <div class="uf-set-row-text">
               <p class="uf-t3">{{ account.riot_name }}<span class="uf-link-tag">#{{ account.riot_tag }}</span>
@@ -476,7 +502,8 @@ async function unlinkLol() {
               </p>
               <p v-if="account.riot_region" class="uf-t4">Region {{ account.riot_region.toUpperCase() }}</p>
             </div>
-            <div class="uf-set-ctl">
+            <!-- id 0 = the signed-in user's Riot ID shown while the list loads: no actions until real rows land -->
+            <div v-if="account.id > 0" class="uf-set-ctl">
               <button v-if="!account.is_active" type="button" class="uf-btn-secondary uf-set-btn" :disabled="riotActivatingId === account.id" @click="activateRiotAccount(account.id)">{{ riotActivatingId === account.id ? 'Setting…' : 'Make main' }}</button>
               <button v-if="riotEditingId !== account.id" type="button" class="uf-link" title="Riot ID changed? Update the name and tag for this account." @click="startRiotEdit(account)">Update</button>
               <template v-if="riotConfirmRemoveId === account.id">
@@ -486,7 +513,7 @@ async function unlinkLol() {
               <button v-else type="button" class="uf-link uf-link-danger" :disabled="riotAccounts.length <= 1 || riotRemovingId === account.id" :title="riotAccounts.length <= 1 ? 'You must keep at least one Riot account' : undefined" @click="riotConfirmRemoveId = account.id">Remove</button>
             </div>
           </div>
-          <div v-if="riotEditingId === account.id" class="uf-inset uf-link-form">
+          <div v-if="riotEditingId === account.id" class="uf-link-form">
             <p class="uf-t4">Changed your Riot ID in Valorant? Update it here so recording and stats keep matching this account.</p>
             <div class="uf-link-fields">
               <input v-model="riotEditName" type="text" placeholder="Name" aria-label="Riot name" class="uf-input">
@@ -501,14 +528,18 @@ async function unlinkLol() {
           </div>
         </div>
       </div>
-      <div v-if="valorantLinked && riotAccountsAtCap" class="uf-set-row">
+      <div v-if="valorantChecking" class="uf-link-skel" aria-busy="true" aria-label="Checking linked Valorant accounts">
+        <UfSkeleton :w="180" :h="15" />
+        <UfSkeleton :w="90" :h="13" />
+      </div>
+      <div v-if="riotAccountsLoaded && valorantLinked && riotAccountsAtCap" class="uf-set-row">
         <p class="uf-note is-warn">Account limit reached on your current plan.</p>
         <button type="button" class="uf-link" @click="openUpgrade">Upgrade →</button>
       </div>
-      <div v-if="valorantLinked && riotAccountsCanAdd && !showRiotAddForm" class="uf-set-actions">
+      <div v-if="riotAccountsLoaded && valorantLinked && riotAccountsCanAdd && !showRiotAddForm" class="uf-set-actions">
         <button type="button" class="uf-btn-secondary uf-set-btn" @click="openRiotAddForm">Add account</button>
       </div>
-      <div v-if="showRiotAddForm || !valorantLinked" class="uf-inset uf-link-form">
+      <div v-if="showRiotAddForm || (riotAccountsLoaded && !valorantLinked)" class="uf-link-form">
         <p class="uf-t4">{{ valorantLinked ? 'Enter the Riot ID for the Valorant account you want to link.' : 'Your Riot ID from the Valorant home screen (Name#Tag).' }}</p>
         <div class="uf-link-fields">
           <input v-model="riotName" type="text" placeholder="Name" aria-label="Riot name" class="uf-input">
@@ -530,11 +561,11 @@ async function unlinkLol() {
       <div class="uf-link-game-head">
         <img :src="gameBrand('cs2').logo" alt="" class="uf-link-logo">
         <p class="uf-t3">CS2 <span v-if="cs2Linked" class="uf-link-role is-main">Linked</span></p>
-        <p class="uf-t4">Your Steam name must match your CS2 name so clips find your kills.</p>
+        <p class="uf-t4">Finds you in your demos until your Steam ID is saved (that happens the first time a demo matches you). Use your CS2 name.</p>
       </div>
       <div class="uf-set-split">
         <label class="uf-field"><span class="uf-t4">Steam / in-game name</span>
-          <input v-model="settings.cs2SteamName" type="text" placeholder="Matches your CS2 name" class="uf-input" @change="saveCs2Steam">
+          <input v-model="cs2SteamNameField" type="text" placeholder="Matches your CS2 name" class="uf-input" @change="saveCs2Steam">
         </label>
         <label class="uf-field"><span class="uf-t4">FACEIT username (optional)</span>
           <span class="uf-link-inline">
@@ -574,7 +605,7 @@ async function unlinkLol() {
       <div class="uf-link-game-head">
         <img :src="gameBrand('lol').logo" alt="" class="uf-link-logo">
         <p class="uf-t3">League of Legends</p>
-        <p class="uf-t4">{{ lolAccounts.length ? lolCapLabel : 'Can be a different Riot ID than Valorant. Use the Riot ID from the League client.' }}</p>
+        <p class="uf-t4">{{ lolAccounts.length ? lolCapLabel : lolLinked || !user?.riot_name || !user?.riot_tag ? 'Can be a different Riot ID than Valorant. Use the Riot ID from the League client.' : `Not linked, so League uses your Valorant Riot ID ${user.riot_name}#${user.riot_tag}. Link the Riot ID from the League client if it's different.` }}</p>
       </div>
       <!-- Main + alts (needs the /api/lol-accounts endpoint; falls back to the single link below). -->
       <template v-if="lolAccountsLoaded && lolAccounts.length">
@@ -603,7 +634,7 @@ async function unlinkLol() {
         <div v-else-if="!lolAddOpen" class="uf-set-actions">
           <button type="button" class="uf-btn-secondary uf-set-btn" @click="lolAddOpen = true">Add account</button>
         </div>
-        <div v-else class="uf-inset uf-link-form">
+        <div v-else class="uf-link-form">
           <p class="uf-t4">Enter the Riot ID for the League account you want to add. Matches on it are coached and tagged Alt.</p>
           <div class="uf-link-fields">
             <input v-model="lolName" type="text" placeholder="Name" aria-label="League Riot name" class="uf-input">
@@ -626,7 +657,7 @@ async function unlinkLol() {
           <button type="button" class="uf-link uf-link-danger" :disabled="lolUnlinking" @click="unlinkLol">{{ lolUnlinking ? '…' : 'Unlink' }}</button>
         </div>
       </div>
-      <div v-else class="uf-inset uf-link-form">
+      <div v-else class="uf-link-form">
         <div class="uf-link-fields">
           <input v-model="lolName" type="text" placeholder="Name" aria-label="League Riot name" class="uf-input">
           <input v-model="lolTag" type="text" placeholder="Tag" aria-label="League Riot tag" class="uf-input">
@@ -822,7 +853,7 @@ async function unlinkLol() {
         </div>
         <label class="block text-[11px] text-gray-500 mb-1">Steam / in-game name</label>
         <input
-          v-model="settings.cs2SteamName"
+          v-model="cs2SteamNameField"
           type="text"
           placeholder="Matches your CS2 name"
           class="w-full rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-blue-500/40 focus:outline-none"

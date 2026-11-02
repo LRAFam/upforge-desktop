@@ -92,10 +92,57 @@ export function sparkline(values: number[], width: number, height: number): stri
   return values.map((v, i) => `${round((i / (values.length - 1)) * width)},${round(height - 3 - ((v - lo) / span) * (height - 6))}`).join(' ')
 }
 
-/** "opening_death_rate" → "Opening death rate". */
+/**
+ * Which way is better for each per-match habit metric, with its plain label. Mirrors
+ * FOCUS_METRICS in upforge-ai-service/services/match_report_facts.py (the source of the values).
+ * Note: traded_death_rate is the share of YOUR deaths a teammate traded, so higher is better.
+ */
+export const HABIT_METRICS: Record<string, { label: string; better: 'lower' | 'higher' }> = {
+  opening_death_rate: { label: 'Opening deaths', better: 'lower' },
+  early_opening_death_rate: { label: 'Opening deaths in the first 10s', better: 'lower' },
+  traded_death_rate: { label: 'Deaths traded', better: 'higher' },
+  zero_damage_round_rate: { label: 'Zero-damage rounds', better: 'lower' },
+  headshot_hit_rate: { label: 'Hits on the head', better: 'higher' },
+  leg_hit_rate: { label: 'Hits on the legs', better: 'lower' },
+}
+
+export type TrendTone = 'better' | 'worse' | 'flat' | null
+
+/**
+ * Better / worse / flat for a first→last change. `better` from the focus wins when given; otherwise the
+ * metric map; unknown direction gives null (no colour). Changes that round to the same shown value are flat.
+ */
+export function habitTone(key: string, first: number, last: number, better?: 'lower' | 'higher' | null): TrendTone {
+  const dir = better ?? HABIT_METRICS[key]?.better ?? null
+  if (formatMetric(key, first) === formatMetric(key, last)) return 'flat'
+  if (!dir) return null
+  return (dir === 'lower' ? last < first : last > first) ? 'better' : 'worse'
+}
+
+/** Plain label: the known metric label, else "opening_death_rate" → "Opening death rate". */
 export function metricLabel(key: string): string {
+  if (HABIT_METRICS[key]) return HABIT_METRICS[key].label
   const s = key.replace(/_/g, ' ').trim()
   return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+/**
+ * Which points get a rank badge: the start, the first time each rank is reached in the window, and the
+ * end. A rank that flips back and forth (Plat 1 ↔ Plat 2) gets one badge, not one per flip; every change
+ * still keeps its up/down ring.
+ */
+export function badgeIndexes(series: EloPoint[]): number[] {
+  if (!series.length) return []
+  const seen = new Set<string>()
+  const out: number[] = []
+  series.forEach((p, i) => {
+    if (!p.rank || seen.has(p.rank)) return
+    seen.add(p.rank)
+    out.push(i)
+  })
+  const end = series.length - 1
+  if (series[end].rank && !out.includes(end) && series[end].rank !== series[out[out.length - 1]]?.rank) out.push(end)
+  return out
 }
 
 /** Rates (0–1) as percentages; other values as-is. */
@@ -109,6 +156,17 @@ function round(n: number): number {
 }
 
 const RANGE_DAYS: Record<string, number | null> = { '7d': 7, '30d': 30, '90d': 90, all: null }
+
+/** Items whose date falls inside the picked range (All keeps everything; undated items only in All). */
+export function inRange<T>(items: readonly T[], dateOf: (item: T) => string | null | undefined, range: string, now = Date.now()): T[] {
+  const days = RANGE_DAYS[range]
+  if (days == null) return [...items]
+  const cutoff = now - days * 86_400_000
+  return items.filter(item => {
+    const t = new Date(dateOf(item) ?? '').getTime()
+    return Number.isFinite(t) && t >= cutoff
+  })
+}
 
 /**
  * Rank snapshots for the picked range, so the chart matches the range tabs. `null` when the range

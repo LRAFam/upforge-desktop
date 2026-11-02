@@ -29,6 +29,7 @@ import { peekDetail, prefetchAnalysis } from './vod/match-prefetch'
 import { matchRouteKey, rememberMatchSummary } from './vod/match-summary'
 import { readCache, writeCache } from '../lib/stale-cache'
 import { scoreGrade, scoreLabel, scoreGradeBadgeClass } from '../lib/analysis-scoring'
+import { dedupeAnalysesByMatch } from '../components/v3/matches/match-meta'
 import {
   hasMomentHybridContent,
   type AnalysisDetailEnriched,
@@ -167,17 +168,23 @@ function createCoachingHistory() {
     if (uiV3.value) {
       // Last known list draws instantly (per game); the fetch refreshes it quietly.
       const cached = readCache<AnalysisItem[]>(cacheKey)?.value
-      allAnalyses.value = Array.isArray(cached) ? cached : []
+      allAnalyses.value = Array.isArray(cached) ? dedupeAnalysesByMatch(cached) : []
     }
     loading.value = true
     try {
-      allAnalyses.value = await loadGameAnalyses(game, 100)
+      const raw = await loadGameAnalyses(game, 100)
+      // v3: one row per match. Re-runs of the same match (same match id) show once (audit 2 Nov: 3× "Fade · Ascent 15–13").
+      allAnalyses.value = uiV3.value ? dedupeAnalysesByMatch(raw) : raw
       if (uiV3.value && game === primaryGame.value) writeCache(cacheKey, allAnalyses.value)
       const requestedId = typeof route.query.analysis === 'string'
         ? Number(route.query.analysis)
         : null
-      const requested = Number.isInteger(requestedId)
-        ? allAnalyses.value.find(analysis => analysis.id === requestedId)
+      const requestedRaw = Number.isInteger(requestedId)
+        ? raw.find(analysis => analysis.id === requestedId)
+        : null
+      const requested = requestedRaw
+        ? allAnalyses.value.find(analysis => analysis.id === requestedRaw.id)
+          ?? allAnalyses.value.find(analysis => !!requestedRaw.match_id && analysis.match_id === requestedRaw.match_id)
         : null
       if (requested && selectedId.value !== requested.id) await selectSession(requested)
     } catch {

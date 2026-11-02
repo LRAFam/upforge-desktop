@@ -36,6 +36,7 @@ import UfButton from '../components/v3/UfButton.vue'
 import UfDialog from '../components/v3/UfDialog.vue'
 import PracticeAnalyticsV3 from '../components/v3/practice/PracticeAnalyticsV3.vue'
 import { deltaTone, hitsLabel, pct, signed, toneColor } from '../components/v3/practice/practice-session-v3'
+import { matchDrillRows, oldScoringBests, oldScoringNote } from '../components/v3/practice/practice-v3'
 
 const ICON_LOCK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
 const ICON_TROPHY_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/><path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>`
@@ -211,7 +212,7 @@ const SCENARIO_META: Record<string, {
     ring: 'ring-sky-500/30',
   },
   microadjust: {
-    label: 'Micro-Adj',
+    label: 'Micro-Adjust',
     description: 'Fine corrections from near your cursor.',
     tip: 'Slow your mousepad movement — this is fingertip control.',
     category: 'precision',
@@ -503,6 +504,22 @@ function drillForScenario(scenario: ScenarioKey): AssignedDrill {
     weakness_score: 0,
     reason: '',
   }
+}
+
+// UI v3: runs from before the scoring update (desktop 2.12.12, 24 Sep 2026) have no personal best
+// in the API; show their old best and say why instead of "Not played".
+const oldBests = computed(() => oldScoringBests(apiHistory.value?.sessions))
+const scoringNote = computed(() => oldScoringNote(apiHistory.value?.sessions, apiHistory.value?.total ?? 0))
+// UI v3 "Drills from your matches": the coaching drills themselves, never a stand-in trainer drill.
+const matchDrills = computed(() => matchDrillRows(coachingDrills.value, k => SCENARIO_META[k as ScenarioKey]?.label))
+function launchMatchDrill(id: number) {
+  const d = coachingDrills.value.find(x => x.id === id)
+  if (d) void launchDrill(drillToAssigned(d))
+}
+// Valorant calibration is an admin measuring tool: only admins get the link.
+const isAdmin = ref(false)
+if (uiV3.value) {
+  window.api?.app?.getStatus?.().then(s => { isAdmin.value = !!s?.user?.is_admin }).catch(() => { /* link stays hidden */ })
 }
 
 const scenarioCards = computed(() =>
@@ -1761,10 +1778,11 @@ const CATEGORY_ICON: Record<string, string> = {
       :session-steps="guidedSessionPreview"
       :session-focus-reason="sharedTrainingPlan?.focus.reason ?? null"
       :session-disabled="!sharedTrainingPlan || launching || drillRunning || structuredSessionActive"
-      :recommended="recommendedDrills"
-      :recommended-from-api="coachingDrills.length > 0"
+      :match-drills="matchDrills"
+      :scoring-note="scoringNote"
+      :show-calibration="isAdmin"
       :categories="DRILL_CATEGORY_FILTERS"
-      :drills="scenarioCards.map(c => ({ scenario: c.scenario, label: SCENARIO_META[c.scenario]?.label ?? c.scenario, description: SCENARIO_META[c.scenario]?.description ?? '', difficulty: c.drill.difficulty, durationSeconds: c.drill.duration_seconds, personalBest: c.pb, globalRank: c.rank, completed: c.completed }))"
+      :drills="scenarioCards.map(c => ({ scenario: c.scenario, label: SCENARIO_META[c.scenario]?.label ?? c.scenario, description: SCENARIO_META[c.scenario]?.description ?? '', difficulty: c.drill.difficulty, durationSeconds: c.drill.duration_seconds, personalBest: c.pb, oldBest: oldBests[c.scenario] ?? null, globalRank: c.rank, completed: c.completed }))"
       :running-scenario="drillRunning ? activeDrill?.scenario ?? null : null"
       :busy="launching || drillRunning"
       :daily="{ scenarioLabel: SCENARIO_META[dailyChallenge.scenario]?.label ?? dailyChallenge.scenario, target: dailyChallenge.target, completed: dailyChallenge.completed }"
@@ -1772,7 +1790,7 @@ const CATEGORY_ICON: Record<string, string> = {
       :insights="correlationInsights"
       :scenario-label="(k: string) => SCENARIO_META[k]?.label ?? k"
       @start-session="startStructuredSession"
-      @play-recommended="(i: number) => launchVodDrill(recommendedDrills[i])"
+      @play-match-drill="launchMatchDrill"
       @play-drill="(k: string) => launchScenarioCard(k as ScenarioKey)"
       @play-daily="launchDrill({ scenario: dailyChallenge.scenario, difficulty: 'medium', duration_seconds: 60, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${dailyChallenge.target}+` })"
       @launch-free="launchFreePlay"
@@ -1988,6 +2006,7 @@ const CATEGORY_ICON: Record<string, string> = {
         :drills="Object.entries(SCENARIO_META).map(([key, meta]) => ({ key, label: meta.label, description: meta.description }))"
         :radar-keys="RADAR_SCENARIOS"
         :radar="radarData"
+        :scoring-note="scoringNote"
         :sparkline="buildSparkline"
         :insights="correlationInsights"
         :achievements="displayAchievements.map(a => ({ ...a, unlocked: isUnlocked(a.id), date: isUnlocked(a.id) ? formatAchievementDate(achievements.unlocked.value[a.id]) : '' }))"

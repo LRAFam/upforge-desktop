@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coachLine, firstDeathEvent, firstDeathRounds, matchResult, roundsForLine, sideTab, statsOnlyNotice } from './match-page-v3'
+import { coachLine, coachReplied, firstDeathEvent, firstDeathRounds, matchResult, NOTES_TAB_LABEL, roundsForLine, showRoundRecord, sideTab, statsOnlyNotice } from './match-page-v3'
 
 const rounds = [
   { roundNumber: 0, won: true },
@@ -82,5 +82,24 @@ describe('statsOnlyNotice', () => {
       .toBe('We couldn’t review the video. Your credit was returned. This coaching uses the match data only.')
     expect(statsOnlyNotice({ is_degraded: true })?.message).not.toMatch(/credit/i)
     expect(statsOnlyNotice({ is_degraded: true, credit_returned: 'yes' })?.message).not.toMatch(/credit/i)
+  })
+})
+
+describe('audit fixes (2 Nov)', () => {
+  it('uses one notes tab label', () => {
+    expect(NOTES_TAB_LABEL).toBe('Coach notes')
+  })
+  it('counts a coach reply only when the coach wrote something', () => {
+    expect(coachReplied(null)).toBe(false)
+    expect(coachReplied({ coach_perspective: null, annotations: [] })).toBe(false)
+    expect(coachReplied({ coach_perspective: '  ', annotations: [] })).toBe(false)
+    expect(coachReplied({ coach_perspective: 'Trade your entry.', annotations: [] })).toBe(true)
+    expect(coachReplied({ annotations: [{ id: 1 }] })).toBe(true)
+  })
+  it('hides the rounds stat when the big score already shows it', () => {
+    expect(showRoundRecord({ ally: 13, enemy: 10 }, { wins: 13, losses: 10 })).toBe(false)
+    expect(showRoundRecord(null, { wins: 13, losses: 10 })).toBe(true)
+    expect(showRoundRecord({ ally: 13, enemy: 10 }, { wins: 12, losses: 10 })).toBe(true)
+    expect(showRoundRecord({ ally: 13, enemy: 10 }, null)).toBe(false)
   })
 })

@@ -7,6 +7,7 @@ import UfSkeleton from '../UfSkeleton.vue'
  */
 import { computed } from 'vue'
 import UfButton from '../UfButton.vue'
+import EmptyArt from '../empty/EmptyArt.vue'
 import { scenarioIconUrl } from '../../../lib/training-icons'
 import type { TrainingBenchmark, TrainingHistory } from '../../../env.d.ts'
 import { benchmarkMeta, benchmarkVisible, pct, recentScores, toneColor, trendSummary } from './practice-session-v3'
@@ -45,6 +46,8 @@ const props = defineProps<{
   weekCount: number
   weekExporting: boolean
   weekDone: boolean
+  /** Why old runs have no best (scoring update), or null. */
+  scoringNote?: string | null
 }>()
 
 const emit = defineEmits<{ 'share-week': [] }>()
@@ -64,6 +67,8 @@ const rows = computed(() => props.drills.map(d => {
   }
 }))
 const radarLabel = (k: string) => props.drills.find(d => d.key === k)?.label ?? k
+// Radar centre is (70, 70). Anchor side labels away from the shape so long names ("Micro-Adjust") never clip.
+const labelAnchor = (x: number) => (x < 64 ? 'end' : x > 76 ? 'start' : 'middle')
 </script>
 
 <template>
@@ -81,7 +86,7 @@ const radarLabel = (k: string) => props.drills.find(d => d.key === k)?.label ?? 
           >{{ weekExporting ? 'Saving…' : weekDone ? 'Saved' : 'Share this week' }}</UfButton>
         </div>
         <div class="uf-an-radar">
-          <svg width="220" height="220" viewBox="-10 -10 160 160" role="img" :aria-label="radar.hasData ? 'Skill shape from your personal bests' : 'Skill shape, no scores yet'">
+          <svg width="300" height="236" viewBox="-50 -12 240 189" role="img" :aria-label="radar.hasData ? 'Skill shape from your personal bests' : 'Skill shape, no scores yet'">
             <path v-for="(gp, gi) in radar.gridPaths" :key="gi" :d="gp" fill="none" stroke="var(--uf-line)" stroke-width="0.75" />
             <line v-for="(ax, ai) in radar.axisLines" :key="ai" :x1="ax.x1" :y1="ax.y1" :x2="ax.x2" :y2="ax.y2" stroke="var(--uf-line)" stroke-width="0.75" />
             <path :d="radar.outerPath" fill="none" stroke="var(--uf-line-2)" stroke-width="1" />
@@ -89,7 +94,7 @@ const radarLabel = (k: string) => props.drills.find(d => d.key === k)?.label ?? 
             <circle v-for="(v, vi) in radar.dataVertices" :key="vi" :cx="v.x" :cy="v.y" :r="radar.scores[vi] > 0 ? 2.5 : 0" fill="var(--uf-bone)" />
             <text
               v-for="(lbl, li) in radar.labels" :key="li" :x="lbl.x" :y="lbl.y" fill="var(--uf-muted)"
-              font-size="8" font-weight="600" text-anchor="middle" dominant-baseline="middle"
+              font-size="8" font-weight="600" :text-anchor="labelAnchor(lbl.x)" dominant-baseline="middle"
             >{{ lbl.text }}</text>
           </svg>
           <dl class="uf-an-bests">
@@ -99,7 +104,8 @@ const radarLabel = (k: string) => props.drills.find(d => d.key === k)?.label ?? 
             </div>
           </dl>
         </div>
-        <p v-if="!radar.hasData" class="uf-t2" style="margin: 0">No scores yet. Finish a drill and your shape starts here.</p>
+        <p v-if="!radar.hasData && scoringNote" class="uf-t2" style="margin: 0">{{ scoringNote }} Finish a drill to start your shape.</p>
+        <EmptyArt v-else-if="!radar.hasData" size="section" title="No scores yet" text="Finish a drill and your shape starts here." />
       </section>
 
       <!-- By drill -->

@@ -34,6 +34,7 @@ import { getVodAdapter } from '../lib/vod-games'
 import { useVodPortraits } from './vod/useVodPortraits'
 import { takeArchive, takeDetail, takeTimeline } from './vod/match-prefetch'
 import { uiV3 } from '../lib/ui-v3'
+import { readCache, writeCache } from '../lib/stale-cache'
 
 // Round outcome icons — game-aware via timeline-event-icons.ts
 
@@ -760,6 +761,14 @@ function createVodReview() {
 
   const matchScoreline = computed(() => {
     if (!isRoundBased.value) return null
+    // CS2: the demo's measured score (and its rounds line) beats the AI review's own score, which
+    // came from the video and could disagree with the rounds shown underneath (13–9 vs 13–10).
+    if (timeline.value?.game === 'cs2') {
+      const fs = timeline.value.finalScore
+      if (fs) return { ally: fs.allyScore, enemy: fs.enemyScore }
+      const rec = roundRecord.value
+      if (rec) return { ally: rec.wins, enemy: rec.losses }
+    }
     const d = coachingDetail.value
     if (d?.ally_score != null && d?.enemy_score != null) {
       return { ally: d.ally_score, enemy: d.enemy_score }
@@ -1796,17 +1805,27 @@ function createVodReview() {
     // Behind the drawn page: coaching detail + coach review, and the playback URL, in parallel.
     const detailId = timeline.value?.analysisId ?? numericTimelineId
     const hasDetail = Number.isFinite(detailId) && detailId > 0
+    // The coaching detail draws on its own: the coach review takes two calls in a row, and the
+    // header's coach sentence (and its skeleton) must not wait for it.
     const coaching = hasDetail
       ? (async () => {
-          detailLoading.value = true
-          const [detail, review] = await Promise.all([
-            (takeDetail(detailId) ?? window.api.analyses.getDetail(detailId)).catch(() => null),
-            fetchCoachReview(detailId),
-          ])
+          // Cache-first (loading rule 1): a repeat visit draws the last coaching detail at once.
+          const cacheKey = `match-detail:${detailId}`
+          const cached = readCache<typeof coachingDetail.value>(cacheKey)?.value ?? null
+          if (cached) coachingDetail.value = cached
+          detailLoading.value = !cached
+          const detailDone = (takeDetail(detailId) ?? window.api.analyses.getDetail(detailId))
+            .catch(() => null)
+            .then((detail) => {
+              if (seq !== loadSeq) return
+              // A failed refresh keeps the cached detail (loading rule 5).
+              if (detail || !cached) coachingDetail.value = detail
+              if (detail) writeCache(cacheKey, detail)
+              detailLoading.value = false
+            })
+          const [, review] = await Promise.all([detailDone, fetchCoachReview(detailId)])
           if (seq !== loadSeq) return
-          coachingDetail.value = detail
           coachReview.value = review
-          detailLoading.value = false
           applyCoachReviewUiState()
         })()
       : Promise.resolve()

@@ -52,3 +52,16 @@ export function relativeTime(ms: number, now = Date.now()): string {
   if (days < 7) return `${days}d ago`
   return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
+
+/**
+ * The ONE quiet storage line under the Matches/Clips header:
+ * "30 recordings · 36.10 GB cloud storage used" (+ "· 2.1 GB on this PC" only when there is some).
+ * Cloud storage is account-wide (every game, clips and recordings), so it is named as such.
+ */
+export function storageSummary(opts: { count: number; noun: [string, string]; localBytes?: string | null; cloudUsed?: string | null; cloudCapacity?: string | null; full?: boolean }): string {
+  const parts = [`${opts.count} ${opts.count === 1 ? opts.noun[0] : opts.noun[1]}`]
+  if (opts.localBytes) parts.push(`${opts.localBytes} on this PC`)
+  if (opts.full) parts.push('cloud storage full')
+  else if (opts.cloudUsed) parts.push(`${opts.cloudUsed}${opts.cloudCapacity ? ` of ${opts.cloudCapacity}` : ''} cloud storage used`)
+  return parts.join(' · ')
+}

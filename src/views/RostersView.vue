@@ -16,6 +16,8 @@ import { getRankIconUrl } from '../lib/valorant'
 import RostersV3 from './v3/RostersV3.vue'
 import { uiV3 } from '../lib/ui-v3'
 import { readCache, writeCache } from '../lib/stale-cache'
+import { useCoachBadges } from '../components/v3/roster-flow/useCoachBadges'
+import { markReplySeen, readSeenReplies, unseenReplies, type StudentHub } from '../components/v3/roster-flow/roster-flow'
 
 type RosterMode = 'student' | 'coach'
 
@@ -59,6 +61,12 @@ type ActionableMatch = RosterMatchVisual & {
 
 const router = useRouter()
 const { setPendingReviewCount } = useRosterHubBadge()
+// UI v3: Coaches only shows the student side; its badge = notes ready you haven't opened.
+const { setNotesReady, setCoachProfile } = useCoachBadges()
+const seenReplies = ref(readSeenReplies())
+const unseenIds = computed(() => new Set(
+  unseenReplies({ coaches: [], recent_completed: completedReviews.value as unknown as StudentHub['recent_completed'] }, seenReplies.value).map(x => x.reviewId),
+))
 
 const loading = ref(true)
 /** UI v3: a background refresh over data already on screen (never re-shows the skeleton). */
@@ -112,6 +120,7 @@ function setMode(next: RosterMode) {
 }
 
 function refreshBadge() {
+  if (uiV3.value) { setNotesReady(unseenIds.value.size); return }
   setPendingReviewCount(studentPending.value + coachPending.value)
 }
 
@@ -203,8 +212,7 @@ function seedFromCacheV3(): boolean {
   actionable.value = s.actionable ?? []
   stats.value = s.stats ?? stats.value
   studentPending.value = stats.value.pending_reviews
-  const stored = readStoredMode()
-  if (isCoachAccount.value) mode.value = stored ?? 'coach'
+  // v3 has no coach mode on Coaches: coaching others is the Students page.
   shownData = true
   loading.value = false
   return true
@@ -220,9 +228,11 @@ async function load() {
   try {
     const [hub, roster] = await Promise.all([
       window.api.coach.getStudentHub(),
-      window.api.coach.getRoster().catch(() => null),
+      // undefined = network error (keep the cached answer); null = definitely no coach profile.
+      window.api.coach.getRoster().catch(() => undefined),
     ])
     isCoachAccount.value = Boolean(roster?.coach?.id)
+    if (uiV3.value && roster !== undefined) setCoachProfile(isCoachAccount.value)
 
     coaches.value = (hub?.coaches ?? []) as RosterCoach[]
     pendingReviews.value = (hub?.pending_reviews ?? []) as HubReview[]
@@ -237,7 +247,10 @@ async function load() {
     studentPending.value = stats.value.pending_reviews
 
     const stored = readStoredMode()
-    if (isCoachAccount.value && coaches.value.length === 0) {
+    if (uiV3.value) {
+      mode.value = 'student'
+      refreshBadge()
+    } else if (isCoachAccount.value && coaches.value.length === 0) {
       setMode('coach')
     } else if (isCoachAccount.value && stored) {
       setMode(stored)
@@ -259,7 +272,7 @@ async function load() {
       })
     }
 
-    if (mode.value === 'coach' && coachPanelRef.value) {
+    if (!uiV3.value && mode.value === 'coach' && coachPanelRef.value) {
       await coachPanelRef.value.load()
     } else {
       refreshBadge()
@@ -273,7 +286,7 @@ async function load() {
     completedReviews.value = []
     actionable.value = []
     studentPending.value = 0
-    setPendingReviewCount(0)
+    if (!uiV3.value) setPendingReviewCount(0)
   } finally {
     loading.value = false
     refreshing.value = false
@@ -285,8 +298,10 @@ function onCoachLoaded(payload: { pendingCount: number }) {
   refreshBadge()
 }
 
+const ROSTERS_POLL_MS = 60_000
+
 async function refreshCurrent() {
-  if (mode.value === 'coach') {
+  if (!uiV3.value && mode.value === 'coach') {
     await coachPanelRef.value?.load()
     return
   }
@@ -343,6 +358,11 @@ function openAnalysis(row: RosterMatchVisual & { id?: number }) {
 }
 
 function openNotes(review: HubReview) {
+  if (uiV3.value && review.status === 'completed') {
+    markReplySeen(review.id)
+    seenReplies.value = readSeenReplies()
+    refreshBadge()
+  }
   if (!review.analysis?.id) return
   openAnalysis(review.analysis)
 }
@@ -410,7 +430,7 @@ function completedSubtitle(review: HubReview): string {
 
 async function boot() {
   await load()
-  if (mode.value === 'coach') return
+  if (!uiV3.value && mode.value === 'coach') return
   if (!isEmpty.value || error.value) return
   // UI v3: the empty state has an in-app invite field; never open the browser on its own.
   if (uiV3.value) return
@@ -432,7 +452,14 @@ onMounted(() => {
     if (!loading.value) void refreshCurrent()
   }
   window.addEventListener('focus', onFocus)
+  // UI v3 has no Refresh button: refresh quietly every minute while the window is visible.
+  const poll = uiV3.value
+    ? setInterval(() => {
+      if (document.visibilityState === 'visible' && !loading.value && !refreshing.value) void refreshCurrent()
+    }, ROSTERS_POLL_MS)
+    : null
   onUnmounted(() => {
+    if (poll) clearInterval(poll)
     window.removeEventListener('focus', onFocus)
     if (toastTimer) clearTimeout(toastTimer)
   })
@@ -442,49 +469,28 @@ onMounted(() => {
 <template>
   <RostersV3
     v-if="uiV3"
-    :mode="mode"
-    :show-mode-switch="showModeSwitch"
-    :coach-pending="coachPending"
-    :student-pending="studentPending"
     :loading="loading"
     :refreshing="refreshing"
     :error="error"
     :is-empty="isEmpty"
-    :discovery-opened="discoveryOpened"
     :coaches="coaches"
     :pending-reviews="pendingReviews"
     :completed-reviews="completedReviews"
     :actionable="actionable"
-    :stats="stats"
+    :unseen-ids="unseenIds"
+    :is-coach="isCoachAccount"
     :send-error="sendError"
-    :send-block-message="sendBlockMessage"
-    :can-send-any-review="canSendAnyReview"
     :sending-id="sendingId"
     :toast="toast"
-    :web-host="WEB_BASE.replace('https://', '')"
-    :coach-block="coachBlock"
-    :membership-label="membershipLabel"
-    :review-subtitle="reviewSubtitle"
-    :completed-subtitle="completedSubtitle"
-    @set-mode="setMode"
-    @refresh="refreshCurrent"
+    :coach-block-code="(c) => coachBlock(c as RosterCoach).code"
     @retry="load"
-    @discovery="openDiscovery"
     @my-coaches="openMyCoachesWeb"
     @open-coach="openCoachProfile"
     @open-notes="openNotes"
     @open-analysis="openAnalysis"
     @send="beginSend"
-    @joined="(name: string) => { flashToast(`Joined ${name}'s roster`); void load() }"
+    @joined="(name: string) => { flashToast(`You joined ${name}`); void load() }"
   >
-    <template #coach>
-      <RostersCoachPanel
-        ref="coachPanelRef"
-        :active="mode === 'coach'"
-        @loaded="onCoachLoaded"
-        @toast="flashToast"
-      />
-    </template>
     <template #overlays>
       <RosterSendSheet
         :open="sendSheetOpen"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agentFullPortrait, analysedThisWeek, coachLine, heroScore, homeStateNote, liveStatus, pickPrimaryAction, relativeDay, resultTone, resultWord } from './home-v3'
+import { agentFullPortrait, analysedThisWeek, coachLine, daysAgo, dedupeByMatch, focusTitleParts, formSquareLabel, heroMetaParts, heroScore, homeMapLabel, homeStateNote, liveStatus, pickPrimaryAction, relativeDay, resultTone, resultWord } from './home-v3'
 
 describe('pickPrimaryAction', () => {
   it('opens the last match whenever there is one', () => {
@@ -27,12 +27,17 @@ describe('match facts', () => {
 })
 
 describe('coachLine', () => {
-  it('talks about the real last match when there is no note, never "set up recording"', () => {
-    expect(coachLine(null, null, { won: true, mapLabel: 'Summit', roundsWon: 13, roundsLost: 10 }))
-      .toEqual({ headline: 'Your last match was a win on Summit, 13–10.', next: 'Open it to see what decided it.', source: 'last_match' })
-    expect(coachLine(null, null, { won: null, mapLabel: null, roundsWon: null, roundsLost: null })?.headline).toBe('Your last match is analysed.')
-    expect(coachLine(null, null, { won: false, mapLabel: 'Bind', roundsWon: 9, roundsLost: 13 })?.headline).toBe('Your last match was a loss on Bind, 9–13.')
+  it('never repeats the hero result line; uses the match verdict when the AI wrote one', () => {
+    expect(coachLine(null, null, { verdict: 'You keep re-peeking angles teammates just died on.' }))
+      .toEqual({ headline: 'You keep re-peeking angles teammates just died on.', next: '', source: 'verdict' })
+    expect(coachLine(null, null, { verdict: null }))
+      .toEqual({ headline: 'Open your last match to see what decided it.', next: '', source: 'last_match' })
+    expect(coachLine(null, null, { verdict: '  ' })?.source).toBe('last_match')
     expect(coachLine(null, null, null)).toBeNull()
+  })
+  it('puts the match verdict ahead of an older insight, but behind the focus note', () => {
+    expect(coachLine(null, { text: 'old insight' }, { verdict: 'Verdict.' })?.source).toBe('verdict')
+    expect(coachLine(note('Note.'), { text: 'old insight' }, { verdict: 'Verdict.' })?.source).toBe('focus_note')
   })
   const note = (headline?: string, next?: string) => ({
     match_id: 'm', focus: null, focus_event: null,
@@ -58,6 +63,51 @@ describe('helpers', () => {
     expect(relativeDay('2026-10-30T10:00:00Z', now)).toBe('2h ago')
     expect(relativeDay('2026-10-29T10:00:00Z', now)).toBe('yesterday')
     expect(relativeDay('nope', now)).toBe('')
+  })
+  it('gives the hero and the welcome-back note the same day count', () => {
+    const now = Date.parse('2026-11-02T09:00:00Z')
+    const iso = '2026-09-24T21:27:16.000000Z'
+    expect(relativeDay(iso, now)).toBe('39 days ago')
+    expect(daysAgo(iso, now)).toBe(39)
+    expect(homeStateNote([{ created_at: iso }], now)?.line).toContain('39 days ago')
+  })
+})
+
+describe('dedupeByMatch', () => {
+  it('keeps the newest analysis of a match that was analysed more than once', () => {
+    const rows = [
+      { id: 639, match_id: 'summit' },
+      { id: 634, match_id: 'ascent' },
+      { id: 633, match_id: 'ascent' },
+      { id: 632, match_id: 'ascent' },
+      { id: 10, match_id: null },
+      { id: 9, match_id: null },
+    ]
+    expect(dedupeByMatch(rows).map(r => r.id)).toEqual([639, 634, 10, 9])
+  })
+})
+
+describe('labels', () => {
+  const label = (m: string) => m
+  it('labels each recent-form square with map, score and result', () => {
+    expect(formSquareLabel({ won: true, map: 'Summit', rounds_won: 13, rounds_lost: 10, overall_score: 60, hs_pct: null }, label)).toBe('Summit · 13–10 · Win')
+    expect(formSquareLabel({ won: null, map: null, rounds_won: null, rounds_lost: null, overall_score: null, hs_pct: null }, label)).toBe('Match · Result unknown')
+  })
+  it('shows CS2 display map names', () => {
+    expect(homeMapLabel('cs2', 'de_vertigo', label)).toBe('Vertigo')
+    expect(homeMapLabel('cs2', 'maps/de_dust2', label)).toBe('Dust2')
+    expect(homeMapLabel('valorant', 'Ascent', m => `V:${m}`)).toBe('V:Ascent')
+    expect(homeMapLabel('cs2', null, label)).toBe('')
+  })
+  it('drops the CS2 player name and source label from the hero meta', () => {
+    const a = { map: 'de_vertigo', agent: 'LRAFam', game_mode: 'CS2 VOD', created_at: '' }
+    expect(heroMetaParts('cs2', a, 'Vertigo', m => String(m))).toEqual(['Vertigo'])
+    expect(heroMetaParts('valorant', { ...a, map: 'Summit', agent: 'Fade', game_mode: 'competitive' }, 'Summit', () => 'Competitive')).toEqual(['Summit', 'Fade', 'Competitive'])
+  })
+  it('splits the focus into a Plex title and a short goal with a whole percent', () => {
+    expect(focusTitleParts({ label: 'Opening deaths in the first 10s', better: 'lower', target: 0.11, progress: { status: 'active' } }))
+      .toEqual({ title: 'Opening deaths in the first 10s', goal: 'At most 11%' })
+    expect(focusTitleParts({ label: 'Deaths traded', better: 'higher', target: 0.305, progress: { status: 'achieved' } }).title).toBe('Focus achieved: deaths traded')
   })
 })
 
@@ -106,5 +156,13 @@ describe('homeStateNote (board 13)', () => {
     expect(homeStateNote(Array.from({ length: 12 }, (_, i) => at(i)), NOW)).toBeNull()
     expect(homeStateNote([], NOW)).toBeNull()
     expect(homeStateNote([{ created_at: null }], NOW)).toBeNull()
+  })
+})
+
+describe('matchTime (audit 2026-11-02)', () => {
+  it('prefers the API played_at over when the match was analysed', async () => {
+    const { matchTime } = await import('./home-v3')
+    expect(matchTime({ played_at: '2026-09-05T18:00:00Z', created_at: '2026-09-24T10:00:00Z' })).toBe('2026-09-05T18:00:00Z')
+    expect(matchTime({ played_at: null, created_at: '2026-09-24T10:00:00Z' })).toBe('2026-09-24T10:00:00Z')
   })
 })

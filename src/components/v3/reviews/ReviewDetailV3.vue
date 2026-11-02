@@ -4,7 +4,7 @@
  * a match waiting for coaching, the archive overview, and a coached session
  * (hero, Review match / Coach notes, report, moments to revisit).
  */
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { useCoachingHistory } from '../../../composables/useCoachingHistory'
 import { statsOnlyNotice } from '../matchpage/match-page-v3'
 import MatchSavedReviews from '../../coaching-history/MatchSavedReviews.vue'
@@ -19,8 +19,13 @@ import UfStatRow from '../UfStatRow.vue'
 import { canWatchRawRecording } from '../../../lib/recording-demo-status'
 import { recordingRowStats } from '../../../lib/dashboard-match-row'
 import { pendingMatchActionLabel, pendingMatchLifecycleState, pendingMatchStatusLabel } from '../../../lib/match-lifecycle'
-import { pendingDot, resultTone, resultWord, scoreLine, statItems } from './reviews-v3'
+import { ARCHIVE_DATES_KEY, pendingDot, resultTone, resultWord, reviewPlayedAt, scoreLine, statItems } from './reviews-v3'
+import { formatMatchDate, matchMapLabel } from '../matches/match-meta'
+import { mapDisplayName, modeDisplayName } from '../games/display-names'
+import { averageMatchScore, matchScore } from '../../../lib/upforge-score'
+import ScoreWhyV3 from '../score/ScoreWhyV3.vue'
 import UfSkeleton from '../UfSkeleton.vue'
+import { cs2StatItems, cs2StatsSourceNote } from '../../../lib/cs2-analyses'
 
 const {
   allAnalyses,
@@ -34,7 +39,6 @@ const {
   expandedBrief,
   expandedDetail,
   hasMomentContent,
-  formatDate,
   formatGameMode,
   formatMapLabel,
   getAgentImage,
@@ -50,8 +54,6 @@ const {
   pendingMessage,
   primaryGame,
   runPendingPrimaryAction,
-  scoreGrade,
-  scoreLabel,
   seekAnalysisMoment,
   selectedAnalysis,
   selectedId,
@@ -62,6 +64,7 @@ const {
   topMap,
   winRate,
 } = useCoachingHistory()
+const archiveDates = inject(ARCHIVE_DATES_KEY, null)
 const statsOnly = computed(() => statsOnlyNotice(expandedDetail.value as Parameters<typeof statsOnlyNotice>[0]))
 
 const reportOpen = ref(false)
@@ -88,27 +91,56 @@ const heroStats = computed(() => {
   const a = selectedAnalysis.value
   if (!a) return []
   const items = statItems({ ...a, combat_score: null, acs: displayAcs(a) })
-  if (a.overall_score != null) items.push({ value: `${a.overall_score * 10}`, label: `score · ${scoreGrade(a.overall_score)}` })
+  // CS2: ADR and KAST from the demo sit next to K/D/A (CS2 has no ACS).
+  if (a.cs2_source) items.splice(items.findIndex(i => i.label === 'K/D/A') + 1, 0, ...cs2StatItems(a))
+  const uf = selectedScore.value
+  if (uf) items.push({ value: uf.text, label: uf.kind === 'stats' ? 'UpForge' : 'Coach rating' })
   return items
 })
+
+/** Stats-based UpForge score (list row or detail), else the coach rating out of 10. */
+const selectedScore = computed(() => {
+  const a = selectedAnalysis.value
+  if (!a) return null
+  return matchScore({ upforge_score: a.upforge_score ?? expandedDetail.value?.upforge_score, overall_score: a.overall_score })
+})
+const scoreBreakdown = computed(() => (selectedScore.value?.kind === 'stats' ? expandedDetail.value?.upforge_score_breakdown ?? null : null))
+
+/** CS2 archive: `agent` holds the player's name (not an agent), maps are "de_" ids. */
+const isCs2Archive = computed(() => allAnalyses.value.some(a => !!a.cs2_source))
 
 const heroMeta = computed(() => {
   const a = selectedAnalysis.value
   if (!a) return ''
-  const parts = [a.agent || 'Unknown agent', formatMapLabel(a.map) || 'Unknown map']
+  // CS2 rows carry the player's name in `agent` and "CS2 VOD" as the mode: no agent role, no "Cs2 Vod".
+  if (a.cs2_source) {
+    return [a.map ? mapDisplayName('cs2', a.map) : 'Unknown map', a.agent, modeDisplayName('cs2', a.game_mode),
+      formatMatchDate(reviewPlayedAt(a, archiveDates?.value))].filter(Boolean).join(' · ')
+  }
+  const parts = [a.map ? matchMapLabel(null, a.map) : 'Unknown map', a.agent || 'Unknown agent']
   if (a.agent) parts.push(getAgentRole(a.agent))
   if (isDisplayableGameMode(a.game_mode)) parts.push(formatGameMode(a.game_mode))
-  parts.push(formatDate(a.created_at))
-  if (a.rank) parts.push(a.rank)
+  parts.push(formatMatchDate(reviewPlayedAt(a, archiveDates?.value)))
+  if (a.rank && a.rank.trim().toLowerCase() !== 'unknown') parts.push(a.rank)
   return parts.join(' · ')
 })
 
 const overviewStats = computed(() => [
   { value: String(allAnalyses.value.length), caption: 'Games coached' },
   { value: `${winRate.value}%`, caption: 'Win rate', tone: winRate.value >= 50 ? 'win' as const : 'loss' as const },
-  { value: avgScore.value != null ? String(avgScore.value * 10) : '—', caption: 'Average score' },
+  avgScoreItem.value,
   { value: avgKD.value, caption: 'Average K/D' },
-])
+].filter((i): i is NonNullable<typeof i> => i != null))
+
+/** Average stats score over scored matches only; else the coach-rating average; else nothing (no fake numbers). */
+const avgScoreItem = computed(() => {
+  const uf = averageMatchScore(allAnalyses.value)
+  if (uf) return { value: String(uf.value), caption: 'Average UpForge score', sub: `${uf.count} scored ${uf.count === 1 ? 'match' : 'matches'}` }
+  const coach = matchScore({ overall_score: avgScore.value })
+  return coach ? { value: coach.text, caption: 'Average coach rating' } : null
+})
+/** The trend line plots the coach's ratings (overall_score), so it is labelled as such. */
+const trendLast = computed(() => (chartData.value ? matchScore({ overall_score: chartData.value.last })?.text ?? '' : ''))
 </script>
 
 <template>
@@ -163,19 +195,19 @@ const overviewStats = computed(() => [
       </div>
       <template v-if="allAnalyses.length">
         <UfStatRow :items="overviewStats" />
-        <div v-if="topAgent || topMap" class="rv3-tops">
-          <div v-if="topAgent" class="rv3-top">
+        <div v-if="(topAgent && !isCs2Archive) || topMap" class="rv3-tops">
+          <div v-if="topAgent && !isCs2Archive" class="rv3-top">
             <img v-if="getAgentImage(topAgent)" :src="getAgentImage(topAgent)" alt="" class="rv3-top-img">
             <span class="rv3-col"><span class="uf-label">Most played agent</span><span class="uf-t3">{{ topAgent }}</span></span>
           </div>
           <div v-if="topMap" class="rv3-top">
             <img v-if="getMapListViewImage(topMap)" :src="getMapListViewImage(topMap)" alt="" class="rv3-top-map">
-            <span class="rv3-col"><span class="uf-label">Top map</span><span class="uf-t3">{{ formatMapLabel(topMap) }}</span></span>
+            <span class="rv3-col"><span class="uf-label">Top map</span><span class="uf-t3">{{ isCs2Archive ? mapDisplayName('cs2', topMap) : formatMapLabel(topMap) }}</span></span>
           </div>
         </div>
         <div v-if="chartData" class="rv3-col" style="gap: 10px">
-          <div class="rv3-chart-head"><span class="uf-label">Score trend</span><span class="uf-d4" :style="{ color: chartData.up ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ chartData.up ? '↑' : '↓' }} {{ chartData.last * 10 }}</span></div>
-          <svg width="100%" :height="chartData.H" :viewBox="`0 0 ${chartData.W} ${chartData.H}`" preserveAspectRatio="none" class="rv3-chart" role="img" :aria-label="`Score trend, latest ${chartData.last * 10}, ${chartData.up ? 'rising' : 'falling'}`">
+          <div class="rv3-chart-head"><span class="uf-label">Coach rating trend</span><span class="uf-d4" :style="{ color: chartData.up ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ chartData.up ? '↑' : '↓' }} {{ trendLast }}</span></div>
+          <svg width="100%" :height="chartData.H" :viewBox="`0 0 ${chartData.W} ${chartData.H}`" preserveAspectRatio="none" class="rv3-chart" role="img" :aria-label="`Coach rating trend, latest ${trendLast}, ${chartData.up ? 'rising' : 'falling'}`">
             <defs>
               <linearGradient id="rv3-trend" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" :style="{ stopColor: chartData.up ? 'var(--uf-win)' : 'var(--uf-loss)' }" stop-opacity="0.3" />
@@ -214,8 +246,11 @@ const overviewStats = computed(() => [
             {{ timelineLoadingId === selectedAnalysis.id ? 'Opening VOD…' : 'Review match' }}
           </UfButton>
           <UfButton v-if="coachReviewSummary?.status === 'completed'" icon="chat" :disabled="timelineLoadingId === selectedAnalysis.id" @click="openCoachNotes(selectedAnalysis.id)">Coach notes</UfButton>
-          <span v-if="selectedAnalysis.overall_score != null" class="uf-t4">{{ scoreLabel(selectedAnalysis.overall_score) }}</span>
+          <span v-if="selectedScore?.kind === 'stats'" class="uf-t4">{{ selectedScore.label }}</span>
+          <span v-if="cs2StatsSourceNote(selectedAnalysis)" class="uf-t4">{{ cs2StatsSourceNote(selectedAnalysis) }}</span>
         </div>
+
+        <ScoreWhyV3 v-if="selectedScore?.kind === 'stats' && scoreBreakdown" :score="selectedScore.value" :breakdown="scoreBreakdown" />
 
         <div v-if="primaryGame === 'lol' && expandedDetail?.summary" class="rv3-col" style="gap: 6px">
           <span class="uf-label">League coaching summary</span>

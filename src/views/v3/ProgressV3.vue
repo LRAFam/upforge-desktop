@@ -11,7 +11,10 @@ import UfRoundsLine from '../../components/v3/UfRoundsLine.vue'
 import RankJourney from '../../components/v3/progress/RankJourney.vue'
 import { rankForecast, valorantDivisionName } from '../../lib/ideas/rank-forecast'
 import RecurringHabitsV3 from '../../components/v3/progress/RecurringHabitsV3.vue'
-import { rankHistoryInRange, formatMetric, halfDelta, metricLabel, sparkline, type RankSnapshot } from '../../components/v3/progress/progress-chart'
+import YourPlanV3 from '../../components/v3/progress/YourPlanV3.vue'
+import PlaystyleV3 from '../../components/v3/progress/PlaystyleV3.vue'
+import { rankHistoryInRange, formatMetric, habitTone, halfDelta, inRange, metricLabel, sparkline, type RankSnapshot, type TrendTone } from '../../components/v3/progress/progress-chart'
+import { progressCountLine, analysedEmptyLine } from '../../components/v3/progress/progress-counts'
 import type { FocusResponse } from '../../lib/focus'
 import GameProgress from '../../components/v3/games/GameProgress.vue'
 import type { DemoGame } from '../../components/v3/games/game-data'
@@ -19,6 +22,7 @@ import { usePrimaryGame } from '../../composables/usePrimaryGame'
 import { RouterLink } from 'vue-router'
 import { readCache, writeCache } from '../../lib/stale-cache'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
+import EmptyArt from '../../components/v3/empty/EmptyArt.vue'
 
 type RangeValue = '7d' | '30d' | '90d' | 'all'
 interface Row { name: string; games: number; wins: number; wr: number; kda: string; roundWr: string }
@@ -30,10 +34,13 @@ const props = defineProps<{
   range: RangeValue
   ranges: Array<{ label: string; value: RangeValue }>
   gameCount: number
+  /** Newest analysed match of any date (for an honest empty line). */
+  lastAnalysedAt?: string | null
   isValorant: boolean
   rankHistory: RankSnapshot[]
   winRate: number
-  avgScore: number | null
+  /** UpForge score average (stats), else the coach rating average out of 10; null when nothing is scored. */
+  scoreStat: { value: string; caption: string; delta: number | null } | null
   avgKda: string
   avgHs: number | null
   deltas: { winRate: number | null; score: number | null; kda: number | null; hs: number | null }
@@ -75,9 +82,13 @@ onUnmounted(() => offFocus?.())
 
 const focus = computed(() => focusData.value?.focus ?? null)
 
-/** Habit trends: every metric with ≥2 values in the focus history. Only the focus metric gets good/bad colour (its direction is known). */
+/** Per-match habit snapshots (the coach's data-only check of each synced game) inside the picked range. */
+const checkedGames = computed(() => inRange(focusData.value?.history ?? [], h => h.played_at, props.range))
+const TONE_COLOR: Record<Exclude<TrendTone, null>, string> = { better: 'var(--uf-win)', worse: 'var(--uf-loss)', flat: 'var(--uf-bone)' }
+
+/** Habit trends: every metric with ≥2 values in the range, coloured by better / worse for that stat's direction. */
 const habits = computed(() => {
-  const hist = focusData.value?.history ?? []
+  const hist = checkedGames.value
   const keys = new Set<string>()
   for (const h of hist) for (const k of Object.keys(h.metrics ?? {})) keys.add(k)
   const out: Array<{ key: string; label: string; spark: string; first: string; last: string; tone: string | null }> = []
@@ -85,11 +96,8 @@ const habits = computed(() => {
     const vals = hist.map(h => h.metrics?.[key]).filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
     const d = halfDelta(vals)
     if (!d) continue
-    let tone: string | null = null
-    if (focus.value?.metric === key) {
-      const better = focus.value.better === 'lower' ? d.last < d.first : d.last > d.first
-      tone = d.last === d.first ? null : better ? 'var(--uf-win)' : 'var(--uf-loss)'
-    }
+    const t = habitTone(key, d.first, d.last, focus.value?.metric === key ? focus.value.better : null)
+    const tone = t ? TONE_COLOR[t] : null
     out.push({
       key,
       label: focus.value?.metric === key ? focus.value.label : metricLabel(key),
@@ -119,10 +127,14 @@ const focusSlots = computed(() => {
 const delta = (v: number | null, suffix = '') => (v == null || Math.abs(v) < 0.05 ? 'Steady' : `${v > 0 ? 'Up' : 'Down'} ${Math.abs(Math.abs(v) >= 10 ? Math.round(v) : Number(v.toFixed(1)))}${suffix}`)
 const stats = computed(() => [
   { value: props.gameCount ? `${props.winRate}%` : '—', caption: 'Win rate', sub: delta(props.deltas.winRate, '%') },
-  { value: props.avgScore != null ? String(props.avgScore) : '—', caption: 'Coach score', sub: delta(props.deltas.score) },
+  // Stats-based UpForge score (0–1000) when any match is scored; else the coach rating /10 under its own name.
+  { value: props.scoreStat?.value ?? '—', caption: props.scoreStat?.caption ?? 'UpForge score', sub: delta(props.scoreStat?.delta ?? null) },
   { value: props.avgKda, caption: 'K/D', sub: delta(props.deltas.kda) },
   { value: props.avgHs != null ? `${props.avgHs}%` : '—', caption: 'Headshots', sub: delta(props.deltas.hs, '%') },
 ])
+// The focus history is Valorant's; League counts only its own analysed matches.
+const countLine = computed(() => progressCountLine(focusData.value ? checkedGames.value.length : null, props.gameCount, demoGame.value ?? 'valorant'))
+const analysedEmpty = computed(() => analysedEmptyLine(props.lastAnalysedAt ?? null))
 const form = computed(() => [...props.recentForm].reverse().filter(r => r !== '-').map(r => ({ won: r === 'W' })))
 const hasRank = computed(() => props.rankHistory.filter(h => Number.isFinite(h.elo) && h.elo > 0).length >= 2)
 // The rank line follows the range tabs; with too few rank games in the range it shows the whole history and says so.
@@ -140,9 +152,9 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
   <div class="pv3" :class="{ 'uf-refreshing': refreshing }">
     <header class="pv3-head uf-rise">
       <div class="pv3-headl">
-        <span class="uf-label">Progress</span>
-        <UfSkeleton v-if="loading" :w="150" :h="14" />
-        <span v-else class="uf-t4">{{ gameCount }} game{{ gameCount === 1 ? '' : 's' }} in this range</span>
+        <h1 class="uf-d2" style="margin: 0">Progress</h1>
+        <UfSkeleton v-if="loading" :w="220" :h="14" />
+        <span v-else class="uf-t4 pv3-count">{{ countLine }} · <RouterLink :to="`/starting-report/${primaryGame}`" class="uf-link">Your starting report →</RouterLink></span>
       </div>
       <UfTabs :items="rangeItems" :model-value="range" size="filter" label="Range" @update:model-value="setRange" />
     </header>
@@ -162,7 +174,6 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
 
     <template v-else>
       <div :class="{ 'uf-reveal': fromSkeleton }" class="pv3-loaded">
-      <RouterLink :to="`/starting-report/${primaryGame}`" class="uf-link pv3-starting">Your starting report →</RouterLink>
       <GameProgress v-if="demoGame" :key="demoGame" :game="demoGame" />
       <template v-else-if="isValorant && hasRank">
         <RankJourney :history="rankForChart" :focus-started-at="focus?.started_at" :focus-label="focus?.label" />
@@ -178,7 +189,7 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
 
       <div v-if="!demoGame" class="pv3-cols">
         <section class="pv3-col">
-          <span class="uf-label">Habits that moved · first half vs second half</span>
+          <span class="uf-label">Habits that moved · first half vs second half of {{ checkedGames.length }} games</span>
           <template v-if="habits.length">
             <div v-for="h in habits" :key="h.key" class="pv3-habit">
               <span class="uf-t3">{{ h.label }}</span>
@@ -186,7 +197,7 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
               <span class="pv3-habit-vals"><span class="uf-t4">{{ h.first }}</span><span class="uf-t4">→</span><span class="uf-d4" :style="h.tone ? { color: h.tone } : undefined">{{ h.last }}</span></span>
             </div>
           </template>
-          <p v-else class="uf-t2">Habit trends appear after a few matches are checked by your coach.</p>
+          <p v-else class="uf-t2">{{ (focusData?.history?.length ?? 0) > 1 ? 'Not enough checked games in this range to show a trend. Pick a longer range.' : 'Habit trends appear after a few matches are checked by your coach.' }}</p>
         </section>
         <section class="pv3-col pv3-col--side">
           <span class="uf-label">Your focus</span>
@@ -201,14 +212,20 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
         </section>
       </div>
 
+      <template v-if="!demoGame">
+        <YourPlanV3 />
+        <div class="uf-hair" />
+        <PlaystyleV3 />
+      </template>
+
       <div v-if="!demoGame" class="uf-hair" />
       <RecurringHabitsV3 v-if="!demoGame" />
 
       <div class="uf-hair" />
 
       <section class="pv3-block">
-        <span class="uf-label">{{ demoGame ? 'Analysed in UpForge' : 'Your matches' }}</span>
-        <p v-if="!gameCount" class="uf-t2" style="margin: 0">No analysed matches in this range yet. Pick a longer range or play a match with recording on.</p>
+        <span class="uf-label">{{ demoGame ? 'Analysed in UpForge' : 'Analysed matches' }}</span>
+        <EmptyArt v-if="!gameCount" size="section" :title="analysedEmpty" />
         <UfStatRow v-else :items="stats" />
         <div v-if="form.length >= 2" class="pv3-form">
           <span class="uf-t4">Last {{ form.length }} results, oldest first</span>
@@ -268,5 +285,5 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
 .pv3-bar > span { position: absolute; left: 0; top: 3px; bottom: 3px; opacity: 0.25; }
 .pv3-bar > b { position: relative; padding-left: 8px; }
 .pv3-forecast { margin: 8px 0 0; color: var(--uf-muted); }
-.pv3-starting { align-self: flex-start; }
+.pv3-count a { font: inherit; }
 </style>

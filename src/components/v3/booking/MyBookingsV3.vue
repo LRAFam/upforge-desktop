@@ -1,6 +1,8 @@
 <script setup lang="ts">
 /**
- * Coaches › Bookings (UI v3): live 1:1 sessions booked through the coach marketplace, plus one-off paid VOD
+ * Coaches › Sessions (UI v3). With `onlyIfAny` (inside Your coaches) it renders nothing while loading,
+ * on error or when there are no bookings — the section only exists when there is something in it.
+ * Was: Coaches › Bookings (UI v3): live 1:1 sessions booked through the coach marketplace, plus one-off paid VOD
  * reviews. Roster reviews stay on "Your coaches". Read-only: cancel, reschedule, join and rate open the web
  * session page; completed paid reviews open the match page in coach-notes mode (Valorant) or the web result.
  */
@@ -14,6 +16,7 @@ import { openAnalysisVodReview } from '../../../lib/open-vod-review'
 import { plural } from '../../../lib/plural'
 import { groupSessions, sessionWhen, toMarketSession, toPaidReview, type MarketSession, type PaidReview } from './marketplace'
 
+defineProps<{ onlyIfAny?: boolean }>()
 const emit = defineEmits<{ findCoach: [] }>()
 const router = useRouter()
 
@@ -47,7 +50,7 @@ const fmtDay = (t: number | null) => (t == null ? '' : new Date(t).toLocaleDateS
 </script>
 
 <template>
-  <section class="mb3" aria-label="Bookings">
+  <section v-if="!onlyIfAny || (state.data.value && !empty)" class="mb3" aria-label="Sessions">
     <div v-if="state.refreshing.value" class="uf-refreshing" aria-hidden="true" />
 
     <div v-if="state.loading.value" aria-busy="true" aria-label="Loading bookings" class="mb3-sec">
@@ -98,7 +101,8 @@ const fmtDay = (t: number | null) => (t == null ? '' : new Date(t).toLocaleDateS
             <UfButton variant="link" @click="openSession(s)">Open session</UfButton>
           </div>
           <div v-if="s.coachNotes || s.actionItems.length" class="mb3-notes">
-            <p v-if="s.coachNotes" class="uf-t2" style="margin: 0">{{ s.coachNotes }}</p>
+            <!-- The coach's own words from the session (e.g. "10/10 student"), labelled so it doesn't read like a score. -->
+            <p v-if="s.coachNotes" class="uf-t2" style="margin: 0"><span class="uf-t4">{{ s.coachName }}'s note: </span>{{ s.coachNotes }}</p>
             <ul v-if="s.actionItems.length" class="mb3-items" role="list">
               <li v-for="(a, i) in s.actionItems" :key="i" class="uf-t4">{{ a }}</li>
             </ul>

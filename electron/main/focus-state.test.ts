@@ -73,3 +73,16 @@ it('logs focus outcomes without printing report text or arbitrary API strings', 
   expect(line).toContain('notes=present')
   expect(line).not.toMatch(/Private|untrusted|next action/)
 })
+
+describe('UpForge score in the cached report', () => {
+  it('survives a restart and drops a malformed score', async () => {
+    const root = await temporaryRoot()
+    const bd = { baseline: { source: 'all', tier: null, samples: 300 }, inputs: [{ key: 'kast', label: 'KAST', value: 0.7, percentile: 55, weight: 0.25 }] }
+    await writeFocusSyncState(root, 9, { synced: ['match-a'], newestSyncedStartMs: 1, latest: { ...latest, upforge_score: 701, upforge_score_breakdown: bd as never } })
+    const back = await readFocusSyncState(root, 9)
+    expect(back.latest?.upforge_score).toBe(701)
+    expect(back.latest?.upforge_score_breakdown?.baseline.source).toBe('all')
+    await writeFocusSyncState(root, 9, { synced: [], newestSyncedStartMs: 1, latest: { ...latest, upforge_score: 'high' as never } })
+    expect((await readFocusSyncState(root, 9)).latest?.upforge_score).toBeNull()
+  })
+})

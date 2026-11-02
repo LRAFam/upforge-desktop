@@ -9,6 +9,7 @@ import SettingsSection from './SettingsSection.vue'
 import SettingsStatusStrip from './SettingsStatusStrip.vue'
 import SettingsToggle from './SettingsToggle.vue'
 import type { StatusItem } from './SettingsStatusStrip.vue'
+import { localStorageLine } from '../v3/settings/settings-display'
 
 const router = useRouter()
 
@@ -23,6 +24,8 @@ const {
   diskSpaceCritical,
   diskSpaceLow,
   formatBytes,
+  freeDiskLabel,
+  storageBytes,
   hasProAccess,
   highlightSection,
   obsStatus,
@@ -47,6 +50,7 @@ const {
   toggleFullMatchRecording,
   toggleMode,
   uploadPendingToCloud,
+  cs2SteamNameField,
 } = useSettings()
 
 const modeHint = computed(() => {
@@ -89,7 +93,7 @@ const statusItems = computed<StatusItem[]>(() => {
   items.push({
     id: 'disk',
     label: 'Disk',
-    detail: diskSpaceCritical.value ? 'Critical' : diskSpaceLow.value ? 'Low' : storageSummary.value,
+    detail: diskSpaceCritical.value ? 'Critical' : diskSpaceLow.value ? 'Low' : uiV3.value ? localStorageLine(storageBytes.value, freeDiskLabel.value, formatBytes) : storageSummary.value,
     tone: diskSpaceCritical.value ? 'bad' : diskSpaceLow.value ? 'warn' : 'ok',
   })
   return items
@@ -126,7 +130,7 @@ const statusItems = computed<StatusItem[]>(() => {
           <p class="uf-t4">UpForge auto-installs demo recording when CS2 launches. Restart CS2 once after first setup. Highlight clips (3K/ace/clutch) are cut from your VOD using the demo.</p>
         </div>
         <label class="uf-field"><span class="uf-t4">Steam / in-game name (for clip matching)</span>
-          <input v-model="settings.cs2SteamName" type="text" placeholder="Auto-detect from Steam" class="uf-input" @change="debouncedSave()">
+          <input v-model="cs2SteamNameField" type="text" placeholder="Auto-detect from Steam" class="uf-input" @change="debouncedSave()">
           <span class="uf-t4">Only needed if clips miss your kills — must match your CS2 name.</span>
         </label>
         <div class="uf-field">
@@ -197,12 +201,12 @@ const statusItems = computed<StatusItem[]>(() => {
             <button type="button" class="uf-link" @click="router.push('/cloud-storage')">Cloud storage →</button>
           </span>
         </div>
-        <p class="uf-t3 uf-num" :class="diskSpaceCritical ? 'uf-tone-bad' : diskSpaceLow ? 'uf-tone-warn' : ''">{{ storageSummary }}</p>
+        <p class="uf-t3 uf-num" :class="diskSpaceCritical ? 'uf-tone-bad' : diskSpaceLow ? 'uf-tone-warn' : ''">{{ localStorageLine(storageBytes, freeDiskLabel, formatBytes) }}</p>
         <div class="uf-meter" :class="diskSpaceCritical ? 'is-bad' : diskSpaceLow ? 'is-warn' : ''"><span class="uf-fill" :style="{ width: storageUsagePercent + '%' }" /></div>
         <div class="uf-usage-head"><span class="uf-t4">Local budget</span><span class="uf-t4 uf-num">{{ storageSoftLimitLabel }}</span></div>
         <p v-if="storageEstimateLabel" class="uf-t4">{{ storageEstimateLabel }}</p>
         <p v-if="diskSpaceLow" class="uf-note is-warn">Low disk space can cut recordings short. Upload pending VODs to the cloud, then remove local copies you no longer need.</p>
-        <p class="uf-t4">This is storage on your device, separate from your cloud allowance. After confirming a cloud upload, you can remove its local copy and keep reviewing from the cloud.</p>
+        <p class="uf-t4">Only files on this PC count here. Recordings saved to the cloud are in Matches and Cloud storage, separate from this. After confirming a cloud upload, you can remove its local copy and keep reviewing from the cloud.</p>
         <div v-if="storageBreakdown.pendingCount > 0 || storageBreakdown.cloudBackedCount > 0 || storageBreakdown.orphanCount > 0" class="uf-set-actions">
           <button v-if="storageBreakdown.pendingCount > 0" type="button" class="uf-btn-secondary uf-set-btn" :disabled="storageBusy" @click="uploadPendingToCloud">
             <template v-if="storageUploadProgress?.paused">Cloud backup paused — resumes after your match</template>
@@ -222,6 +226,7 @@ const statusItems = computed<StatusItem[]>(() => {
 
       <div class="uf-field">
         <div class="uf-set-row-text"><span class="uf-t3">Highlight clips to capture</span><span class="uf-t4">Choose which moments UpForge auto-saves after each match. Manual hotkey clips ({{ '\u2318' }}/F9) are always saved.</span></div>
+        <p v-if="settings.primaryGame === 'deadlock'" class="uf-t4" style="margin: 0">Deadlock doesn't share kills while you play, so it gets no automatic kill clips yet. Use the hotkey to save a moment.</p>
         <div class="uf-set-sec-body is-rows uf-rows-top">
           <SettingsRow v-for="opt in clipCaptureOptions" :key="opt.key" :label="opt.label" :hint="opt.hint">
             <SettingsToggle :label="opt.label" :on="!!settings.clipCapture?.[opt.key]" @click.stop="toggleClipCapture(opt.key)" />
@@ -296,7 +301,7 @@ const statusItems = computed<StatusItem[]>(() => {
         <div>
           <label class="mb-1 block text-xs text-gray-400">Steam / in-game name (for clip matching)</label>
           <input
-            v-model="settings.cs2SteamName"
+            v-model="cs2SteamNameField"
             type="text"
             placeholder="Auto-detect from Steam"
             class="w-full rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-orange-500/40 focus:outline-none"

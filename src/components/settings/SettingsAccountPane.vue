@@ -3,12 +3,18 @@ import { useSettings } from '../../composables/useSettings'
 import { useGameTheme } from '../../composables/useGameTheme'
 import PaymentFailedAlert from '../../components/PaymentFailedAlert.vue'
 import SettingsAccountLinks from './SettingsAccountLinks.vue'
+import SettingsDiscordLink from './SettingsDiscordLink.vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsRow from './SettingsRow.vue'
 import AccountUsagePanel from './AccountUsagePanel.vue'
 import SettingsToggle from './SettingsToggle.vue'
 import { uiV3 } from '../../lib/ui-v3'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { playerIdentity } from '../../lib/player-identity'
+import PlayerAvatar from '../v3/identity/PlayerAvatar.vue'
+import PlayerBanner from '../v3/identity/PlayerBanner.vue'
+import RankIcon from '../v3/identity/RankIcon.vue'
+import type { ProfileData } from '../../env.d.ts'
 import { readCache, writeCache } from '../../lib/stale-cache'
 import { openWebFeature } from '../../lib/web-explore-links'
 
@@ -50,6 +56,22 @@ onMounted(async () => {
   if (res !== undefined) { squadMember.value = !!res?.team; writeCache('sidebar:squad-member', squadMember.value) }
 })
 function openSquadPlan() { void openWebFeature('/team') }
+
+// Your Valorant identity (player card avatar + wide banner, rank, account level) from the profile
+// Home already cached, refreshed once read-only here. Other games: the letter, no banner.
+const profileStats = ref(readCache<ProfileData | null>('home:profile')?.value?.latest_stats ?? null)
+onMounted(async () => {
+  if (!uiV3.value) return
+  const p = await window.api?.profile?.get().catch(() => null) as ProfileData | null | undefined
+  if (p?.latest_stats) profileStats.value = p.latest_stats
+})
+const identity = computed(() => {
+  const s = settings.primaryGame === 'valorant' || !settings.primaryGame ? profileStats.value : null
+  return playerIdentity({
+    name: user.value?.name, playerCardId: s?.player_card_id, agent: s?.most_played_agent,
+    rank: s?.current_rank, level: s?.account_level,
+  })
+})
 </script>
 
 <template>
@@ -57,23 +79,29 @@ function openSquadPlan() { void openWebFeature('/team') }
 
     <SettingsSection
       title="Profile"
-      hint="Plan, billing, and sign-in"
+      :hint="uiV3 ? undefined : 'Plan, billing, and sign-in'"
     >
       <div v-if="paymentPastDue">
         <PaymentFailedAlert @error="showBillingError" />
       </div>
 
       <div v-if="user && uiV3" class="uf-profile">
+        <PlayerBanner :src="identity.banner">
         <div class="uf-profile-id">
-          <div class="uf-profile-avatar" aria-hidden="true">{{ accountInitial }}</div>
+          <PlayerAvatar :identity="identity" :size="72" />
           <div class="uf-set-row-text">
             <p class="uf-t3">{{ user.name }} <span class="uf-profile-plan" :class="{ 'is-pro': /pro/i.test(getTierBadgeLabel(user.tier) || '') }">{{ getTierBadgeLabel(user.tier) || 'Free' }}</span></p>
+            <p v-if="identity.rankLabel || identity.level || identity.title" class="uf-t4 uf-profile-rank">
+              <RankIcon :src="identity.rankIcon" :label="identity.rankLabel" :size="20" />
+              <span>{{ [identity.rankLabel, identity.title, identity.level ? `Level ${identity.level}` : null].filter(Boolean).join(' · ') }}</span>
+            </p>
             <p class="uf-t4">{{ user.email }}</p>
             <p class="uf-t4" :class="{ 'uf-profile-linked': user.riot_name }">{{ accountRiotId }}</p>
             <p v-if="settings.primaryGame === 'deadlock'" class="uf-t4" :class="{ 'uf-profile-linked': accountSteamLinked }">{{ accountSteamStatus }}</p>
             <p v-else-if="settings.primaryGame === 'cs2'" class="uf-t4">{{ accountCs2Hint }}</p>
           </div>
         </div>
+        </PlayerBanner>
         <div class="uf-set-actions">
           <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="billingPortalLoading" @click="openBilling">{{ billingPortalLoading ? 'Opening…' : 'Manage billing' }}</button>
           <button type="button" class="uf-btn-secondary uf-set-btn" @click="openSite">Open dashboard</button>
@@ -172,15 +200,8 @@ function openSquadPlan() { void openWebFeature('/team') }
     >
       <AccountUsagePanel @upgrade="openUpgrade" />
 
-      <SettingsRow
-        v-if="uiV3"
-        label="Help improve UpForge AI"
-        hint="Allow anonymised use of cloud-archived VODs for model training. Separate from saving to cloud. Off by default."
-        class="uf-usage-consent"
-      >
-        <SettingsToggle label="Help improve UpForge AI" :on="!!settings.trainingConsent" @click="toggleTrainingConsent" />
-      </SettingsRow>
-      <div v-else class="flex items-center justify-between gap-4 border-t border-white/[0.06] pt-4">
+      <!-- v3: "Help improve UpForge AI" lives in App › Privacy & data. -->
+      <div v-if="!uiV3" class="flex items-center justify-between gap-4 border-t border-white/[0.06] pt-4">
         <div>
           <p class="text-sm text-gray-200">Help improve UpForge AI</p>
           <p class="mt-1 text-xs text-gray-500">
@@ -205,5 +226,7 @@ function openSquadPlan() { void openWebFeature('/team') }
 
     </SettingsSection>
     <SettingsAccountLinks :focus="accountLinkFocus" />
+    <!-- Discord DMs for pre-game briefs and debriefs (the briefs skip message links here). -->
+    <SettingsDiscordLink v-if="uiV3 && user" />
   </div>
 </template>

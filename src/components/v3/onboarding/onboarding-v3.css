@@ -30,6 +30,11 @@
 .ui-v3 .ob-v3 .ob3-row-main > .ob3-break { white-space: normal; overflow-wrap: anywhere; }
 .ui-v3 .ob-v3 .ob3-logo { width: 28px; height: 28px; object-fit: contain; flex: none; }
 .ui-v3 .ob-v3 .ob3-tick { display: inline-flex; color: var(--uf-red); }
+/* Step 1 (signed in): who you are + what's left */
+.ui-v3 .ob-v3 .ob3-signed { display: inline-flex; color: var(--uf-bone); }
+.ui-v3 .ob-v3 .ob3-todo { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; counter-reset: ob3-todo; }
+.ui-v3 .ob-v3 .ob3-todo li { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--uf-line); color: var(--uf-muted); counter-increment: ob3-todo; }
+.ui-v3 .ob-v3 .ob3-todo li::before { content: counter(ob3-todo); width: 20px; color: var(--uf-faint); font: 600 13px/1 var(--uf-body); font-variant-numeric: tabular-nums; }
 
 /* Fields */
 .ui-v3 .ob-v3 .ob3-fields { display: flex; flex-direction: column; gap: 14px; }

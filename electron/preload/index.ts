@@ -119,7 +119,12 @@ const api = {
       ipcRenderer.invoke('app:open-vod-review', { id, seekMs }),
   },
   profile: {
-    get: () => ipcRenderer.invoke('profile:get')
+    get: () => ipcRenderer.invoke('profile:get'),
+    linkDiscord: () => ipcRenderer.invoke('profile:link-discord') as Promise<{ ok: boolean; error?: string }>,
+  },
+  notifications: {
+    inbox: () => ipcRenderer.invoke('notifications:inbox'),
+    markRead: (id: number) => ipcRenderer.invoke('notifications:mark-read', id) as Promise<{ ok: boolean }>,
   },
   billing: {
     openPortal: () => ipcRenderer.invoke('billing:open-portal') as Promise<{ ok: boolean; error?: string }>,
@@ -370,6 +375,8 @@ const api = {
     playstyleProfile: () => ipcRenderer.invoke('progress:playstyle-profile'),
     recurring: (limit?: number) => ipcRenderer.invoke('progress:recurring', limit),
     setHabitStatus: (id: number, status: 'active' | 'improving' | 'resolved') => ipcRenderer.invoke('progress:set-habit-status', id, status),
+    weeklyPlan: () => ipcRenderer.invoke('progress:weekly-plan'),
+    skillProfile: () => ipcRenderer.invoke('progress:skill-profile'),
   },
   overlay: {
     toggle: () => ipcRenderer.invoke('overlay:toggle'),
@@ -479,6 +486,7 @@ const api = {
   lol: {
     getAnalyses: (limit?: number) => ipcRenderer.invoke('lol:get-analyses', limit),
     getRecentMatches: (_force?: boolean) => ipcRenderer.invoke('lol:get-recent-matches'),
+    getRecentMatchesResult: (_force?: boolean) => ipcRenderer.invoke('lol:get-recent-matches-result'),
     openAnalyze: () => ipcRenderer.invoke('lol:open-analyze'),
     openHistory: () => ipcRenderer.invoke('lol:open-history'),
     openResults: (analysisId: number | string) => ipcRenderer.invoke('lol:open-results', analysisId),

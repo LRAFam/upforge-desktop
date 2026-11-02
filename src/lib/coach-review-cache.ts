@@ -6,6 +6,12 @@ export interface CoachReviewSummary {
   coachName: string | null
 }
 
+const KNOWN_STATUSES: readonly CoachReviewStatus[] = ['pending', 'in_progress', 'completed']
+
+function toCoachReviewStatus(value: unknown): CoachReviewStatus {
+  return KNOWN_STATUSES.includes(value as CoachReviewStatus) ? (value as CoachReviewStatus) : 'pending'
+}
+
 const cache = new Map<number, CoachReviewSummary | null>()
 const inFlight = new Map<number, Promise<CoachReviewSummary | null>>()
 
@@ -36,14 +42,14 @@ export async function fetchCoachReviewSummary(analysisId: number): Promise<Coach
         return null
       }
       const summary: CoachReviewSummary = {
-        status: review.status as CoachReviewStatus,
+        status: toCoachReviewStatus(review.status),
         annotationCount: review.annotations?.length ?? 0,
         coachName: review.coach?.display_name ?? null,
       }
       cache.set(analysisId, summary)
       return summary
     } catch {
-      cache.set(analysisId, null)
+      // Transient failure: don't cache, so the next call retries.
       return null
     } finally {
       inFlight.delete(analysisId)

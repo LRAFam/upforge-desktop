@@ -16,7 +16,7 @@
   /* Text: warm bone, never pure white or pure grey */
   --uf-bone: #ece8e1;
   --uf-muted: #9aa2ad;
-  --uf-faint: #646c77;
+  --uf-faint: #7a828e;  /* 4.9:1 on --uf-bg (AA for small text) */
   /* Four colours, four meanings (validated for colour blindness on --uf-bg) */
   --uf-red: #ff4655;      /* brand, the one action, the focus */
   --uf-red-deep: #c4323e;
@@ -59,11 +59,11 @@
   background: var(--uf-red); transform: skewX(-8deg); color: #fff;
 }
 .ui-v3 .uf-btn-primary > span { transform: skewX(8deg); display: inline-flex; gap: 8px; align-items: center;
-  font: 800 19px/1 var(--uf-display); letter-spacing: 0.06em; text-transform: uppercase; }
+  font: 800 16px/1 var(--uf-display); letter-spacing: 0.08em; text-transform: uppercase; } /* type scale: 16 (audit 2026-11-02) */
 .ui-v3 .uf-btn-primary:hover { background: #ff5a68; }
 .ui-v3 .uf-btn-secondary {
   display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; cursor: pointer;
-  background: transparent; border: 1px solid var(--uf-line-2); color: var(--uf-bone); font: 600 14px/1 var(--uf-body);
+  background: transparent; border: 1px solid var(--uf-line-2); color: var(--uf-bone); font: 600 15px/1 var(--uf-body); /* type scale: t3 15/600 (audit 2026-11-02) */
 }
 .ui-v3 .uf-btn-secondary:hover { background: var(--uf-hover); }
 .ui-v3 .uf-link { background: none; border: 0; padding: 0; cursor: pointer; font: 600 13px/1 var(--uf-body); color: var(--uf-muted); }
@@ -200,3 +200,45 @@
 @keyframes uf-reveal { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
 @keyframes uf-refresh-line { from { background-position: -40% 0 } to { background-position: 140% 0 } }
 @media (prefers-reduced-motion: reduce) { .ui-v3 .uf-skel, .ui-v3 .uf-reveal, .ui-v3 .uf-refreshing::after { animation: none; } }
+
+/* ---- Controls shared by every screen (one switch, one checkbox) ----
+   "On" is bone, not red: red means the one primary action or an error. */
+.ui-v3 .uf-switch { position: relative; width: 38px; height: 20px; flex: none; padding: 0; border: 1px solid var(--uf-line-2); border-radius: 2px; background: transparent; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease; }
+.ui-v3 .uf-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 1px; background: var(--uf-muted); transition: transform 0.15s ease, background 0.15s ease; }
+.ui-v3 .uf-switch[aria-checked='true'] { background: var(--uf-bone); border-color: var(--uf-bone); }
+.ui-v3 .uf-switch[aria-checked='true']::after { transform: translateX(18px); background: var(--uf-bg); }
+.ui-v3 .uf-switch:disabled { opacity: 0.45; cursor: not-allowed; }
+.ui-v3 .uf-switch:focus-visible { outline: 2px solid var(--uf-red); outline-offset: 2px; }
+.ui-v3 input[type='checkbox'].uf-check { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; margin: 0; flex: none; border: 1px solid var(--uf-line-2); border-radius: 2px; background: transparent; display: inline-grid; place-content: center; cursor: pointer; }
+.ui-v3 input[type='checkbox'].uf-check::after { content: ''; width: 8px; height: 8px; border-radius: 1px; background: var(--uf-bg); transform: scale(0); transition: transform 0.12s ease; }
+.ui-v3 input[type='checkbox'].uf-check:checked { background: var(--uf-bone); border-color: var(--uf-bone); }
+.ui-v3 input[type='checkbox'].uf-check:checked::after { transform: scale(1); }
+.ui-v3 input[type='checkbox'].uf-check:focus-visible { outline: 2px solid var(--uf-red); outline-offset: 2px; }
+.ui-v3 input[type='checkbox'].uf-check:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) {
+  .ui-v3 .uf-switch, .ui-v3 .uf-switch::after, .ui-v3 input[type='checkbox'].uf-check::after { transition: none; }
+}
+
+/* ==== audit 2026-11-02 — shell. Append below this line only. ==== */
+/* Dev toolbar (dev builds only, App.vue): meta size from the scale instead of 10px. */
+.ui-v3 .uf-devbar { display: flex; align-items: center; gap: 14px; padding: 6px 16px; flex: none; border-top: 1px solid var(--uf-line); background: var(--uf-chrome); }
+.ui-v3 .uf-devbar-tag { font: 600 12px/1.2 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--uf-faint); }
+
+/* ---- Fields shared by every screen (one text input, one select with our own chevron) ---- */
+.ui-v3 .uf-input, .ui-v3 .uf-select, .ui-v3 .uf-pselect {
+  height: 38px; width: 100%; min-width: 0; padding: 0 12px; border: 1px solid var(--uf-line-2); border-radius: 0;
+  background-color: var(--uf-chrome); color: var(--uf-bone); font: 400 15px/1 var(--uf-body); box-shadow: none;
+}
+.ui-v3 .uf-select, .ui-v3 .uf-pselect {
+  -webkit-appearance: none; appearance: none; padding-right: 36px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%237a828e' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
+.ui-v3 .uf-select:hover, .ui-v3 .uf-pselect:hover { border-color: var(--uf-muted); }
+.ui-v3 .uf-input:focus, .ui-v3 .uf-select:focus, .ui-v3 .uf-pselect:focus { outline: none; border-color: var(--uf-red); }
+.ui-v3 .uf-select:disabled, .ui-v3 .uf-pselect:disabled { opacity: 0.45; cursor: not-allowed; }
+.ui-v3 .uf-select option, .ui-v3 .uf-pselect option { background: var(--uf-chrome); color: var(--uf-bone); }
+.ui-v3 .uf-input[readonly] { color: var(--uf-muted); }
+.ui-v3 .uf-input.is-mono { font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+.ui-v3 .uf-select.is-inline { width: auto; }
+.ui-v3 .uf-select.is-compact { height: 32px; font-size: 13px; padding-left: 10px; }

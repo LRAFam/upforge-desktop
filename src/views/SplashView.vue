@@ -5,13 +5,15 @@
     <div class="uf-sp-content uf-rise">
       <img src="../assets/upforge-icon.webp" alt="UpForge" class="uf-sp-logo" />
       <span class="uf-label">Competitive coaching platform &amp; marketplace</span>
-      <p :key="statusText" class="uf-t3 uf-sp-status" role="status">{{ statusText }}</p>
-      <div class="uf-sp-track" :aria-hidden="!showProgress">
-        <div v-if="showProgress" class="uf-sp-fill" :style="{ width: progress + '%' }" />
-        <div v-else class="uf-sp-indet" />
+      <p class="uf-t3 uf-sp-status" role="status">{{ statusText }}</p>
+      <div v-if="showProgress" class="uf-sp-track" role="progressbar" aria-label="Update download" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="barPercent">
+        <div class="uf-sp-fill" :style="{ width: barPercent + '%' }" />
+      </div>
+      <div v-else class="uf-sp-track" aria-hidden="true">
+        <div class="uf-sp-indet" />
       </div>
     </div>
-    <p class="uf-t4 uf-sp-meta"><span class="uf-num">v{{ appVersion }}</span> · upforge.gg</p>
+    <p class="uf-t4 uf-sp-meta"><template v-if="appVersion"><span class="uf-num">v{{ appVersion }}</span> · </template>upforge.gg</p>
   </div>
   <template v-else>
   <div class="splash-root">
@@ -81,13 +83,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { uiV3 } from '../lib/ui-v3'
 
 const appVersion = ref('')
 const statusText = ref('Checking for updates…')
 const progress = ref(0)
 const showProgress = ref(false)
+/** v3 bar width: whole percent, clamped so a stray updater value can't overflow or go negative. */
+const barPercent = computed(() => Math.max(0, Math.min(100, Math.round(progress.value || 0))))
 const mounted = ref(false)
 
 const handlers: Array<() => void> = []

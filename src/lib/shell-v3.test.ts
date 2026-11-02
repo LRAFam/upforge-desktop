@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   createToastQueue,
+  titleBarAccountLabel,
+  titleBarObsConnected,
+  v3AllowedRoutes,
+  V3_ALL_GAME_ROUTES,
   demoAssessmentTone,
   formatTrimTime,
   isGenuineAchievement,
@@ -131,5 +135,54 @@ describe('createToastQueue', () => {
     expect(timers.length).toBe(1)
     q.dispose()
     expect(timers.length).toBe(0)
+  })
+})
+
+describe('titleBarAccountLabel (audit 2026-11-02)', () => {
+  const ids = { riotId: 'LRAFam#1337', userName: 'LRAFam', cs2SteamName: 'lrafam_steam', lolRiotId: 'LRAFam#EUW' }
+  it('uses the in-game identity for the current game, with no game suffix', () => {
+    expect(titleBarAccountLabel('valorant', ids)).toBe('LRAFam#1337')
+    expect(titleBarAccountLabel('cs2', ids)).toBe('lrafam_steam')
+    expect(titleBarAccountLabel('lol', ids)).toBe('LRAFam#EUW')
+  })
+  it('falls back to the UpForge username when the game has no linked identity', () => {
+    expect(titleBarAccountLabel('deadlock', ids)).toBe('LRAFam')
+    expect(titleBarAccountLabel('cs2', { ...ids, cs2SteamName: '  ' })).toBe('LRAFam')
+    expect(titleBarAccountLabel('lol', { ...ids, lolRiotId: null })).toBe('LRAFam')
+    expect(titleBarAccountLabel('valorant', { userName: 'LRAFam' })).toBe('LRAFam')
+  })
+  it('never adds a game suffix', () => {
+    for (const g of ['valorant', 'cs2', 'deadlock', 'lol']) {
+      expect(titleBarAccountLabel(g, ids)).not.toMatch(/·|CS2|DEADLOCK|LOL/)
+    }
+  })
+  it('returns null when nothing is known', () => {
+    expect(titleBarAccountLabel('cs2', {})).toBeNull()
+  })
+})
+
+describe('titleBarObsConnected (audit 2026-11-02)', () => {
+  it('stays quiet while the OBS banner shows the same message', () => {
+    expect(titleBarObsConnected({ recording: false, obsConnected: false, showChip: true, bannerShown: true })).toBeNull()
+  })
+  it('shows OBS state when no banner is on screen', () => {
+    expect(titleBarObsConnected({ recording: false, obsConnected: false, showChip: true, bannerShown: false })).toBe(false)
+    expect(titleBarObsConnected({ recording: false, obsConnected: true, showChip: true, bannerShown: false })).toBe(true)
+  })
+  it('hides when the chip is off', () => {
+    expect(titleBarObsConnected({ recording: false, obsConnected: true, showChip: false, bannerShown: false })).toBeNull()
+  })
+  it('always reports while recording', () => {
+    expect(titleBarObsConnected({ recording: true, obsConnected: true, showChip: false, bannerShown: false })).toBe(true)
+    expect(titleBarObsConnected({ recording: true, obsConnected: null, showChip: false, bannerShown: false })).toBe(true)
+  })
+})
+
+describe('v3AllowedRoutes (audit 2026-11-02)', () => {
+  it('keeps Progress, Practice and Squad for every game without duplicates', () => {
+    const demo = ['/dashboard', '/recordings', '/rosters', '/settings']
+    const out = v3AllowedRoutes(demo)
+    for (const r of [...demo, ...V3_ALL_GAME_ROUTES]) expect(out).toContain(r)
+    expect(v3AllowedRoutes(['/stats', '/training']).filter(r => r === '/stats')).toHaveLength(1)
   })
 })

@@ -41,11 +41,20 @@ describe('RankJourney', () => {
     expect(html).toContain('+70')
     expect(html).toContain('Your rating is up 70 over the last 19 days, from Silver 3 to Gold 1.')
     expect(html).toContain('competitivetiers') // rank icons
-    expect(html).not.toContain('Focus:')
+    expect(html).not.toContain('Focus started')
+    expect(html).toContain('Ranked up')
+    expect(html).not.toContain('Ranked down')
   })
   it('marks the focus start only when it falls inside the window', async () => {
-    expect(await render({ history, focusStartedAt: '2026-10-10T00:00:00Z', focusLabel: 'Opening deaths' })).toContain('Focus: Opening deaths')
-    expect(await render({ history, focusStartedAt: '2026-09-01T00:00:00Z', focusLabel: 'Opening deaths' })).not.toContain('Focus:')
+    expect(await render({ history, focusStartedAt: '2026-10-10T00:00:00Z', focusLabel: 'Opening deaths' })).toContain('Focus started<!--[-->: Opening deaths')
+    expect(await render({ history, focusStartedAt: '2026-09-01T00:00:00Z', focusLabel: 'Opening deaths' })).not.toContain('Focus started')
+  })
+  it('draws one badge per rank reached, not one per flip, and keeps the focus label out of the plot', async () => {
+    const flips = ['Platinum 1', 'Platinum 2', 'Platinum 1', 'Platinum 2', 'Platinum 1', 'Platinum 2'].map((rank, i) => ({ date: `2026-10-${10 + i * 3}T12:00:00Z`, rank, rr: 0, elo: 1200 + (i % 2) * 50 }))
+    const html = await render({ history: flips, focusStartedAt: '2026-10-15T00:00:00Z', focusLabel: 'Opening deaths' })
+    expect(html.match(/<image /g)).toHaveLength(2)
+    expect(html.match(/<circle [^>]*r="7"/g)).toHaveLength(5)
+    expect(html).not.toMatch(/<text[^>]*>Focus/)
   })
   it('uses the loss colour when the rating falls', async () => {
     const html = await render({ history: [...history].map((x, i) => ({ ...x, elo: 1300 - i * 40 })) })

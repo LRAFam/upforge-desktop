@@ -62,3 +62,15 @@ export function deadlockHeroLabel(
   const hit = (known ?? []).find(h => h.hero_id === id && typeof h.hero_name === 'string' && h.hero_name && h.hero_name !== 'Unknown')
   return hit?.hero_name ?? 'Unknown hero'
 }
+
+const DEADLOCK_PHASE_LABEL: Record<string, string> = {
+  idle: 'Waiting for Deadlock',
+  waiting: 'In the game, waiting for a match',
+  in_match: 'In a match',
+  post_match: 'Match ended',
+}
+
+/** Plain words for the match watcher's phase (`in_match` → "In a match"). */
+export function deadlockPhaseLabel(phase: string | null | undefined): string {
+  return (phase && DEADLOCK_PHASE_LABEL[phase]) || 'Unknown'
+}

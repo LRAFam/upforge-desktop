@@ -148,3 +148,19 @@ describe('syncMatchReports', () => {
     expect(await syncMatchReports(rejected.deps)).toMatchObject({ ok: false, reason: 'not_your_match', skipped: 1 })
   })
 })
+
+describe('UpForge score pass-through (audit 2026-11-02)', () => {
+  const bd = { baseline: { source: 'tier', tier: 'gold', samples: 4120 }, inputs: [{ key: 'acs', label: 'ACS', value: 241, percentile: 74, weight: 0.3 }] }
+  it('keeps upforge_score and its breakdown from POST /api/match-report', async () => {
+    const ok = () => ({ status: 200, data: { success: true, focus: null, focus_event: null, report: { notes: {} }, upforge_score: 612, upforge_score_breakdown: bd } })
+    const res = await syncMatchReports(harness(fetched([['new', 300]]), ok).deps)
+    expect(res.latest?.upforge_score).toBe(612)
+    expect(res.latest?.upforge_score_breakdown?.inputs[0]).toMatchObject({ key: 'acs', percentile: 74 })
+  })
+  it('is null when the API (production today) does not send it', async () => {
+    const ok = () => ({ status: 200, data: { success: true, focus: null, focus_event: null, report: { notes: {} } } })
+    const res = await syncMatchReports(harness(fetched([['new', 300]]), ok).deps)
+    expect(res.latest?.upforge_score).toBeNull()
+    expect(res.latest?.upforge_score_breakdown).toBeNull()
+  })
+})

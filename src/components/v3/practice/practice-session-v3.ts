@@ -76,3 +76,40 @@ export function pct(n: number | null | undefined): number {
   if (n == null || !Number.isFinite(n)) return 0
   return Math.max(0, Math.min(100, n))
 }
+
+// ── Leaderboard "You" row ─────────────────────────────────────────────────────
+export type LeaderboardPeriod = 'week' | 'month' | 'all'
+
+export interface LeaderboardYouRow {
+  /** Your best for this drill/settings/period from your own history, or null when you have none. */
+  score: number | null
+  note: string
+}
+
+const PERIOD_DAYS: Record<LeaderboardPeriod, number | null> = { week: 7, month: 30, all: null }
+
+/**
+ * The API returns at most `limit` rows and no rank for players outside them. When you aren't in the
+ * rows, show your own best for the same settings (from /api/training/sessions, already filtered to
+ * the drill, difficulty, length and current scoring) and say plainly why there is no rank.
+ */
+export function leaderboardYouRow(
+  entries: ReadonlyArray<{ is_current_user?: boolean }>,
+  myRuns: ReadonlyArray<{ score: number; completed_at: string }> | null | undefined,
+  period: LeaderboardPeriod,
+  now: number,
+  limit = 50,
+  parseTime: (s: string) => number = s => Date.parse(s),
+): LeaderboardYouRow | null {
+  if (entries.some(e => e.is_current_user)) return null
+  const days = PERIOD_DAYS[period]
+  const since = days == null ? -Infinity : now - days * 86_400_000
+  const scores = (myRuns ?? []).filter(r => parseTime(r.completed_at) >= since).map(r => r.score).filter(Number.isFinite)
+  if (!scores.length) {
+    const when = period === 'week' ? 'this week' : period === 'month' ? 'this month' : 'yet'
+    return { score: null, note: `No run with these settings ${when}.` }
+  }
+  const score = Math.max(...scores)
+  if (entries.length >= limit) return { score, note: `Outside the top ${limit}. Ranks past ${limit} aren’t shown.` }
+  return { score, note: 'Not on the board yet. It refreshes every 10 minutes and hides players who opted out.' }
+}

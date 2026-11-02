@@ -30,11 +30,19 @@ export type RosterStudent = {
     riot_name: string | null
     riot_tag: string | null
   }
+  membership_tier?: 'free' | 'paid' | null
   games_analysed: number
   open_review_count: number
   joined_at: string | null
   last_active_at: string | null
   top_coaching_tags_30d?: string[]
+  /**
+   * Not sent by the API yet (CoachRosterController::buildStudentAggregate). When it adds the
+   * student's latest Valorant snapshot, the v3 member row shows rank, main agent and card art.
+   */
+  current_rank?: string | null
+  most_played_agent?: string | null
+  player_card_id?: string | null
 }
 
 export type CoachReview = {
