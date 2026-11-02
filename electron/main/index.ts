@@ -7,6 +7,7 @@ import { setupCloudStorageHandlers } from './ipc/cloud-storage-ipc'
 import { APP_VERSION } from './app-version'
 import { setupReviewNotebookHandlers } from './ipc/review-notebook-ipc'
 import { setupRoundReviewHandlers } from './ipc/round-review-ipc'
+import { setupProgressPlanHandlers } from './ipc/progress-plan-ipc'
 import { setupMarketplaceHandlers } from './ipc/marketplace-ipc'
 import { buildTimelineFromDemo } from './demo-timeline'
 import { Cs2DemoRetrieval, cs2DemoRetrievalStatus } from './cs2-demo-retrieval'
@@ -7058,6 +7059,8 @@ async function startApp(): Promise<void> {
     })
   }
   setupRoundReviewHandlers(ipcMain, authManager)
+  // Progress v3: roadmap week + skill profile (read-only)
+  setupProgressPlanHandlers(ipcMain, authManager)
   setupCoachFlowLiveHandlers(ipcMain, authManager, (event) => {
     const url = event.senderFrame?.url
     return !!url && isTrustedRendererUrl(url)

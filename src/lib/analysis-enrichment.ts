@@ -4,6 +4,7 @@ import { parseMatchHighlightsFromApi, type MatchHighlight } from './match-highli
 import type { SkillProfileSnapshot } from './skill-profile'
 import type { MatchSpatialSummary } from './spatial-types'
 import { sanitizeUnsupportedRankClaimsForDisplay } from './coaching-copy-safety'
+import { sanitizeUpforgeScore, sanitizeUpforgeScoreBreakdown, type UpforgeScoreBreakdown } from './upforge-score-breakdown'
 
 export interface TimingComparisonRow {
   id: string
@@ -65,6 +66,10 @@ export interface AnalysisDetailEnriched {
   is_degraded: boolean
   credit_returned: boolean
   heatmap_insight: string | null
+  /** Stats-based UpForge score 0–1000 (API); null until scored. */
+  upforge_score: number | null
+  /** "Why 612?" inputs and baseline; null when not scored. */
+  upforge_score_breakdown: UpforgeScoreBreakdown | null
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -230,6 +235,8 @@ export function enrichAnalysisDetail(analysis: Record<string, unknown>): Analysi
     limitations: stringList(analysis.limitations),
     is_degraded: analysis.is_degraded === true,
     credit_returned: analysis.credit_returned === true,
+    upforge_score: sanitizeUpforgeScore(analysis.upforge_score),
+    upforge_score_breakdown: sanitizeUpforgeScoreBreakdown(analysis.upforge_score_breakdown),
   }
 }
 

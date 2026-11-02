@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
- * Coaches › Find a coach (UI v3): the bookable-coaching marketplace (live 1:1 sessions and one-off paid VOD
- * reviews). Not rosters, not Squad. Read-only here: "Book a session" hands off to the web booking modal
- * (/coaches/{id}?book=1) in the signed-in web shell, because payment stays on the web.
+ * Coaches › Find a coach (UI v3): every bookable coach. Each coach can offer *Join* (ongoing notes on
+ * the matches you send; read from GET /api/coaches/{id}/hub when opened) and/or *Book a session*
+ * (live 1:1, payment on the web: /coaches/{id}?book=1). Not Squad. Joining is handed to the parent
+ * (JoinCoachV3 looks the coach up and asks first). Non-coaches get one quiet "Apply" line at the end.
  */
 import { computed, ref, watch } from 'vue'
 import UfButton from '../UfButton.vue'
@@ -11,11 +12,18 @@ import UfTabs from '../UfTabs.vue'
 import { usePrimaryGame } from '../../../composables/usePrimaryGame'
 import { useStaleLoad } from '../../../lib/stale-cache'
 import { openWebFeature } from '../../../lib/web-explore-links'
+import { playerIdentity } from '../../../lib/player-identity'
+import PlayerAvatar from '../identity/PlayerAvatar.vue'
+import PlayerBanner from '../identity/PlayerBanner.vue'
+import RankIcon from '../identity/RankIcon.vue'
 import {
+  joinOffer, type JoinOffer,
   filterCoaches, rateLabel, ratingLabel, sortCoaches, toMarketCoach, toMarketCoachDetail, toReviewOffer,
   type CoachSort, type MarketCoach, type MarketCoachDetail, type ReviewOffer,
 } from './marketplace'
 
+const props = defineProps<{ /** Coach ids you already work with (shown instead of a Join button). */ myCoachIds?: number[]; /** Has a coach profile: no "Apply" line. */ isCoach?: boolean }>()
+const emit = defineEmits<{ join: [coachId: number] }>()
 const { primaryGame, label: gameLabel } = usePrimaryGame()
 
 async function loadCoaches(): Promise<MarketCoach[]> {
@@ -38,6 +46,7 @@ const shown = computed(() => sortCoaches(filterCoaches(list.data.value ?? [], { 
 const selectedId = ref<number | null>(null)
 const detail = ref<MarketCoachDetail | null>(null)
 const offer = ref<ReviewOffer | null>(null)
+const join = ref<JoinOffer | null>(null)
 const detailLoading = ref(false)
 const detailError = ref<string | null>(null)
 
@@ -45,14 +54,20 @@ async function openCoach(c: MarketCoach) {
   selectedId.value = c.id
   detail.value = null
   offer.value = null
+  join.value = null
   detailError.value = null
   detailLoading.value = true
   try {
-    const [res, pricing] = await Promise.all([window.api.market.getCoach(c.id), window.api.market.reviewPricing(c.id)])
+    const [res, pricing, hub] = await Promise.all([
+      window.api.market.getCoach(c.id),
+      window.api.market.reviewPricing(c.id),
+      window.api.coach.getPublicHub(c.id).catch(() => null),
+    ])
     if (selectedId.value !== c.id) return
     if (res.ok) detail.value = toMarketCoachDetail(res.coach)
     else detailError.value = res.error
     offer.value = toReviewOffer(pricing)
+    join.value = hub && hub.ok ? joinOffer(hub.coach) : null
   } catch {
     if (selectedId.value === c.id) detailError.value = 'Could not load this coach. Try again.'
   } finally {
@@ -62,11 +77,16 @@ async function openCoach(c: MarketCoach) {
 
 const selected = computed(() => (list.data.value ?? []).find(c => c.id === selectedId.value) ?? null)
 const profile = computed<MarketCoach | MarketCoachDetail | null>(() => detail.value ?? selected.value)
+const alreadyYours = computed(() => profile.value != null && (props.myCoachIds ?? []).includes(profile.value.id))
 
 function book(c: MarketCoach) { void openWebFeature(`/coaches/${c.id}?book=1`, true) }
 function openWebProfile(c: MarketCoach) { void openWebFeature(`/coaches/${c.id}`, true) }
 
-const initial = (name: string) => name.trim().charAt(0).toUpperCase() || '?'
+/** Photo → player card → main agent → letter; banner → wide card; rank icon (same model as everywhere). */
+const coachIdentity = (c: MarketCoach) => playerIdentity({
+  name: c.name, avatarUrl: c.avatarUrl, bannerUrl: c.bannerUrl, playerCardId: c.playerCardId, agents: c.mainAgents, rank: c.currentRank,
+})
+const profileIdentity = computed(() => (profile.value ? coachIdentity(profile.value) : null))
 const fmtSlot = (s: { start: number; end: number }) => {
   const d = new Date(s.start)
   return `${d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} · ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
@@ -77,7 +97,7 @@ const fmtDay = (t: number | null) => (t == null ? '' : new Date(t).toLocaleDateS
 <template>
   <section class="fc3" aria-label="Find a coach">
     <div class="fc3-bar">
-      <p class="uf-t2" style="margin: 0">Book a live 1:1 session with a {{ gameLabel }} coach. Booking and payment open on upforge.gg.</p>
+      <p class="uf-t2" style="margin: 0">{{ gameLabel }} coaches. <em class="fc3-em">Join</em> one for notes on the matches you send, or <em class="fc3-em">book</em> a live 1:1 session.</p>
       <div class="fc3-filters">
         <UfTabs size="filter" label="Sort coaches" :model-value="sort"
           :items="[{ key: 'rating', label: 'Top rated' }, { key: 'price', label: 'Price' }, { key: 'sessions', label: 'Most sessions' }]"
@@ -90,7 +110,7 @@ const fmtDay = (t: number | null) => (t == null ? '' : new Date(t).toLocaleDateS
     <div v-if="list.refreshing.value" class="uf-refreshing" aria-hidden="true" />
 
     <div v-if="list.loading.value" aria-busy="true" aria-label="Loading coaches" class="fc3-skel">
-      <div v-for="i in 4" :key="i" class="fc3-row is-skel"><UfSkeleton :w="44" :h="44" /><span class="fc3-skel-lines"><UfSkeleton w="28%" :h="15" /><UfSkeleton w="44%" :h="13" /></span><UfSkeleton :w="90" :h="15" /></div>
+      <div v-for="i in 4" :key="i" class="fc3-row is-skel"><UfSkeleton :w="48" :h="48" /><span class="fc3-skel-lines"><UfSkeleton w="28%" :h="15" /><UfSkeleton w="44%" :h="13" /></span><UfSkeleton :w="90" :h="15" /></div>
     </div>
 
     <div v-else-if="list.error.value && !list.data.value" class="fc3-state">
@@ -108,10 +128,9 @@ const fmtDay = (t: number | null) => (t == null ? '' : new Date(t).toLocaleDateS
       <ul class="fc3-list" role="list">
         <li v-for="c in shown" :key="c.id">
           <button type="button" class="fc3-row uf-reveal" :class="{ 'is-on': selectedId === c.id }" :aria-pressed="selectedId === c.id" @click="openCoach(c)">
-            <img v-if="c.avatarUrl" :src="c.avatarUrl" alt="" class="fc3-av">
-            <span v-else class="fc3-av fc3-av--init" aria-hidden="true">{{ initial(c.name) }}</span>
+            <PlayerAvatar :identity="coachIdentity(c)" :size="48" />
             <span class="fc3-who">
-              <span class="uf-t3">{{ c.name }}</span>
+              <span class="fc3-name"><span class="uf-t3">{{ c.name }}</span><RankIcon :src="coachIdentity(c).rankIcon" :label="coachIdentity(c).rankLabel" :size="18" /></span>
               <span class="uf-t4">{{ [c.currentRank, c.roles.join(' · '), c.languages.join(', ')].filter(Boolean).join('  ·  ') || 'Coach' }}</span>
             </span>
             <span class="fc3-meta">
@@ -123,14 +142,15 @@ const fmtDay = (t: number | null) => (t == null ? '' : new Date(t).toLocaleDateS
       </ul>
 
       <aside v-if="profile" class="fc3-profile uf-reveal" :aria-label="`${profile.name} profile`">
-        <header class="fc3-ph">
-          <img v-if="profile.avatarUrl" :src="profile.avatarUrl" alt="" class="fc3-av fc3-av--lg">
-          <span v-else class="fc3-av fc3-av--lg fc3-av--init" aria-hidden="true">{{ initial(profile.name) }}</span>
-          <div class="fc3-ph-t">
-            <h2 class="uf-d4" style="margin: 0; text-transform: uppercase">{{ profile.name }}</h2>
-            <span class="uf-t4">{{ [profile.currentRank && `Rank ${profile.currentRank}`, profile.peakRank && `Peak ${profile.peakRank}`].filter(Boolean).join(' · ') }}</span>
-          </div>
-        </header>
+        <PlayerBanner :src="profileIdentity!.banner">
+          <header class="fc3-ph">
+            <PlayerAvatar :identity="profileIdentity!" :size="72" />
+            <div class="fc3-ph-t">
+              <h2 class="uf-d4" style="margin: 0; text-transform: uppercase">{{ profile.name }}</h2>
+              <span class="uf-t4 fc3-name"><RankIcon :src="profileIdentity!.rankIcon" :label="profileIdentity!.rankLabel" :size="18" />{{ [profile.currentRank && `Rank ${profile.currentRank}`, profile.peakRank && `Peak ${profile.peakRank}`].filter(Boolean).join(' · ') }}</span>
+            </div>
+          </header>
+        </PlayerBanner>
 
         <dl class="fc3-facts">
           <div><dt class="uf-label">Rate</dt><dd class="uf-t3 uf-num">{{ rateLabel(profile) ?? 'See profile' }}</dd></div>
@@ -148,10 +168,13 @@ const fmtDay = (t: number | null) => (t == null ? '' : new Date(t).toLocaleDateS
         </template>
 
         <div class="fc3-actions">
-          <UfButton variant="primary" icon="play" :disabled="detail?.acceptingStudents === false" @click="book(profile)">Book a session</UfButton>
-          <UfButton variant="link" @click="openWebProfile(profile)">Full profile</UfButton>
+          <UfButton v-if="join && !alreadyYours" variant="primary" icon="team" @click="emit('join', profile.id)">Join {{ profile.name }}</UfButton>
+          <UfButton :variant="join && !alreadyYours ? 'secondary' : 'primary'" icon="play" :disabled="detail?.acceptingStudents === false" @click="book(profile)">Book a session</UfButton>
+          <UfButton variant="link" @click="openWebProfile(profile)">Full profile on upforge.gg</UfButton>
         </div>
-        <p class="uf-t4" style="margin: 0">Opens the booking page on upforge.gg. Your booking appears under Bookings once it's confirmed.</p>
+        <p v-if="alreadyYours" class="uf-t4" style="margin: 0">You already work with {{ profile.name }}. Send matches from Your coaches.</p>
+        <p v-else-if="join" class="uf-t4" style="margin: 0">Join: {{ join.label }}, send matches and get notes on your timeline{{ join.paid ? ' (checkout on upforge.gg)' : '' }}. Book: a live session, booked and paid on upforge.gg.</p>
+        <p v-else class="uf-t4" style="margin: 0">Booking and payment open on upforge.gg. Booked sessions show under Your coaches.</p>
 
         <section v-if="offer" class="fc3-sec">
           <span class="uf-label">Paid VOD review</span>
@@ -169,9 +192,10 @@ const fmtDay = (t: number | null) => (t == null ? '' : new Date(t).toLocaleDateS
         </section>
       </aside>
       <aside v-else class="fc3-profile fc3-profile--empty">
-        <p class="uf-t4" style="margin: 0">Pick a coach to see their rate, next open slot and reviews.</p>
+        <p class="uf-t4" style="margin: 0">Pick a coach to see how to join them, their session rate and reviews.</p>
       </aside>
     </div>
+    <p v-if="!isCoach" class="uf-t4 fc3-apply">Coach players yourself? <UfButton variant="link" @click="openWebFeature('/become-coach', true)">Apply on upforge.gg</UfButton></p>
   </section>
 </template>
 
@@ -186,9 +210,7 @@ const fmtDay = (t: number | null) => (t == null ? '' : new Date(t).toLocaleDateS
 .fc3-row.is-on { background: var(--uf-raised); box-shadow: inset 2px 0 0 var(--uf-red); }
 .fc3-row.is-skel { cursor: default; }
 .fc3-row:focus-visible { outline: 2px solid var(--uf-red); outline-offset: -2px; }
-.fc3-av { width: 44px; height: 44px; object-fit: cover; flex: none; background: var(--uf-raised); }
-.fc3-av--lg { width: 64px; height: 64px; }
-.fc3-av--init { display: inline-flex; align-items: center; justify-content: center; font: 700 16px/1 var(--uf-display); color: var(--uf-muted); }
+.fc3-name { display: inline-flex; align-items: center; gap: 8px; }
 .fc3-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .fc3-who .uf-t4 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fc3-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
@@ -204,6 +226,8 @@ const fmtDay = (t: number | null) => (t == null ? '' : new Date(t).toLocaleDateS
 .fc3-sec { display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid var(--uf-line); }
 .fc3-reviews { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .fc3-reviews li { display: flex; flex-direction: column; gap: 4px; }
+.fc3-em { font-style: normal; color: var(--uf-bone); }
+.fc3-apply { margin: 0; padding-top: 14px; border-top: 1px solid var(--uf-line); display: flex; align-items: baseline; gap: 8px; }
 .fc3-state { display: flex; flex-direction: column; gap: 10px; padding: 24px 0; max-width: 640px; }
 .fc3-state p { margin: 0; }
 .fc3-skel { display: flex; flex-direction: column; }

@@ -1,4 +1,5 @@
 /** Focus loop types and display helpers (data from GET /api/focus and POST /api/match-report). */
+import type { UpforgeScoreBreakdown } from './upforge-score-breakdown'
 
 export interface FocusCheck {
   match_id: string
@@ -23,7 +24,7 @@ export interface Focus {
 export interface FocusResponse {
   success: boolean
   focus: Focus | null
-  history: Array<{ match_id: string; played_at: string | null; metrics: Record<string, number | null> }>
+  history: Array<{ match_id: string; played_at: string | null; metrics: Record<string, number | null>; upforge_score?: number | null }>
   notes_usage: { used: number; limit: number }
   /** Last locally synced report, restored by the main process for this account. */
   latest?: FocusUpdate | null
@@ -45,6 +46,9 @@ export interface FocusUpdate {
     notes?: { headline?: NoteClaim; subline?: NoteClaim; next_action?: NoteClaim; positive?: NoteClaim | null } | null
     notes_source?: string
   } | null
+  /** Stats-based UpForge score 0–1000 from POST /api/match-report; null until scored. */
+  upforge_score?: number | null
+  upforge_score_breakdown?: UpforgeScoreBreakdown | null
 }
 
 export interface FocusSyncResult {

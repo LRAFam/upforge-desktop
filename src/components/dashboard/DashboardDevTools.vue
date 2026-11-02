@@ -5,7 +5,6 @@ import { uiV3 } from '../../lib/ui-v3'
 
 const {
   isDev,
-  platform,
   profile,
   devOpen,
   simulating,
@@ -17,7 +16,7 @@ const showAdminTools = computed(() => profile.value?.user?.is_admin === true || 
 </script>
 
 <template>
-  <section v-if="uiV3 && (showAdminTools || isDev || (platform && platform !== 'win32'))" class="dt3" aria-label="Developer tools">
+  <section v-if="uiV3 && (showAdminTools || isDev)" class="dt3" aria-label="Developer tools">
     <button type="button" class="dt3-toggle" :aria-expanded="devOpen" @click="devOpen = !devOpen">
       <span class="uf-label">Dev tools</span>
       <span class="uf-t4">{{ devOpen ? 'Hide' : 'Show' }}</span>
@@ -33,7 +32,7 @@ const showAdminTools = computed(() => profile.value?.user?.is_admin === true || 
     </div>
     <p v-if="devOpen && simStatus" class="uf-t4 dt3-status">{{ simStatus }}</p>
   </section>
-  <div v-else-if="!uiV3 && (showAdminTools || isDev || (platform && platform !== 'win32'))" class="border border-dashed border-yellow-500/20 rounded-xl overflow-hidden flex-shrink-0">
+  <div v-else-if="!uiV3 && (showAdminTools || isDev)" class="border border-dashed border-yellow-500/20 rounded-xl overflow-hidden flex-shrink-0">
     <button class="w-full flex items-center justify-between px-3 py-2 text-xs text-yellow-600/60 hover:text-yellow-500/70 transition-colors" @click="devOpen = !devOpen">
       <span class="font-semibold uppercase tracking-wider">Dev Tools</span>
       <svg class="w-3 h-3 transition-transform" :class="devOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>

@@ -119,7 +119,7 @@ const briefingHeadline = computed(() => {
 
 const briefingSubline = computed(() => {
   if (recordingMembers.value > 0) return 'Live captures will show up in squad activity when they finish.'
-  if (weekActivityCount.value > 0) return 'Review recent matches from your roster below.'
+  if (weekActivityCount.value > 0) return 'Review your teammates’ recent matches below.'
   return 'Invite teammates, share credits, and track cross-game activity together.'
 })
 
@@ -314,7 +314,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
-  window.api.squad.sendPresence(false, null).catch(() => {})
+  // Send the real state (recording + game), not "idle": leaving this page must not wipe it.
+  window.api.squad.syncPresence().catch(() => {})
 })
 </script>
 
@@ -331,17 +332,16 @@ onUnmounted(() => {
     :online-members="onlineMembers"
     :week-activity-count="weekActivityCount"
     :week-record="weekRecord"
-    :briefing-headline="briefingHeadline"
+    :briefing-headline="recordingMembers > 0 ? briefingHeadline : ''"
     :briefing-subline="briefingSubline"
-    :activity="feedItems"
+    :activity="activity"
+    :member-stats="memberStats"
     :compare-rows="compareRows"
-    :leaderboard="leaderboard"
     :pending-invites="pendingInvites"
     :selected-member-id="selectedMemberId"
     :selected-member-stats="selectedMemberStats"
     :member-name="memberName"
     @retry="loadV3"
-    @refresh="refresh"
     @open-web="openWebTeam()"
     @invite="submitInvite"
     @remove-pending="removePendingInvite"

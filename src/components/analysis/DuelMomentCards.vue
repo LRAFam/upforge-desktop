@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { uiV3 } from '../../lib/ui-v3'
+import { clipNote, mechanicsLine, momentCaveats } from './review-panel'
 import {
   confidenceTone,
   duelMomentKindBadgeClass,
@@ -20,6 +21,10 @@ defineProps<{
   moments: DuelMoment[]
   activeMomentId?: string | null
   compact?: boolean
+  /** v3: section label instead of "Duel analysis · N moments". */
+  heading?: string
+  /** v3: let the list grow with the page instead of scrolling inside its own box. */
+  unbounded?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -38,12 +43,12 @@ function confidenceClass(conf: string | undefined): string {
 
 <template>
 <template v-if="uiV3">
-  <section class="dm3" aria-label="Duel analysis">
+  <section class="dm3" :aria-label="heading || 'Duel analysis'">
     <div class="dm3-head">
-      <span class="uf-label">Duel analysis · {{ moments.length }} moments</span>
-      <p v-if="!compact" class="uf-t4">High-fps windows the coach studied — deaths, picks, and multi-kills</p>
+      <span class="uf-label">{{ heading || `Duel analysis · ${moments.length} moments` }}</span>
+      <p v-if="!compact && !heading" class="uf-t4">High-fps windows the coach studied — deaths, picks, and multi-kills</p>
     </div>
-    <div class="dm3-list">
+    <div class="dm3-list" :class="{ 'dm3-list--open': unbounded }">
       <article v-for="moment in moments" :key="moment.moment_id" class="dm3-row" :class="{ 'dm3-row--on': activeMomentId === moment.moment_id, 'dm3-row--win': isWinDuelMoment(moment) }">
         <div class="dm3-top">
           <div class="dm3-what">
@@ -53,25 +58,22 @@ function confidenceClass(conf: string | undefined): string {
               <span v-if="isUntradedDuelMoment(moment) && !isWinDuelMoment(moment)" class="uf-label" style="color: var(--uf-loss)">· Untraded</span>
               <span v-if="moment.callout" class="uf-t4">{{ moment.callout }}</span>
             </p>
-            <p class="uf-t4 uf-num">{{ duelMomentTimestampLabel(moment) }} · {{ duelMomentWindowDurationLabel(moment) }}<template v-if="moment.confidence"> · {{ moment.confidence }} confidence</template></p>
+            <p class="uf-t4 uf-num">{{ duelMomentTimestampLabel(moment) }} · {{ duelMomentWindowDurationLabel(moment) }}</p>
             <p v-if="formatKillStreakLabel(moment.kill_count ?? 0)" class="uf-t4" style="color: var(--uf-win)">Full spree captured in one clip</p>
           </div>
           <button type="button" class="dm3-watch" :aria-label="`Watch round ${moment.round} moment`" @click="emit('seek', moment.window_start_ms, moment.moment_id)">▷ Watch</button>
         </div>
         <p v-if="moment.key_observation" class="dm3-obs">{{ moment.key_observation }}</p>
-        <p v-if="moment.player_action_visibility === 'obscured' || moment.movement_actor === 'enemy' || moment.movement_actor === 'uncertain'" class="uf-t4" style="color: var(--uf-gold)">Mechanics limited: the player action was not clearly visible.</p>
-        <p v-if="formatPeekSequence(moment.peek_sequence) || moment.crosshair_on_commit" class="uf-t4">
-          <template v-if="formatPeekSequence(moment.peek_sequence)">Peek: {{ formatPeekSequence(moment.peek_sequence) }}<template v-if="moment.mechanics_confidence?.peek"> ({{ moment.mechanics_confidence.peek }})</template></template>
-          <template v-if="moment.crosshair_on_commit && moment.crosshair_on_commit !== 'unknown'"> · Crosshair: {{ moment.crosshair_on_commit.replace(/_/g, ' ') }}<template v-if="moment.mechanics_confidence?.crosshair"> ({{ moment.mechanics_confidence.crosshair }})</template></template>
-          <template v-if="moment.movement_on_commit && moment.movement_on_commit !== 'unknown'"> · Move: {{ moment.movement_on_commit.replace(/_/g, ' ') }}<template v-if="moment.mechanics_confidence?.movement"> ({{ moment.mechanics_confidence.movement }})</template></template>
-        </p>
+        <p v-if="clipNote(moment)" class="uf-t4">{{ clipNote(moment) }}</p>
+        <p v-if="mechanicsLine(moment)" class="uf-t4">{{ mechanicsLine(moment) }}</p>
         <p v-if="moment.player_fix" class="dm3-fix">Try: {{ moment.player_fix }}</p>
-        <details v-if="normalizeStringList(moment.caveats).length" class="dm3-more">
-          <summary class="uf-t4">Observation limits</summary>
-          <p v-for="caveat in normalizeStringList(moment.caveats)" :key="caveat" class="uf-t4">{{ caveat }}</p>
-        </details>
-        <button v-if="duelMomentWeightReasons(moment).length" type="button" class="dm3-why" :aria-expanded="expandedWeights === moment.moment_id" @click="expandedWeights = expandedWeights === moment.moment_id ? null : moment.moment_id">{{ expandedWeights === moment.moment_id ? 'Hide' : 'Why this moment?' }}</button>
-        <p v-if="expandedWeights === moment.moment_id" class="uf-t4">Selected because: {{ duelMomentWeightReasons(moment).join(' · ') }}</p>
+        <template v-if="duelMomentWeightReasons(moment).length || momentCaveats(moment).length">
+          <button type="button" class="dm3-why" :aria-expanded="expandedWeights === moment.moment_id" @click="expandedWeights = expandedWeights === moment.moment_id ? null : moment.moment_id">{{ expandedWeights === moment.moment_id ? 'Hide' : 'Why this moment?' }}</button>
+          <div v-if="expandedWeights === moment.moment_id" class="dm3-more">
+            <p v-if="duelMomentWeightReasons(moment).length" class="uf-t4">Picked because: {{ duelMomentWeightReasons(moment).join(' · ') }}</p>
+            <p v-for="caveat in momentCaveats(moment)" :key="caveat" class="uf-t4">{{ caveat }}</p>
+          </div>
+        </template>
       </article>
     </div>
   </section>
@@ -211,6 +213,7 @@ function confidenceClass(conf: string | undefined): string {
 .dm3 p { margin: 0; }
 .dm3-head { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; }
 .dm3-list { max-height: 520px; overflow-y: auto; }
+.dm3-list--open { max-height: none; overflow: visible; }
 .dm3-row { display: flex; flex-direction: column; gap: 8px; padding: 14px 0 14px 14px; border-top: 1px solid var(--uf-line); box-shadow: inset 2px 0 0 rgba(232, 80, 91, 0.45); }
 .dm3-row--win { box-shadow: inset 2px 0 0 rgba(34, 169, 155, 0.45); }
 .dm3-row--on { background: var(--uf-raised); }
@@ -221,8 +224,8 @@ function confidenceClass(conf: string | undefined): string {
 .dm3-watch:hover { background: var(--uf-hover); }
 .dm3-obs { font: 400 15px/1.55 var(--uf-body); color: var(--uf-bone); }
 .dm3-fix { font: 600 15px/1.5 var(--uf-body); color: var(--uf-bone); padding-left: 10px; border-left: 2px solid var(--uf-win); }
-.dm3-more summary { cursor: pointer; }
-.dm3-more p { padding: 4px 0 0 10px; border-left: 1px solid var(--uf-line); }
+.dm3-more { display: flex; flex-direction: column; gap: 4px; }
+.dm3-more p { padding: 2px 0 2px 10px; border-left: 1px solid var(--uf-line); }
 .dm3-why { align-self: flex-start; background: none; border: 0; padding: 0; cursor: pointer; font: 600 12px/1.6 var(--uf-body); color: var(--uf-faint); }
 .dm3-why:hover { color: var(--uf-bone); }
 </style>

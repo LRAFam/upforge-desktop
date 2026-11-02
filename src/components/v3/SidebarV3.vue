@@ -1,21 +1,26 @@
 <script setup lang="ts">
 /**
  * UI v3 sidebar (board A · Feature map):
- * Coach · Matches (footage, clips, reviews) · Practice · Progress · Coaches · Squad · Settings.
- * Coaches = coach rosters (/rosters, every game). Squad = the paid team plan (/squad, members only,
- * Valorant only as shipped). They are different features; never merge them.
+ * Coach · Matches (footage, clips, reviews) · Practice · Progress · Coaches · Students · Squad · Settings.
+ * Coaches = getting coached by a person (/rosters, everyone). Students = coaching others (/students,
+ * only accounts with a coach profile). Squad = the paid team plan (/squad, members only).
+ * They are different features; never merge them. The nav doesn't change with the game: Practice,
+ * Progress and Squad stay for every game (see v3AllowedRoutes).
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
 import { gameNavRoutes } from '../../lib/game-modules'
+import { v3AllowedRoutes } from '../../lib/shell-v3'
 import { analysesLeftSidebarLabel } from '../../lib/quota-display'
 import { readCache, writeCache } from '../../lib/stale-cache'
 import type { ProfileData } from '../../env.d.ts'
 import UfIcon from './UfIcon.vue'
-// Roster flow: Coaches badge (unopened coach replies + open coach requests) and coach-reply notifications.
-import { useRosterHubBadge } from '../../composables/useRosterHubBadge'
+import WebLinksMenuV3 from './shell/WebLinksMenuV3.vue'
+// Human coaching: one badge per job (Coaches = notes ready for you, Students = matches waiting for your notes).
+import { useCoachBadges } from './roster-flow/useCoachBadges'
 import { useCoachReplyWatch } from './roster-flow/useCoachReplyWatch'
+import { showStudentsNav } from './roster-flow/roster-flow'
 import type { UfIconName } from './uf-icons'
 
 const route = useRoute()
@@ -24,7 +29,7 @@ const { primaryGame } = usePrimaryGame()
 // One cached source for the plan line, so it doesn't flicker or differ between screens.
 const profileUser = ref<ProfileData['user'] | null>(readCache<ProfileData['user']>('sidebar:user')?.value ?? null)
 const devMode = ref(false)
-const { pendingReviewCount } = useRosterHubBadge()
+const { notesReady, needsNotes, coachProfile } = useCoachBadges()
 useCoachReplyWatch()
 
 interface Item { to: string; label: string; icon: UfIconName; match: (p: string) => boolean; needs?: string }
@@ -34,14 +39,22 @@ const items: Item[] = [
   { to: '/training', label: 'Practice', icon: 'practice', match: p => p.startsWith('/training'), needs: '/training' },
   { to: '/stats', label: 'Progress', icon: 'progress', match: p => p === '/stats' },
   { to: '/rosters', label: 'Coaches', icon: 'chat', match: p => p === '/rosters' },
+  { to: '/students', label: 'Students', icon: 'list', match: p => p === '/students' },
   { to: '/squad', label: 'Squad', icon: 'team', match: p => p.startsWith('/squad'), needs: '/squad' },
 ]
 // Squad is a paid team plan: only members see it in the nav (non-members find it in Settings › Account).
 const squadMember = ref<boolean>(readCache<boolean>('sidebar:squad-member')?.value ?? false)
 const visible = computed(() => {
-  const allowed = new Set(gameNavRoutes(primaryGame.value))
-  return items.filter(i => (!i.needs || allowed.has(i.needs)) && (i.to !== '/squad' || squadMember.value))
+  const allowed = new Set(v3AllowedRoutes(gameNavRoutes(primaryGame.value)))
+  return items.filter(i => (!i.needs || allowed.has(i.needs))
+    && (i.to !== '/squad' || squadMember.value)
+    && (i.to !== '/students' || showStudentsNav(coachProfile.value)))
 })
+function badge(to: string): number {
+  if (to === '/rosters') return notesReady.value
+  if (to === '/students') return needsNotes.value
+  return 0
+}
 // Performance (PC booster) and cloud storage are settings-like tools, so they light up Settings.
 const settingsOn = computed(() => ['/settings', '/performance', '/cloud-storage'].includes(route.path))
 const planLine = computed(() => {
@@ -77,9 +90,11 @@ onMounted(async () => {
     <button v-for="i in visible" :key="i.to" type="button" class="uf-side-item" :class="{ 'is-on': i.match(route.path) }"
       :aria-current="i.match(route.path) ? 'page' : undefined" @click="go(i.to, $event)">
       <UfIcon :name="i.icon" :size="17" />{{ i.label }}
-      <span v-if="i.to === '/rosters' && pendingReviewCount > 0" class="uf-side-badge" :aria-label="`${pendingReviewCount} waiting`">{{ pendingReviewCount }}</span>
+      <span v-if="badge(i.to) > 0" class="uf-side-badge" :aria-label="i.to === '/students' ? `${badge(i.to)} need your notes` : `${badge(i.to)} with new notes`">{{ badge(i.to) }}</span>
     </button>
     <div style="margin-top: auto" />
+    <!-- Web-only features for the current game (roadmap, lineups, guides…): one quiet menu. -->
+    <WebLinksMenuV3 />
     <button v-if="devMode" type="button" class="uf-side-item" :class="{ 'is-on': route.path === '/dev' }" @click="go('/dev')">
       <UfIcon name="spark" :size="17" />Developer
     </button>

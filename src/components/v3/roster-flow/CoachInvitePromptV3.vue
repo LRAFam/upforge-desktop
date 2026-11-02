@@ -25,7 +25,7 @@ onMounted(() => {
     <span class="uf-label">Working with a coach?</span>
     <p class="uf-t3 cip3-line">Paste the invite link they shared and send them your matches from here.</p>
     <div class="cip3-actions">
-      <UfButton variant="link" @click="go">Join your coach</UfButton>
+      <UfButton variant="link" @click="go">Paste invite link</UfButton>
       <button type="button" class="cip3-dismiss uf-t4" @click="dismiss">Not now</button>
     </div>
   </section>

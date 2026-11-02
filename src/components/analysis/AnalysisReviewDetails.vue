@@ -3,6 +3,7 @@ import { uiV3 } from '../../lib/ui-v3'
 import { computed } from 'vue'
 import type { AnalysisDetailEnriched } from '../../lib/analysis-enrichment'
 import { parseCoachingEvidence, type CoachingEvidence } from '../../lib/coaching-brief'
+import { categoryScore } from './review-panel'
 
 const props = defineProps<{
   detail: AnalysisDetailEnriched
@@ -53,7 +54,6 @@ function seekTiming(row: AnalysisDetailEnriched['timing_comparisons'][number]): 
   <section v-if="hasContent" class="ard3" aria-label="Full review">
     <div class="ard3-intro">
       <span class="uf-label">Full review</span>
-      <p class="uf-t4">Match data and reviewed clips are shown separately from the headline synthesis.</p>
     </div>
     <details v-if="detail.summary" open class="ard3-sec">
       <summary>Session summary<span aria-hidden="true">⌄</span></summary>
@@ -66,7 +66,7 @@ function seekTiming(row: AnalysisDetailEnriched['timing_comparisons'][number]): 
     <details v-if="detail.behaviours.length" class="ard3-sec">
       <summary>Measured behaviours · {{ detail.behaviours.length }}<span aria-hidden="true">⌄</span></summary>
       <article v-for="behaviour in detail.behaviours" :key="behaviour.behaviour_id" class="ard3-item">
-        <p class="uf-t3">{{ behaviour.title || behaviour.behaviour_id.replace(/_/g, ' ') }}<span v-if="behaviour.occurrences != null" class="uf-t4"> · {{ behaviour.occurrences }}×</span><span v-if="behaviour.confidence" class="uf-t4"> · {{ behaviour.confidence }} confidence</span></p>
+        <p class="uf-t3">{{ behaviour.title || behaviour.behaviour_id.replace(/_/g, ' ') }}<span v-if="behaviour.occurrences != null" class="uf-t4"> · {{ behaviour.occurrences }}×</span></p>
         <p v-if="insightByBehaviour.get(behaviour.behaviour_id)?.text" class="ard3-p">{{ insightByBehaviour.get(behaviour.behaviour_id)?.text }}</p>
         <div class="ard3-stamps">
           <template v-for="item in behaviour.evidence" :key="item">
@@ -82,7 +82,10 @@ function seekTiming(row: AnalysisDetailEnriched['timing_comparisons'][number]): 
     <details v-if="detail.category_scores.length" class="ard3-sec">
       <summary>Category scores<span aria-hidden="true">⌄</span></summary>
       <div v-for="category in detail.category_scores" :key="category.category" class="ard3-item">
-        <div class="ard3-score"><span class="uf-t3" style="text-transform: capitalize">{{ category.category.replace(/_/g, ' ') }}</span><span class="uf-d4">{{ category.score }}</span></div>
+        <div class="ard3-score">
+          <span class="uf-t3" style="text-transform: capitalize">{{ category.category.replace(/_/g, ' ') }}</span>
+          <span v-if="categoryScore(category.score)" class="uf-d4 uf-num" title="Coach rating out of 10">{{ categoryScore(category.score)!.text }}</span>
+        </div>
         <p v-if="category.reasoning" class="uf-t4">{{ category.reasoning }}</p>
       </div>
     </details>
@@ -108,10 +111,7 @@ function seekTiming(row: AnalysisDetailEnriched['timing_comparisons'][number]): 
         <p v-if="drill.success_metric" class="uf-t4">Target: {{ drill.success_metric }}</p>
       </article>
     </details>
-    <p v-if="confidenceRows.length || detail.observation_confidence" class="uf-t4 ard3-conf">
-      <span v-if="detail.observation_confidence">Clip observation: {{ detail.observation_confidence }}</span>
-      <span v-for="([key, value], index) in confidenceRows" :key="key">{{ detail.observation_confidence || index > 0 ? ' · ' : '' }}{{ key }}: {{ value }}</span>
-    </p>
+    <!-- Internal confidence labels (clip observation / behaviour / comparison) stay out of the player's view in v3. -->
   </section>
 </template>
 <template v-else>
@@ -273,5 +273,4 @@ function seekTiming(row: AnalysisDetailEnriched['timing_comparisons'][number]): 
 .ard3-link { width: 100%; text-align: left; background: none; border: 0; cursor: pointer; }
 .ard3-link:hover:not(:disabled) { color: var(--uf-bone); }
 .ard3-link:disabled { cursor: default; }
-.ard3-conf { padding-top: 10px; border-top: 1px solid var(--uf-line); }
 </style>

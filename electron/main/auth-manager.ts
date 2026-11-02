@@ -8,6 +8,7 @@ import { withRetry } from './utils/retry'
 import { normalizeToAcs } from './combat-score'
 import { getApiBaseUrl } from './api-base'
 import { resolveMaxValorantAccounts } from './valorant-account-cap'
+import { normalizeLolRecent, type LolRecentResult } from '../../src/lib/lol-recent'
 import {
   clearCachedUser, clearTokenMeta, desktopDeviceName, loadCachedUser, markTokenIssued, queueSignOutEvent,
   readInstallId, saveCachedUser, takeSignOutEvents, tokenAgeDays, type SignOutEvent, type SignOutReason,
@@ -144,6 +145,8 @@ export interface RecurringInsight {
   text: string
   severity: string | null
   occurrences: number
+  /** Distinct analysed matches that flagged it; null when the API didn't track it (older habits). */
+  analysisCount?: number | null
   status: string | null
   trend: string | null
   firstSeenAt: string | null
@@ -261,6 +264,8 @@ export interface AnalysisItem {
   kda: number | null
   combat_score: number | null
   overall_score: number | null
+  /** Stats-based UpForge score 0–1000 (API); passed through untouched. */
+  upforge_score?: number | null
   rounds_won: number | null
   rounds_lost: number | null
   hs_pct: number | null
@@ -576,6 +581,7 @@ export class AuthManager {
         text: typeof r.insight_text === 'string' ? r.insight_text : '',
         severity: typeof r.severity === 'string' ? r.severity : null,
         occurrences: Number.isFinite(Number(r.occurrence_count)) ? Number(r.occurrence_count) : 0,
+        analysisCount: r.analysis_count != null && Number.isFinite(Number(r.analysis_count)) ? Number(r.analysis_count) : null,
         status: typeof r.status === 'string' ? r.status : null,
         trend: typeof r.trend_direction === 'string' ? r.trend_direction : null,
         firstSeenAt: typeof r.first_seen_at === 'string' ? r.first_seen_at : null,
@@ -684,21 +690,8 @@ export class AuthManager {
     }
   }
 
-  async fetchCs2Analyses(limit = 10): Promise<Array<{
-    id: number
-    job_id: string | null
-    status: string
-    player_name: string | null
-    map: string | null
-    rounds_played: number | null
-    score: string | null
-    kd_ratio: number | null
-    overall_rating: number | null
-    created_at: string
-    completed_at: string | null
-    source?: 'demo_upload' | 'faceit_api' | 'desktop_vod'
-    unified_id?: string
-  }>> {
+  /** Rows pass through as the API sends them (stats fields added 2 Nov 2026 are optional). */
+  async fetchCs2Analyses(limit = 10): Promise<import('../../src/env.d.ts').Cs2AnalysisItem[]> {
     try {
       const res = await this._api.get(`/api/cs2/analyses?per_page=${limit}`)
       return res.data?.analyses ?? []
@@ -729,24 +722,22 @@ export class AuthManager {
     }
   }
 
-  async fetchLolRecentMatches(): Promise<Array<{
-    match_id: string
-    queue_id: number
-    champion: string
-    role: string
-    lane: string
-    win: boolean
-    kills: number
-    deaths: number
-    assists: number
-    game_duration_seconds: number
-    game_creation: number
-  }>> {
+  async fetchLolRecentMatches(): Promise<import('../../src/env.d.ts').LolMatchSummary[]> {
+    return (await this.fetchLolRecentMatchesResult()).matches
+  }
+
+  /**
+   * Recent League games plus the API's Riot error state (`error: 'riot_unavailable'`, `error_reason`,
+   * `partial`). Older API builds send only `matches`. 422 (not linked) stays an empty list, as before.
+   */
+  async fetchLolRecentMatchesResult(): Promise<LolRecentResult> {
     try {
       const res = await this._api.get('/api/lol/matches/recent')
-      return res.data?.matches ?? []
-    } catch {
-      return []
+      return normalizeLolRecent(res.data)
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 422) return normalizeLolRecent(null)
+      return { matches: [], error: 'request_failed', errorReason: null, partial: false }
     }
   }
 

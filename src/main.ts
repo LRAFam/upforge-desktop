@@ -33,6 +33,8 @@ import StatsView from './views/StatsView.vue'
 import DevView from './views/DevView.vue'
 import DashboardNeedsYouPreviewView from './views/DashboardNeedsYouPreviewView.vue'
 import RostersView from './views/RostersView.vue'
+import StudentsView from './views/StudentsView.vue'
+import { uiV3 } from './lib/ui-v3'
 
 const PUBLIC_ROUTES = ['/login', '/welcome', '/onboarding', '/splash', '/overlay']
 
@@ -65,7 +67,14 @@ const router = createRouter({
     { path: '/stats', component: StatsView },
     { path: '/history', redirect: to => ({ path: '/recordings', query: { ...to.query, view: 'coaching' } }) },
     { path: '/matches', redirect: to => ({ path: '/recordings', query: to.query }) },
-    { path: '/rosters', component: RostersView },
+    // Coaches (getting coached). Old coach-mode links (?mode=coach / ?view=students) open Students in UI v3.
+    {
+      path: '/rosters',
+      component: RostersView,
+      beforeEnter: to => (uiV3.value && (to.query.mode === 'coach' || to.query.view === 'students') ? { path: '/students' } : true),
+    },
+    // Students (coaching others): UI v3 only, nav item only for accounts with a coach profile.
+    { path: '/students', component: StudentsView },
     { path: '/dev', component: DevView },
     // Dev builds only: the coach-flow replay demo talks to a local AI service.
     ...(import.meta.env.DEV ? [{ path: '/dev/coach-flow', component: () => import('./views/v3/dev/CoachFlowDemoV3.vue') }] : []),

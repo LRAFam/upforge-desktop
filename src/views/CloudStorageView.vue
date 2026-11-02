@@ -14,6 +14,8 @@ import UfSkeleton from '../components/v3/UfSkeleton.vue'
 import { readCache, writeCache } from '../lib/stale-cache'
 import UfTabs from '../components/v3/UfTabs.vue'
 import UfDialog from '../components/v3/UfDialog.vue'
+import { capacityFacts, capacitySentence, libraryCountLabel } from '../components/v3/matches/cloud-storage-v3'
+import { formatMatchDate, matchMapArt, matchMapLabel } from '../components/v3/matches/match-meta'
 const router = useRouter()
 const pendingRemoval = ref<CloudFile | null>(null)
 const addon = ref<StorageAddonSnapshot | null>(null), addonVersion = ref(0), keepError = ref(''), keeping = ref('')
@@ -29,7 +31,8 @@ async function keep(file: CloudFile, action: 'keep' | 'remove' = 'keep') {
 const { usage, error: usageError, load: loadUsage } = useAccountUsage()
 const game = ref<CloudGame>('all')
 const gameLabel = computed(() => cloudGames.find(item => item.value === game.value)!.label)
-const kind = ref<CloudKind>(useRoute().query.kind === 'recording' ? 'recording' : 'all'), sort = ref<CloudSort>('newest'), page = ref(1)
+const routeKind = useRoute().query.kind
+const kind = ref<CloudKind>(routeKind === 'recording' || routeKind === 'clip' ? routeKind : 'all'), sort = ref<CloudSort>('newest'), page = ref(1)
 const library = ref<CloudPage | null>(null), error = ref(''), loading = ref(false)
 const recordings = ref<PendingRecording[]>([]), clips = ref<ClipRecord[]>([]), queueError = ref('')
 let generation = 0, queueGeneration = 0
@@ -79,6 +82,9 @@ async function loadQueue() {
 function focusRefresh() { if (!loading.value && Date.now() - lastLoaded > 30000) { void load(); void loadQueue() } }
 function refresh() { void load(); void loadUsage(); void loadQueue() }
 function resetAccount() { pendingRemoval.value = null; addon.value = null; keepError.value = ''; closePlayback(); clearTimeout(updateTimer); generation++; queueGeneration++; library.value = null; recordings.value = []; clips.value = []; loading.value = false; error.value = 'Sign in again to view cloud storage.' }
+/** Row art and title: the map (as on Matches), never a raw key like "de_vertigo". */
+const fileArt = (file: CloudFile) => (file.map ? matchMapArt(file.game, file.map) : '')
+const fileTitle = (file: CloudFile) => file.title?.trim() || (file.map ? matchMapLabel(file.game, file.map) : file.kind === 'clip' ? 'Clip' : 'Recording')
 const date = (value: string) => new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 const retention = (value: string | null) => cloudRetention(value, retentionNow.value)
 const planError = ref('')
@@ -157,7 +163,8 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
         <h1 class="uf-d2" style="margin: 0">Cloud storage</h1>
         <p class="uf-t2" style="margin: 0">Your clips and recordings from every game, in one library.</p>
       </div>
-      <UfButton :disabled="loading" @click="refresh">{{ loading ? 'Refreshing…' : 'Refresh' }}</UfButton>
+      <!-- v3 loading rule: a background refresh is a 1px line, never a button that reads "Refreshing…". -->
+      <UfButton :disabled="loading" @click="refresh">Refresh</UfButton>
     </header>
 
     <section class="uf-cs-space uf-rise uf-d1s" aria-label="Cloud capacity">
@@ -169,19 +176,15 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
         <UfSkeleton w="52%" :h="13" />
       </div>
       <template v-else-if="usage.cloud_storage">
-        <p class="uf-t1" style="margin: 0">
-          <template v-if="usage.cloud_storage.remaining_bytes === null">No storage cap on your account. {{ cloudBytes(usage.cloud_storage.used_bytes) }} used.</template>
-          <template v-else-if="usage.cloud_storage.remaining_bytes === 0">Your cloud space is full. Add capacity or remove cloud copies to upload more.</template>
-          <template v-else>{{ cloudBytes(usage.cloud_storage.remaining_bytes) }} free for clips and recordings.</template>
-        </p>
+        <p class="uf-t1" style="margin: 0">{{ capacitySentence(usage.cloud_storage) }}</p>
         <div class="uf-cs-meter">
           <span class="uf-d3">{{ cloudBytes(usage.cloud_storage.used_bytes) }}</span>
-          <span v-if="usage.cloud_storage.capacity_bytes !== null" class="uf-t2">of {{ cloudBytes(usage.cloud_storage.capacity_bytes) }}</span>
+          <span class="uf-t2">{{ usage.cloud_storage.capacity_bytes !== null ? `of ${cloudBytes(usage.cloud_storage.capacity_bytes)} used` : 'used' }}</span>
         </div>
         <div v-if="usage.cloud_storage.capacity_bytes !== null" class="uf-cs-bar" role="meter" aria-label="Cloud storage used and reserved" :aria-valuenow="Math.min(usage.cloud_storage.used_bytes + usage.cloud_storage.reserved_bytes, usage.cloud_storage.capacity_bytes)" aria-valuemin="0" :aria-valuemax="Math.max(usage.cloud_storage.capacity_bytes, 1)">
           <div class="uf-cs-bar-fill uf-fill" :class="{ full: usage.cloud_storage.remaining_bytes === 0 }" :style="{ width: `${Math.min(100, (usage.cloud_storage.used_bytes + usage.cloud_storage.reserved_bytes) / Math.max(usage.cloud_storage.capacity_bytes, 1) * 100)}%` }" />
         </div>
-        <p class="uf-t4 uf-cs-facts"><span>{{ cloudBytes(usage.cloud_storage.included_bytes) }} included</span><span>{{ cloudBytes(usage.cloud_storage.addon_bytes) }} extra storage</span><span>{{ cloudBytes(usage.cloud_storage.reserved_bytes) }} reserved for uploads</span></p>
+        <p v-if="capacityFacts(usage.cloud_storage).length" class="uf-t4 uf-cs-facts"><span v-for="fact in capacityFacts(usage.cloud_storage)" :key="fact">{{ fact }}</span></p>
         <p v-if="usage.cloud_storage.unknown_size_files" class="uf-t4 uf-cs-warn">Checking sizes for {{ usage.cloud_storage.unknown_size_files }} existing files. Uploads pause until this is complete.</p>
       </template>
       <p v-else class="uf-t4" role="status">Your storage allowance is being updated. Refresh to check again.</p>
@@ -205,16 +208,16 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
         </section>
         <p v-if="keepError" class="uf-t4 uf-cs-bad" role="alert">{{ keepError }}</p>
 
-        <section class="uf-cs-sec" aria-label="Cloud files" :aria-busy="loading">
+        <section class="uf-cs-sec" :class="{ 'uf-refreshing': loading && !!library }" aria-label="Cloud files" :aria-busy="loading">
           <div class="uf-cs-lib-head">
             <span class="uf-label">Saved to cloud · {{ gameLabel }}</span>
-            <span class="uf-t4 uf-num">{{ library ? `${library.total} files` : 'Clips & recordings' }}</span>
+            <span class="uf-t4 uf-num">{{ library ? libraryCountLabel(library.total, kind, game === 'all' ? null : gameLabel) : 'Clips & recordings' }}</span>
           </div>
           <div class="uf-cs-toolbar">
             <UfTabs :items="filters.map(f => ({ key: f.value, label: f.label }))" :model-value="kind" size="filter" label="File type" @update:model-value="kind = $event as CloudKind" />
             <span style="flex: 1" />
-            <label class="uf-cs-select"><span class="uf-label">Game</span><select v-model="game"><option v-for="option in cloudGames" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
-            <label class="uf-cs-select"><span class="uf-label">Sort</span><select v-model="sort"><option value="newest">Newest first</option><option value="largest">Largest first</option><option value="expiry">Expiring first</option></select></label>
+            <label class="uf-cs-select"><span class="uf-label">Game</span><select v-model="game" class="uf-select is-inline is-compact"><option v-for="option in cloudGames" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
+            <label class="uf-cs-select"><span class="uf-label">Sort</span><select v-model="sort" class="uf-select is-inline is-compact"><option value="newest">Newest first</option><option value="largest">Largest first</option><option value="expiry">Expiring first</option></select></label>
           </div>
           <div v-if="attentionCount" class="uf-cs-notice">
             <div class="uf-cs-row-text"><span class="uf-t3">{{ attentionCount }} {{ attentionCount === 1 ? 'file needs' : 'files need' }} a retention check</span><span class="uf-t4">On this page: expiring within 7 days or past the retention date. Open a file to check playback. Files past their retention date may be removed; your notes stay saved.</span></div>
@@ -236,14 +239,14 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
               <UfButton @click="router.push(kind === 'clip' ? '/clips' : '/recordings')">Open {{ kind === 'clip' ? 'Clips' : 'Footage' }}</UfButton>
             </div>
             <div v-for="file in library.items" :key="`${file.kind}:${file.id}`" class="uf-cs-file" :class="{ ended: retention(file.expires_at).state === 'expired' }">
+              <!-- Map art, same as the Matches rows (no cropped agent face). -->
               <div class="uf-cs-thumb" aria-hidden="true">
-                <img v-if="getMapListViewImage(file.map) && !failedMapImages.has(file.map!)" class="uf-cs-map" :src="getMapListViewImage(file.map)" alt="" loading="lazy" @error="hideMapImage(file.map!)" />
-                <img v-if="getAgentImage(file.agent) && !failedAgents.has(file.agent!)" class="uf-cs-agent" :src="getAgentImage(file.agent)" alt="" loading="lazy" @error="failedAgents.add(file.agent!)" />
-                <span v-if="!(getMapListViewImage(file.map) && !failedMapImages.has(file.map!)) && !(getAgentImage(file.agent) && !failedAgents.has(file.agent!))" class="uf-label">{{ file.kind === 'clip' ? 'Clip' : 'Rec' }}</span>
+                <img v-if="fileArt(file) && !failedMapImages.has(fileArt(file))" class="uf-cs-map" :src="fileArt(file)" alt="" loading="lazy" @error="hideMapImage(fileArt(file))" />
+                <span v-else class="uf-label">{{ file.kind === 'clip' ? 'Clip' : 'Rec' }}</span>
               </div>
               <div class="uf-cs-row-text" style="flex: 1">
-                <button type="button" class="uf-cs-open uf-t3" :disabled="file.status === 'uploading'" @click="openFile(file)">{{ cloudFileTitle(file) }}</button>
-                <span class="uf-t4">{{ cloudGames.find(item => item.value === file.game)?.label || 'Game not recorded' }} · {{ file.kind === 'clip' ? 'Clip' : 'Recording' }}<span v-if="file.agent"> · {{ file.agent }}</span> · {{ date(file.created_at) }}<span v-if="file.status === 'uploading'"> · Uploading</span><span v-if="file.status === 'failed'" class="uf-cs-bad"> · Upload failed</span></span>
+                <button type="button" class="uf-cs-open uf-t3" :disabled="file.status === 'uploading'" @click="openFile(file)">{{ fileTitle(file) }}</button>
+                <span class="uf-t4">{{ cloudGames.find(item => item.value === file.game)?.label || 'Game not recorded' }} · {{ file.kind === 'clip' ? 'Clip' : 'Recording' }}<span v-if="file.agent"> · {{ file.agent }}</span> · {{ formatMatchDate(Date.parse(file.created_at)) }}<span v-if="file.status === 'uploading'"> · Uploading</span><span v-if="file.status === 'failed'" class="uf-cs-bad"> · Upload failed</span></span>
               </div>
               <div class="uf-cs-size">
                 <span class="uf-t3 uf-num" :title="file.bytes === null ? 'This older file has no verified size yet. Its size has not been counted as zero.' : undefined">{{ cloudBytes(file.bytes) }}</span>
@@ -403,12 +406,11 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
 .uf-cs-lib-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .uf-cs-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; padding-bottom: 6px; border-bottom: 1px solid var(--uf-line); }
 .uf-cs-select { display: inline-flex; align-items: center; gap: 8px; }
-.uf-cs-select select { height: 32px; padding: 0 8px; background: var(--uf-raised); color: var(--uf-bone); border: 1px solid var(--uf-line-2); border-radius: 0; font: 400 13px/1 var(--uf-body); }
 .uf-cs-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 28px 0; }
 .uf-cs-file { display: flex; align-items: center; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--uf-line); }
 .uf-cs-file.ended { opacity: 0.7; }
 .uf-cs-thumb { position: relative; width: 112px; height: 60px; flex: none; overflow: hidden; background: var(--uf-raised); display: flex; align-items: center; justify-content: center; }
-.uf-cs-map { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.55; }
+.uf-cs-map { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: saturate(0.7); }
 .uf-cs-agent { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); height: 100%; object-fit: contain; object-position: bottom; }
 .uf-cs-open { background: none; border: 0; padding: 0; color: var(--uf-bone); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .uf-cs-open:hover:not(:disabled) { text-decoration: underline; }

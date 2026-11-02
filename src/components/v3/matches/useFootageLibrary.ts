@@ -25,6 +25,7 @@ import {
   visibleGroupItems,
 } from '../../../lib/recording-library'
 import { recordingStatusBadge } from '../../../lib/recording-status'
+import { usePrimaryGame } from '../../../composables/usePrimaryGame'
 
 const STATUS_CHIPS = new Set<RecordingLibraryChip>(['all', 'action_required', 'ready', 'analysed', 'cloud'])
 function routeStatusChip(value: unknown): RecordingLibraryChip {
@@ -99,7 +100,10 @@ export function useFootageLibrary(options: FootageLibraryOptions = {}) {
   const libraryError = ref('')
   const busyId = ref<string | null>(null)
   const message = ref<string | null>(null)
-  const gameFilter = ref<string>(route.query.game === 'lol' ? 'lol' : 'all')
+  // v3: the list opens on the game picked in the title bar (still allows "All games"); the old UI opens on all games.
+  const { primaryGame } = usePrimaryGame()
+  const defaultGameFilter = (): string => route.query.game === 'lol' ? 'lol' : uiV3.value ? primaryGame.value : 'all'
+  const gameFilter = ref<string>(defaultGameFilter())
   const statusChip = ref<RecordingLibraryChip>(routeStatusChip(route.query.status))
   const obsConnected = ref<boolean | null>(null)
   const recordingsBytes = ref(0)
@@ -146,11 +150,14 @@ export function useFootageLibrary(options: FootageLibraryOptions = {}) {
   const dateGroups = computed(() => groupRecordingsByDate(chipFiltered.value))
 
   watch(dateGroups, (groups) => {
+    // v3 groups by week/month and shows every group open (12 rows each, then "Show more").
+    if (uiV3.value) { collapsedGroups.value = new Set(); return }
     const next = new Set<string>()
     groups.slice(1).forEach(g => next.add(g.label))
     collapsedGroups.value = next
   }, { immediate: true })
-  watch(() => route.query.game, game => { gameFilter.value = game === 'lol' ? 'lol' : 'all' })
+  watch(() => route.query.game, () => { gameFilter.value = defaultGameFilter() })
+  watch(primaryGame, () => { if (uiV3.value) gameFilter.value = defaultGameFilter() })
   watch(() => route.query.status, status => { statusChip.value = routeStatusChip(status) })
 
   function toggleGroup(label: string) {
@@ -163,7 +170,7 @@ export function useFootageLibrary(options: FootageLibraryOptions = {}) {
   function showMoreInGroup(label: string) {
     showAllByGroup.value = new Set(showAllByGroup.value).add(label)
   }
-  function groupVisibility(group: RecordingDateGroup) {
+  function groupVisibility(group: RecordingDateGroup | { label: string; items: readonly PendingRecording[] }) {
     return visibleGroupItems(group.items as LibraryRecording[], showAllByGroup.value.has(group.label))
   }
 

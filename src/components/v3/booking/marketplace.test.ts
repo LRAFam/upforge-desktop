@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  joinOffer,
   filterCoaches, groupSessions, ratingLabel, rateLabel, sortCoaches, toMarketCoach, toMarketCoachDetail,
   toMarketSession, toPaidReview, toReviewOffer,
 } from './marketplace'
@@ -94,5 +95,16 @@ describe('paid reviews', () => {
   it('maps marketplace reviews', () => {
     const r = toPaidReview({ id: 2, source: 'marketplace', status: 'completed', analysis_id: 55, coach: { display_name: 'Nova' }, analysis: { game_type: 'valorant' } })!
     expect(r).toMatchObject({ analysisId: 55, game: 'valorant', statusLabel: 'Notes ready', coachName: 'Nova' })
+  })
+})
+
+describe('joinOffer (Find a coach: Join vs Book)', () => {
+  it('offers Join only when the coach takes students between sessions', () => {
+    expect(joinOffer(null)).toBeNull()
+    expect(joinOffer({ roster_open: false, roster_is_live: true })).toBeNull()
+    expect(joinOffer({ roster_open: true, roster_is_live: false })).toBeNull()
+    expect(joinOffer({ roster_open: true, roster_is_live: true, roster_membership_mode: 'free' })).toEqual({ label: 'Free plan', paid: false })
+    expect(joinOffer({ roster_open: true, roster_is_live: true, roster_membership_mode: 'paid', roster_membership_price_cents: 999 })).toEqual({ label: '$9.99 a month', paid: true })
+    expect(joinOffer({ roster_open: true, roster_membership_mode: 'paid' })).toEqual({ label: 'Paid plan', paid: true })
   })
 })

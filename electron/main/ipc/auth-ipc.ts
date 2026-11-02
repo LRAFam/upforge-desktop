@@ -25,6 +25,8 @@ import { timelineDeathsForVod, timelineKillsForVod } from '../recording-sync'
 import type { MatchData } from '../riot-types'
 import { applyLayoutForRoute } from '../window-layouts'
 import { parseDesktopOnboardingCampaignState } from '../../../src/lib/desktop-onboarding-campaign'
+import { startDiscordLink } from '../discord-link'
+import { getLatestNotifications, markNotificationReadById } from '../coach-notification-poller'
 
 export function setupAuthHandlers(
   ipcMain: IpcMain,
@@ -181,6 +183,26 @@ export function setupAuthHandlers(
 
   ipcMain.handle('profile:get', async () => {
     return auth.fetchProfile()
+  })
+
+  // Settings › Account › Discord: open Discord's authorise page (state from the API) in the browser.
+  ipcMain.handle('profile:link-discord', async () => {
+    return startDiscordLink({
+      get: auth.isAuthenticated()
+        ? async (path) => {
+            const res = await auth.getApi().get(path, { validateStatus: () => true })
+            return { status: res.status, data: res.data }
+          }
+        : null,
+      openExternal: url => shell.openExternal(url),
+    })
+  })
+
+  // Title-bar inbox: the coach poller's last /api/notifications answer (no extra API calls).
+  ipcMain.handle('notifications:inbox', () => (auth.isAuthenticated() ? getLatestNotifications() : null))
+  ipcMain.handle('notifications:mark-read', async (_e, id: unknown) => {
+    if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) return { ok: false }
+    return markNotificationReadById(auth, id)
   })
 
   ipcMain.handle('billing:open-portal', async () => {

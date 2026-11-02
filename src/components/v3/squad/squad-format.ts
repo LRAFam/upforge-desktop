@@ -27,10 +27,15 @@ export function presenceLabel(p: PresenceLike | null | undefined): string {
   return 'Offline'
 }
 
-/** Win rate (0–100 or 0–1) to a whole percentage, or null. */
-export function pctLabel(v: number | null | undefined): string | null {
-  if (v == null || !Number.isFinite(v)) return null
-  const pct = v <= 1 ? v * 100 : v
+/**
+ * Win rate (0–100 or 0–1) to a whole percentage, or null.
+ * The API sends decimals as strings ("60.00"), so strings are coerced too.
+ */
+export function pctLabel(v: number | string | null | undefined): string | null {
+  if (v == null || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return null
+  const pct = n <= 1 ? n * 100 : n
   return `${Math.round(pct)}%`
 }
 
@@ -41,4 +46,15 @@ export function gameMixLabel(mix: Record<string, number>): string | null {
     .sort((a, b) => b[1] - a[1])
     .map(([g, n]) => `${n} in ${GAME_NAMES[g] ?? g}`)
   return parts.length ? parts.join(' · ') : null
+}
+
+/** Squad activity shows this many rows before "Show all". */
+export const SQUAD_ACTIVITY_PREVIEW = 6
+
+/**
+ * "12" — or "20+" when every row in the fetched activity sample is from this week
+ * (the API only returns the latest few analyses, so the true count may be higher).
+ */
+export function weekCountLabel(weekCount: number, sampleSize: number): string {
+  return weekCount > 0 && weekCount >= sampleSize ? `${weekCount}+` : String(weekCount)
 }

@@ -541,6 +541,8 @@ export function setupGamingHandlers(
     return auth.fetchLolRecentMatches()
   })
 
+  ipcMain.handle('lol:get-recent-matches-result', async () => auth.fetchLolRecentMatchesResult())
+
   ipcMain.handle('lol:get-rank', () => auth.fetchLolRank())
   // League accounts (main + alts). Changes come only from the app's own windows.
   ipcMain.handle('lol:list-accounts', () => auth.listLolAccounts())

@@ -107,3 +107,22 @@ export function statsOnlyNotice(detail: {
     limitation: typeof first === 'string' ? first.trim() : null,
   }
 }
+
+/** The side-panel tab is called this wherever the match was opened from (Home, Matches, a coach link). */
+export const NOTES_TAB_LABEL = 'Coach notes'
+
+/** A coach has actually written back (a note or their perspective) — a student's question alone doesn't count. */
+export function coachReplied(review: { coach_perspective?: string | null; annotations?: unknown[] | null } | null | undefined): boolean {
+  if (!review) return false
+  return Boolean(review.coach_perspective?.trim() || review.annotations?.length)
+}
+
+/**
+ * The "W–L rounds" stat only when it adds something: the big score already shows the round
+ * score for round-based games, so the stat would repeat it.
+ */
+export function showRoundRecord(score: ScoreLine | null | undefined, record: { wins: number; losses: number } | null | undefined): boolean {
+  if (!record) return false
+  if (!score) return true
+  return !(score.ally === record.wins && score.enemy === record.losses)
+}

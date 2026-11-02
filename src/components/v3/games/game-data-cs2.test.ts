@@ -41,3 +41,16 @@ describe('CS2 Progress from measured match stats', () => {
     expect(item).toMatchObject({ value: '1720', caption: 'FACEIT Elo', sub: 'Level 8 · +35 since last sync', tone: 'win' })
   })
 })
+
+describe('CS2 Progress · old web demos', () => {
+  it('drops an ADR of 0 next to kills (damage was not parsed), keeping the other numbers', () => {
+    const items = cs2Stats(profile({
+      matches_tracked: 2, avg_kd: 0.27,
+      averages: {
+        kd: { value: 0.27, matches: 2 }, adr: { value: 0, matches: 2 },
+        headshot_pct: { value: 50, matches: 2 }, kast_pct: { value: 31.2, matches: 2 },
+      },
+    }), null)
+    expect(items.map(i => i.caption)).toEqual(['Matches tracked', 'Average K/D', 'Headshot kills', 'KAST'])
+  })
+})

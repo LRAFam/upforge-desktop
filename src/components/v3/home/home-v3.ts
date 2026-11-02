@@ -33,34 +33,29 @@ export function resultWord(won: boolean | null | undefined): string {
 
 /**
  * The coach's one sentence and its next step. Only uses text the API already produced:
- * the latest focus-loop note first, then the last analysis insight. Never invents a claim.
+ * the latest focus-loop note first, then the AI verdict of the last match (what decided it),
+ * then the last analysis insight. Never invents a claim, and never repeats the hero's
+ * result line (map, result and score are already in the hero).
  */
 export interface CoachLastMatch {
-  won: boolean | null
-  mapLabel: string | null
-  roundsWon: number | null
-  roundsLost: number | null
+  /** The analysis `verdict` the AI wrote for this match, when there is one. */
+  verdict: string | null
 }
 
 export function coachLine(
   latest: FocusUpdate | null | undefined,
   lastInsight: { text: string } | null | undefined,
   lastMatch?: CoachLastMatch | null,
-): { headline: string; next: string; source: 'focus_note' | 'insight' | 'last_match' } | null {
+): { headline: string; next: string; source: 'focus_note' | 'verdict' | 'insight' | 'last_match' } | null {
   const notes = latest?.report?.notes
   if (notes?.headline?.text) {
     return { headline: notes.headline.text, next: notes.next_action?.text ?? notes.subline?.text ?? '', source: 'focus_note' }
   }
+  const verdict = lastMatch?.verdict?.trim()
+  if (verdict) return { headline: verdict, next: '', source: 'verdict' }
   if (lastInsight?.text) return { headline: lastInsight.text, next: '', source: 'insight' }
-  // Accounts with analysed matches but no note yet: speak about the real last match, never "set up recording".
-  if (lastMatch) {
-    const where = lastMatch.mapLabel ? ` on ${lastMatch.mapLabel}` : ''
-    const score = lastMatch.roundsWon != null && lastMatch.roundsLost != null ? `, ${lastMatch.roundsWon}–${lastMatch.roundsLost}` : ''
-    const headline = lastMatch.won == null
-      ? `Your last match${where} is analysed${score ? ` (${score.slice(2)})` : ''}.`
-      : `Your last match was a ${lastMatch.won ? 'win' : 'loss'}${where}${score}.`
-    return { headline, next: 'Open it to see what decided it.', source: 'last_match' }
-  }
+  // Analysed match but no AI text yet: point at it without restating the hero's result.
+  if (lastMatch) return { headline: 'Open your last match to see what decided it.', next: '', source: 'last_match' }
   return null
 }
 
@@ -69,6 +64,16 @@ export function agentFullPortrait(displayIcon: string): string {
   return displayIcon ? displayIcon.replace(/\/displayicon\.png$/, '/fullportrait.png') : ''
 }
 
+/** Whole days since `iso` (rounded, same rule as `relativeDay`); null for a missing/bad date. */
+export function daysAgo(iso: string | null | undefined, now = Date.now()): number | null {
+  if (!iso) return null
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return null
+  const hours = Math.round(Math.max(0, Math.round((now - t) / 60000)) / 60)
+  return Math.round(hours / 24)
+}
+
+/** The one relative-date formatter on Home (hero, Recent, the welcome-back note). */
 export function relativeDay(iso: string | null | undefined, now = Date.now()): string {
   if (!iso) return ''
   const t = Date.parse(iso)
@@ -77,8 +82,77 @@ export function relativeDay(iso: string | null | undefined, now = Date.now()): s
   if (mins < 60) return mins <= 1 ? 'just now' : `${mins} min ago`
   const hours = Math.round(mins / 60)
   if (hours < 24) return `${hours}h ago`
-  const days = Math.round(hours / 24)
+  const days = daysAgo(iso, now)!
   return days === 1 ? 'yesterday' : `${days} days ago`
+}
+
+/**
+ * One row per real match. The API returns one row per analysis, so a match analysed again
+ * (same Riot match_id, new analysis id) shows up several times. Rows arrive newest first;
+ * keep the newest analysis of each match. Rows without a match_id are kept as they are.
+ */
+export function dedupeByMatch<T extends { id: number | string; match_id?: string | null }>(items: readonly T[]): T[] {
+  const seen = new Set<string>()
+  const out: T[] = []
+  for (const a of items) {
+    const key = a.match_id ? `m:${a.match_id}` : `a:${a.id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(a)
+  }
+  return out
+}
+
+type FormMatch = Pick<AnalysisItem, 'won' | 'map' | 'rounds_won' | 'rounds_lost' | 'overall_score' | 'hs_pct'>
+
+/** Hover/aria label for one recent-form square: "Summit · 13–10 · Win". */
+export function formSquareLabel(a: FormMatch, mapLabel: (map: string) => string): string {
+  const result = a.won === true ? 'Win' : a.won === false ? 'Loss' : 'Result unknown'
+  const score = a.rounds_won != null && a.rounds_lost != null ? `${a.rounds_won}–${a.rounds_lost}` : null
+  return [a.map ? mapLabel(a.map) : 'Match', score, result].filter(Boolean).join(' · ')
+}
+
+/** Display map name per game: "Vertigo" for de_vertigo, Valorant names through the app's helper. */
+export function homeMapLabel(game: string, map: string | null | undefined, valorantLabel: (m: string) => string): string {
+  if (!map) return ''
+  if (game === 'cs2') {
+    const base = map.trim().toLowerCase().split(/[\\/]/).pop() ?? ''
+    const name = base.replace(/^(de|cs)_/, '').replace(/_/g, ' ')
+    return name.replace(/\b\w/g, c => c.toUpperCase())
+  }
+  return valorantLabel(map)
+}
+
+/**
+ * Hero meta line. CS2 rows carry the player's own name in `agent` and a source label
+ * ("CS2 VOD") in `game_mode`; neither tells the player anything, so they're left out.
+ */
+/** When the match was played: the API's played_at, else when it was analysed. */
+export function matchTime(a: { played_at?: string | null; created_at?: string | null }): string | null {
+  return a.played_at || a.created_at || null
+}
+
+export function heroMetaParts(
+  game: string,
+  a: Pick<AnalysisItem, 'map' | 'agent' | 'game_mode' | 'created_at' | 'played_at'>,
+  mapLabel: string,
+  formatMode: (m: string | null | undefined) => string,
+): string[] {
+  const demo = game === 'cs2' || game === 'deadlock'
+  return [
+    mapLabel || null,
+    game === 'cs2' ? null : a.agent,
+    demo ? null : formatMode(a.game_mode),
+    relativeDay(matchTime(a)),
+  ].filter((x): x is string => !!x)
+}
+
+/** Focus title split for the type roles: the habit in Plex, the short goal in the display face. */
+export function focusTitleParts(f: { label: string; better: 'lower' | 'higher'; target: number; progress: { status: string } }): { title: string; goal: string } {
+  const goal = `${f.better === 'lower' ? 'At most' : 'At least'} ${Math.round(f.target * 100)}%`  // same words as the starting report
+  const s = f.progress.status
+  const title = s === 'achieved' ? `Focus achieved: ${f.label.toLowerCase()}` : s === 'missed' ? `Not this time: ${f.label.toLowerCase()}` : f.label
+  return { title, goal }
 }
 
 /** Live pipeline state the dashboard already tracks (recording → upload → AI analysis). */
@@ -130,17 +204,18 @@ const EARLY_READ_UNDER = 10
 const RETURNING_AFTER_DAYS = 14
 
 export function homeStateNote(
-  analyses: ReadonlyArray<{ created_at?: string | null }>,
+  analyses: ReadonlyArray<{ created_at?: string | null; played_at?: string | null }>,
   now = Date.now(),
 ): HomeStateNote | null {
-  const times = analyses.map(a => Date.parse(a.created_at ?? '')).filter(t => Number.isFinite(t))
+  const times = analyses.map(a => Date.parse(matchTime(a) ?? '')).filter(t => Number.isFinite(t))
   if (!times.length) return null
-  const days = Math.floor((now - Math.max(...times)) / 86_400_000)
+  const newest = new Date(Math.max(...times)).toISOString()
+  const days = daysAgo(newest, now) ?? 0
   if (days >= RETURNING_AFTER_DAYS) {
     return {
       kind: 'returning',
       label: 'Welcome back',
-      line: `Your last analysed match was ${days} days ago. Play one and your coach picks up where you left off.`,
+      line: `Your last analysed match was played ${relativeDay(newest, now)}. Play one and your coach picks up where you left off.`,
     }
   }
   if (times.length < EARLY_READ_UNDER) {

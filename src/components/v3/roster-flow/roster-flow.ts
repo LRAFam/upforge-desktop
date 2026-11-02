@@ -114,7 +114,7 @@ export function sendCoaches(hub: StudentHub | null | undefined): SendCoach[] {
 export type SendState =
   | { kind: 'hidden' }
   | { kind: 'already'; status: string; coachName: string }
-  | { kind: 'blocked'; reason: string }
+  | { kind: 'blocked'; reason: string; coachName: string | null; code: string | null }
   | { kind: 'ready'; coaches: SendCoach[] }
 
 /**
@@ -135,27 +135,51 @@ export function sendStateFor(hub: StudentHub | null | undefined, analysisId: num
   }
   const eligible = coaches.filter(c => c.can_request_review !== false)
   if (!eligible.length) {
-    const reason = coaches.find(c => c.can_request_reason)?.can_request_reason
-    return { kind: 'blocked', reason: reason ?? 'Your coaches can’t take another review right now.' }
+    const first = coaches.find(c => c.can_request_reason) ?? coaches[0]
+    return {
+      kind: 'blocked',
+      reason: first?.can_request_reason ?? 'Your coaches can’t take another match right now.',
+      coachName: coaches.length === 1 ? coaches[0].display_name : null,
+      code: coaches.length === 1 ? (coaches[0].can_request_code ?? null) : null,
+    }
   }
   return { kind: 'ready', coaches }
 }
 
-/** Sidebar Coaches badge: unopened coach replies (student) + open review requests (coach). */
-export function teamBadgeCount(unseen: number, coachRequests: unknown): number {
-  const coach = Array.isArray(coachRequests)
+/**
+ * Sidebar badges, one per job (Option A, coaches-flow-proposal.md):
+ * Coaches = coach notes ready for you that you haven't opened; Students = matches waiting for your notes.
+ */
+export function coachBadgeCounts(unseen: number, coachRequests: unknown): { coaches: number; students: number } {
+  const students = Array.isArray(coachRequests)
     ? coachRequests.filter((r) => {
         const s = (r as { status?: unknown })?.status
         return s === 'pending' || s === 'in_progress'
       }).length
     : 0
-  return Math.max(0, unseen) + coach
+  return { coaches: Math.max(0, unseen), students }
 }
 
-/** One plain sentence for a reply. */
+/** The Students nav item exists only for accounts with a coach profile. Never a toggle. */
+export function showStudentsNav(hasCoachProfile: boolean | null | undefined): boolean {
+  return hasCoachProfile === true
+}
+
+/** Human coaches are always named: "Send to astar", or "Send to a coach" when there are 2+. */
+export function sendLabel(coaches: ReadonlyArray<{ display_name: string; can_request_review?: boolean }>): string {
+  const eligible = coaches.filter(c => c.can_request_review !== false)
+  return eligible.length === 1 ? `Send to ${eligible[0].display_name}` : 'Send to a coach'
+}
+
+/** One plain sentence for a reply: "astar left notes on your Lotus 8–13 match." */
 export function replySentence(r: CoachReply): string {
   const match = [r.map, r.score].filter(Boolean).join(' ')
-  return match ? `${r.coachName} reviewed your ${match} match.` : `${r.coachName} reviewed your match.`
+  return match ? `${r.coachName} left notes on your ${match} match.` : `${r.coachName} left notes on your match.`
+}
+
+/** Home / notification title for a reply: the coach by name. */
+export function replyTitle(r: Pick<CoachReply, 'coachName'>): string {
+  return `${r.coachName} replied`
 }
 
 // ---- seen-reply memory (per viewer convenience; safe if storage is unavailable) ----

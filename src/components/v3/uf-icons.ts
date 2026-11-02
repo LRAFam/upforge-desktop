@@ -20,6 +20,11 @@ export const UF_ICONS = {
   minus: '<path d="M5 12h14"/>',
   swap: '<path d="M4 8h14l-3-3M20 16H6l3 3"/>',
   star: '<path d="M12 3l2.8 5.8 6.2.9-4.5 4.4 1 6.2L12 17.4 6.5 20.3l1-6.2L3 9.7l6.2-.9z"/>',
+  list: '<path d="M4 5h16M4 5v14M9 9h11M9 13h11M9 17h7"/>',
+  trim: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8 7.5 20 17M8 16.5 20 7"/>',
+  expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  keyboard: '<rect x="3" y="6" width="18" height="12"/><path d="M7 10h.01M11 10h.01M15 10h.01M8 14h8"/>',
+  columns: '<rect x="3" y="4" width="18" height="16"/><path d="M9 4v16M15 4v16"/>',
 } as const
 
 export type UfIconName = keyof typeof UF_ICONS

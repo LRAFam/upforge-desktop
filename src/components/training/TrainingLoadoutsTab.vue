@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { resolveColor, type CrosshairSettings } from '../../lib/crosshair'
+import { DEFAULT_CROSSHAIR, resolveColor, type CrosshairSettings } from '../../lib/crosshair'
 import { TRAINING_ARTWORK } from '../../lib/training-icons'
 import { uiV3 } from '../../lib/ui-v3'
 import UfButton from '../v3/UfButton.vue'
+import CrosshairPreview from '../v3/practice/CrosshairPreview.vue'
+import { getMapImage } from '../../lib/valorant'
+
+// Real map art behind the crosshair so colour and outline contrast read like in game.
+const previewBackdrop = getMapImage('Ascent')
 
 const router = useRouter()
 const crosshair = ref<CrosshairSettings | null>(null)
@@ -13,7 +18,8 @@ const mouseDpi = ref<number | null>(null)
 onMounted(async () => {
   try {
     const s = await window.api.settings.get()
-    crosshair.value = s.crosshairSettings as CrosshairSettings
+    // Older saved settings can miss newer fields; fill them from the trainer defaults.
+    crosshair.value = s.crosshairSettings ? { ...DEFAULT_CROSSHAIR, ...(s.crosshairSettings as Partial<CrosshairSettings>) } : null
     mouseDpi.value = s.trainerMouse?.dpi ?? null
   } catch { /* ignore */ }
 })
@@ -29,20 +35,10 @@ function openSettings() {
     <span class="uf-label">Drill loadout</span>
     <p class="uf-t2" style="margin: 0">The crosshair and sensitivity the trainer uses when you launch a drill.</p>
     <div class="uf-lo-row">
-      <div v-if="crosshair" class="uf-lo-preview" role="img" aria-label="Crosshair preview">
-        <span
-          class="uf-lo-dot"
-          :style="{
-            width: `${Math.max(4, crosshair.dotRadius * 2)}px`,
-            height: `${Math.max(4, crosshair.dotRadius * 2)}px`,
-            backgroundColor: resolveColor(crosshair),
-            opacity: crosshair.dotOpacity,
-          }"
-        />
-      </div>
+      <CrosshairPreview v-if="crosshair" :settings="crosshair" :scale="2" :size="200" :background="previewBackdrop" />
       <dl class="uf-lo-facts">
         <div v-if="mouseDpi"><dt class="uf-t4">Mouse DPI</dt><dd class="uf-d4">{{ mouseDpi }}</dd></div>
-        <div><dt class="uf-t4">Crosshair</dt><dd class="uf-t3">Synced to trainer</dd></div>
+        <div><dt class="uf-t4">Crosshair</dt><dd class="uf-t3">Synced to trainer · shown at 2×</dd></div>
       </dl>
     </div>
     <UfButton variant="secondary" icon="settings" @click="openSettings">Edit in Settings</UfButton>
@@ -101,9 +97,7 @@ function openSettings() {
 <style scoped>
 .uf-lo { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; padding: 14px 12px 32px; max-width: 560px; }
 .uf-lo-row { display: flex; align-items: center; gap: 28px; }
-.uf-lo-preview { position: relative; width: 72px; height: 72px; background: var(--uf-raised); border: 1px solid var(--uf-line); display: flex; align-items: center; justify-content: center; }
-.uf-lo-dot { position: absolute; border-radius: 50%; }
-.uf-lo-facts { display: flex; gap: 28px; margin: 0; }
+.uf-lo-facts { display: flex; flex-direction: column; gap: 18px; margin: 0; }
 .uf-lo-facts > div { display: flex; flex-direction: column-reverse; gap: 4px; }
 .uf-lo-facts dd { margin: 0; }
 </style>

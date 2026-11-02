@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchRowSummary, relativeTime } from './match-row'
+import { matchRowSummary, relativeTime, storageSummary } from './match-row'
 
 describe('matchRowSummary', () => {
   it('uses the final score and stats when present', () => {
@@ -38,5 +38,13 @@ describe('cloud-only rows (round 7)', () => {
     const { mergeFootage } = await import('../../../lib/footage-library')
     const rows = mergeFootage([], [{ id: 'a2', kind: 'recording', title: null, map: null, status: 'archived', bytes: 1, expires_at: null, created_at: '2026-10-30T10:00:00Z' }])
     expect(rows[0].analysisId).toBeUndefined()
+  })
+})
+
+describe('storageSummary', () => {
+  it('merges the count, local size and cloud usage into one line', () => {
+    expect(storageSummary({ count: 30, noun: ['recording', 'recordings'], localBytes: null, cloudUsed: '36.10 GB' })).toBe('30 recordings · 36.10 GB cloud storage used')
+    expect(storageSummary({ count: 1, noun: ['clip', 'clips'], localBytes: '1.2 GB', cloudUsed: '2.0 GB', cloudCapacity: '50.00 GB' })).toBe('1 clip · 1.2 GB on this PC · 2.0 GB of 50.00 GB cloud storage used')
+    expect(storageSummary({ count: 0, noun: ['clip', 'clips'], full: true, cloudUsed: '50 GB' })).toBe('0 clips · cloud storage full')
   })
 })

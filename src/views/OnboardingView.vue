@@ -27,7 +27,7 @@
     </div>
     </template>
 
-    <OnboardingRailV3 v-if="uiV3" :step="step" :labels="stepLabels" :initializing="initializing" />
+    <OnboardingRailV3 v-if="uiV3" :step="step" :labels="stepLabels" :initializing="initializing" :skipped="skippedSteps" />
 
     <template v-if="uiV3">
       <section class="ob3" aria-label="Setup">
@@ -60,7 +60,24 @@
             <div v-else-if="step === 1" key="step1" class="ob3-step">
               <template v-if="isAuthed">
                 <h2 class="uf-t1">You’re signed in</h2>
-                <p class="uf-t2">Your UpForge account is connected.</p>
+                <p class="uf-t2">Your UpForge account is connected. Next, a few quick checks so your coach can follow your matches.</p>
+                <div v-if="signedInAs" class="ob3-rows">
+                  <div class="ob3-row">
+                    <PlayerAvatar :identity="signedInIdentity" :size="48" badge />
+                    <span class="ob3-row-main">
+                      <span class="uf-t3">{{ signedInAs.name }}</span>
+                      <span class="uf-t4">{{ signedInAs.email }}</span>
+                    </span>
+                    <span class="ob3-signed" aria-label="Signed in"><UfIcon name="check" :size="18" /></span>
+                  </div>
+                </div>
+                <div class="ob3-group">
+                  <span class="uf-label">Still to do</span>
+                  <ol class="ob3-todo">
+                    <li v-for="label in stepLabels.slice(1)" :key="label" class="uf-t3">{{ label }}</li>
+                  </ol>
+                  <p class="uf-t4">Steps you’ve already done are skipped.</p>
+                </div>
               </template>
               <template v-else>
                 <h2 class="uf-t1">Sign in to UpForge</h2>
@@ -339,7 +356,7 @@
               </h2>
               <p class="uf-t2" :class="{ 'ob3-gold': !recordingSetupReady }">{{ missionCopy.body }}</p>
               <!-- Roster flow: optional reminder; does not change the step's logic. -->
-              <label class="ob3-coach uf-t4"><input v-model="coachInviteLater" type="checkbox"> I have a coach. Remind me to join their roster.</label>
+              <label class="ob3-coach uf-t4"><input v-model="coachInviteLater" type="checkbox"> I have a coach. Remind me to join them.</label>
               <!-- Starting report: the AI read of this player's last matches for the game they picked. -->
               <StartingReportCardV3 v-if="isAuthed" :game="selectedGame" mode="onboarding" />
 
@@ -1200,6 +1217,7 @@
 <script setup lang="ts">
 import { uiV3 } from '../lib/ui-v3'
 import OnboardingRailV3 from '../components/v3/onboarding/OnboardingRailV3.vue'
+import { nextSkipped } from '../components/v3/onboarding/onboarding-steps'
 import UfIcon from '../components/v3/UfIcon.vue'
 import {
   ONBOARDING_GAME_LOGOS,
@@ -1210,6 +1228,10 @@ import {
   recordingCheckTone,
 } from '../components/v3/onboarding/onboarding-status'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { playerIdentity } from '../lib/player-identity'
+import PlayerAvatar from '../components/v3/identity/PlayerAvatar.vue'
+import { readCache } from '../lib/stale-cache'
+import type { ProfileData } from '../env.d.ts'
 import { readJoinCoachLater, setJoinCoachLater } from '../components/v3/roster-flow/roster-flow'
 import { resolveOnboardingCompletionRoute } from '../lib/onboarding-gate'
 import { resolveOnboardingStep } from '../lib/onboarding-flow'
@@ -1265,8 +1287,21 @@ const signInError = ref('')
 const signInLoading = ref(false)
 const isAuthed = ref(false)
 const isAdmin = ref(false)
+/** Who is signed in, for the v3 "You're signed in" step. */
+const signedInAs = ref<{ name: string; email: string } | null>(null)
+// Player card (else main agent) + rank badge when we already know them; brand-new accounts keep the letter.
+const signedInIdentity = computed(() => {
+  const stats = readCache<ProfileData | null>('home:profile')?.value?.latest_stats
+  return playerIdentity({ name: signedInAs.value?.name, playerCardId: stats?.player_card_id, agent: stats?.most_played_agent, rank: stats?.current_rank })
+})
+function rememberSignedIn(user: { name?: string | null; email?: string | null } | null) {
+  signedInAs.value = user?.email ? { name: user.name?.trim() || user.email, email: user.email } : null
+}
 
 const step = ref(1)
+/** Steps the wizard jumped over because they were already done; the v3 counter leaves them out. */
+const skippedSteps = ref<number[]>([])
+watch(step, (to, from) => { skippedSteps.value = nextSkipped(skippedSteps.value, from, to) })
 const slideDir = ref<'slide-left' | 'slide-right'>('slide-left')
 const saving = ref(false)
 const completeError = ref('')
@@ -1772,14 +1807,16 @@ function minimizeOnboardingOnceRecordingConfirmed(recording: boolean) {
 }
 
 async function refreshAuthState() {
-  const user = await window.api.auth.getUser() as { is_admin?: boolean } | null
+  const user = await window.api.auth.getUser() as { is_admin?: boolean; name?: string | null; email?: string | null } | null
   isAuthed.value = Boolean(user)
   isAdmin.value = user?.is_admin === true
+  rememberSignedIn(user)
 }
 
 async function ensureAuthedOrStay() {
   const user = await window.api.auth.getUser()
   isAuthed.value = Boolean(user)
+  rememberSignedIn(user as { name?: string | null; email?: string | null } | null)
   if (user) {
     const settings = await window.api.settings.get()
     if (settings.onboardingMatchMission?.active) {

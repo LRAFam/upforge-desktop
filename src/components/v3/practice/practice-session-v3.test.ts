@@ -5,6 +5,7 @@ import {
   deltaTone,
   hitsLabel,
   isBest,
+  leaderboardYouRow,
   pct,
   recentScores,
   signed,
@@ -55,5 +56,28 @@ describe('practice-session-v3 helpers', () => {
     expect(pct(-2)).toBe(0)
     expect(pct(null)).toBe(0)
     expect(pct(Number.NaN)).toBe(0)
+  })
+})
+
+describe('leaderboardYouRow', () => {
+  const now = Date.parse('2026-11-02T12:00:00Z')
+  const runs = [
+    { score: 61, completed_at: '2026-11-01T10:00:00Z' },
+    { score: 70, completed_at: '2026-10-10T10:00:00Z' },
+  ]
+  it('is hidden when you are already in the rows', () => {
+    expect(leaderboardYouRow([{ is_current_user: true }], runs, 'week', now)).toBeNull()
+  })
+  it('uses your best within the period', () => {
+    expect(leaderboardYouRow([], runs, 'week', now)?.score).toBe(61)
+    expect(leaderboardYouRow([], runs, 'month', now)?.score).toBe(70)
+    expect(leaderboardYouRow([], runs, 'all', now)?.score).toBe(70)
+  })
+  it('says why there is no rank', () => {
+    const full = Array.from({ length: 50 }, () => ({}))
+    expect(leaderboardYouRow(full, runs, 'week', now)?.note).toBe('Outside the top 50. Ranks past 50 aren’t shown.')
+    expect(leaderboardYouRow([{}], runs, 'week', now)?.note).toMatch(/^Not on the board yet/)
+    expect(leaderboardYouRow([{}], [], 'week', now)).toEqual({ score: null, note: 'No run with these settings this week.' })
+    expect(leaderboardYouRow([{}], null, 'all', now)?.note).toBe('No run with these settings yet.')
   })
 })

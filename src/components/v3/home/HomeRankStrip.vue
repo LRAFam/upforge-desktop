@@ -5,7 +5,7 @@
  * Rank shields show only when the competitive-update history proves the count (see notes-rank.md).
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { getRankIconUrl } from '../../../lib/valorant'
+import { valorantRankIcon } from '../../../lib/player-identity'
 import { useStaleLoad } from '../../../lib/stale-cache'
 import UfSkeleton from '../UfSkeleton.vue'
 import { rankStripView, type LiveRank, type SyncedRank } from './rank-strip'
@@ -22,7 +22,7 @@ const synced = useStaleLoad<SyncedRank | null>('home:valorant-rank-synced', asyn
 })
 
 const view = computed(() => rankStripView(live.value, synced.data.value, now.value))
-const icon = computed(() => (view.value && view.value.kind === 'ranked' ? getRankIconUrl(view.value.rankName) : null))
+const icon = computed(() => (view.value && view.value.kind === 'ranked' ? valorantRankIcon(view.value.rankName) : null))
 const loading = computed(() => !view.value && synced.loading.value)
 
 let stopListen: (() => void) | null = null

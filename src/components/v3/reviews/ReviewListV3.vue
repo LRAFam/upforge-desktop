@@ -1,27 +1,27 @@
 <script setup lang="ts">
 /**
- * v3 list of coached sessions + matches waiting for coaching, as hairline rows grouped by
- * week (Today / Yesterday / This Week / Earlier — the composable's real groups).
+ * v3 list of coached sessions + matches waiting for coaching, as hairline rows grouped by match date
+ * with the same groups and row order as Matches (Today / This week / Last week / month; map · agent).
  */
+import { computed, inject } from 'vue'
 import { useCoachingHistory } from '../../../composables/useCoachingHistory'
+import { formatMatchDate, groupByMatchDate, matchMapArt, matchMapLabel } from '../matches/match-meta'
+import { matchScore, scoreToneColor } from '../../../lib/upforge-score'
 import UfSkeleton from '../UfSkeleton.vue'
+import EmptyArt from '../empty/EmptyArt.vue'
 import { pendingMatchLifecycleState, pendingMatchStatusLabel } from '../../../lib/match-lifecycle'
 import { recordingRowStats } from '../../../lib/dashboard-match-row'
-import { kdaLine, pendingDot, resultTone, scoreLine, sessionStatusLabel } from './reviews-v3'
+import { ARCHIVE_DATES_KEY, kdaLine, pendingDot, resultTone, reviewPlayedAt, scoreLine, sessionStatusLabel } from './reviews-v3'
 
 const {
   allAnalyses,
   coachReviewByAnalysisId,
   filteredAnalyses,
-  formatDate,
-  formatMapLabel,
   getAgentImage,
   getMapListViewImage,
-  groupedAnalyses,
   loading,
   pendingLoading,
   pendingRecordings,
-  scoreGrade,
   selectPendingRecording,
   selectSession,
   prefetchSession,
@@ -30,6 +30,12 @@ const {
 } = useCoachingHistory()
 
 const toneColor = (t: 'win' | 'loss' | 'none') => (t === 'win' ? 'var(--uf-win)' : t === 'loss' ? 'var(--uf-loss)' : 'var(--uf-faint)')
+
+// Match dates: the earliest of analysis time and recording upload (from Matches, when embedded there).
+const archiveDates = inject(ARCHIVE_DATES_KEY, null)
+const playedAt = (a: { id: number; created_at: string }) => reviewPlayedAt(a, archiveDates?.value)
+const groups = computed(() => groupByMatchDate(filteredAnalyses.value, playedAt))
+const mapArt = (map: string | null) => (map ? getMapListViewImage(map) || matchMapArt(null, map) : '')
 </script>
 
 <template>
@@ -43,9 +49,12 @@ const toneColor = (t: 'win' | 'loss' | 'none') => (t === 'win' ? 'var(--uf-win)'
       </div>
     </div>
 
+    <div v-else-if="filteredAnalyses.length === 0 && pendingRecordings.length === 0 && allAnalyses.length === 0" class="rv3-empty">
+      <EmptyArt size="section" title="No coaching reviews yet" text="Record a match and run AI coaching — every review lands here." />
+    </div>
     <div v-else-if="filteredAnalyses.length === 0 && pendingRecordings.length === 0" class="rv3-empty">
-      <p class="uf-t3">{{ allAnalyses.length === 0 ? 'No coaching reviews yet' : 'No reviews match this filter' }}</p>
-      <p class="uf-t4">{{ allAnalyses.length === 0 ? 'Record a match and run AI coaching — every review lands here.' : 'Try another result or map filter.' }}</p>
+      <p class="uf-t3">No reviews match this filter</p>
+      <p class="uf-t4">Try another result or map filter.</p>
     </div>
 
     <template v-else>
@@ -61,11 +70,11 @@ const toneColor = (t: 'win' | 'loss' | 'none') => (t === 'win' ? 'var(--uf-win)'
           @click="selectPendingRecording(rec)"
         >
           <span class="rv3-thumb">
-            <img v-if="rec.map && getMapListViewImage(rec.map)" :src="getMapListViewImage(rec.map)" alt="" class="rv3-map" loading="lazy" decoding="async">
+            <img v-if="mapArt(rec.map)" :src="mapArt(rec.map)" alt="" class="rv3-map" loading="lazy" decoding="async">
             <img v-if="rec.agent && getAgentImage(rec.agent)" :src="getAgentImage(rec.agent)" alt="" class="rv3-agent" loading="lazy" decoding="async">
           </span>
           <span class="rv3-main">
-            <span class="uf-t3 rv3-trunc">{{ rec.agent || 'Unknown agent' }} · {{ formatMapLabel(rec.map) || 'Unknown map' }}</span>
+            <span class="uf-t3 rv3-trunc">{{ matchMapLabel(rec.game, rec.map) }} · {{ rec.agent || 'Unknown agent' }}</span>
             <span class="uf-t4 rv3-trunc">
               <span v-if="kdaLine(recordingRowStats(rec))">{{ kdaLine(recordingRowStats(rec)) }} K/D/A · </span>{{ pendingMatchStatusLabel(rec) }}<span v-if="rec.productionFixture"> · Production fixture</span>
             </span>
@@ -77,7 +86,7 @@ const toneColor = (t: 'win' | 'loss' | 'none') => (t === 'win' ? 'var(--uf-win)'
         </button>
       </section>
 
-      <section v-for="group in groupedAnalyses" :key="group.label" class="rv3-group" :aria-label="group.label">
+      <section v-for="group in groups" :key="group.label" class="rv3-group" :aria-label="group.label">
         <div class="rv3-group-head"><span class="uf-label">{{ group.label }}</span><span class="uf-t4">{{ group.items.length }}</span></div>
         <button
           v-for="a in group.items"
@@ -91,19 +100,21 @@ const toneColor = (t: 'win' | 'loss' | 'none') => (t === 'win' ? 'var(--uf-win)'
           @focus="prefetchSession(a)"
         >
           <span class="rv3-thumb">
-            <img v-if="a.map && getMapListViewImage(a.map)" :src="getMapListViewImage(a.map)" alt="" class="rv3-map" loading="lazy" decoding="async">
+            <img v-if="mapArt(a.map)" :src="mapArt(a.map)" alt="" class="rv3-map" loading="lazy" decoding="async">
             <img v-if="a.agent && getAgentImage(a.agent)" :src="getAgentImage(a.agent)" alt="" class="rv3-agent" loading="lazy" decoding="async">
           </span>
           <span class="rv3-main">
-            <span class="uf-t3 rv3-trunc">{{ a.agent || 'Unknown agent' }} · {{ formatMapLabel(a.map) || '—' }}</span>
+            <span class="uf-t3 rv3-trunc">{{ a.map ? matchMapLabel(null, a.map) : 'Unknown map' }} · {{ a.agent || 'Unknown agent' }}</span>
             <span class="uf-t4 rv3-trunc">
-              {{ formatDate(a.created_at) }}<span v-if="kdaLine(a)"> · {{ kdaLine(a) }} K/D/A</span> · {{ sessionStatusLabel(a.status, coachReviewByAnalysisId[a.id]?.status) }}
+              {{ formatMatchDate(playedAt(a)) }}<span v-if="kdaLine(a)"> · {{ kdaLine(a) }} K/D/A</span> · {{ sessionStatusLabel(a.status, coachReviewByAnalysisId[a.id]?.status) }}
             </span>
           </span>
           <span class="rv3-side">
             <span v-if="scoreLine(a)" class="uf-d4" :style="{ color: toneColor(resultTone(a)) }">{{ scoreLine(a) }}</span>
             <span v-else-if="resultTone(a) !== 'none'" class="uf-d4" :style="{ color: toneColor(resultTone(a)) }">{{ resultTone(a) === 'win' ? 'W' : 'L' }}</span>
-            <span v-if="a.overall_score != null" class="uf-t4 rv3-num">{{ a.overall_score * 10 }} · {{ scoreGrade(a.overall_score) }}</span>
+            <span v-for="s in [matchScore(a)].filter(x => x != null)" :key="s.kind" class="uf-t4 rv3-num" :title="s.kind === 'stats' ? `UpForge score ${s.text} of 1000 · ${s.label}` : `Coach rating ${s.text}`">
+              <span :style="{ color: s.tone ? scoreToneColor(s.tone) : 'var(--uf-bone)' }">{{ s.text }}</span> {{ s.kind === 'stats' ? 'UpForge' : 'Coach rating' }}
+            </span>
           </span>
         </button>
       </section>

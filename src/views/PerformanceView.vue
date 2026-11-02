@@ -1,13 +1,16 @@
 <template>
   <div v-if="uiV3" class="uf-pf">
     <header class="uf-pf-head uf-rise">
-      <span class="uf-label">PC performance · Windows</span>
+      <span class="uf-label">PC performance</span>
       <h1 class="uf-d2" style="margin: 0">Performance</h1>
     </header>
 
-    <section v-if="platform && platform !== 'win32'" class="uf-pf-sec">
-      <p class="uf-t2">Performance boost (process priority &amp; power plan) is Windows-only.</p>
-      <UfButton variant="link" @click="$router.push('/stats')">View your game stats &amp; coaching data</UfButton>
+    <!-- macOS / Linux: say plainly what this page does and that it needs Windows, then one way back. -->
+    <section v-if="platform && platform !== 'win32'" class="uf-pf-sec uf-pf-off uf-rise uf-d1s">
+      <p class="uf-t3">Only on Windows</p>
+      <p class="uf-t2">PC performance raises your game's process priority, switches the Windows power plan and closes apps you pick before a match. These are Windows settings, so there's nothing to change on this computer.</p>
+      <p class="uf-t4">Recording, coaching and practice work the same on this computer.</p>
+      <UfButton variant="secondary" @click="$router.push('/settings')">Back to Settings</UfButton>
     </section>
 
     <template v-else>
@@ -783,6 +786,7 @@ onMounted(async () => {
 .uf-pf-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .uf-pf-sec { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .uf-pf-sec > .uf-pf-line, .uf-pf-sec > .uf-pf-stat, .uf-pf-sec > .uf-pf-proc, .uf-pf-sec > .uf-pf-sec-head, .uf-pf-sec > .uf-pf-row { align-self: stretch; }
+.uf-pf-off { max-width: 620px; gap: 12px; padding-top: 18px; border-top: 1px solid var(--uf-line); }
 .uf-pf-sec-head { display: flex; align-items: baseline; justify-content: space-between; }
 .uf-pf-line { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--uf-line); }
 .uf-pf-ok { color: var(--uf-win); }

@@ -1,8 +1,8 @@
 /** Desktop LoL CDN + rank helpers (mirrors web lol-cdn / lol-ranks). */
 
-const DDRAGON_BASE = 'https://ddragon.leagueoflegends.com/cdn'
+export const DDRAGON_BASE = 'https://ddragon.leagueoflegends.com/cdn'
 /** Keep current so new champions don't 404 when versions.json isn't fetched. */
-const FALLBACK_VERSION = '16.13.1'
+export const FALLBACK_VERSION = '16.13.1'
 
 const EMBLEM_BASE =
   'https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/ranked-emblems'
@@ -102,8 +102,20 @@ export function getMapImage(): string {
 
 export { resolveLolMapLabel } from './lol-maps'
 
+const QUEUE_LABELS: Record<number, string> = {
+  420: 'Ranked Solo/Duo',
+  440: 'Ranked Flex',
+  400: 'Normal Draft',
+  430: 'Normal Blind',
+  490: 'Quickplay',
+  480: 'Swiftplay',
+  450: 'ARAM',
+  700: 'Clash',
+  1700: 'Arena',
+}
+
+/** Riot queue id → name players know. Unknown ids say "Other mode", never a raw number. */
 export function lolQueueLabel(queueId: number | null | undefined): string {
-  if (queueId === 420) return 'Ranked Solo/Duo'
   if (queueId == null) return "Summoner's Rift"
-  return `Queue ${queueId}`
+  return QUEUE_LABELS[queueId] ?? 'Other mode'
 }

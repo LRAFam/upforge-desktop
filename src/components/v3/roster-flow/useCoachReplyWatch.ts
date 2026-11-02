@@ -1,31 +1,42 @@
 /**
- * App-wide (mounted once by SidebarV3): keeps the Coaches badge current and shows one desktop
+ * App-wide (mounted once by SidebarV3): keeps the Coaches and Students badges (and whether the
+ * Students item shows) current and shows one desktop
  * notification per new coach reply. Polls every 10 minutes and on window focus (the shared hub
  * loader throttles to once a minute). First run only records what's there — no burst of old replies.
  * Never notifies while a match is recording.
  */
 import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useRosterHubBadge } from '../../../composables/useRosterHubBadge'
 import { openAnalysisVodReview } from '../../../lib/open-vod-review'
 import {
-  coachReplies, markRepliesNotified, newReplyIds, readNotifiedReplies, readSeenReplies,
-  replySentence, teamBadgeCount, unseenReplies,
+  coachBadgeCounts, coachReplies, markRepliesNotified, newReplyIds, readNotifiedReplies, readSeenReplies,
+  replySentence, replyTitle, unseenReplies,
 } from './roster-flow'
+import { useCoachBadges } from './useCoachBadges'
 import { refreshStudentHub } from './useStudentHub'
 
 const POLL_MS = 10 * 60_000
 
 export function useCoachReplyWatch() {
   const router = useRouter()
-  const { setPendingReviewCount } = useRosterHubBadge()
+  const { setNotesReady, setNeedsNotes, setCoachProfile } = useCoachBadges()
   let timer: ReturnType<typeof setInterval> | null = null
+
+  /** Coach profile → Students nav item. null from the API = no coach profile; a network error keeps the cached answer. */
+  async function checkCoachProfile() {
+    try {
+      const roster = await window.api?.coach?.getRoster?.()
+      if (roster !== undefined) setCoachProfile(Boolean(roster?.coach?.id))
+    } catch { /* keep cached */ }
+  }
 
   async function tick(force = false) {
     const hub = await refreshStudentHub(force)
     if (!hub) return
     const requests = await window.api?.coach?.getReviewRequests?.().catch(() => []) ?? []
-    setPendingReviewCount(teamBadgeCount(unseenReplies(hub, readSeenReplies()).length, requests))
+    const counts = coachBadgeCounts(unseenReplies(hub, readSeenReplies()).length, requests)
+    setNotesReady(counts.coaches)
+    setNeedsNotes(counts.students)
 
     const notified = readNotifiedReplies()
     if (notified.size === 0) {
@@ -40,7 +51,7 @@ export function useCoachReplyWatch() {
     const reply = coachReplies(hub).find(r => r.reviewId === fresh[0])
     if (!reply) return
     const body = fresh.length > 1 ? `${replySentence(reply)} ${fresh.length - 1} more in Coaches.` : replySentence(reply)
-    const n = new Notification('Your coach replied', { body, silent: false })
+    const n = new Notification(replyTitle(reply), { body, silent: false })
     n.onclick = async () => {
       window.focus()
       const opened = reply.analysisId != null
@@ -51,6 +62,7 @@ export function useCoachReplyWatch() {
 
   const onFocus = () => { void tick() }
   onMounted(() => {
+    void checkCoachProfile()
     void tick(true)
     timer = setInterval(() => { void tick(true) }, POLL_MS)
     window.addEventListener('focus', onFocus)

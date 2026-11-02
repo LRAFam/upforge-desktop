@@ -32,6 +32,9 @@ import { recordingStatusBadge } from '../../lib/recording-status'
 import { recordingNeedsUserAction } from '../../lib/recording-library'
 import DemoAttachGuide from '../DemoAttachGuide.vue'
 import DemoAttachPickerModal from '../shared/DemoAttachPickerModal.vue'
+import { uiV3 } from '../../lib/ui-v3'
+import UfButton from '../v3/UfButton.vue'
+import { formatMatchDate, matchMapArt, matchMapLabel } from '../v3/matches/match-meta'
 
 const props = defineProps<{ preview?: boolean }>()
 
@@ -217,6 +220,16 @@ async function onDemoAttached() {
   demoPickerRec.value = null
 }
 
+/** v3: the one primary action is AI analysis, and only when it can run now. */
+function canAnalyseNow(rec: PendingRecording): boolean {
+  return !rec.clipsOnly && (recAnalysisReady(rec) || recCanRetryMatchStats(rec) || !!rec.lastAnalysisError)
+    && !recInFlight(rec) && !recIsSyncingMatchStats(rec) && !recIsDeferred(rec) && !analysingIds.value.has(rec.id)
+}
+function v3ResultColor(rec: PendingRecording): string | undefined {
+  const won = recordingRowStats(rec).won
+  return won == null ? undefined : won ? 'var(--uf-win)' : 'var(--uf-loss)'
+}
+
 function onAnalyse(rec: PendingRecording) {
   if (props.preview) return
   void analyseRecording(rec.id)
@@ -235,7 +248,65 @@ function onRemove(rec: PendingRecording) {
 </script>
 
 <template>
-  <div class="dash-panel overflow-hidden flex-shrink-0 border border-amber-500/15">
+  <!-- UI v3: hairline rows, square corners, one red action (Run AI analysis), the rest secondary or links. -->
+  <section v-if="uiV3" class="aq3" aria-label="Matches that need you">
+    <header class="aq3-head">
+      <span class="uf-label">Needs you</span>
+      <span class="uf-t4">{{ hiddenActionCount > 0 ? `Showing ${shownActionCount} of ${actionableRows.length}` : `${actionableRows.length} ${actionableRows.length === 1 ? 'match' : 'matches'}` }}</span>
+    </header>
+    <p v-if="actionableRows.length === 0" class="uf-t4 aq3-empty">Nothing needs you right now. A match shows up here when it's ready for your next step.</p>
+    <template v-else>
+      <div v-for="section in sectionedRows" :key="section.key" class="aq3-section">
+        <p v-if="sectionedRows.length > 1 || section.hint" class="uf-t4 aq3-section-head">{{ section.title }}<template v-if="section.hint"> · {{ section.hint }}</template></p>
+        <article v-for="rec in section.rows" :key="rec.id" class="aq3-row">
+          <div class="aq3-thumb"><img v-if="matchMapArt(rec.game, rec.map)" :src="matchMapArt(rec.game, rec.map)" alt=""></div>
+          <img v-if="recordingPlayerImage(rec)" :src="recordingPlayerImage(rec)" alt="" class="aq3-agent">
+          <div class="aq3-main">
+            <span class="uf-t3">{{ matchMapLabel(rec.game, rec.map) }} · {{ recordingPlayerLabel(rec) }}</span>
+            <span class="uf-t4">
+              {{ formatMatchDate(rec.recordedAt) }}<template v-if="isDisplayableGameMode(rec.gameMode)"> · {{ formatMode(rec.gameMode) }}</template><template v-if="recordingRowStats(rec).kills != null"> · {{ recordingRowStats(rec).kills }}/{{ recordingRowStats(rec).deaths }}/{{ recordingRowStats(rec).assists }} K/D/A</template><template v-if="rec.productionFixture"> · Production fixture</template>
+            </span>
+            <span class="uf-t4" :class="{ 'uf-live': recInFlight(rec) }" :style="{ color: rec.lastAnalysisError ? 'var(--uf-gold)' : 'var(--uf-muted)' }">
+              {{ statusLabel(rec) }}<template v-if="recUploadProgress(rec) != null"> · {{ Math.round(recUploadProgress(rec)!) }}%</template><template v-if="demoBadge(rec)"> · {{ demoBadge(rec) }}</template>
+            </span>
+            <span v-if="demoScanErrors[rec.id]" role="status" class="uf-t4" style="color: var(--uf-gold)">{{ demoScanErrors[rec.id] }}</span>
+          </div>
+          <span v-if="scoreLine(rec) !== '-'" class="uf-d4 aq3-score" :style="{ color: v3ResultColor(rec) }">{{ scoreLine(rec).replace(' – ', '–') }}</span>
+          <span v-else class="aq3-score" />
+          <div class="aq3-actions">
+            <UfButton v-if="!rec.clipsOnly" variant="primary" icon="spark" :disabled="preview || !canAnalyseNow(rec)"
+              :title="recIsDeferred(rec) ? analyseDeferredTitle() : recAnalysisReady(rec) ? 'Upload + AI coaching report' : recCanRetryMatchStats(rec) ? 'Fetch Riot match stats again (keep Riot Client open)' : recAnalysisBlockedLabel(rec)"
+              @click="onAnalyse(rec)">
+              {{ analysingIds.has(rec.id) || recIsSyncingMatchStats(rec) ? 'Working…' : recAnalysisActionLabel(rec) }}
+            </UfButton>
+            <UfButton v-if="canReviewVod(rec)" icon="play" :disabled="preview" @click="onWatchRecording(rec)">Watch</UfButton>
+            <div class="aq3-links">
+              <button v-if="canReviewVod(rec) && canOpenTimeline(rec)" type="button" class="uf-link" :disabled="preview" @click="onOpenTimeline(rec)">Open timeline</button>
+              <button v-if="rec.game === 'cs2' && recordingDemoPending(rec)" type="button" class="uf-link" :disabled="preview || demoScans.has(rec.id) || rec.analysisReadiness?.state === 'syncing'" @click="checkSteam(rec)">{{ demoScans.has(rec.id) ? 'Checking Steam…' : 'Check Steam' }}</button>
+              <button v-if="recordingDemoPending(rec)" type="button" class="uf-link" :disabled="preview" @click="openDemoPicker(rec)">Pick the replay file</button>
+              <button v-if="showSaveToCloud(rec)" type="button" class="uf-link" :disabled="preview || savingIds.has(rec.id)" title="Backup only. No AI analysis." @click="onSave(rec)">{{ savingIds.has(rec.id) ? 'Saving…' : 'Save to cloud' }}</button>
+              <button type="button" class="uf-link aq3-remove" :disabled="preview || recInFlight(rec)" title="Remove this match and delete the local file" @click="onRemove(rec)">Remove</button>
+            </div>
+          </div>
+        </article>
+      </div>
+    </template>
+    <footer v-if="!preview && (hiddenActionCount > 0 || bulkAnalysablePending.length > 1)" class="aq3-foot">
+      <button v-if="hiddenActionCount > 0" type="button" class="uf-link" @click="openAllActions">View all {{ actionableRows.length }} in Matches</button>
+      <button v-else type="button" class="uf-link" @click="analyseOldestPending">Analyse next in queue</button>
+    </footer>
+    <DemoAttachPickerModal
+      v-if="demoPickerRec"
+      :show="!!demoPickerRec"
+      :recording-id="demoPickerRec.id"
+      :game="demoPickerRec.game"
+      :map="demoPickerRec.map"
+      :recorded-at="demoPickerRec.recordedAt"
+      @close="closeDemoPicker"
+      @attached="onDemoAttached"
+    />
+  </section>
+  <div v-else class="dash-panel overflow-hidden flex-shrink-0 border border-amber-500/15">
     <div class="px-4 py-3 border-b border-white/[0.07] flex items-start justify-between gap-3 bg-amber-500/[0.04]">
       <div class="min-w-0">
         <div class="flex items-center gap-2">
@@ -501,6 +572,20 @@ function onRemove(rec: PendingRecording) {
 </template>
 
 <style scoped>
+.aq3 { display: flex; flex-direction: column; color: var(--uf-bone); }
+.aq3-head { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 10px; }
+.aq3-empty { margin: 0; padding: 14px 0; border-top: 1px solid var(--uf-line); }
+.aq3-section-head { margin: 0; padding: 10px 0 8px; }
+.aq3-row { display: grid; grid-template-columns: 120px 48px minmax(0, 1fr) auto; grid-template-areas: 'thumb agent main score' 'acts acts acts acts'; gap: 12px 16px; align-items: center; padding: 14px 0; border-top: 1px solid var(--uf-line); }
+.aq3-thumb { grid-area: thumb; width: 120px; height: 62px; overflow: hidden; background: var(--uf-raised); }
+.aq3-thumb img { width: 100%; height: 100%; object-fit: cover; filter: saturate(0.7); }
+.aq3-agent { grid-area: agent; width: 48px; height: 48px; object-fit: cover; background: var(--uf-raised); }
+.aq3-main { grid-area: main; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.aq3-score { grid-area: score; font-variant-numeric: tabular-nums; }
+.aq3-actions { grid-area: acts; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.aq3-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+.aq3-remove:hover { color: var(--uf-loss); }
+.aq3-foot { padding-top: 12px; border-top: 1px solid var(--uf-line); }
 .needs-you-card {
   min-height: 152px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);

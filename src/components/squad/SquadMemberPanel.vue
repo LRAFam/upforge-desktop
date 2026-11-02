@@ -20,6 +20,8 @@ export interface SquadMemberStat {
   win_rate?: number | null
   headshot_percentage?: number | null
   most_played_agent?: string | null
+  /** Valorant player card uuid from the member's latest stats snapshot. */
+  player_card_id?: string | null
   has_stats?: boolean
 }
 

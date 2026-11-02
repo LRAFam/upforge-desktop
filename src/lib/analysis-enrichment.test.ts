@@ -59,3 +59,16 @@ describe('stats-only report flags', () => {
     expect(enrichAnalysisDetail({}).is_degraded).toBe(false)
   })
 })
+
+describe('UpForge score on GET /api/analysis/{id}', () => {
+  it('keeps upforge_score and the breakdown; null when the API does not send them', () => {
+    const d = enrichAnalysisDetail({
+      upforge_score: 612,
+      upforge_score_breakdown: { baseline: { source: 'tier', tier: 'platinum', samples: 1240 }, inputs: [{ key: 'acs', label: 'ACS', value: 241, percentile: 72, weight: 0.3 }] },
+    })
+    expect(d.upforge_score).toBe(612)
+    expect(d.upforge_score_breakdown?.baseline.tier).toBe('platinum')
+    const none = enrichAnalysisDetail({})
+    expect([none.upforge_score, none.upforge_score_breakdown]).toEqual([null, null])
+  })
+})

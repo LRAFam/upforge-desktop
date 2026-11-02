@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The match as a shape: one bar per round. Wins tall (teal), losses short (dim);
+ * The match as a shape: one bar per round. Wins tall (teal), losses short (muted red);
  * a red tick under a round marks the focus event (e.g. "you died first").
  */
 withDefaults(defineProps<{
@@ -34,10 +34,11 @@ defineEmits<{ select: [round: number] }>()
 .uf-rounds-gap { width: 8px; flex: none; }
 .uf-round { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; background: none; border: 0; padding: 0; cursor: pointer; min-width: 0; }
 .uf-round-track { width: 100%; display: flex; align-items: flex-end; }
-.uf-round-bar { width: 100%; background: rgba(236, 232, 225, 0.22); }
+.uf-round-bar { width: 100%; background: color-mix(in srgb, var(--uf-loss) 45%, transparent); }
 .uf-round-bar.is-win { background: var(--uf-win); }
-.uf-round-bar.is-selected { outline: 1px solid var(--uf-bone); outline-offset: 2px; }
+.uf-round-bar.is-selected { filter: brightness(1.35); }
+.uf-round[aria-pressed='true'] .uf-round-n { color: var(--uf-bone); font-weight: 600; }
 .uf-round-tick { width: 100%; height: 3px; background: transparent; }
 .uf-round-tick.is-marked { background: var(--uf-red); }
-.uf-round-n { font-size: 10px; color: var(--uf-faint); font-variant-numeric: tabular-nums; }
+.uf-round-n { font-size: 12px; color: var(--uf-faint); font-variant-numeric: tabular-nums; }
 </style>

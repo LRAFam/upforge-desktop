@@ -33,6 +33,8 @@ export function useCoachRoster(props: { active: boolean }, emit: CoachRosterEmit
 
   const loading = ref(true)
   const error = ref<string | null>(null)
+  /** The API answered "no coach profile" (not a network error). v3 Students sends these users to Coaches. */
+  const noCoach = ref(false)
   const saving = ref(false)
   const coachId = ref<number | null>(null)
   const coachName = ref('')
@@ -90,6 +92,7 @@ export function useCoachRoster(props: { active: boolean }, emit: CoachRosterEmit
         window.api.coach.getRoster(),
         window.api.coach.getReviewRequests(),
       ])
+      noCoach.value = !roster
       if (!roster) {
         error.value = 'Coach roster not available for this account.'
         students.value = []
@@ -133,7 +136,7 @@ export function useCoachRoster(props: { active: boolean }, emit: CoachRosterEmit
       settings.value = res.settings as RosterSettings
       syncFormFromSettings(settings.value)
       settingsOpen.value = !settings.value.roster_is_live
-      emit('toast', next ? 'Roster enabled' : 'Roster closed')
+      emit('toast', uiV3.value ? (next ? 'Taking new students' : 'Not taking new students') : (next ? 'Roster enabled' : 'Roster closed'))
     } finally {
       saving.value = false
     }
@@ -156,7 +159,7 @@ export function useCoachRoster(props: { active: boolean }, emit: CoachRosterEmit
       }
       settings.value = res.settings as RosterSettings
       syncFormFromSettings(settings.value)
-      emit('toast', 'Community settings saved')
+      emit('toast', uiV3.value ? 'Plan and price saved' : 'Community settings saved')
     } finally {
       saving.value = false
     }
@@ -226,7 +229,7 @@ export function useCoachRoster(props: { active: boolean }, emit: CoachRosterEmit
   })
 
   return {
-    loading, error, saving, coachId, coachName, settings, students, reviews,
+    loading, error, noCoach, saving, coachId, coachName, settings, students, reviews,
     welcome, membershipMode, priceDollars, includedReviews, settingsOpen,
     statusLabel, draftReason, draftFix, needsSetup, inviteUrl,
     load, toggleEnabled, savePricing, copyInvite, openPayouts, openPro, openReviewFeed, openAnalysis,

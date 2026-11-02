@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useDashboard } from '../../composables/useDashboard'
 import { scoreGrade, scoreGradeBadgeClass } from '../../lib/analysis-scoring'
 import { isPaidTier } from '../../lib/web-explore-links'
+import { matchScore } from '../../lib/upforge-score'
 import { uiV3 } from '../../lib/ui-v3'
 import UfIcon from '../v3/UfIcon.vue'
 
@@ -30,6 +31,10 @@ const {
   profile,
 } = useDashboard()
 
+/** Stats-based UpForge score when the API has it; else the coach's rating out of 10. */
+const toastScore = computed(() => analysisCompleteToast.value
+  ? matchScore({ upforge_score: analysisCompleteToast.value.upforgeScore, overall_score: analysisCompleteToast.value.score })
+  : null)
 const userIsPaid = computed(() => isPaidTier(profile.value?.user?.tier))
 
 function dismissBackgroundBanner() {
@@ -83,7 +88,7 @@ function dismissWarning() {
     <div v-if="analysisCompleteToast" class="uf-banner" role="status">
       <span class="uf-banner-dot is-win" aria-hidden="true" />
       <p class="uf-banner-text" style="margin: 0">
-        <span class="uf-banner-main">Analysis complete — scored <strong class="uf-num">{{ analysisCompleteToast.score * 10 }}</strong> <strong>{{ scoreGrade(analysisCompleteToast.score) }}</strong><span v-if="analysisCompleteToast.agent"> · {{ analysisCompleteToast.agent }}</span><span v-if="analysisCompleteToast.remaining != null && analysisCompleteToast.limit != null" class="uf-banner-sub"> · <span class="uf-num">{{ analysisCompleteToast.remaining }}</span> left</span></span>
+        <span class="uf-banner-main">Analysis complete<template v-if="toastScore"> · {{ toastScore.kind === 'stats' ? 'UpForge' : 'Coach rating' }} <strong class="uf-num">{{ toastScore.text }}</strong></template><span v-if="analysisCompleteToast.agent"> · {{ analysisCompleteToast.agent }}</span><span v-if="analysisCompleteToast.remaining != null && analysisCompleteToast.limit != null" class="uf-banner-sub"> · <span class="uf-num">{{ analysisCompleteToast.remaining }}</span> left</span></span>
       </p>
       <div class="uf-banner-actions">
         <button v-if="analysisCompleteToast.analysisId" type="button" class="uf-banner-link" @click="openAnalysis(analysisCompleteToast.analysisId!)">View results</button>

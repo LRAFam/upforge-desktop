@@ -1,5 +1,7 @@
 /** Deep links from desktop → web progression features. */
 
+import type { PrimaryGame } from './games'
+
 export const WEB_BASE = 'https://upforge.gg'
 
 export type WebExploreLink = {
@@ -27,7 +29,7 @@ export const WEB_EXPLORE_LINKS: readonly WebExploreLink[] = [
   { label: 'Weekly goals', path: '/weekly-goals', href: `${WEB_BASE}/weekly-goals`, hint: 'This week’s coaching targets', embed: true, sidebar: true },
   { label: 'Progress', path: '/progress', href: `${WEB_BASE}/progress`, hint: 'Reports and improvement history', embed: true, sidebar: true },
   { label: 'Rank challenge', path: '/rank-up-challenge', href: `${WEB_BASE}/rank-up-challenge`, hint: 'Focused rank-up coaching block', embed: true, sidebar: true },
-  { label: 'Playstyle', path: '/valorant/playstyle', href: `${WEB_BASE}/valorant/playstyle`, hint: 'How you play — role and tendencies', embed: true, sidebar: true },
+  { label: 'Playstyle', path: '/brain', href: `${WEB_BASE}/brain`, hint: 'How you play — role and tendencies', embed: true, sidebar: true },
   { label: 'Playbooks', path: '/playbooks', href: `${WEB_BASE}/playbooks`, hint: 'Agent and map playbooks', embed: true, sidebar: true },
   { label: 'Lineups', path: '/lineups', href: `${WEB_BASE}/lineups`, hint: 'Ability lineups by map', embed: true, sidebar: true },
   { label: 'Guides', path: '/guides', href: `${WEB_BASE}/guides`, hint: 'Drills and coaching articles', embed: true, sidebar: false },
@@ -46,6 +48,28 @@ export const WEB_EXPLORE_LINKS: readonly WebExploreLink[] = [
 ] as const
 
 export const WEB_SIDEBAR_LINKS = WEB_EXPLORE_LINKS.filter(l => l.sidebar)
+
+/**
+ * v3 sidebar "More on upforge.gg" menu, per game. Only pages that exist on the web
+ * (upforge-frontend/app/pages) and have real content for that game:
+ * - Roadmap, weekly goals, skill profile, rank challenge, trends, mental and playstyle (/brain)
+ *   read Valorant analyses; lineups and playbooks are Valorant libraries.
+ * - Guides cover Valorant, CS2 and Deadlock. League has no web extras yet (empty list = no menu).
+ * Progress is left out: the app has its own Progress screen.
+ */
+const WEB_MORE_PATHS: Record<PrimaryGame, readonly string[]> = {
+  valorant: ['/improvement-roadmap', '/weekly-goals', '/skill-profile', '/rank-up-challenge', '/performance-trends', '/brain', '/mental-performance', '/lineups', '/playbooks', '/guides'],
+  cs2: ['/guides'],
+  deadlock: ['/guides'],
+  lol: [],
+}
+
+export function webMoreLinks(game: PrimaryGame | null | undefined): WebExploreLink[] {
+  const paths = WEB_MORE_PATHS[game ?? 'valorant'] ?? []
+  return paths
+    .map(path => WEB_EXPLORE_LINKS.find(l => l.path === path))
+    .filter((l): l is WebExploreLink => !!l)
+}
 
 /** Priority order for post-analysis “next step” CTA. */
 export const WEB_NEXT_STEPS = [

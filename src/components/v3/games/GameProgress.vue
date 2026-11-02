@@ -9,10 +9,16 @@ import UfButton from '../UfButton.vue'
 import UfStatRow from '../UfStatRow.vue'
 import UfRoundsLine from '../UfRoundsLine.vue'
 import GameMark from './GameMark.vue'
+import { mapDisplayName } from './display-names'
 import { useGameData } from './useGameData'
+import type { DeadlockProfileStats } from '../../../env.d.ts'
 import { getDeadlockHeroIconUrl, getDeadlockRankIconUrl } from '../../../lib/deadlock'
 import { getFaceitLevelIconUrl } from '../../../lib/cs2'
-import { championIconUrl } from '../../../lib/lol'
+import { parseCs2Score } from '../../../lib/cs2-analyses'
+import { championIconUrl, lolRankEmblemUrl } from '../../../lib/lol'
+import { lolAnalysisStatus, lolIdentityNote, lolMatchMeta, lolNoMatchesText } from '../../../lib/lol-display'
+import { matchReportPath } from '../../../lib/match-report'
+import { useRouter } from 'vue-router'
 import { fmtDeadlockDuration, fmtDeadlockNW } from '../../../lib/deadlock-analyses'
 import { fmtLolKda } from '../../../lib/lol-analyses'
 import { leagueDivisionName, rankForecast } from '../../../lib/ideas/rank-forecast'
@@ -20,15 +26,35 @@ import { lolEarlyDeaths, lolRankSentence, lolRankSeries, lolTrendSentence, lolTr
 import UfSkeleton from '../UfSkeleton.vue'
 import DeadlockReviewV3 from './DeadlockReviewV3.vue'
 import Cs2ResultV3 from './Cs2ResultV3.vue'
+import LolLoadoutStrip from './LolLoadoutStrip.vue'
+import LolRecentNotice from './LolRecentNotice.vue'
+import PlayerAvatar from '../identity/PlayerAvatar.vue'
+import { playerIdentity } from '../../../lib/player-identity'
+import { lolProfileIconId } from '../../../lib/lol-recent'
+import { deadlockRowHeroArt } from '../../../lib/deadlock-item-build'
 import { useStaleLoad } from '../../../lib/stale-cache'
 import {
   GAME_NAME, cs2MapRows, cs2MapsHaveWinRate, cs2Stats, deadlockHeroRows, deadlockRankSeries, deadlockStats,
-  formatRankDate, lolChampionRows, lolStats, lolSummary, rankSentence, stepLine, type DemoGame,
+  deadlockRankCaption, formatRankDate, lolChampionRows, lolStats, lolSummary, rankSentence, stepLine, type DemoGame,
 } from './game-data'
 
 const props = defineProps<{ game: DemoGame }>()
 const gd = useGameData(toRef(props, 'game'))
 const a = gd.actions
+const router = useRouter()
+const lolId = computed(() => ({ label: gd.lol.riotLabel, source: gd.lol.riotSource }))
+const lolRankIcon = computed(() => (gd.lol.rank?.rank?.label ? lolRankEmblemUrl(gd.lol.rank.rank.label) : null))
+/** League profile icon from recent matches (Riot's `profileIcon`); null on older API builds. */
+const lolAvatar = computed(() => {
+  const id = lolProfileIconId(gd.lol.matches)
+  return id == null ? null : playerIdentity({ game: 'lol', name: gd.lol.riotLabel, profileIconId: id })
+})
+/** Riot failed with nothing to list: say so instead of "no games". */
+const lolRiotDown = computed(() => props.game === 'lol' && !!gd.lol.matchesError?.error && !gd.lol.matches.length)
+function openLolReport(matchId: string) {
+  const path = matchReportPath('lol', matchId)
+  if (path) void router.push(path)
+}
 
 const setup = computed(() => gd.setup.value)
 const stats = computed(() => {
@@ -43,7 +69,10 @@ const table = computed(() => {
       ? { title: 'Maps · win rate and K/D', head: 'Win rate', rows: cs2MapRows(maps) }
       : { title: 'Maps · share of tracked matches', head: 'Share', rows: cs2MapRows(maps) }
   }
-  if (props.game === 'deadlock') return { title: 'Heroes · win rate', head: 'Won', rows: deadlockHeroRows(gd.deadlock.stats).map(r => ({ ...r, icon: getDeadlockHeroIconUrl(r.icon) })) }
+  if (props.game === 'deadlock') {
+    const art = new Map((gd.deadlock.stats?.hero_stats ?? []).map(h => [h.hero_name, deadlockRowHeroArt(h)?.src ?? null]))
+    return { title: 'Heroes · win rate', head: 'Won', rows: deadlockHeroRows(gd.deadlock.stats).map(r => ({ ...r, icon: art.get(r.name) ?? getDeadlockHeroIconUrl(r.icon) })) }
+  }
   return { title: 'Champions · win rate', head: 'Won', rows: lolChampionRows(gd.lol.matches).map(r => ({ ...r, icon: championIconUrl(r.name) })) }
 })
 
@@ -77,9 +106,23 @@ const faceit = computed(() => (props.game === 'cs2' && gd.cs2.faceit?.connected 
 const form = computed(() => {
   if (props.game === 'lol') return [...gd.lol.matches].slice(0, 20).reverse().map(m => ({ won: m.win }))
   if (props.game === 'deadlock') return [...(gd.deadlock.stats?.recent_matches ?? [])].slice(0, 20).reverse().map(m => ({ won: m.match_result === 1 }))
+  // CS2: the API's recent list is already oldest first; matches without a known result are left out.
+  if (props.game === 'cs2') return (gd.cs2.profile?.valve_stats.recent ?? []).filter(m => typeof m.won === 'boolean').map(m => ({ won: m.won as boolean }))
   return []
 })
+// CS2 matches analysed from FACEIT or web demo uploads count even before this PC's demo folder is found:
+// show them, with the setup step as one line, instead of "Nothing to track yet".
+const cs2HasData = computed(() => props.game === 'cs2' && (gd.cs2.profile?.valve_stats.matches_tracked ?? 0) > 0)
 const deadlockRecent = computed(() => (gd.deadlock.stats?.recent_matches ?? []).slice(0, 6))
+const deadlockRankCap = computed(() => deadlockRankCaption(gd.deadlock.stats?.current_rank))
+type DeadlockRecent = DeadlockProfileStats['recent_matches'][number]
+function deadlockMatchLine(m: DeadlockRecent): string {
+  return `K/D/A ${m.player_kills}/${m.player_deaths}/${m.player_assists} · ${fmtDeadlockNW(m.net_worth)} souls · ${fmtDeadlockDuration(m.match_duration_s)}`
+}
+function openDeadlockReport(matchId: number) {
+  const path = matchReportPath('deadlock', String(matchId))
+  if (path) void router.push(path)
+}
 const metaTop = computed(() => (gd.deadlock.stats?.top_meta_heroes ?? []).slice(0, 4))
 const deadlockReviews = computed(() => gd.deadlock.analyses.slice(0, 5))
 const review = ref<{ jobId: string; hero: string | null } | null>(null)
@@ -117,7 +160,7 @@ function openWeb() {
       <button type="button" class="uf-link" @click="gd.load(true)">Try again →</button>
     </section>
 
-    <section v-else-if="setup && !setup.ready" class="gprog-empty">
+    <section v-else-if="setup && !setup.ready && !cs2HasData" class="gprog-empty">
       <span class="uf-d2">Nothing to track yet</span>
       <p class="uf-t2">{{ setup.missing }}</p>
       <div class="gprog-act">
@@ -136,7 +179,7 @@ function openWeb() {
           <img v-if="rank?.icon" :src="rank.icon" alt="" width="64" height="64">
           <span class="gprog-rank-t">
             <span class="uf-d2">{{ rank?.label ?? 'Unranked' }}</span>
-            <span class="uf-t4">Current rank</span>
+            <span class="uf-t4">{{ deadlockRankCap }}</span>
           </span>
         </div>
         <template v-if="points.length">
@@ -161,14 +204,18 @@ function openWeb() {
           <span class="gprog-rank-t"><span class="uf-d2">{{ faceit.nickname }}</span><span class="uf-t4">FACEIT{{ faceit.level ? ` · level ${faceit.level}` : '' }}</span></span>
         </div>
         <p v-else class="uf-t2">FACEIT isn't connected. Connect it to see your Elo and level here. <button type="button" class="uf-link" @click="a.cs2ConnectFaceit()">Connect FACEIT →</button></p>
-        <p v-if="gd.cs2.profile?.valve_stats.premier_rating == null" class="uf-t4">Premier rating isn't synced to UpForge yet, so there's no rank line for CS2.</p>
+        <p v-if="gd.cs2.profile?.valve_stats.premier_rating == null" class="uf-t4">{{ gd.cs2.profile?.identity.steam_id
+          ? 'No Premier rating found for your Steam ID yet, so there\'s no rank line for CS2.'
+          : 'Premier rating needs your Steam ID. UpForge saves it the first time it finds you in one of your demos.' }}</p>
+        <p v-if="setup && !setup.ready && setup.action" class="uf-t4">{{ setup.missing }} <button type="button" class="uf-link" :disabled="gd.cs2.detecting" @click="gd.runSetup(setup.action)">{{ setup.actionLabel }} →</button></p>
       </section>
 
       <section v-else class="gprog-rank uf-rise">
         <div class="gprog-rank-head">
+          <img v-if="lolRankIcon" :src="lolRankIcon" alt="" width="64" height="64">
           <span class="gprog-rank-t">
             <span class="uf-d2">{{ gd.lol.rank?.rank?.label ?? 'Unranked' }}</span>
-            <span class="uf-t4">{{ gd.lol.riotLabel }} · Ranked Solo/Duo</span>
+            <span class="uf-t4 gprog-who"><PlayerAvatar v-if="lolAvatar" :identity="lolAvatar" :size="24" />{{ lolIdentityNote(lolId) }} · Ranked Solo/Duo</span>
           </span>
         </div>
         <template v-if="lolPoints.length">
@@ -208,10 +255,12 @@ function openWeb() {
       <section class="gprog-block uf-rise uf-d2s">
         <span class="uf-label">Your matches</span>
         <UfStatRow v-if="stats.length" :items="stats" />
+        <LolRecentNotice v-else-if="lolRiotDown" :state="gd.lol.matchesError" :has-matches="false" :busy="gd.loading.value" @retry="gd.load(true)" />
         <p v-else class="uf-t2">{{ game === 'cs2'
           ? 'No CS2 matches tracked yet. Record or analyse CS2 matches in UpForge to build map and K/D stats.'
           : game === 'deadlock' ? 'No Deadlock matches synced yet. Play a match on your linked Steam account.'
-            : 'No ranked matches loaded yet. You can still watch recordings saved on this computer.' }}</p>
+            : lolNoMatchesText(lolId) }}</p>
+        <UfButton v-if="game === 'lol' && !lolRiotDown && !gd.lol.matches.length && gd.lol.riotSource === 'valorant'" variant="link" style="align-self: flex-start" @click="router.push({ path: '/settings', query: { tab: 'account', link: 'lol' } })">Link League Riot ID</UfButton>
         <UfButton v-if="game === 'lol' && !gd.lol.matches.length" variant="link" style="align-self: flex-start" @click="a.lolRecordings()">Review recordings</UfButton>
         <div v-if="form.length >= 2" class="gprog-form">
           <span class="uf-t4">Last {{ form.length }} results, oldest first</span>
@@ -239,11 +288,16 @@ function openWeb() {
         <section class="gprog-col gprog-col--side">
           <template v-if="game === 'deadlock'">
             <span class="uf-label">Recent matches</span>
-            <div v-for="m in deadlockRecent" :key="m.match_id" class="gprog-line">
-              <span class="uf-t3" :style="{ color: m.match_result === 1 ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ m.match_result === 1 ? 'Won' : 'Lost' }}</span>
-              <span class="uf-t3 gprog-grow">{{ m.hero_name }}</span>
-              <span class="uf-t4 uf-num">{{ m.player_kills }}/{{ m.player_deaths }}/{{ m.player_assists }} · {{ fmtDeadlockNW(m.net_worth) }} · {{ fmtDeadlockDuration(m.match_duration_s) }}</span>
-            </div>
+            <button v-for="m in deadlockRecent" :key="m.match_id" type="button" class="gprog-dl gprog-btn"
+              :disabled="!matchReportPath('deadlock', String(m.match_id))" :aria-label="`${m.hero_name}, ${m.match_result === 1 ? 'won' : 'lost'}: open the match report`"
+              @click="openDeadlockReport(m.match_id)">
+              <img v-if="deadlockRowHeroArt(m)" :src="deadlockRowHeroArt(m)!.src" alt="" width="32" height="40" :class="`is-${deadlockRowHeroArt(m)!.kind}`">
+              <span class="gprog-dl-t">
+                <span class="uf-t3"><span :style="{ color: m.match_result === 1 ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ m.match_result === 1 ? 'Won' : 'Lost' }}</span> · {{ m.hero_name }}</span>
+                <span class="uf-t4 uf-num">{{ deadlockMatchLine(m) }}</span>
+              </span>
+              <span class="uf-t4">Report →</span>
+            </button>
             <p v-if="!deadlockRecent.length" class="uf-t2">No recent matches yet.</p>
             <p v-if="metaTop.length" class="uf-t4">Strongest heroes this patch: {{ metaTop.map(h => `${h.hero_name} ${Math.round(h.win_rate)}%`).join(' · ') }}</p>
             <span class="uf-label" style="margin-top: 14px">Replay reviews</span>
@@ -252,22 +306,31 @@ function openWeb() {
               <span class="uf-t3 gprog-grow">{{ r.hero ?? 'Match' }}<template v-if="r.match_result"> · {{ r.match_result === 'win' ? 'Won' : r.match_result === 'loss' ? 'Lost' : r.match_result }}</template></span>
               <span class="uf-t4">{{ reviewLabel(r.status) }}</span>
             </button>
-            <p v-if="!deadlockReviews.length" class="uf-t4">No replay reviews yet. Analyse a replay from Coach to get one.</p>
+            <p v-if="!deadlockReviews.length" class="uf-t4">No replay reviews yet. Record a match, then choose Review replay on it in Matches.</p>
           </template>
           <template v-else-if="game === 'lol'">
             <span class="uf-label">Riot match reports</span>
             <button v-for="r in gd.lol.analyses.slice(0, 6)" :key="r.id" type="button" class="gprog-line gprog-btn" @click="a.lolOpenResults(r.id)">
-              <span class="uf-t3 gprog-grow">{{ r.champion ?? 'Match' }}</span>
-              <span class="uf-t4">{{ r.status === 'completed' ? 'Ready' : r.readiness_state === 'waiting_match_data' ? 'Syncing' : r.status }} →</span>
+              <span class="gprog-name gprog-grow"><img v-if="r.champion && championIconUrl(r.champion)" :src="championIconUrl(r.champion)" alt="" width="22" height="22"><span class="uf-t3">{{ r.champion ?? 'Match' }}</span></span>
+              <span class="uf-t4">{{ lolAnalysisStatus(r) }} →</span>
             </button>
             <template v-if="!gd.lol.analyses.length">
               <p class="uf-t2">No match reports yet.</p>
             </template>
-            <div v-for="m in gd.lol.matches.slice(0, 5)" :key="m.match_id" class="gprog-line">
-              <span class="uf-t3" :style="{ color: m.win ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ m.win ? 'Won' : 'Lost' }}</span>
-              <span class="uf-t3 gprog-grow">{{ m.champion }}</span>
-              <span class="uf-t4 uf-num">{{ fmtLolKda(m.kills, m.deaths, m.assists) }}</span>
-            </div>
+            <template v-if="gd.lol.matches.length">
+              <span class="uf-label" style="margin-top: 14px">Recent games</span>
+              <LolRecentNotice :state="gd.lol.matchesError" :has-matches="true" :busy="gd.loading.value" @retry="gd.load(true)" />
+              <button v-for="m in gd.lol.matches.slice(0, 5)" :key="m.match_id" type="button" class="gprog-lol gprog-btn"
+                :disabled="!matchReportPath('lol', m.match_id)" :aria-label="`${m.champion}, ${m.win ? 'won' : 'lost'}: open the match report`" @click="openLolReport(m.match_id)">
+                <img v-if="championIconUrl(m.champion)" :src="championIconUrl(m.champion)" alt="" width="32" height="32">
+                <span class="gprog-lol-t">
+                  <span class="uf-t3"><span :style="{ color: m.win ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ m.win ? 'Won' : 'Lost' }}</span> · {{ m.champion }} · <span class="uf-num">{{ fmtLolKda(m.kills, m.deaths, m.assists) }}</span></span>
+                  <span class="uf-t4">{{ lolMatchMeta(m) }}</span>
+                  <LolLoadoutStrip :match="m" />
+                </span>
+                <span class="uf-t4">Report →</span>
+              </button>
+            </template>
           </template>
           <template v-else>
             <span class="uf-label">Steam</span>
@@ -277,7 +340,7 @@ function openWeb() {
             <span class="uf-label" style="margin-top: 14px">Demo reviews</span>
             <button v-for="r in (cs2Reviews.data.value ?? [])" :key="r.job_id ?? r.id" type="button" class="gprog-line gprog-btn"
               :disabled="!r.job_id || r.status !== 'completed'" @click="cs2Review = r.job_id">
-              <span class="uf-t3 gprog-grow">{{ r.map ? r.map.replace(/^de_/, '').replace(/^\w/, (c: string) => c.toUpperCase()) : 'Match' }}<template v-if="r.score"> · {{ r.score.replace('-', '–') }}</template></span>
+              <span class="uf-t3 gprog-grow">{{ r.map ? mapDisplayName('cs2', r.map) : 'Match' }}<template v-if="parseCs2Score(r.score)"> · {{ parseCs2Score(r.score)!.won }}–{{ parseCs2Score(r.score)!.lost }}</template></span>
               <span class="uf-t4">{{ reviewLabel(r.status) }}</span>
             </button>
             <p v-if="cs2Reviews.loading.value" class="uf-t4">Loading reviews…</p>
@@ -318,7 +381,7 @@ function openWeb() {
 .gprog-row { display: grid; grid-template-columns: 1.3fr 0.5fr 1.4fr 0.8fr; gap: 16px; align-items: center; padding: 8px 0; border-top: 1px solid var(--uf-line); }
 .gprog-row--head { border-top: 0; padding: 0 0 4px; }
 .gprog-name { display: flex; gap: 10px; align-items: center; min-width: 0; }
-.gprog-name img { object-fit: cover; flex: none; }
+.gprog-name img { object-fit: cover; object-position: center 18%; flex: none; }
 .gprog-bar { position: relative; height: 24px; display: flex; align-items: center; }
 .gprog-bar > span { position: absolute; left: 0; top: 3px; bottom: 3px; opacity: 0.25; }
 .gprog-bar > b { position: relative; padding-left: 8px; }
@@ -326,5 +389,14 @@ function openWeb() {
 .gprog-btn { width: 100%; background: none; border-left: 0; border-right: 0; border-bottom: 0; cursor: pointer; text-align: left; }
 .gprog-btn:hover .uf-t3 { color: #fff; }
 .gprog-grow { flex: 1; min-width: 0; }
+.gprog-dl { display: flex; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--uf-line); }
+.gprog-dl img { object-fit: cover; flex: none; }
+.gprog-dl img.is-card { object-position: center 18%; }
+.gprog-dl img.is-icon { height: 32px; }
+.gprog-who { display: inline-flex; gap: 8px; align-items: center; }
+.gprog-dl-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gprog-lol { display: flex; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--uf-line); }
+.gprog-lol img { object-fit: cover; flex: none; }
+.gprog-lol-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 @container (max-width: 900px) { .gprog-cols { grid-template-columns: 1fr; } .gprog-col--side { border-left: 0; padding-left: 0; } }
 </style>

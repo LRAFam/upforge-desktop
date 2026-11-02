@@ -20,7 +20,12 @@ import {
 } from '../../lib/match-report-games'
 import { readCache, writeCache } from '../../lib/stale-cache'
 import UfRoundsLine from '../../components/v3/UfRoundsLine.vue'
+import ScoreWhyV3 from '../../components/v3/score/ScoreWhyV3.vue'
+import { matchScore, scoreToneColor } from '../../lib/upforge-score'
+import { PRIMARY_GAME_ARTWORK } from '../../lib/games'
 import RoundStripV3 from '../../components/v3/coach-flow/RoundStripV3.vue'
+import DeadlockItemBuildV3 from '../../components/v3/games/DeadlockItemBuildV3.vue'
+import LolLoadoutStrip from '../../components/v3/games/LolLoadoutStrip.vue'
 import NumbersV3 from '../../components/v3/coach-flow/NumbersV3.vue'
 import { numbersView, roundCells } from '../../components/v3/coach-flow/coach-visuals'
 import { momentsLine, notesLine, type CoachAllowances, type LiveMoment, type LiveUpdate } from '../../lib/coach-allowances'
@@ -128,10 +133,23 @@ const notFoundText = computed(() => {
 })
 
 const view = computed(() => (state.value?.kind === 'ready' ? state.value.view : null))
+/** Stats-based UpForge score only: this report has no coach rating to fall back to. */
+const ufScore = computed(() => {
+  const s = matchScore({ upforge_score: view.value?.upforgeScore })
+  return s?.kind === 'stats' ? s : null
+})
 const resultWord = computed(() => (view.value?.result === 'win' ? 'Victory' : view.value?.result === 'loss' ? 'Defeat' : 'Match'))
 const meta = computed(() => view.value?.metaLine
   ?? [view.value?.map ? formatMapLabel(view.value.map) : null, view.value?.agent].filter(Boolean).join(' · '))
 const isValorant = computed(() => (view.value?.game ?? 'valorant') === 'valorant')
+/** The band's one image: Valorant map; Deadlock hero art (API `hero_art`), else the game's key art. */
+const bandArt = computed(() => {
+  const v = view.value
+  if (!v) return undefined
+  if (isValorant.value) return v.map ? getMapImage(v.map) || undefined : undefined
+  if (game.value === 'deadlock') return v.bandArt || PRIMARY_GAME_ARTWORK.deadlock
+  return undefined
+})
 
 // After-match coach flow: key-moment reviews (video, within the allowance) + allowance lines.
 const allowances = ref<CoachAllowances | null>(null)
@@ -191,7 +209,8 @@ function back(): void { if (window.history.length > 1) router.back(); else route
 
     <template v-else-if="view">
       <UfHeroBand
-        :art="isValorant && view.map ? getMapImage(view.map) || undefined : undefined"
+        :art="bandArt"
+        :art-position="game === 'deadlock' && view.bandArt ? 'center 22%' : undefined"
         :agent="isValorant && view.agent ? getAgentImage(view.agent) || undefined : undefined"
         :tone="view.result ?? 'none'"
         :result="resultWord"
@@ -201,6 +220,9 @@ function back(): void { if (window.history.length > 1) router.back(); else route
         <span v-if="view.score" class="uf-d2">{{ view.score }}</span>
         <template v-if="cells.length" #stats>
           <div class="mr3-hero-rounds"><UfRoundsLine :rounds="cells.map(c => ({ won: c.result === 'won', marked: c.marked }))" :height="22" /></div>
+        </template>
+        <template v-else-if="game === 'lol' && view.loadout" #stats>
+          <LolLoadoutStrip :match="view.loadout" :size="28" />
         </template>
       </UfHeroBand>
 
@@ -235,6 +257,8 @@ function back(): void { if (window.history.length > 1) router.back(); else route
           </div>
         </section>
 
+        <DeadlockItemBuildV3 v-if="game === 'deadlock' && view.itemBuild !== undefined" :steps="view.itemBuild" />
+
         <section v-if="cells.length" class="mr3-visual">
           <span class="uf-label">Your match, round by round</span>
           <RoundStripV3 :cells="cells" />
@@ -253,6 +277,11 @@ function back(): void { if (window.history.length > 1) router.back(); else route
           </section>
 
           <section class="mr3-side">
+            <div v-if="ufScore" class="mr3-focus">
+              <span class="uf-label">UpForge score</span>
+              <p class="mr3-uf"><span class="uf-d3 uf-num" :style="{ color: scoreToneColor(ufScore.tone) }">{{ ufScore.text }}</span><span class="uf-t4">{{ ufScore.label }} · 500 is average for your rank</span></p>
+              <ScoreWhyV3 v-if="view.upforgeScoreBreakdown" :score="ufScore.value" :breakdown="view.upforgeScoreBreakdown" />
+            </div>
             <div v-if="view.focusCheck" class="mr3-focus">
               <span class="uf-label">Your focus</span>
               <p class="uf-t3">{{ view.focusCheck.label }}</p>
@@ -306,6 +335,7 @@ function back(): void { if (window.history.length > 1) router.back(); else route
 .mr3-row { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--uf-line); }
 .mr3-row dd { margin: 0; }
 .mr3-side { display: flex; flex-direction: column; gap: 24px; }
+.mr3-uf { margin: 0; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .mr3-moments { display: flex; flex-direction: column; gap: 14px; padding-top: 18px; border-top: 1px solid var(--uf-line); }
 .mr3-moment { display: flex; flex-direction: column; gap: 6px; max-width: 72ch; }
 .mr3-moment + .mr3-moment { padding-top: 14px; border-top: 1px solid var(--uf-line); }

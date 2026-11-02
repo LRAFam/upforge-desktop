@@ -11,17 +11,24 @@ import TacticalIntelBrief from '../TacticalIntelBrief.vue'
 import DuelMomentScrubberBands from '../analysis/DuelMomentScrubberBands.vue'
 import DuelMomentCards from '../analysis/DuelMomentCards.vue'
 import AnalysisReviewDetails from '../analysis/AnalysisReviewDetails.vue'
+import AskMatchPanelV3 from '../v3/matchpage/ask/AskMatchPanelV3.vue'
+import { askAnalysisId } from '../v3/matchpage/ask/ask-match'
+import { askPanelState } from '../v3/matchpage/ask/ask-state'
 import { getAgentImage, getAbilityIcon } from '../../lib/valorant'
+import { valorantTierIcon } from '../../lib/player-identity'
+import RankIcon from '../v3/identity/RankIcon.vue'
 import VodRoundLogSidebar from './VodRoundLogSidebar.vue'
 import VodMatchTimelineSidebar from './VodMatchTimelineSidebar.vue'
 import VodDemoPendingPanel from './VodDemoPendingPanel.vue'
 import Cs2FaceitAttach from '../v3/games/Cs2FaceitAttach.vue'
 import VodTimelineEventIcon from './VodTimelineEventIcon.vue'
 import { recordingTimelineReady, usesAsyncDemoSync } from '../../lib/recording-demo-status'
+import { extraCoachNotes as pickExtraCoachNotes, moreDetailSummary as describeMoreDetail, momentsToWatch } from '../analysis/review-panel'
 
 const props = defineProps<{ workspace?: boolean; roundsWidth?: number; detailsWidth?: number }>()
 const emit = defineEmits<{ 'update:roundsWidth': [value: number]; 'update:detailsWidth': [value: number] }>()
 
+const review = useVodReview()
 const {
   objectiveName,
   abilityCastSlots,
@@ -148,7 +155,7 @@ const {
   videoBuffering,
   videoSrc,
   videoSyncOffsetMs,
-} = useVodReview()
+} = review
 
 /** UI v3: markers keep their meaning with the v3 palette — kills win, deaths loss, the rest stay neutral. */
 function v3MarkerClass(kind: string) {
@@ -157,6 +164,19 @@ function v3MarkerClass(kind: string) {
   if (kind === 'death') return 'vb3-mk vb3-mk--death'
   return 'vb3-mk vb3-mk--obj'
 }
+
+// v3 review panel: lead with 1–2 moments, fold the rest (see review-panel.ts).
+// v3 "Ask about this match" (AI) tab. Local state on top of the notes panel: the composable only knows notes/map.
+const askId = computed(() => askAnalysisId(timeline.value?.analysisId))
+// Shared with the header's "Ask AI" tab (see ask-state.ts); mounted once so a draft survives tab switches.
+const { open: askOpen, mounted: askMounted, openAsk } = askPanelState(review)
+function showReview() { askOpen.value = false; setSidePanelTab('notes') }
+
+const panelMoments = computed(() => momentsToWatch(hasDuelMoments.value ? duelMoments.value : []))
+const extraCoachNotes = computed(() => pickExtraCoachNotes(supplementalCoachingNotes.value, coachingDetail.value))
+const moreDetail = computed(() => describeMoreDetail(coachingDetail.value, panelMoments.value.rest.length, extraCoachNotes.value.length))
+const moreDetailCount = computed(() => moreDetail.value.count)
+const moreDetailSummary = computed(() => moreDetail.value.summary)
 
 const showDemoPendingPanel = computed(() => {
   if (!timeline.value || !recordingId.value) return false
@@ -970,7 +990,7 @@ const noVideoHint = computed((): string => {
                     <img v-if="p.agent && getAgentImage(p.agent)" :src="getAgentImage(p.agent)" alt="" class="vb3-board-agent">
                     <span v-else class="vb3-board-agent" />
                     <span class="uf-t3">{{ isOwnScoreboardPlayer(p) ? 'You' : p.summonerName }}</span>
-                    <span v-if="p.competitiveTier > 0" class="uf-t4">{{ p.competitiveTierName }}</span>
+                    <span v-if="p.competitiveTier > 0" class="uf-t4 vb3-board-rank"><RankIcon :src="valorantTierIcon(p.competitiveTier)" :label="p.competitiveTierName" :size="16" />{{ p.competitiveTierName }}</span>
                   </div>
                 </td>
                 <td class="uf-num"><span style="color: var(--uf-bone)">{{ p.kills }}</span> / {{ p.deaths }} / {{ p.assists }}</td>
@@ -1084,8 +1104,9 @@ const noVideoHint = computed((): string => {
       >
 <template v-if="uiV3">
         <div class="vb3-sidetabs" role="tablist" aria-label="Review panel">
-          <button type="button" role="tab" class="vb3-sidetab" :class="{ 'vb3-sidetab--on': showInsightsPanel }" :aria-selected="showInsightsPanel" @click="setSidePanelTab('notes')">Review</button>
+          <button type="button" role="tab" class="vb3-sidetab" :class="{ 'vb3-sidetab--on': showInsightsPanel && !askOpen }" :aria-selected="showInsightsPanel && !askOpen" @click="showReview">Review</button>
           <button v-if="hasSpatialIntel" type="button" role="tab" class="vb3-sidetab" :class="{ 'vb3-sidetab--on': spatialMapVisible }" :aria-selected="spatialMapVisible" @click="setSidePanelTab('map')">Map intel</button>
+          <button v-if="askId" type="button" role="tab" class="vb3-sidetab" :class="{ 'vb3-sidetab--on': askOpen }" :aria-selected="askOpen" title="Ask the AI about this match" @click="openAsk">Ask AI</button>
           <span style="flex: 1" />
           <button v-if="spatialMapVisible && hasSpatialIntel" type="button" class="vb3-ib" :aria-label="spatialMapLarge ? 'Standard map size' : 'Larger map'" :title="spatialMapLarge ? 'Standard map size' : 'Larger map'" @click="spatialMapLarge = !spatialMapLarge">{{ spatialMapLarge ? '−' : '+' }}</button>
           <button type="button" class="vb3-ib" aria-label="Close panel" title="Close panel (N / M)" @click="setSidePanelTab(null)"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 20 20"><path stroke-width="1.75" d="m12.5 5.5-5 4.5 5 4.5"/></svg></button>
@@ -1130,8 +1151,72 @@ const noVideoHint = computed((): string => {
         </div>
 
 </template>
-        <div v-show="showInsightsPanel" class="vod-notes-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-4">
-          <VodPersonalReview />
+        <div v-show="showInsightsPanel && !askOpen" class="vod-notes-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-4">
+          <!-- One notebook instance for both UIs (an unsaved note must survive panel toggles). In v3 it is
+               moved below the coach's lead blocks with CSS order, not by remounting it. -->
+          <VodPersonalReview class="vb3-notebook" />
+<template v-if="uiV3">
+          <!-- v3 order: a real coach's notes, the coach's synthesis, the 1–2 moments to watch, your notebook;
+               everything else folds under one "More detail". -->
+          <section v-if="coachReview?.annotations?.length || coachReview?.coach_perspective" class="vb3-coach">
+            <div class="vb3-coach-head">
+              <span class="uf-label">Human coach<template v-if="coachReview.coach?.display_name"> · {{ coachReview.coach.display_name }}</template></span>
+              <span class="uf-t4" :style="{ color: coachReview.status === 'completed' ? 'var(--uf-win)' : 'var(--uf-muted)' }">{{ coachReview.status.replace('_', ' ') }}</span>
+            </div>
+            <p v-if="coachReview.student_question" class="uf-t4">You asked: {{ coachReview.student_question }}</p>
+            <p v-if="coachReview.coach_perspective" class="uf-t3 vb3-coach-says">{{ coachReview.coach_perspective }}</p>
+            <button v-for="(note, noteIndex) in coachReview.annotations" :key="note.id" :data-coach-note="note.id" type="button" class="vb3-note" :class="{ 'vb3-note--on': activeCoachNoteId === note.id }" @click="seekCoachAnnotation(note.video_offset_ms, note.id)">
+              <span class="vb3-note-meta uf-t4"><span v-if="note.round_number != null">Round {{ note.round_number }}</span><span v-if="noteIndex < 9" class="uf-num" title="Press number key to jump">{{ noteIndex + 1 }}</span></span>
+              <span class="vb3-note-body">{{ note.body }}</span>
+            </button>
+          </section>
+          <TacticalIntelBrief
+            v-if="tacticalIntelBrief"
+            :brief="tacticalIntelBrief"
+            progressive
+            :feedback-status="analysisFeedbackStatus"
+            @seek-evidence="seekCoachingEvidence"
+            @report-evidence="reportCoachingEvidence"
+          />
+          <DuelMomentCards
+            v-if="panelMoments.watch.length"
+            :moments="panelMoments.watch"
+            :active-moment-id="activeDuelMomentId"
+            heading="Moments to watch"
+            compact
+            unbounded
+            @seek="seekDuelMoment"
+          />
+          <details v-if="moreDetailCount > 0" class="vb3-more">
+            <summary><span class="uf-t3">More detail</span><span class="uf-t4">{{ moreDetailSummary }}</span></summary>
+            <div class="vb3-more-body">
+              <AnalysisReviewDetails
+                v-if="coachingDetail"
+                :detail="coachingDetail"
+                @seek-evidence="seekCoachingEvidence"
+              />
+              <DuelMomentCards
+                v-if="panelMoments.rest.length"
+                :moments="panelMoments.rest"
+                :active-moment-id="activeDuelMomentId"
+                :heading="panelMoments.watch.length ? `Other moments · ${panelMoments.rest.length}` : `Moments · ${panelMoments.rest.length}`"
+                compact
+                unbounded
+                @seek="seekDuelMoment"
+              />
+              <section v-if="extraCoachNotes.length" class="vb3-coach">
+                <span class="uf-label">More from the coach</span>
+                <p v-for="(note, index) in extraCoachNotes" :key="`${index}-${note}`" class="vb3-note-body vb3-supp">{{ note }}</p>
+              </section>
+            </div>
+          </details>
+          <div v-if="!tacticalIntelBrief && !coachingDetail && !hasDuelMoments && !supplementalCoachingNotes.length && !coachReview?.annotations?.length" class="vb3-empty">
+            <span class="uf-label">No AI coaching yet</span>
+            <p class="uf-t4">Your notebook works without analysis. Run match analysis when you want AI coaching alongside your own review.</p>
+          </div>
+
+</template>
+<template v-else>
           <TacticalIntelBrief
             v-if="tacticalIntelBrief"
             :brief="tacticalIntelBrief"
@@ -1155,30 +1240,6 @@ const noVideoHint = computed((): string => {
             @seek="seekDuelMoment"
           />
 
-<template v-if="uiV3">
-          <section v-if="coachReview?.annotations?.length || coachReview?.coach_perspective" class="vb3-coach">
-            <div class="vb3-coach-head">
-              <span class="uf-label">Human coach<template v-if="coachReview.coach?.display_name"> · {{ coachReview.coach.display_name }}</template></span>
-              <span class="uf-t4" :style="{ color: coachReview.status === 'completed' ? 'var(--uf-win)' : 'var(--uf-muted)' }">{{ coachReview.status.replace('_', ' ') }}</span>
-            </div>
-            <p v-if="coachReview.student_question" class="uf-t4">You asked: {{ coachReview.student_question }}</p>
-            <p v-if="coachReview.coach_perspective" class="uf-t3 vb3-coach-says">{{ coachReview.coach_perspective }}</p>
-            <button v-for="(note, noteIndex) in coachReview.annotations" :key="note.id" :data-coach-note="note.id" type="button" class="vb3-note" :class="{ 'vb3-note--on': activeCoachNoteId === note.id }" @click="seekCoachAnnotation(note.video_offset_ms, note.id)">
-              <span class="vb3-note-meta uf-t4"><span v-if="note.round_number != null">Round {{ note.round_number }}</span><span v-if="noteIndex < 9" class="uf-num" title="Press number key to jump">{{ noteIndex + 1 }}</span></span>
-              <span class="vb3-note-body">{{ note.body }}</span>
-            </button>
-          </section>
-          <section v-if="supplementalCoachingNotes.length" class="vb3-coach">
-            <span class="uf-label">More from the coach</span>
-            <p v-for="(note, index) in supplementalCoachingNotes" :key="`${index}-${note}`" class="vb3-note-body vb3-supp">{{ note }}</p>
-          </section>
-          <div v-if="!tacticalIntelBrief && !supplementalCoachingNotes.length && !coachReview?.annotations?.length" class="vb3-empty">
-            <span class="uf-label">No AI coaching yet</span>
-            <p class="uf-t4">Your notebook works without analysis. Run match analysis when you want AI coaching alongside your own review.</p>
-          </div>
-
-</template>
-<template v-else>
           <div
             v-if="coachReview?.annotations?.length || coachReview?.coach_perspective"
             class="rounded-lg border border-violet-500/25 bg-violet-500/[0.06] px-3 py-2.5 space-y-2.5"
@@ -1327,6 +1388,9 @@ const noVideoHint = computed((): string => {
             <button type="button" class="underline hover:text-amber-200" @click="openUpgrade">Upgrade for unlimited seeks</button>
           </p>
         </div>
+        <div v-if="uiV3 && askMounted && askId" v-show="askOpen" class="flex-1 min-h-0 overflow-y-auto scrollbar-hide px-5 py-4">
+          <AskMatchPanelV3 :analysis-id="askId" :position="currentTime" :round="activeRoundNumber" />
+        </div>
       </aside>
 
       </div>
@@ -1398,6 +1462,7 @@ const noVideoHint = computed((): string => {
 .vb3-board-me td { background: var(--uf-raised); }
 .vb3-board-me td:first-child { box-shadow: inset 2px 0 0 var(--uf-red); }
 .vb3-board-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.vb3-board-rank { display: inline-flex; align-items: center; gap: 6px; }
 .vb3-board-agent { width: 26px; height: 26px; object-fit: contain; flex: none; background: var(--uf-raised); }
 .vb3-board-abil { display: inline-flex; gap: 8px; justify-content: flex-end; }
 .vb3-board-abil span { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
@@ -1417,6 +1482,18 @@ const noVideoHint = computed((): string => {
 .vb3-note-meta { display: flex; justify-content: space-between; }
 .vb3-note-body { font: 400 15px/1.5 var(--uf-body); color: var(--uf-bone); }
 .vb3-supp { padding: 8px 0; border-top: 1px solid var(--uf-line); color: var(--uf-muted); }
+.ui-v3 .vod-notes-panel { display: flex; flex-direction: column; gap: 20px; }
+.ui-v3 .vod-notes-panel > * { margin-top: 0 !important; margin-bottom: 0 !important; }
+.ui-v3 .vod-notes-panel > .vb3-notebook { order: 1; }
+.ui-v3 .vod-notes-panel > .vb3-more,
+.ui-v3 .vod-notes-panel > .vb3-empty { order: 2; }
+.vb3-more { border-top: 1px solid var(--uf-line); }
+.vb3-more > summary { list-style: none; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 14px 0; cursor: pointer; color: var(--uf-bone); }
+.vb3-more > summary::-webkit-details-marker { display: none; }
+.vb3-more > summary::after { content: '⌄'; color: var(--uf-faint); }
+.vb3-more[open] > summary::after { transform: rotate(180deg); }
+.vb3-more > summary .uf-t4 { flex: 1; text-align: right; }
+.vb3-more-body { display: flex; flex-direction: column; gap: 24px; padding-bottom: 8px; }
 .vb3-empty { display: flex; flex-direction: column; gap: 8px; padding: 18px 0; border-top: 1px solid var(--uf-line); }
 .vb3-empty p { margin: 0; }
 
