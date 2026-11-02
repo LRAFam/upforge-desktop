@@ -26,7 +26,7 @@ describe('upload preparation cleanup', () => {
       resolveUploadPlayerIdentity: () => ({ riotName: 'P', riotTag: 'T' }),
       settingsManager: { get: () => ({}) }, shouldDeferHeavyBackgroundWork: () => false,
       matchPriorityDeps: () => ({}), waitUntilBackgroundWorkAllowed: async () => {},
-      mainWindow: null, logActivity() {}, log: { error() {}, warn() {} },
+      mainWindow: null, notifyRecordingsUpdated() {}, logActivity() {}, log: { error() {}, warn() {} },
       registerDeferredUploadRetryPersisted: (id: string, retry: unknown) => retries.set(id, retry),
       clearDeferredUploadRetryPersisted: (id: string) => retries.delete(id),
       activeUploadRecordingIds: active,

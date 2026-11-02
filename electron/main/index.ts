@@ -1,4 +1,6 @@
 import { getApiBaseUrl } from './api-base'
+import { createCoalescedNotifier, createVodProbeSweep } from './vod-probe-sweep'
+import { createCallRateLogger, startMainLoopLagMonitor } from './main-loop-lag'
 import { saveReplay } from './valorant-replay-download'
 import { ValorantReplaySync, type ReplaySyncState } from './valorant-replay-sync'
 import { ValorantReplayUploader } from './valorant-replay-uploader'
@@ -287,7 +289,6 @@ import {
   getVodFileReadiness,
   isTerminalAnalysisReadinessState,
   refreshVodProbe,
-  clearVodProbeCache,
   waitUntilVodFileReady,
   withAnalysisReadiness,
   type AnalysisReadiness,
@@ -411,6 +412,14 @@ let stopInstanceCoordinator: (() => void) | null = null
 
 let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
+/**
+ * Every `recordings:updated` makes several renderer views reload the whole recordings list (with
+ * timelines). Bursts after a match used to feed a reload storm that froze the app, so sends are
+ * coalesced: many calls inside 400 ms become one event.
+ */
+const notifyRecordingsUpdated = createCoalescedNotifier(() => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('recordings:updated')
+}, 400)
 let postGameWindow: BrowserWindow | null = null
 let isQuitting = false
 /** False until setupIpcHandlers runs — windows must not load before IPC is wired. */
@@ -877,7 +886,7 @@ function reconcileInterruptedUploads(): void {
   const reset = recordingsStore.resetInterruptedUploads(activeUploadRecordingIds)
   if (reset > 0) {
     logActivity(`Upload interrupted — tap Analyse to retry (${reset} recording${reset === 1 ? '' : 's'})`)
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
   }
 }
 
@@ -1139,7 +1148,7 @@ function maybeResumeDeferredUploads(): void {
     }
     if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
       for (const recordingId of activeUploadRecordingIds) recordingsStore.clearPipelineDeferReason(recordingId)
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
       void flushDeferredUploadRetries()
       maybeAutoEnqueueReadyPendings()
       postMatchWorker?.kick()
@@ -1154,7 +1163,7 @@ function interruptBackgroundWorkForMatch(): void {
   for (const recordingId of activeUploadRecordingIds) {
     recordingsStore.setPipelineDeferReason(recordingId, 'recording')
   }
-  mainWindow?.webContents.send('recordings:updated')
+  notifyRecordingsUpdated()
   const workerBusy = postMatchWorker?.isBusy() === true
   const queuedJobs = postMatchJobStore?.list().some(
     (j) => j.stage === 'queued' || j.stage === 'upload' || j.stage === 'deferred' || j.stage === 'remux',
@@ -1327,7 +1336,7 @@ function abortInFlightAnalysisForRecording(recordingId: string): { ok: boolean; 
     recordingId,
   )
   if (result.ok) {
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
     sendPostGameEventForRecording(
       postGameWindow,
       recordingId,
@@ -1463,7 +1472,7 @@ function userSessionDeps() {
       activityLog.length = 0
       clearErrorActivity()
       mainWindow?.webContents.send('app:activity-log', [])
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
       mainWindow?.webContents.send('clips:updated')
       mainWindow?.webContents.send('dashboard:refresh')
       const config = settingsManager?.get()
@@ -1561,7 +1570,22 @@ function handlePrimaryGameSwitch(
   updateTrayMenuFn?.()
 }
 
-async function ensureObsCaptureForGame(game: string): Promise<void> {
+/**
+ * Startup and game detection both ask for capture setup; two overlapping retry loops retargeted OBS
+ * twice every 3 s ("Capture retargeted" pairs in the log). Share one run per game.
+ */
+const obsCaptureSetupInFlight = new Map<string, Promise<void>>()
+function ensureObsCaptureForGame(game: string): Promise<void> {
+  const running = obsCaptureSetupInFlight.get(game)
+  if (running) return running
+  const run = ensureObsCaptureForGameOnce(game).finally(() => {
+    if (obsCaptureSetupInFlight.get(game) === run) obsCaptureSetupInFlight.delete(game)
+  })
+  obsCaptureSetupInFlight.set(game, run)
+  return run
+}
+
+async function ensureObsCaptureForGameOnce(game: string): Promise<void> {
   if (obsRecorder.isRecording()) return
 
   if (!obsRecorder.isConnected()) {
@@ -1655,7 +1679,7 @@ function resumeSavedLocalMedia(): void {
     }
     maybeAutoEnqueueWhenReady(rec.id)
   }
-  mainWindow?.webContents.send('recordings:updated')
+  notifyRecordingsUpdated()
 }
 
 async function offerGuestMediaClaim(): Promise<void> {
@@ -1683,7 +1707,7 @@ async function offerGuestMediaClaim(): Promise<void> {
     if (localMediaWork > 0 || obsRecorder.isRecording() || waitingForMatch) return
     recordingsStore.claimGuest(user.id)
     clipStore.claimGuest(user.id)
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
     mainWindow?.webContents.send('clips:new', clips.map(clip => clip.id))
     resumeSavedLocalMedia()
   } catch (err) {
@@ -1733,7 +1757,7 @@ function runStorageMaintenanceIfReady(notify = false): void {
       logActivity(
         `Freed ${(maintenance.freedBytes / (1024 ** 3)).toFixed(1)} GB of old local recordings`,
       )
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
       mainWindow?.webContents.send('dashboard:refresh')
     }
   }
@@ -1840,7 +1864,7 @@ function scanForOrphanedRecordings(force = false): number {
   }
   log.info(`[Recordings] Imported ${orphans.length} local file(s) into dashboard`)
   logActivity(`Found ${orphans.length} local recording(s) — added to dashboard`)
-  mainWindow?.webContents.send('recordings:updated')
+  notifyRecordingsUpdated()
   return orphans.length
 }
 
@@ -1916,7 +1940,7 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
     } else {
       recordingsStore.clearAnalysisPipeline(ctx.recordingId)
     }
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
   }
 
   clearPendingJob()
@@ -2089,7 +2113,7 @@ function dispatchAnalysisFailure(
   }
 
   mainWindow?.webContents.send('dashboard:analysis-failed', payload)
-  mainWindow?.webContents.send('recordings:updated')
+  notifyRecordingsUpdated()
 
   const failureRecording = opts.recordingId ? recordingsStore.getById(opts.recordingId) : null
   if (shouldReportAnalysisPipelineError(payload.kind, rawError)) {
@@ -2333,7 +2357,7 @@ function deadlockReviewDeps(): PollReviewDeps {
     getStatus: fetchDeadlockReviewStatus,
     getDetail: fetchDeadlockReviewDetail,
     updateTimeline: (id, timeline) => recordingsStore.updateTimeline(id, timeline),
-    notify: () => mainWindow?.webContents.send('recordings:updated'),
+    notify: () => notifyRecordingsUpdated(),
     sleep: ms => new Promise(r => setTimeout(r, ms)),
     cancelled: () => !authManager.getToken(),
   }
@@ -2369,7 +2393,7 @@ function refreshReplayTimelineForRecording(
       }
       return false
     } finally {
-      if (scope === replayScope) mainWindow?.webContents.send('recordings:updated')
+      if (scope === replayScope) notifyRecordingsUpdated()
     }
   }).finally(() => {
     if (replayAttempts.get(recordingId) === attempt) replayAttempts.delete(recordingId)
@@ -2498,7 +2522,7 @@ async function retrieveReplayTimelineForRecording(
   cs2DemoRetrievalStatus.delete(recordingId)
 
   recordingsStore.updateTimeline(recordingId, parsed.timeline)
-  mainWindow?.webContents.send('recordings:updated')
+  notifyRecordingsUpdated()
   if (options?.notifyActivity) {
     const mapLabel = rec.map ?? parsed.timeline.map ?? 'Your match'
     if (rec.game === 'cs2') {
@@ -2581,7 +2605,7 @@ async function retryDemoClips(opts: {
     return
   }
   recordingsStore.updateTimeline(opts.savedRecordingId, parsed.timeline)
-  mainWindow?.webContents.send('recordings:updated')
+  notifyRecordingsUpdated()
   log.info(`[LateClipExtract] ${game} demo retry — ${parsed.timeline.playerKills.length} kills, extracting clips`)
   logActivity(`${game === 'cs2' ? 'CS2' : 'Deadlock'} demo loaded — extracting ${parsed.timeline.playerKills.length} kill(s) for highlight clips`)
   await extractKillClipsOnly(opts.readyPath, parsed.timeline, opts.analysisJobId, game)
@@ -2641,7 +2665,7 @@ function registerClipOnlySession(opts: {
   })
   if (existing) {
     captureStore.updateClipOnlyMeta(existing.id, { clipCount, timeline: opts.timeline })
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
     return
   }
 
@@ -2665,7 +2689,7 @@ function registerClipOnlySession(opts: {
       ? `Match on dashboard — ${clipLabel} (clips-only mode)`
       : `Match on dashboard — ${clipLabel} (no full recording)`,
   )
-  mainWindow?.webContents.send('recordings:updated')
+  notifyRecordingsUpdated()
 }
 
 async function syncScoutMomentsForJob(
@@ -2757,7 +2781,7 @@ async function prepareTimelineForCoaching(
 
     if (recordingId) {
       captureStore.updateTimeline(recordingId, timeline)
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
     }
 
     return { extras: undefined }
@@ -2781,7 +2805,7 @@ async function prepareTimelineForCoaching(
 
   if (recordingId) {
     captureStore.updateTimeline(recordingId, timeline)
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
   }
 
   return { extras }
@@ -2799,7 +2823,7 @@ function sendAnalysisReadinessUpdate(
   targetWindow: BrowserWindow | null | undefined,
   readiness: AnalysisReadiness,
 ): void {
-  mainWindow?.webContents.send('recordings:updated')
+  notifyRecordingsUpdated()
   sendPostGameEventForRecording(
     targetWindow,
     recordingId,
@@ -2845,7 +2869,7 @@ async function recoverOrphanedValorantMetadata(rec: PendingRecording): Promise<b
     + `${rec.timeline.agent ? ` · ${rec.timeline.agent}` : ''}`,
     'valorant',
   )
-  mainWindow?.webContents.send('recordings:updated')
+  notifyRecordingsUpdated()
   return true
 }
 
@@ -2889,7 +2913,7 @@ function scheduleAnalysisReadinessRefresh(
   }
 
   const finish = (readiness: AnalysisReadiness) => {
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
     const pg = postGameWindow
     if (pg && !pg.isDestroyed()) {
       sendPostGameEventForRecording(
@@ -3096,7 +3120,7 @@ async function ensureAnalysisReadinessForAnalyse(
     if (!rec) return { ok: false, error: 'Recording not found', state: 'unavailable' }
     await refreshRecordingVodProbe(rec)
     readiness = getAnalysisReadiness(rec)
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
   }
 
   if (!readiness.ready) {
@@ -3578,7 +3602,9 @@ function setupGameDetection(): void {
     }
     if (waitForMatchEnd) {
       // onMatchEnded only fires when start() is running presence polls — skipped matches
-      // never call start(), so watch menus directly until the player leaves the map.
+      // never call start(), so watch menus directly until the player leaves the map
+      // (or goes straight into the next agent select).
+      log.info('[GameDetector] Skipped match — waiting for menus or the next agent select before re-arm')
       riotLocalApi.watchUntilMenus(
         emitNextMatchWatch,
         () => gameDetector.isMatchProcessRunning(),
@@ -3834,7 +3860,7 @@ function setupGameDetection(): void {
           captureRecordingStartTime: localClipContext.recordingStartTime,
         }, matchSessionStart)
         logActivity('Match and clips saved locally. Sign in to access them.')
-        mainWindow?.webContents.send('recordings:updated')
+        notifyRecordingsUpdated()
         if (resolvedFile) {
           localMediaWork++
           void (async () => {
@@ -3989,7 +4015,8 @@ function setupGameDetection(): void {
 
     // Close any existing post-game window first (consecutive match scenario —
     // match 2 can end before match 1's window is dismissed).
-    clearVodProbeCache()
+    // The VOD probe cache is keyed by path + mtime, so it is never stale and is not cleared here:
+    // clearing it re-probed every recording after each match and fed the post-match reload storm.
     postGameWindow?.close()
     resetPostGameSession(game, map, agent, getActiveUserId())
     const postMatchSession = capturePostGameSession()
@@ -4047,7 +4074,7 @@ function setupGameDetection(): void {
         void resolveDeadlockRecordingHero(lobbyMatchId, { fetchMatch: (id) => authManager.fetchDeadlockMatch(id) })
           .then((player) => {
             const label = recordingHeroLabel(player, null)
-            if (label && captureStore.setDeadlockHero(String(lobbyMatchId), label)) mainWindow?.webContents.send('recordings:updated')
+            if (label && captureStore.setDeadlockHero(String(lobbyMatchId), label)) notifyRecordingsUpdated()
           })
           .catch(() => { /* best effort */ })
       }
@@ -4168,7 +4195,7 @@ function setupGameDetection(): void {
       })
       if (activityRecordingOwner !== null) trackProductActivity('recording_saved', game, activityRecordingOwner)
       setPrepStep('dashboard_row', savedRecording.id)
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
 
       logActivity(
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
@@ -4231,7 +4258,7 @@ function setupGameDetection(): void {
         if (!synced) return
         finalizeTimelineOffsetsForClips(timeline)
         captureStore.updateTimeline(savedRecording.id, timeline)
-        mainWindow?.webContents.send('recordings:updated')
+        notifyRecordingsUpdated()
       }
       const enrichPromise = prepareTimelineForCoaching(timeline, game, savedRecording.id, ownerId)
         .then(async (result) => {
@@ -5804,7 +5831,7 @@ function linkAutoDeadlockReviewJob(jobId: string, match: { matchId?: number | nu
     linkDeadlockAutoReview({ list: () => store.getAll(null), setJob }, jobId, match)
   }
   if (!ids.length) { log.info('[Replay] Deadlock auto-review not linked to a recording yet', { jobId }); return }
-  mainWindow?.webContents.send('recordings:updated')
+  notifyRecordingsUpdated()
   // Same poller as Review replay: links the replay timeline when the review finishes.
   for (const id of ids) watchDeadlockReview(id)
 }
@@ -5876,7 +5903,7 @@ async function resumePollForJob(
         ? Math.min(100, Math.max(0, Math.round(raw)))
         : status.status === 'queued' ? 0 : 5
       recordingsStore.setAnalysisProgress(rec.id, progress, status.current_step ?? null)
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
     },
     onCompleted: (status) => {
       const score = (status.result as Record<string, unknown> | undefined)?.overall_score as number | undefined
@@ -5889,7 +5916,7 @@ async function resumePollForJob(
         } else {
           recordingsStore.clearAnalysisPipeline(rec.id)
         }
-        mainWindow?.webContents.send('recordings:updated')
+        notifyRecordingsUpdated()
       }
       logActivity(`Resumed analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
       mainWindow?.webContents.send('dashboard:refresh')
@@ -5923,7 +5950,7 @@ async function resumePollForJob(
         const rec = recordingsStore.getByJobId(jobId)
         if (rec?.id) {
           recordingsStore.clearAnalysisPipeline(rec.id)
-          mainWindow?.webContents.send('recordings:updated')
+          notifyRecordingsUpdated()
         }
         logActivity('Resumed analysis poll stopped after 90 minutes — job may still be processing')
         tray?.setToolTip('UpForge — Analysis still running…')
@@ -5988,7 +6015,7 @@ async function uploadArchiveOnlyImpl(
     effectivePath = resolved.path
     if (resolved.compressed && recordingId && effectivePath !== videoPath) {
       recordingsStore.updatePath(recordingId, effectivePath)
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
     }
     if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
       const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, false)
@@ -6005,7 +6032,7 @@ async function uploadArchiveOnlyImpl(
 
   if (recordingId) {
     recordingsStore.setPipelineArchiveOnly(recordingId, true)
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
   }
 
   send('post-game:upload-start', { game, map, agent, archiveOnly: true })
@@ -6035,7 +6062,7 @@ async function uploadArchiveOnlyImpl(
 
     if (recordingId) {
       recordingsStore.markArchived(recordingId, result.archive_id)
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
       mainWindow?.webContents.send('dashboard:refresh')
     }
 
@@ -6066,7 +6093,7 @@ async function uploadArchiveOnlyImpl(
   } finally {
     if (recordingId) {
       recordingsStore.setPipelineArchiveOnly(recordingId, false)
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
     }
   }
 }
@@ -6159,7 +6186,7 @@ async function performUploadAndAnalyse(
 
   if (recordingId && shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
     recordingsStore.setPipelineDeferReason(recordingId, 'recording')
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
     send('post-game:upload-deferred', { reason: 'recording' })
   }
 
@@ -6167,7 +6194,7 @@ async function performUploadAndAnalyse(
 
   if (recordingId) {
     recordingsStore.clearPipelineDeferReason(recordingId)
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
   }
 
   if (recordingId) {
@@ -6182,7 +6209,7 @@ async function performUploadAndAnalyse(
   if (recordingId) {
     recordingsStore.setPipelineStatus(recordingId, 'uploading')
     activeUploadRecordingIds.add(recordingId)
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
   }
 
   let effectivePath = videoPath
@@ -6221,7 +6248,7 @@ async function performUploadAndAnalyse(
     }
     if (recordingId) {
       recordingsStore.updatePath(recordingId, effectivePath)
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
     }
     if (resolved.compressed && effectivePath !== videoPath) {
       const newGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(2)
@@ -6247,7 +6274,7 @@ async function performUploadAndAnalyse(
       if (recordingId) {
         recordingsStore.setPipelineDeferReason(recordingId, 'recording')
         recordingsStore.setPipelineStatus(recordingId, 'pending')
-        mainWindow?.webContents.send('recordings:updated')
+        notifyRecordingsUpdated()
       }
       logActivity(POST_MATCH_COPY.compressPaused)
       send('post-game:upload-deferred', { reason: 'recording' })
@@ -6373,7 +6400,7 @@ async function performUploadAndAnalyse(
               })
               if (recordingId) {
                 recordingsStore.updateTimeline(recordingId, timeline)
-                mainWindow?.webContents.send('recordings:updated')
+                notifyRecordingsUpdated()
               }
               const rrHistory = await authManager.fetchRRHistory().catch(() => [])
               coachingExtras = buildCoachingSubmissionExtras(
@@ -6454,7 +6481,7 @@ async function performUploadAndAnalyse(
     // Mark as analysed in store (if this was a saved recording)
     if (recordingId) {
       recordingsStore.markAnalysed(recordingId, result.job_id)
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
       mainWindow?.webContents.send('dashboard:refresh')
     }
 
@@ -6491,7 +6518,7 @@ async function performUploadAndAnalyse(
           } else {
             recordingsStore.clearAnalysisPipeline(recordingId)
           }
-          mainWindow?.webContents.send('recordings:updated')
+          notifyRecordingsUpdated()
         }
         const improvements = completedResult.priority_improvements as string[] | undefined
         const topIssue = completedResult.top_issue as string | undefined
@@ -6635,7 +6662,7 @@ async function performUploadAndAnalyse(
         if (reason === 'max_duration') {
           if (recordingId) {
             recordingsStore.clearAnalysisPipeline(recordingId)
-            mainWindow?.webContents.send('recordings:updated')
+            notifyRecordingsUpdated()
           }
           logActivity('Analysis poll reached 90 minute cap — job may still be processing on server')
           send('post-game:analysis-deferred', { jobId: result.job_id, reason: 'server' })
@@ -6659,13 +6686,13 @@ async function performUploadAndAnalyse(
       if (wasBackgroundWorkInterrupted(err)) {
         recordingsStore.setPipelineDeferReason(recordingId, 'recording')
         recordingsStore.setPipelineStatus(recordingId, 'pending')
-        mainWindow?.webContents.send('recordings:updated')
+        notifyRecordingsUpdated()
         logActivity(POST_MATCH_COPY.uploadPaused)
         send('post-game:upload-deferred', { reason: 'recording' })
         return null
       }
       recordingsStore.setPipelineStatus(recordingId, 'pending')
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
       clearDeferredUploadRetryPersisted(recordingId)
     }
 
@@ -6726,7 +6753,7 @@ async function performUploadAndAnalyse(
           timeline
         })
         effectiveRecordingId = saved.id
-        mainWindow?.webContents.send('recordings:updated')
+        notifyRecordingsUpdated()
         logActivity('Recording saved — can retry from the post-game window or dashboard')
       } catch {
         // Store save failed — fall through with no recordingId
@@ -6749,6 +6776,7 @@ function createSplashWindow(): BrowserWindow {
 async function startApp(): Promise<void> {
   await app.whenReady()
   electronApp.setAppUserModelId('gg.upforge.desktop')
+  startMainLoopLagMonitor((message) => log.warn(message))
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -7049,7 +7077,7 @@ async function startApp(): Promise<void> {
       setJob: (id, jobId) => recordingsStore.setDeadlockReviewJob(id, jobId),
     }, recordingId)
     if (result.ok) {
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
       watchDeadlockReview(recordingId)
     }
     return result
@@ -7657,7 +7685,7 @@ async function startApp(): Promise<void> {
     if (!canUseProductionFixtures()) return { ok: false as const, error: 'Developer access required' }
     try {
       const fixture = await productionVodFixtures.mount(authManager, archiveId)
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
       return { ok: true as const, fixture }
     } catch (err) {
       return { ok: false as const, error: productionFixtureError(err) }
@@ -7671,7 +7699,7 @@ async function startApp(): Promise<void> {
 
   ipcMain.handle('dev:production-vods:unmount', () => {
     const removed = productionVodFixtures.unmount()
-    if (removed) mainWindow?.webContents.send('recordings:updated')
+    if (removed) notifyRecordingsUpdated()
     return { ok: true as const, removed }
   })
 
@@ -7697,7 +7725,7 @@ async function startApp(): Promise<void> {
       const rec = recordingsStore.getById(recordingId)
       if (rec) {
         const readiness = getAnalysisReadiness(rec)
-        mainWindow?.webContents.send('recordings:updated')
+        notifyRecordingsUpdated()
         if (notifyWin) {
           sendPostGameEventForRecording(
             notifyWin,
@@ -7725,7 +7753,17 @@ async function startApp(): Promise<void> {
     return { ok: true as const }
   })
 
+  const recordingsProbeSweep = createVodProbeSweep<PendingRecording>({
+    readiness: (rec) => getVodFileReadiness(rec),
+    probe: (rec) => refreshRecordingVodProbe(rec),
+    notify: notifyRecordingsUpdated,
+  })
+
+  const countRecordingsGet = createCallRateLogger('recordings:get', (message) => log.warn(message))
+  const countRecordingsListAll = createCallRateLogger('recordings:list-all', (message) => log.warn(message))
+
   ipcMain.handle('recordings:get', async () => {
+    countRecordingsGet()
     const userId = getActiveUserId()
     if (userId != null && recordingsStore) {
       recordingsStore.healMissingPaths([
@@ -7747,16 +7785,9 @@ async function startApp(): Promise<void> {
     const needsProbe = pending.filter(
       (rec) => rec.path && !rec.clipsOnly && !(rec.cloudArchived && rec.archiveId),
     )
-    if (needsProbe.length) {
-      void (async () => {
-        for (const rec of needsProbe) {
-          const before = getVodFileReadiness(rec)
-          await refreshRecordingVodProbe(rec)
-          // Publish each result; one slow old VOD must not hold every row at "finalizing".
-          if (getVodFileReadiness(rec) !== before) mainWindow?.webContents.send('recordings:updated')
-        }
-      })()
-    }
+    // One sweep at a time: each change pushes `recordings:updated`, which makes the renderer call
+    // this handler again; starting a new loop per call fed back into a storm after matches.
+    recordingsProbeSweep.request(needsProbe)
 
     return pending.map((rec) => ({
       ...withAnalysisReadiness(rec),
@@ -7766,6 +7797,7 @@ async function startApp(): Promise<void> {
   })
 
   ipcMain.handle('recordings:list-all', async (_e, opts?: { allAccounts?: boolean }) => {
+    countRecordingsListAll()
     // The earlier dashboard scan may have run before OBS finished writing the file.
     // Re-scan when the user opens the library so interrupted finalisation self-heals.
     scanForOrphanedRecordings(true)
@@ -7852,7 +7884,7 @@ async function startApp(): Promise<void> {
 
     const updated = recordingsStore.getById(id)
     const analysisReadiness = updated ? getAnalysisReadiness(updated) : null
-    mainWindow?.webContents.send('recordings:updated')
+    notifyRecordingsUpdated()
 
     if (!analysisReadiness?.ready) {
       return {
@@ -8026,7 +8058,7 @@ async function startApp(): Promise<void> {
         agent: recording.agent,
         requestKind: 'manual',
       })
-      mainWindow?.webContents.send('recordings:updated')
+      notifyRecordingsUpdated()
       logActivity(POST_MATCH_COPY.pausedUntilGameEnds)
       return {
         error: POST_MATCH_COPY.pausedAnalyseBlocked,
@@ -8067,7 +8099,7 @@ async function startApp(): Promise<void> {
             coachingExtras,
           )
           recordingsStore.markAnalysed(recording.id, result.job_id)
-          mainWindow?.webContents.send('recordings:updated')
+          notifyRecordingsUpdated()
           sendPostGameEventForRecording(
             win,
             recording.id,

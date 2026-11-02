@@ -1,4 +1,5 @@
 import { ref, computed, watch, onMounted, onUnmounted, inject, provide, type InjectionKey } from 'vue'
+import { singleFlight } from '../lib/single-flight'
 import { useRoute, useRouter } from 'vue-router'
 import type { AnalysisItem, PendingRecording } from '../env.d.ts'
 import {
@@ -153,8 +154,9 @@ function createCoachingHistory() {
     void reloadPendingRecordings()
   })
 
+  const reloadPendingOnUpdate = singleFlight(() => reloadPendingRecordings())
   const stopMatchUpdates = [
-    window.api.on('recordings:updated', () => { void reloadPendingRecordings() }),
+    window.api.on('recordings:updated', () => { void reloadPendingOnUpdate() }),
     window.api.on('dashboard:refresh', () => {
       invalidateGameAnalysesCache(primaryGame.value)
       void Promise.all([reloadAnalyses(), reloadPendingRecordings()])
