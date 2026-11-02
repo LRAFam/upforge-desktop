@@ -39,6 +39,34 @@ describe('matchReportView', () => {
     expect(matchReportView({ ...noNotes, notes_usage: { used: 0, limit: 1 } }).notesCapped).toBe(false)
   })
 
+  it('shows the coach evidence, catalogue drill and rounds to rewatch', () => {
+    const notes = {
+      ...base.report!.notes!,
+      next_action: { finding_id: 'opening_duels', text: 'Take the first duel only when a teammate is ready to swing.' },
+      evidence: [
+        { finding_id: 'lobby', text: 'Enemy Jett won 4 opening duels and lost 3; you won 1 and lost 8.', rounds: [] },
+        { finding_id: 'trades', text: '', rounds: [] },
+      ],
+      drill: { finding_id: 'opening_duels', drill_id: 'over_peeking', why: 'Trains checking one angle at a time.', drill: 'Deathmatch 10 min: jiggle every angle once' },
+      watch_rounds: [{ round: 7, finding_id: 'opening_deaths', why: 'Died 1 second in to an Operator.' }, { round: 0, finding_id: 'x', why: 'bad' }],
+      enemy_read: { finding_id: 'enemy_attack', text: 'On attack they planted B in 4 rounds and A in 2.', rounds: [13] },
+    }
+    const v = matchReportView({ ...base, report: { ...base.report, notes } })
+    expect(v.evidence).toEqual(['Enemy Jett won 4 opening duels and lost 3; you won 1 and lost 8.'])
+    expect(v.drill).toEqual({ text: 'Deathmatch 10 min: jiggle every angle once', why: 'Trains checking one angle at a time.' })
+    expect(v.watchRounds).toEqual([{ round: 7, why: 'Died 1 second in to an Operator.' }])
+    expect(v.nextSteps[0].drillMetric).toBe('opening_death_rate')
+    expect(v.enemyRead).toBe('On attack they planted B in 4 rounds and A in 2.')
+  })
+
+  it('leaves the drill out when the coach picked none', () => {
+    const notes = { ...base.report!.notes!, drill: { finding_id: 'x', drill_id: '', why: '' } }
+    const v = matchReportView({ ...base, report: { ...base.report, notes } })
+    expect(v.drill).toBeNull()
+    expect(v.watchRounds).toEqual([])
+    expect(v.enemyRead).toBeNull()
+  })
+
   it('marks alt-account matches', () => {
     expect(matchReportView({ ...base, account: { is_main: false } }).isAlt).toBe(true)
   })

@@ -298,7 +298,20 @@ function back(): void { if (window.history.length > 1) router.back(); else route
               <ol>
                 <li v-for="(step, i) in view.nextSteps" :key="i" class="uf-t3">{{ step.text }}</li>
               </ol>
+              <p v-if="view.drill" class="uf-t3 mr3-drill">
+                <span class="uf-t4">Drill</span> {{ view.drill.text }}<span v-if="view.drill.why" class="uf-t4"> · {{ view.drill.why }}</span>
+              </p>
               <UfButton v-if="view.nextSteps.some(s => s.drillMetric)" variant="secondary" icon="practice" @click="practise">Practise this</UfButton>
+            </div>
+            <div v-if="view.enemyRead" class="mr3-focus">
+              <span class="uf-label">How they played</span>
+              <p class="uf-t3">{{ view.enemyRead }}</p>
+            </div>
+            <div v-if="view.watchRounds?.length" class="mr3-next">
+              <span class="uf-label">Rounds to rewatch</span>
+              <ul class="mr3-watch">
+                <li v-for="w in view.watchRounds" :key="w.round"><span class="uf-t3 uf-num">R{{ w.round }}</span><span class="uf-t4">{{ w.why }}</span></li>
+              </ul>
             </div>
             <!-- Reserved: "Review a round" (paid, visual). Hidden until round-review pricing is decided. -->
           </section>
@@ -330,6 +343,9 @@ function back(): void { if (window.history.length > 1) router.back(); else route
 .mr3-allowance { margin: 0; }
 .mr3-focus, .mr3-next { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--uf-line); }
 .mr3-next ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.mr3-drill { margin: 0; }
+.mr3-watch { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.mr3-watch li { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: baseline; }
 .mr3-next :deep(button) { align-self: flex-start; margin-top: 6px; }
 .mr3-empty { display: flex; flex-direction: column; gap: 12px; padding: 64px 40px; max-width: 640px; }
 .mr3-actions { display: flex; gap: 12px; margin-top: 8px; }

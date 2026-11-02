@@ -25,7 +25,18 @@ export interface MatchReportFacts {
   opening_impact?: { first_kills?: number; first_kill_wins?: number; first_deaths?: number; first_death_wins?: number } | null
 }
 
-export interface MatchReportNotes { headline?: NoteClaim; subline?: NoteClaim; next_action?: NoteClaim; positive?: NoteClaim | null }
+export interface MatchReportNotes {
+  headline?: NoteClaim
+  subline?: NoteClaim
+  next_action?: NoteClaim
+  positive?: NoteClaim | null
+  evidence?: NoteClaim[]
+  /** Catalogue drill the coach picked (drill text attached by the AI service), or drill_id "" for none. */
+  drill?: { finding_id?: string; drill_id?: string; why?: string; drill?: string } | null
+  watch_rounds?: Array<{ round: number; finding_id?: string; why?: string }>
+  /** One checked sentence on how the enemy team played (site they hit, where they held). */
+  enemy_read?: NoteClaim | null
+}
 
 export interface MatchReportResponse {
   success?: boolean
@@ -71,7 +82,7 @@ export interface MatchReportView {
   focusCheck: { label: string; hit: boolean } | null
   nextSteps: NextStep[]
   isAlt: boolean
-  /** Coach evidence lines (AI notes on League, CS2 and Deadlock reports). */
+  /** Coach evidence lines (Valorant notes, and AI notes on League, CS2 and Deadlock reports). */
   evidence?: string[]
   /** Stats-based UpForge score 0–1000 (Valorant report); null until the API scores the match. */
   upforgeScore?: number | null
@@ -82,6 +93,12 @@ export interface MatchReportView {
   itemBuild?: import('./deadlock-item-build').DeadlockBuildStep[] | null
   /** League: spells, items and trinket (API `loadout`). */
   loadout?: { items?: number[]; summoner_spells?: number[] } | null
+  /** Valorant: the practice drill the coach picked for the next step. */
+  drill?: { text: string; why: string } | null
+  /** Valorant: rounds the coach says are worth rewatching, with the reason. */
+  watchRounds?: Array<{ round: number; why: string }>
+  /** Valorant: how the enemy team played, from Riot's position snapshots. */
+  enemyRead?: string | null
 }
 
 /** Coach finding → focus metric, so a next step can open the matching drills. */
@@ -92,6 +109,7 @@ const FINDING_METRIC: Record<string, string> = {
   zero_damage: 'zero_damage_round_rate',
   headshots: 'headshot_hit_rate',
   leg_hits: 'leg_hit_rate',
+  opening_duels: 'opening_death_rate',
 }
 
 const n = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
@@ -144,6 +162,13 @@ export function matchReportView(res: MatchReportResponse): MatchReportView {
     isAlt: res.account?.is_main === false,
     upforgeScore: sanitizeUpforgeScore(res.upforge_score),
     upforgeScoreBreakdown: sanitizeUpforgeScoreBreakdown(res.upforge_score_breakdown),
+    evidence: (notes?.evidence ?? []).map(e => e?.text?.trim() ?? '').filter(Boolean).slice(0, 3),
+    drill: notes?.drill?.drill_id && notes.drill.drill ? { text: notes.drill.drill, why: notes.drill.why ?? '' } : null,
+    watchRounds: (notes?.watch_rounds ?? [])
+      .filter(w => Number.isInteger(w?.round) && w.round > 0 && !!w.why?.trim())
+      .slice(0, 3)
+      .map(w => ({ round: w.round, why: w.why!.trim() })),
+    enemyRead: notes?.enemy_read?.text?.trim() || null,
   }
 }
 
