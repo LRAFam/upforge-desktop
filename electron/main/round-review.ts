@@ -30,9 +30,15 @@ export function validJobId(jobId: unknown): jobId is string {
 
 type Result<T> = { ok: true } & T | { ok: false; error: string; status?: number; allowance?: RoundReviewAllowance }
 
+const UNAVAILABLE = 'Round review is unavailable right now.'
+
+function isReview(review: unknown): review is RoundReview {
+  return typeof review === 'object' && review !== null && typeof (review as { id?: unknown }).id === 'number'
+}
+
 function failure(e: unknown): { ok: false; error: string; status?: number; allowance?: RoundReviewAllowance } {
   const res = (e as { response?: { status?: number; data?: { message?: string; allowance?: RoundReviewAllowance } } })?.response
-  return { ok: false, status: res?.status, error: res?.data?.message ?? 'Round review is unavailable right now.', allowance: res?.data?.allowance }
+  return { ok: false, status: res?.status, error: res?.data?.message ?? UNAVAILABLE, allowance: res?.data?.allowance }
 }
 
 export async function getRoundReviewAllowance(api: AxiosInstance): Promise<Result<{ allowance: RoundReviewAllowance }>> {
@@ -43,19 +49,24 @@ export async function listRoundReviews(api: AxiosInstance, jobId: unknown): Prom
   if (!validJobId(jobId)) return { ok: false, error: 'Invalid match' }
   try {
     const d = (await api.get(`/api/analysis-jobs/${jobId}/round-reviews`)).data
-    return { ok: true, reviews: d.reviews ?? [], allowance: d.allowance }
+    return { ok: true, reviews: Array.isArray(d?.reviews) ? d.reviews : [], allowance: d.allowance }
   } catch (e) { return failure(e) }
 }
 
 export async function getRoundReview(api: AxiosInstance, jobId: unknown, round: unknown): Promise<Result<{ review: RoundReview }>> {
   if (!validJobId(jobId) || !validRound(round)) return { ok: false, error: 'Invalid round' }
-  try { return { ok: true, review: (await api.get(`/api/analysis-jobs/${jobId}/rounds/${round}/review`)).data.review } } catch (e) { return failure(e) }
+  try {
+    const review = (await api.get(`/api/analysis-jobs/${jobId}/rounds/${round}/review`)).data?.review
+    if (!isReview(review)) return { ok: false, error: UNAVAILABLE }
+    return { ok: true, review }
+  } catch (e) { return failure(e) }
 }
 
 export async function requestRoundReview(api: AxiosInstance, jobId: unknown, round: unknown): Promise<Result<{ review: RoundReview; charged: boolean; allowance: RoundReviewAllowance }>> {
   if (!validJobId(jobId) || !validRound(round)) return { ok: false, error: 'Invalid round' }
   try {
     const d = (await api.post(`/api/analysis-jobs/${jobId}/rounds/${round}/review`)).data
+    if (!isReview(d?.review)) return { ok: false, error: UNAVAILABLE }
     return { ok: true, review: d.review, charged: !!d.charged, allowance: d.allowance }
   } catch (e) { return failure(e) }
 }

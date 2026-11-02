@@ -9,7 +9,7 @@ import { showAppNotification } from './app-notifications'
 const POLL_INTERVAL_MS = 60 * 1000
 const COACH_NOTIFICATION_TYPES = new Set(['review_completed', 'review_requested', 'review_in_progress'])
 
-interface ApiNotification {
+export interface ApiNotification {
   id: number
   type: string
   title: string
@@ -28,6 +28,55 @@ interface PollerDeps {
   notifySilent: () => boolean
 }
 
+export type CoachNotificationTarget =
+  | { kind: 'browser-reviews'; reviewId?: number }
+  | { kind: 'vod-review'; analysisId: number; coachNotes: boolean; needsSeek: boolean }
+  | { kind: 'my-coaches' }
+
+const MAX_SHOWN_IDS = 500
+
+/** Unread coach-type notifications that have not been surfaced yet. */
+export function selectNewCoachNotifications(
+  notifications: ApiNotification[],
+  shownIds: ReadonlySet<number>,
+): ApiNotification[] {
+  return notifications.filter(
+    n => !n.read && !shownIds.has(n.id) && COACH_NOTIFICATION_TYPES.has(n.type),
+  )
+}
+
+/** Where a click on a surfaced coach notification should take the user. */
+export function coachNotificationTarget(notification: ApiNotification): CoachNotificationTarget {
+  const analysisId = notification.data?.analysis_id
+  if (notification.type === 'review_requested') {
+    return { kind: 'browser-reviews', reviewId: notification.data?.review_id }
+  }
+  if (analysisId) {
+    const isCompleted = notification.type === 'review_completed'
+    if (isCompleted || notification.type === 'review_in_progress') {
+      return { kind: 'vod-review', analysisId, coachNotes: isCompleted, needsSeek: isCompleted }
+    }
+    return { kind: 'vod-review', analysisId, coachNotes: false, needsSeek: false }
+  }
+  return { kind: 'my-coaches' }
+}
+
+/** Parse the persisted shown-id list, keeping only finite integers. */
+export function parseShownIds(raw: string): Set<number> {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return new Set()
+    return new Set(parsed.filter((v): v is number => typeof v === 'number' && Number.isInteger(v)))
+  } catch {
+    return new Set()
+  }
+}
+
+/** Keep the most recent ids (insertion order) for persistence. */
+export function trimShownIds(ids: Set<number>, max = MAX_SHOWN_IDS): number[] {
+  return [...ids].slice(-max)
+}
+
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let polling = false
 
@@ -37,9 +86,7 @@ function statePath(): string {
 
 function loadShownIds(): Set<number> {
   try {
-    const raw = readFileSync(statePath(), 'utf8')
-    const parsed = JSON.parse(raw) as number[]
-    return new Set(Array.isArray(parsed) ? parsed : [])
+    return parseShownIds(readFileSync(statePath(), 'utf8'))
   } catch {
     return new Set()
   }
@@ -47,8 +94,7 @@ function loadShownIds(): Set<number> {
 
 function saveShownIds(ids: Set<number>): void {
   try {
-    const trimmed = [...ids].slice(-500)
-    writeFileSync(statePath(), JSON.stringify(trimmed))
+    writeFileSync(statePath(), JSON.stringify(trimShownIds(ids)))
   } catch (err) {
     log.warn('[CoachNotify] Failed to persist shown notification ids:', err)
   }
@@ -96,48 +142,41 @@ async function pollOnce(deps: PollerDeps): Promise<void> {
     const shown = loadShownIds()
     let changed = false
 
-    for (const notification of notifications) {
-      if (notification.read || shown.has(notification.id)) continue
-      if (!COACH_NOTIFICATION_TYPES.has(notification.type)) continue
-
+    for (const notification of selectNewCoachNotifications(notifications, shown)) {
       shown.add(notification.id)
       changed = true
 
       const analysisId = notification.data?.analysis_id
-      const reviewId = notification.data?.review_id
-      const isCoachRequest = notification.type === 'review_requested'
-      const isReviewInProgress = notification.type === 'review_in_progress'
       const onClick = () => {
         void markNotificationRead(deps.authManager, notification.id)
-        if (isCoachRequest) {
-          openCoachReviewsInBrowser(reviewId)
+        const target = coachNotificationTarget(notification)
+        if (target.kind === 'browser-reviews') {
+          openCoachReviewsInBrowser(target.reviewId)
           return
         }
-        if (isReviewInProgress || notification.type === 'review_completed') {
-          if (analysisId) {
-            void (async () => {
-              let seekMs: number | undefined
-              if (notification.type === 'review_completed') {
-                try {
-                  const res = await deps.authManager.getApi().get(`/api/analyses/${analysisId}/coach-review`)
-                  const review = res.data?.review ?? res.data
-                  const first = (review?.annotations as Array<{ video_offset_ms?: number | null }> | undefined)
-                    ?.find(a => a.video_offset_ms != null && !Number.isNaN(a.video_offset_ms))
-                  if (first?.video_offset_ms != null) seekMs = first.video_offset_ms
-                } catch {
-                  // Fall back to coachNotes-only deep link.
-                }
-              }
-              openVodReviewForAnalysis(deps.getMainWindow(), analysisId, {
-                coachNotes: notification.type === 'review_completed',
-                seekMs,
-              })
-            })()
+        if (target.kind === 'vod-review') {
+          if (!target.needsSeek && !target.coachNotes) {
+            openVodReviewForAnalysis(deps.getMainWindow(), target.analysisId)
             return
           }
-        }
-        if (analysisId) {
-          openVodReviewForAnalysis(deps.getMainWindow(), analysisId)
+          void (async () => {
+            let seekMs: number | undefined
+            if (target.needsSeek) {
+              try {
+                const res = await deps.authManager.getApi().get(`/api/analyses/${target.analysisId}/coach-review`)
+                const review = res.data?.review ?? res.data
+                const first = (review?.annotations as Array<{ video_offset_ms?: number | null }> | undefined)
+                  ?.find(a => a.video_offset_ms != null && !Number.isNaN(a.video_offset_ms))
+                if (first?.video_offset_ms != null) seekMs = first.video_offset_ms
+              } catch {
+                // Fall back to coachNotes-only deep link.
+              }
+            }
+            openVodReviewForAnalysis(deps.getMainWindow(), target.analysisId, {
+              coachNotes: target.coachNotes,
+              seekMs,
+            })
+          })()
           return
         }
         void shell.openExternal(`${getFrontendBaseUrl()}/my-coaches`)
