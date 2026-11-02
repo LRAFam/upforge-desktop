@@ -54,9 +54,10 @@ function lastIndexAtOrBefore(times: (i: number) => number, n: number, t: number)
 export function playerAt(c: CompactReplay, puuid: string, t: number): { x: number; y: number; yaw: number; speed: number } | null {
   const tr = c.tracks[puuid]
   if (!tr?.length) return null
-  const i = lastIndexAtOrBefore((k) => tr[k][0], tr.length, t)
-  if (i < 0) return { x: tr[0][1], y: tr[0][2], yaw: tr[0][3], speed: tr[0][4] }
-  const a = tr[i]
+  const i = lastIndexAtOrBefore((k) => tr[k]![0], tr.length, t)
+  const first = tr[0]!
+  if (i < 0) return { x: first[1], y: first[2], yaw: first[3], speed: first[4] }
+  const a = tr[i]!
   const b = tr[i + 1]
   if (!b || b[0] - a[0] > 1000) return { x: a[1], y: a[2], yaw: a[3], speed: a[4] }
   const f = (t - a[0]) / (b[0] - a[0])
@@ -105,8 +106,9 @@ export function spikeAt(c: CompactReplay, r: ReplayRound, t: number):
 /** Position of an ability object at t (moving projectiles/pawns follow their track). */
 export function utilityAt(u: ReplayUtility, t: number): { x: number; y: number } | null {
   if (u.track?.length) {
-    const i = lastIndexAtOrBefore((k) => u.track![k][0], u.track.length, t)
-    return i < 0 ? null : { x: u.track[i][1], y: u.track[i][2] }
+    const i = lastIndexAtOrBefore((k) => u.track![k]![0], u.track.length, t)
+    const p = i < 0 ? undefined : u.track[i]
+    return p ? { x: p[1], y: p[2] } : null
   }
   if (u.kind === 'projectile') return null
   return u.x != null && u.y != null ? { x: u.x, y: u.y } : null
@@ -135,13 +137,14 @@ export function recordingToReplayOffset(
   for (const k of riotKills) {
     if (typeof k.videoOffsetMs !== 'number') continue
     const cands = (byPair.get(`${k.killerPuuid}|${k.victimPuuid}`) ?? []).filter((i) => !used.has(i))
-    if (!cands.length) continue
-    used.add(cands[0])
-    deltas.push(c.kills[cands[0]].t - k.videoOffsetMs)
+    const first = cands[0]
+    if (first === undefined) continue
+    used.add(first)
+    deltas.push(c.kills[first]!.t - k.videoOffsetMs)
   }
   if (deltas.length < 3) return null
   deltas.sort((a, b) => a - b)
-  return deltas[Math.floor(deltas.length / 2)]
+  return deltas[Math.floor(deltas.length / 2)] ?? null
 }
 
 export const AGENT_ICON = (agentId: string) => `https://media.valorant-api.com/agents/${agentId}/displayicon.png`
