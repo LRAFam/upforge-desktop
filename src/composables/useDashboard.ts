@@ -1,4 +1,5 @@
 import { openUpgrade as startUpgrade } from '../lib/upgrade'
+import { singleFlight } from '../lib/single-flight'
 import { ref, computed, inject, provide, watch, onMounted, onUnmounted, type InjectionKey } from 'vue'
 import { readCache, writeCache } from '../lib/stale-cache'
 import { useRouter } from 'vue-router'
@@ -1665,7 +1666,8 @@ function createDashboard(opts: DashboardOptions = {}) {
     ipcCleanup.push(window.api.on('dashboard:last-insight', (...args: unknown[]) => {
       lastInsight.value = args[0] as typeof lastInsight.value
     }))
-    ipcCleanup.push(window.api.on('recordings:updated', loadPendingRecordings))
+    // Single-flight: a burst of updates after a match must not stack parallel full-list fetches.
+    ipcCleanup.push(window.api.on('recordings:updated', singleFlight(loadPendingRecordings)))
     ipcCleanup.push(window.api.on('dashboard:upload-progress', (...args: unknown[]) => {
       const data = args[0] as { recordingId: string; progress: number }
       if (!data?.recordingId) return

@@ -887,6 +887,7 @@
 </template>
 
 <script setup lang="ts">
+import { singleFlight } from '../lib/single-flight'
 import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
@@ -2096,7 +2097,7 @@ onMounted(() => {
     }
   }))
   ipcCleanup.push(window.api.on('recordings:updated', () => {
-    if (state.value === 'pending') void refreshPendingReadiness()
+    if (state.value === 'pending') void refreshPendingReadinessOnce()
   }))
   ipcCleanup.push(window.api.on('post-game:upload-error', (...args: unknown[]) => {
     applyUploadErrorPayload(args[0] as Parameters<typeof applyUploadErrorPayload>[0])
@@ -2235,6 +2236,9 @@ async function saveToCloudNow() {
     savingToCloud.value = false
   }
 }
+
+// Single-flight: post-match `recordings:updated` bursts must not stack full-list fetches.
+const refreshPendingReadinessOnce = singleFlight(() => refreshPendingReadiness())
 
 async function refreshPendingReadiness() {
   if (!pendingRecordingId.value) return

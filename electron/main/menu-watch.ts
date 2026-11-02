@@ -8,11 +8,21 @@ export type MenuWatchLoop = 'MENUS' | 'PREGAME' | 'INGAME' | 'UNKNOWN' | string
 export interface MenuWatchState {
   sawIngame: boolean
   lastLoop: string | null
+  /** Consecutive PREGAME polls after INGAME (a new agent select). */
+  pregameAfterIngame?: number
 }
+
+/**
+ * PREGAME polls in a row (2 s apart) after INGAME that end the wait. Players can queue from inside a
+ * skipped match (the Range): INGAME → agent select → the next match, with no MENUS in between, so
+ * waiting for MENUS missed that whole next match (first Swiftplay of 2 Nov 2026 was not recorded).
+ * Two polls rather than one so a single stray PREGAME reading cannot end the wait.
+ */
+export const PREGAME_POLLS_TO_END_WAIT = 2
 
 export interface MenuWatchTickResult {
   state: MenuWatchState
-  /** True when the player has left a real INGAME session for MENUS. */
+  /** True when the player has left a real INGAME session (for MENUS, or into the next agent select). */
   returnedToMenus: boolean
 }
 
@@ -40,7 +50,7 @@ export function applyMenuWatchTick(
 
   if (loop === 'INGAME') {
     return {
-      state: { sawIngame: true, lastLoop: 'INGAME' },
+      state: { sawIngame: true, lastLoop: 'INGAME', pregameAfterIngame: 0 },
       returnedToMenus: false,
     }
   }
@@ -48,7 +58,12 @@ export function applyMenuWatchTick(
   // Ignore PREGAME transitions for lastLoop so agent-select back-outs don't
   // look like "left INGAME → MENUS" after a brief lobby flash.
   if (loop === 'PREGAME') {
-    return { state: prev, returnedToMenus: false }
+    if (!prev.sawIngame || prev.lastLoop !== 'INGAME') return { state: prev, returnedToMenus: false }
+    const pregameAfterIngame = (prev.pregameAfterIngame ?? 0) + 1
+    if (pregameAfterIngame >= PREGAME_POLLS_TO_END_WAIT) {
+      return { state: { sawIngame: true, lastLoop: 'PREGAME' }, returnedToMenus: true }
+    }
+    return { state: { ...prev, pregameAfterIngame }, returnedToMenus: false }
   }
 
   return {
