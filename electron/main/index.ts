@@ -2,6 +2,7 @@ import { getApiBaseUrl } from './api-base'
 import { saveReplay } from './valorant-replay-download'
 import { ValorantReplaySync, type ReplaySyncState } from './valorant-replay-sync'
 import { ValorantReplayUploader } from './valorant-replay-uploader'
+import { fetchViewerReplay } from './valorant-replay-viewer'
 import { resolveValorantGameMode } from './riot-queue-id'
 import { hasValorantReturnedToMenus, isValorantStillInLiveMatch } from './valorant-match-end'
 import { startRecordingWhenReady } from './recording-start'
@@ -7157,6 +7158,8 @@ async function startApp(): Promise<void> {
   setTimeout(runReplaySync, 90_000)
   setInterval(runReplaySync, 5 * 60_000)
   ipcMain.handle('dev:valorant-replay:sync', async () => ({ run: await replaySync.run(), state: replaySync.status() }))
+  ipcMain.handle('valorant-replay:get', async (_event, args: { matchId?: string }) =>
+    fetchViewerReplay(String(args?.matchId ?? ''), authManager.getToken()))
 
   ipcMain.handle('dev:get-diagnostics', async () => {
     const analysisPipeline = await buildAnalysisPipelineDiagnostics({

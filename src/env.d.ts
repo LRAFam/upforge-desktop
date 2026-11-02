@@ -1001,6 +1001,12 @@ declare global {
         reviewRound: () => Promise<{ ok: boolean; error?: string }>
         onEvent: (cb: (e: import('./lib/coach-flow-demo').FlowEvent) => void) => () => void
       }
+      valorantReplay: {
+        get: (matchId: string) => Promise<
+          | { ok: true; status: 'parsed'; compact: import('./lib/replay-viewer').CompactReplay }
+          | { ok: false; status: string; error?: string }
+        >
+      }
       dev: {
         simulateGame: (game?: string, durationMs?: number) => Promise<{ ok: boolean }>
         listProductionVods: () => Promise<

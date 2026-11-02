@@ -234,6 +234,10 @@ const api = {
       ipcRenderer.invoke('dev:valorant-replay:download', { matchId }),
     syncValorantReplays: () => ipcRenderer.invoke('dev:valorant-replay:sync'),
   },
+  valorantReplay: {
+    /** The parsed replay of one of the player's matches (for the 2D round viewer). */
+    get: (matchId: string) => ipcRenderer.invoke('valorant-replay:get', { matchId }),
+  },
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     close: () => ipcRenderer.invoke('window:close'),
