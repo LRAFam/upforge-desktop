@@ -177,6 +177,9 @@ const statusItems = computed<StatusItem[]>(() => {
       <SettingsRow label="Record full match VODs" hint="Off = replay-buffer kill clips only. No AI match coaching without a VOD.">
         <SettingsToggle label="Record full match VODs" :on="settings.fullMatchRecording !== false" @click="toggleFullMatchRecording()" />
       </SettingsRow>
+      <SettingsRow label="Use VALORANT match replays" hint="After a match, UpForge downloads the match replay from Riot (like the in-game Replay button) and uploads it so coaching can see every player's movement and utility. Competitive, Unrated, Swiftplay and Premier.">
+        <SettingsToggle label="Use VALORANT match replays" :on="settings.valorantReplayUpload !== false" @click="settings.valorantReplayUpload = settings.valorantReplayUpload === false; debouncedSave()" />
+      </SettingsRow>
     </SettingsSection>
 
     <SettingsSection id="storage" title="Storage &amp; clips" hint="Where recordings live, how much space they use, and what gets cleaned up" :highlight-id="highlightSection">

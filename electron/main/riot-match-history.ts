@@ -2,6 +2,8 @@ export interface RiotMatchHistoryEntry {
   matchId: string
   /** Canonical source: History[].GameStartTimeMillis. */
   gameStartTimeMs: number | null
+  /** History[].QueueID, e.g. competitive, unrated, swiftplay, premier, custom ('' for customs). */
+  queueId?: string
 }
 
 export function parseRiotMatchHistory(payload: unknown): RiotMatchHistoryEntry[] {
@@ -11,7 +13,7 @@ export function parseRiotMatchHistory(payload: unknown): RiotMatchHistoryEntry[]
 
   return history.flatMap((raw): RiotMatchHistoryEntry[] => {
     if (!raw || typeof raw !== 'object') return []
-    const entry = raw as { MatchID?: unknown; GameStartTimeMillis?: unknown }
+    const entry = raw as { MatchID?: unknown; GameStartTimeMillis?: unknown; QueueID?: unknown }
     if (typeof entry.MatchID !== 'string' || entry.MatchID.length === 0) return []
     return [{
       matchId: entry.MatchID,
@@ -19,6 +21,7 @@ export function parseRiotMatchHistory(payload: unknown): RiotMatchHistoryEntry[]
         && Number.isFinite(entry.GameStartTimeMillis)
         ? entry.GameStartTimeMillis
         : null,
+      queueId: typeof entry.QueueID === 'string' ? entry.QueueID : undefined,
     }]
   })
 }

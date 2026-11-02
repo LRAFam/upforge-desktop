@@ -14,6 +14,10 @@ export interface RoundReview {
   error: string | null
   /** 'not_enough_to_coach' when the round had too little to review (refunded); otherwise 'review_failed'. */
   error_code?: 'not_enough_to_coach' | 'review_failed' | null
+  /** Whether the coach saw the match replay; null for reviews made before replays existed. */
+  replay_data?: 'on' | 'off' | null
+  /** Plain sentence saying why replay data was or wasn't used. */
+  replay_note?: string | null
   created_at: string | null
 }
 export interface RoundReviewAllowance { enabled: boolean; used: number; limit: number; remaining: number; resets_at: string }

@@ -499,6 +499,7 @@ function createSettings() {
     cachedEncoder: null,
     cachedUseDdagrab: null,
     devModeEnabled: false,
+    valorantReplayUpload: true,
     obsEnabled: true,
     obsHost: 'localhost',
     obsPort: 4455,

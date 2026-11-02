@@ -7,7 +7,7 @@
  * They are different features; never merge them. The nav doesn't change with the game: Practice,
  * Progress and Squad stay for every game (see v3AllowedRoutes).
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
 import { gameNavRoutes } from '../../lib/game-modules'
@@ -83,6 +83,13 @@ onMounted(async () => {
   if (p?.user) { profileUser.value = p.user; writeCache('sidebar:user', p.user) }
   devMode.value = !!(s as { devModeEnabled?: boolean } | null)?.devModeEnabled
 })
+
+// Show or hide Developer as soon as dev mode is toggled in Settings, without a restart.
+const stopSettingsWatch = window.api?.on?.('settings:changed', (...args: unknown[]) => {
+  const s = args[0] as { devModeEnabled?: boolean } | undefined
+  if (typeof s?.devModeEnabled === 'boolean') devMode.value = s.devModeEnabled
+})
+onUnmounted(() => { if (typeof stopSettingsWatch === 'function') stopSettingsWatch() })
 </script>
 
 <template>
