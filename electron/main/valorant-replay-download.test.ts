@@ -2,10 +2,12 @@ import crypto from 'crypto'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import zlib from 'zlib'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   clearReplayBaseCache,
   configRegion,
+  decodeBody,
   downloadReplay,
   saveReplay,
   sharedConfigUrl,
@@ -92,6 +94,28 @@ describe('downloadReplay', () => {
   it('needs the replay service in the config', async () => {
     const { get } = fakeGet({ config: { status: 200, body: JSON.stringify({ Collapsed: {} }) } })
     expect(await downloadReplay(MATCH, auth, get)).toEqual({ ok: false, error: 'config_missing_replay_service' })
+  })
+})
+
+describe('reply decoding', () => {
+  it('unzips gzip, deflate and brotli bodies', () => {
+    const json = Buffer.from('{"GameVersion":"x","Checksum":"y"}')
+    expect(decodeBody(zlib.gzipSync(json), 'gzip')).toEqual(json)
+    expect(decodeBody(zlib.deflateSync(json), 'deflate')).toEqual(json)
+    expect(decodeBody(zlib.brotliCompressSync(json), 'br')).toEqual(json)
+    expect(decodeBody(json, undefined)).toEqual(json)
+  })
+
+  it('reads a summary that starts with a byte order mark', async () => {
+    const { get } = fakeGet({ summary: { status: 200, body: `\uFEFF${JSON.stringify({ GameVersion: 'v', Checksum: sha })}` } })
+    expect(await downloadReplay(MATCH, auth, get)).toMatchObject({ ok: true })
+  })
+
+  it('says what Riot sent when the summary is not JSON', async () => {
+    const { get } = fakeGet({ summary: { status: 200, body: '<html>nope</html>' } })
+    const res = await downloadReplay(MATCH, auth, get)
+    expect(res.ok).toBe(false)
+    expect(!res.ok && res.error).toMatch(/^summary_invalid_json \(.*17 bytes: <html>nope<\/html>\)$/)
   })
 })
 

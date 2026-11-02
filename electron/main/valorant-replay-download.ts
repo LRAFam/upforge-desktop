@@ -15,6 +15,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import https from 'https'
 import path from 'path'
+import zlib from 'zlib'
 import { riotPdShard } from './riot-pd-shard'
 
 export const CLIENT_PLATFORM =
@@ -34,6 +35,7 @@ export interface ReplayAuth {
 export interface HttpResult {
   status: number
   body: Buffer
+  contentType?: string
 }
 
 export type HttpGet = (url: string, headers: Record<string, string>) => Promise<HttpResult>
@@ -66,6 +68,17 @@ export function sharedConfigUrl(region: string | null | undefined): string | nul
   return shard && r ? `https://shared.${shard}.a.pvp.net/v1/config/${r}` : null
 }
 
+/** Parse a JSON reply, tolerating a UTF-8 BOM. */
+function parseJson(body: Buffer): unknown {
+  return JSON.parse(body.toString('utf8').replace(/^\uFEFF/, ''))
+}
+
+/** Short, single-line description of an unexpected reply, so a failed test says what Riot sent. */
+export function describeReply(res: HttpResult): string {
+  const text = res.body.subarray(0, 80).toString('utf8').replace(/[^\x20-\x7e]/g, '?')
+  return `${res.contentType || 'no content-type'}, ${res.body.length} bytes: ${text}`
+}
+
 const baseCache = new Map<string, string>()
 
 export function clearReplayBaseCache(): void {
@@ -81,7 +94,7 @@ async function replayBaseUrl(auth: ReplayAuth, get: HttpGet): Promise<string | {
   if (res.status !== 200) return { error: `config_http_${res.status}` }
   let base: unknown
   try {
-    base = (JSON.parse(res.body.toString('utf8')) as { Collapsed?: Record<string, unknown> }).Collapsed?.[SERVICE_KEY]
+    base = (parseJson(res.body) as { Collapsed?: Record<string, unknown> }).Collapsed?.[SERVICE_KEY]
   } catch {
     return { error: 'config_invalid_json' }
   }
@@ -104,9 +117,9 @@ export async function downloadReplay(matchId: string, auth: ReplayAuth, get: Htt
     if (summaryRes.status !== 200) return { ok: false, error: `summary_http_${summaryRes.status}` }
     let summary: { GameVersion?: unknown; Checksum?: unknown }
     try {
-      summary = JSON.parse(summaryRes.body.toString('utf8'))
+      summary = parseJson(summaryRes.body) as typeof summary
     } catch {
-      return { ok: false, error: 'summary_invalid_json' }
+      return { ok: false, error: `summary_invalid_json (${describeReply(summaryRes)})` }
     }
     if (typeof summary.Checksum !== 'string' || !summary.Checksum) return { ok: false, error: 'summary_missing_checksum' }
     const replayRes = await get(`${prefix}replay`, headers)
@@ -131,9 +144,18 @@ export function saveReplay(dir: string, matchId: string, bytes: Buffer): string 
   return target
 }
 
+/** Undo gzip / deflate / brotli compression (Node's https, unlike fetch, leaves the body compressed). */
+export function decodeBody(body: Buffer, encoding: string | undefined): Buffer {
+  const enc = (encoding || '').trim().toLowerCase()
+  if (enc === 'gzip' || enc === 'x-gzip') return zlib.gunzipSync(body)
+  if (enc === 'deflate') return zlib.inflateSync(body)
+  if (enc === 'br') return zlib.brotliDecompressSync(body)
+  return body
+}
+
 export function httpsGet(url: string, headers: Record<string, string>, redirects = 3): Promise<HttpResult> {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers, family: 4 }, (res) => {
+    const req = https.get(url, { headers: { 'Accept-Encoding': 'gzip, deflate, br', ...headers }, family: 4 }, (res) => {
       const status = res.statusCode ?? 0
       if (status >= 300 && status < 400 && res.headers.location && redirects > 0) {
         res.resume()
@@ -153,7 +175,14 @@ export function httpsGet(url: string, headers: Record<string, string>, redirects
         }
         chunks.push(c)
       })
-      res.on('end', () => resolve({ status, body: Buffer.concat(chunks) }))
+      res.on('end', () => {
+        try {
+          const body = decodeBody(Buffer.concat(chunks), res.headers['content-encoding'])
+          resolve({ status, body, contentType: res.headers['content-type'] })
+        } catch (err) {
+          reject(err)
+        }
+      })
       res.on('error', reject)
     })
     req.on('error', reject)
