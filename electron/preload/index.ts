@@ -230,6 +230,8 @@ const api = {
     getActiveProductionVod: () => ipcRenderer.invoke('dev:production-vods:active'),
     unmountProductionVod: () => ipcRenderer.invoke('dev:production-vods:unmount'),
     getDiagnostics: () => ipcRenderer.invoke('dev:get-diagnostics'),
+    downloadValorantReplay: (matchId?: string) =>
+      ipcRenderer.invoke('dev:valorant-replay:download', { matchId }),
   },
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),

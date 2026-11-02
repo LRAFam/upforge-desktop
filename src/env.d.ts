@@ -1010,6 +1010,10 @@ declare global {
           | { ok: false; error: string }
         >
         getActiveProductionVod: () => Promise<{ ok: true; fixture: PendingRecording | null }>
+        downloadValorantReplay: (matchId?: string) => Promise<
+          | { ok: true; matchId: string; file: string; bytes: number; gameVersion: string }
+          | { ok: false; error: string; matchId?: string }
+        >
         unmountProductionVod: () => Promise<{ ok: true; removed: boolean }>
         getDiagnostics: () => Promise<{
           app: { version: string; platform: string; arch: string; electronVersion: string; nodeVersion: string; isDev: boolean }

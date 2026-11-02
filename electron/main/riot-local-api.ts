@@ -49,6 +49,7 @@ import {
 } from './riot-region'
 import { applyMenuWatchTick } from './menu-watch'
 import { parseRiotMatchHistory, type RiotMatchHistoryEntry } from './riot-match-history'
+import { downloadReplay, type ReplayDownloadResult } from './valorant-replay-download'
 import type { RecentMatchFetchResult } from './recent-match-export'
 export type {
   GameEvent,
@@ -1815,6 +1816,31 @@ export class RiotLocalApi {
   // ──────────────────────────────────────────────────────────────────────
 
   getLastGameMode(): string | null { return this.lastGameMode }
+
+  /**
+   * Download the player's own replay (.vrf) for a finished match: the latest one when no id is given.
+   * Post-game only (never while in a match), and only from the player's own match history.
+   */
+  async downloadOwnReplay(matchId?: string): Promise<ReplayDownloadResult & { matchId?: string }> {
+    if (!this.accessToken || !this.entitlementsToken || !this.region) {
+      if (!(await this.initAuth())) return { ok: false, error: 'riot_client_not_ready' }
+    }
+    if (await this.isMatchActive()) return { ok: false, error: 'match_in_progress' }
+    const history = await this._fetchRecentMatchHistory(20)
+    if (!history) return { ok: false, error: 'match_history_unavailable' }
+    const id = matchId ?? history[0]?.matchId
+    if (!id) return { ok: false, error: 'no_recent_match' }
+    if (!history.some((h) => h.matchId.toLowerCase() === id.toLowerCase())) {
+      return { ok: false, error: 'not_own_recent_match', matchId: id }
+    }
+    const res = await downloadReplay(id, {
+      region: this.region!,
+      accessToken: this.accessToken!,
+      entitlementsToken: this.entitlementsToken!,
+      clientVersion: this.clientVersion,
+    })
+    return { ...res, matchId: id }
+  }
 
   async isMatchActive(): Promise<boolean> {
     const state = await this.getSessionState()

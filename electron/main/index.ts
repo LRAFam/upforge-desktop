@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from './api-base'
+import { saveReplay } from './valorant-replay-download'
 import { resolveValorantGameMode } from './riot-queue-id'
 import { hasValorantReturnedToMenus, isValorantStillInLiveMatch } from './valorant-match-end'
 import { startRecordingWhenReady } from './recording-start'
@@ -7121,6 +7122,15 @@ async function startApp(): Promise<void> {
   ipcMain.handle('discord:get-status', () => discordRPC.getStatus())
 
   // Developer diagnostics — full internal state snapshot for the admin panel
+  // Developer test: download the latest own Valorant replay (.vrf) into userData/valorant-replays.
+  ipcMain.handle('dev:valorant-replay:download', async (_event, args?: { matchId?: string }) => {
+    const res = await riotLocalApi.downloadOwnReplay(args?.matchId)
+    if (!res.ok) return { ok: false as const, error: res.error, matchId: res.matchId }
+    const dir = join(app.getPath('userData'), 'valorant-replays')
+    const file = saveReplay(dir, res.matchId!, res.bytes)
+    return { ok: true as const, matchId: res.matchId!, file, bytes: res.bytes.length, gameVersion: res.gameVersion }
+  })
+
   ipcMain.handle('dev:get-diagnostics', async () => {
     const analysisPipeline = await buildAnalysisPipelineDiagnostics({
       uploadManager,

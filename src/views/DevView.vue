@@ -32,6 +32,28 @@
     <!-- Scrollable content -->
     <div class="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin scrollbar-thumb-white/10">
 
+      <!-- Valorant replay download test -->
+      <div class="rounded-xl border border-white/[0.10] p-3 space-y-2">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-xs font-semibold text-white">Valorant replay download</p>
+            <p class="text-[11px] text-gray-500">Downloads the replay of your latest finished match (not during a match).</p>
+          </div>
+          <button
+            class="px-3 py-1.5 rounded-lg text-xs bg-white/[0.06] hover:bg-white/[0.10] disabled:opacity-50"
+            :disabled="replayBusy"
+            @click="downloadReplay"
+          >
+            {{ replayBusy ? 'Downloading…' : 'Download latest replay' }}
+          </button>
+        </div>
+        <p v-if="replayResult" class="text-[11px] break-all" :class="replayResult.ok ? 'text-emerald-400' : 'text-red-400'">
+          {{ replayResult.ok
+            ? `Saved ${(replayResult.bytes / 1048576).toFixed(1)} MB (${replayResult.gameVersion}) to ${replayResult.file}`
+            : `Failed: ${replayResult.error}${replayResult.matchId ? ` (match ${replayResult.matchId})` : ''}` }}
+        </p>
+      </div>
+
       <!-- Loading -->
       <div v-if="loading && !diag" class="flex items-center justify-center h-40 text-gray-600 text-sm">
         Loading diagnostics…
@@ -445,6 +467,21 @@ const router = useRouter()
 type DiagData = Awaited<ReturnType<typeof window.api.dev.getDiagnostics>>
 
 const diag = ref<DiagData | null>(null)
+
+type ReplayResult = Awaited<ReturnType<typeof window.api.dev.downloadValorantReplay>>
+const replayBusy = ref(false)
+const replayResult = ref<ReplayResult | null>(null)
+async function downloadReplay() {
+  replayBusy.value = true
+  replayResult.value = null
+  try {
+    replayResult.value = await window.api.dev.downloadValorantReplay()
+  } catch (err) {
+    replayResult.value = { ok: false, error: err instanceof Error ? err.message : String(err) }
+  } finally {
+    replayBusy.value = false
+  }
+}
 const loading = ref(false)
 const error = ref<string | null>(null)
 const lastRefreshed = ref('')
