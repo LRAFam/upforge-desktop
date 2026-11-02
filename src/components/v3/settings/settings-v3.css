@@ -25,31 +25,16 @@
 .ui-v3 .uf-set-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .ui-v3 .uf-set-btn { height: 36px; padding: 0 14px; font-size: 13px; }
 
-/* ---- Switch: square track, red when on ---- */
-.ui-v3 .uf-switch { position: relative; width: 38px; height: 20px; flex: none; padding: 0; border: 1px solid var(--uf-line-2); border-radius: 2px; background: transparent; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease; }
-.ui-v3 .uf-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 1px; background: var(--uf-muted); transition: transform 0.15s ease, background 0.15s ease; }
-.ui-v3 .uf-switch[aria-checked='true'] { background: var(--uf-red); border-color: var(--uf-red); }
-.ui-v3 .uf-switch[aria-checked='true']::after { transform: translateX(18px); background: #fff; }
-.ui-v3 .uf-switch:disabled { opacity: 0.45; cursor: not-allowed; }
+/* Switch styles (.uf-switch) live in src/design/v3.css (shared by every screen). */
 
 /* ---- Fields ---- */
 .ui-v3 .uf-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .ui-v3 .uf-field > .uf-field-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.ui-v3 .uf-input, .ui-v3 .uf-select {
-  height: 38px; width: 100%; min-width: 0; padding: 0 12px; border: 1px solid var(--uf-line-2); border-radius: 0;
-  background: var(--uf-chrome); color: var(--uf-bone); font: 400 15px/1 var(--uf-body); box-shadow: none;
-}
-.ui-v3 .uf-input[readonly] { color: var(--uf-muted); }
-.ui-v3 .uf-input:focus, .ui-v3 .uf-select:focus { outline: none; border-color: var(--uf-red); }
-.ui-v3 .uf-input.is-mono { font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
-.ui-v3 .uf-select.is-inline { width: auto; }
-.ui-v3 .uf-range { width: 100%; accent-color: var(--uf-red); }
-.ui-v3 .uf-check { appearance: none; -webkit-appearance: none; margin: 2px 0 0; width: 16px; height: 16px; flex: none; position: relative; cursor: pointer;
-  border: 1px solid var(--uf-line-2); border-radius: 1px; background: var(--uf-raised); }
-.ui-v3 .uf-check:checked { background: var(--uf-red); border-color: var(--uf-red); }
-.ui-v3 .uf-check:checked::after { content: ''; position: absolute; left: 4px; top: 1px; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
-.ui-v3 .uf-check:disabled { opacity: 0.45; cursor: not-allowed; }
+/* .uf-input / .uf-select live in src/design/v3.css */
+.ui-v3 .uf-range { width: 100%; accent-color: var(--uf-bone); }
+/* Checkbox styles (.uf-check) live in src/design/v3.css; this only lays out a checkbox + its text. */
 .ui-v3 .uf-checkrow { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+.ui-v3 .uf-checkrow > .uf-check { margin-top: 2px; }
 .ui-v3 .uf-mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--uf-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- Choices: hairline rows, selected = red bar ---- */
@@ -91,8 +76,8 @@
 .ui-v3 .uf-note.is-plain::before { display: none; }
 
 /* ---- Key caps ---- */
-.ui-v3 .uf-kbd { display: inline-flex; align-items: center; height: 24px; padding: 0 7px; border: 1px solid var(--uf-line-2); font: 500 12px/1 ui-monospace, Menlo, monospace; color: var(--uf-bone); }
-.ui-v3 .uf-keybind { min-width: 132px; height: 36px; display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 0 10px; background: none; border: 1px solid var(--uf-line-2); color: var(--uf-bone); cursor: pointer; font: 500 13px/1 var(--uf-body); }
+.ui-v3 .uf-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 7px; border: 1px solid var(--uf-line-2); font: 500 12px/1 ui-monospace, Menlo, monospace; color: var(--uf-bone); }
+.ui-v3 .uf-keybind { height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 6px; background: none; border: 1px solid var(--uf-line-2); color: var(--uf-bone); cursor: pointer; font: 500 13px/1 var(--uf-body); }
 .ui-v3 .uf-keybind:hover { background: var(--uf-hover); }
 .ui-v3 .uf-keybind.is-listening { border-color: var(--uf-red); color: var(--uf-red); }
 
@@ -108,9 +93,6 @@
 
 @media (max-width: 760px) {
   .ui-v3 .uf-set-split, .ui-v3 .uf-choices.is-grid { grid-template-columns: 1fr; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ui-v3 .uf-switch, .ui-v3 .uf-switch::after { transition: none; }
 }
 
 /* ---- Status strip ---- */
@@ -143,8 +125,8 @@
 
 /* ---- Account profile ---- */
 .ui-v3 .uf-profile { display: flex; flex-direction: column; gap: 18px; }
-.ui-v3 .uf-profile-id { display: flex; align-items: flex-start; gap: 16px; }
-.ui-v3 .uf-profile-avatar { width: 48px; height: 48px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--uf-raised); border: 1px solid var(--uf-line-2); font: 800 26px/1 var(--uf-display); color: var(--uf-bone); }
+.ui-v3 .uf-profile-id { display: flex; align-items: center; gap: 18px; }
+.ui-v3 .uf-profile-rank { display: flex; align-items: center; gap: 8px; color: var(--uf-muted); }
 .ui-v3 .uf-profile-plan { margin-left: 8px; font: 600 12px/1 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--uf-muted); }
 .ui-v3 .uf-profile-plan.is-pro { color: var(--uf-gold); }
 .ui-v3 .uf-profile-linked { color: var(--uf-muted); }
@@ -166,6 +148,9 @@
 .ui-v3 .uf-link-role { margin-left: 10px; font: 600 12px/1 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--uf-faint); }
 .ui-v3 .uf-link-role.is-main { color: var(--uf-win); }
 .ui-v3 .uf-link-danger:hover { color: var(--uf-loss); }
+/* Every game's link form sits at the same indent as CS2's fields: no extra inset or rule. */
+.ui-v3 .uf-link-form { display: flex; flex-direction: column; gap: 14px; }
+.ui-v3 .uf-link-skel { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--uf-line); }
 .ui-v3 .uf-link-fields { display: grid; grid-template-columns: 1fr 120px 120px; gap: 10px; }
 .ui-v3 .uf-link-inline { display: flex; gap: 10px; }
 .ui-v3 .uf-link-inline .uf-input { flex: 1; }
@@ -190,3 +175,24 @@
 .ui-v3 .uf-badge { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-bottom: 1px solid var(--uf-line); text-align: center; }
 .ui-v3 .uf-badge img { width: 56px; height: 56px; object-fit: contain; }
 @media (max-width: 760px) { .ui-v3 .uf-obs-conn { grid-template-columns: 1fr; } }
+
+/* ---- Crosshair editor: live preview beside the controls ---- */
+.ui-v3 .uf-xh { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 28px; align-items: start; }
+.ui-v3 .uf-xh-preview { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 10px; }
+.ui-v3 .uf-xh-canvas { width: 200px; height: 200px; display: flex; align-items: center; justify-content: center; background: #0b0d10; border: 1px solid var(--uf-line); overflow: hidden; }
+.ui-v3 .uf-xh-canvas canvas { display: block; width: 200px; height: 200px; }
+.ui-v3 .uf-xh-controls { display: flex; flex-direction: column; min-width: 0; }
+.ui-v3 .uf-xh-group { display: flex; flex-direction: column; padding: 12px 0; border-top: 1px solid var(--uf-line); gap: 10px; }
+.ui-v3 .uf-xh-group:first-child { border-top: 0; padding-top: 0; }
+.ui-v3 .uf-xh-slider { display: grid; grid-template-columns: 96px minmax(0, 1fr) 48px; gap: 14px; align-items: center; }
+.ui-v3 .uf-xh-slider .uf-num { text-align: right; }
+.ui-v3 .uf-xh-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ui-v3 input[type='color'].uf-xh-swatch { background: none; -webkit-appearance: none; appearance: none; }
+.ui-v3 input[type='color'].uf-xh-swatch::-webkit-color-swatch-wrapper { padding: 0; }
+.ui-v3 input[type='color'].uf-xh-swatch::-webkit-color-swatch { border: 0; border-radius: 0; }
+.ui-v3 .uf-xh-swatch { width: 22px; height: 22px; padding: 0; border: 1px solid var(--uf-line-2); border-radius: 0; cursor: pointer; outline-offset: 2px; }
+.ui-v3 .uf-xh-swatch[aria-pressed='true'], .ui-v3 .uf-xh-swatch.is-on { outline: 2px solid var(--uf-bone); }
+.ui-v3 .uf-xh-swatch:focus-visible { outline: 2px solid var(--uf-red); }
+.ui-v3 .uf-xh-import { display: flex; gap: 10px; }
+.ui-v3 .uf-xh-import .uf-input { flex: 1; }
+@media (max-width: 760px) { .ui-v3 .uf-xh { grid-template-columns: 1fr; } .ui-v3 .uf-xh-preview { position: static; } }

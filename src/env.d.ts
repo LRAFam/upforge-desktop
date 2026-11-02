@@ -53,6 +53,9 @@ export interface TrainerLeaderboardEntry {
   user_id: number
   name: string
   tag: string | null
+  /** Latest Valorant snapshot of that player (API sends both; null when none). */
+  player_card_id?: string | null
+  current_rank?: string | null
   score: number
   accuracy_pct: number
   avg_reaction_ms: number
@@ -546,6 +549,8 @@ export interface ClipRecord {
 
 export interface AnalysisItem {
   id: number
+  /** When the match was played (API `played_at`); null when unknown. Prefer it over created_at for dates. */
+  played_at?: string | null
   /** Riot/Valve match id when the API knows it (League links stats coaching by it). */
   match_id?: string | null
   job_id: string | null
@@ -559,7 +564,12 @@ export interface AnalysisItem {
   assists: number | null
   kda: number | null
   combat_score: number | null
+  /** The AI coach's rating, stored 0–100 (shown as "Coach rating 7/10"). */
   overall_score: number | null
+  /** Stats-based UpForge score 0–1000 vs players at your rank; null/absent until the API scores it. */
+  upforge_score?: number | null
+  /** Only on detail endpoints (GET /api/analysis/{id}). */
+  upforge_score_breakdown?: import('./lib/upforge-score-breakdown').UpforgeScoreBreakdown | null
   rounds_won: number | null
   rounds_lost: number | null
   hs_pct: number | null
@@ -567,6 +577,8 @@ export interface AnalysisItem {
   created_at: string
   /** CS2 only — demo upload, FACEIT cloud, or desktop VOD coaching. */
   cs2_source?: 'demo_upload' | 'faceit_api' | 'desktop_vod'
+  /** CS2 only — ADR / KAST and where the row's numbers came from (null when not measured). */
+  cs2_stats?: { adr: number | null; kast_pct: number | null; source: 'demo' | 'desktop' | 'ai' | null }
 }
 
 export interface Cs2AnalysisItem {
@@ -578,11 +590,26 @@ export interface Cs2AnalysisItem {
   rounds_played: number | null
   score: string | null
   kd_ratio: number | null
+  /** Coach rating 1–10 (AI). */
   overall_rating: number | null
+  /** Stats-based UpForge score 0–1000 (API `upforge_score`); null until scored. */
+  upforge_score?: number | null
+  kills?: number | null
+  deaths?: number | null
+  assists?: number | null
+  won?: boolean | null
   created_at: string
   completed_at: string | null
   source?: 'demo_upload' | 'faceit_api' | 'desktop_vod'
   unified_id?: string
+  /** API 2 Nov 2026+ (absent on older builds). */
+  rounds_won?: number | null
+  rounds_lost?: number | null
+  adr?: number | null
+  kast_pct?: number | null
+  headshot_pct?: number | null
+  /** Where the numbers came from: parsed demo, the desktop's live match data, or the AI review. */
+  stats_source?: 'demo' | 'desktop' | 'ai' | null
 }
 
 export interface DeadlockAnalysisItem {
@@ -614,6 +641,13 @@ export interface LolMatchSummary {
   assists: number
   game_duration_seconds: number
   game_creation: number
+  /** API 2 Nov 2026+ (absent on older builds). */
+  champion_id?: number | null
+  /** `item0..item6` in slot order; 0 = empty; index 6 = trinket. */
+  items?: number[]
+  /** Data Dragon summoner spell keys (`summoner1Id`, `summoner2Id`). */
+  summoner_spells?: number[]
+  profile_icon_id?: number | null
 }
 
 /** A linked League account (main or alt) from /api/lol-accounts. */
@@ -665,6 +699,9 @@ export interface DeadlockProfileStats {
     denies?: number
     ranked_display_badge?: number | null
     hero_id?: number
+    /** Hero card / tall portrait art (API 2 Nov 2026+). */
+    hero_card?: string | null
+    hero_portrait?: string | null
   }>
   hero_stats: Array<{
     hero_id: number
@@ -673,6 +710,8 @@ export interface DeadlockProfileStats {
     hero_color: number[]
     matches_played: number
     win_rate: number
+    hero_card?: string | null
+    hero_portrait?: string | null
   }>
   mmr_history: Array<{ rank: number | null; start_time?: number; match_id?: number }>
   meta_insights?: Array<{
@@ -819,7 +858,7 @@ declare global {
         generateStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: true; report: import('./lib/starting-report').StartingReportResponse } | { ok: false; error: string }>
         dismissStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: boolean }>
         startStartingFocus: (game: 'valorant' | 'lol') => Promise<{ ok: boolean; focus?: unknown }>
-        listMatchReports: (limit?: number) => Promise<{ ok: true; reports: Array<{ match_id: string; played_at: string | null; map: string | null; agent: string | null; won: boolean | null; score: { ally: number; enemy: number } | null; headline: string | null; notes_source: string | null }> } | { ok: false; error: string }>
+        listMatchReports: (limit?: number) => Promise<{ ok: true; reports: Array<{ match_id: string; played_at: string | null; map: string | null; agent: string | null; won: boolean | null; score: { ally: number; enemy: number } | null; headline: string | null; notes_source: string | null; upforge_score?: number | null }> } | { ok: false; error: string }>
         syncFocus: () => Promise<import('./lib/focus').FocusSyncResult | null>
         onFocusUpdated: (cb: (payload: import('./lib/focus').FocusUpdate) => void) => () => void
         refreshDashboard: () => Promise<{ ok: boolean }>
@@ -827,6 +866,13 @@ declare global {
       }
       profile: {
         get: () => Promise<ProfileData | null>
+        /** Opens Discord's authorise page in the browser (state from the API); the web callback links it. */
+        linkDiscord: () => Promise<{ ok: boolean; error?: string }>
+      }
+      notifications: {
+        /** Last /api/notifications answer from the coach poller; null before the first poll. */
+        inbox: () => Promise<import('./components/v3/shell/notification-inbox').InboxSnapshot | null>
+        markRead: (id: number) => Promise<{ ok: boolean }>
       }
       billing: {
         openPortal: () => Promise<{ ok: boolean; error?: string }>
@@ -1427,6 +1473,10 @@ declare global {
         recurring: (limit?: number) => Promise<import('../electron/main/auth-manager').RecurringInsight[] | null>
         /** Mark a habit fixed / improving / back to active (manual status sticks). */
         setHabitStatus: (id: number, status: 'active' | 'improving' | 'resolved') => Promise<{ ok: boolean; error?: string }>
+        /** The active 10-week roadmap's current week (plan null = no roadmap running). */
+        weeklyPlan: () => Promise<import('../electron/main/ipc/progress-plan-ipc').WeeklyPlanResult>
+        /** Category scores from coached matches (locked = not on this plan). */
+        skillProfile: () => Promise<import('../electron/main/ipc/progress-plan-ipc').SkillProfileResult>
         playstyleProfile: () => Promise<{
           matches_tracked: number
           vods_analyzed?: number
@@ -1702,6 +1752,8 @@ declare global {
       lol: {
         getAnalyses: (limit?: number) => Promise<LolAnalysisItem[]>
         getRecentMatches: (force?: boolean) => Promise<LolMatchSummary[]>
+        /** Same list plus the Riot error state (`riot_unavailable`, reason, partial). */
+        getRecentMatchesResult?: (force?: boolean) => Promise<import('./lib/lol-recent').LolRecentResult>
         openAnalyze: () => Promise<{ ok: boolean }>
         openHistory: () => Promise<{ ok: boolean }>
         openResults: (analysisId: number | string) => Promise<{ ok: boolean }>

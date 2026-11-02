@@ -1,4 +1,5 @@
 /** Shape a stored CS2 analysis (GET /api/cs2/analyses/{jobId}) for the in-app result view. */
+import { mapDisplayName } from './display-names'
 import { buildCs2MatchView, type Cs2MatchView, type Cs2StatsV1 } from '../matchpage/cs2/cs2-match-view'
 
 export interface Cs2Issue { category: string; issue: string; evidence: string; fix: string }
@@ -27,7 +28,7 @@ export function shapeCs2Result(analysis: unknown): Cs2Result | null {
   const map = str(a.map)
   const score = str(a.score) ?? str((a.match_stats as Cs2StatsV1 | null)?.score)
   return {
-    title: [map ? map.replace(/^de_/, '').replace(/^\w/, ch => ch.toUpperCase()) : 'CS2 match', score?.replace('-', '–')].filter(Boolean).join(' · '),
+    title: [map ? mapDisplayName('cs2', map) : 'CS2 match', score?.replace('-', '–')].filter(Boolean).join(' · '),
     focus: str(c.priority_focus),
     summary: str(c.overall_summary),
     strengths: arr(c.strengths).map(str).filter((s): s is string => !!s).slice(0, 5),

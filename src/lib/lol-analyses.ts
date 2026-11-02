@@ -1,4 +1,5 @@
 import type { AnalysisItem, LolAnalysisItem } from '../env.d.ts'
+import { lolQueueLabel } from './lol'
 
 /** Map LoL analyses into the shared dashboard AnalysisItem shape. */
 export function mapLolToAnalysisItem(a: LolAnalysisItem): AnalysisItem {
@@ -8,7 +9,7 @@ export function mapLolToAnalysisItem(a: LolAnalysisItem): AnalysisItem {
     status: a.status,
     map: "Summoner's Rift",
     agent: a.champion,
-    game_mode: a.queue_id === 420 ? 'Ranked Solo/Duo' : 'LoL',
+    game_mode: a.queue_id == null ? 'League' : lolQueueLabel(a.queue_id),
     won: null,
     kills: null,
     deaths: null,

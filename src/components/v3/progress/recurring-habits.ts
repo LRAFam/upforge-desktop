@@ -4,6 +4,7 @@ export interface RecurringInsightLike {
   label: string | null
   text: string
   occurrences: number
+  analysisCount?: number | null
   status: string | null
   trend: string | null
   lastSeenAt: string | null
@@ -15,6 +16,8 @@ export interface RecurringHabitRow {
   id: number
   title: string
   detail: string | null
+  /** Maps the habit was seen on (from the API text), at most a few. */
+  maps: string[]
   seen: string
   lastSeen: string | null
   trend: { label: string; tone: HabitTrendTone } | null
@@ -23,11 +26,33 @@ export interface RecurringHabitRow {
 const MAX_ROWS = 5
 const MAX_TITLE = 90
 
-function firstSentence(text: string): string {
+const MAX_DETAIL = 160
+
+function firstSentence(text: string, max = MAX_TITLE): string {
   const t = text.trim().replace(/\s+/g, ' ')
   const cut = t.search(/[.!?](\s|$)/)
   const s = cut > 0 ? t.slice(0, cut + 1) : t
-  return s.length > MAX_TITLE ? `${s.slice(0, MAX_TITLE - 1).trimEnd()}…` : s
+  return s.length > max ? `${s.slice(0, max - 1).replace(/\s+\S*$/, '').replace(/[,;:—-]$/, '').trimEnd()}…` : s
+}
+
+/**
+ * The API stores merged habits as "{label} — flagged across N analyses (T sightings). {coach note} Maps: A, B…."
+ * (KnowledgeBankHabitSynthesizer). N there counts merged insight rows, not analyses, so the prefix is dropped;
+ * T is the same number as occurrence_count. Returns the coach's own note (cut at a word, never mid-word)
+ * and the maps it was seen on.
+ */
+export function parseHabitText(text: string): { note: string; maps: string[] } {
+  let t = text.trim().replace(/\s+/g, ' ')
+  t = t.replace(/^[^.]*?\s+[—-]\s+flagged across \d+ analys[ie]s \(\d+ sightings?\)\.\s*/i, '')
+  let maps: string[] = []
+  const m = t.match(/\s*Maps: ([^.]*?)(?:…|\.\.\.)?\.?$/)
+  if (m && m.index != null) {
+    maps = m[1].split(',').map(x => x.trim()).filter(Boolean)
+    t = t.slice(0, m.index).trim()
+  }
+  // The API truncates the note with "..." (often mid-word): cut back to the last whole word.
+  if (/\.\.\.$/.test(t)) t = `${t.slice(0, -3).replace(/\s+\S*$/, '').replace(/[,;:—(-]$/, '').trimEnd()}…`
+  return { note: t, maps }
 }
 
 export function relativeDays(iso: string | null, now = Date.now()): string | null {
@@ -49,6 +74,14 @@ function trendOf(trend: string | null, status: string | null): RecurringHabitRow
   return null
 }
 
+/** "Flagged in 2 matches · 3 times" when the API counts matches; older habits only know "times". */
+export function habitSeen(occurrences: number, analysisCount?: number | null): string {
+  const times = `${occurrences} ${occurrences === 1 ? 'time' : 'times'}`
+  if (analysisCount == null || analysisCount <= 0) return `Flagged ${times}`
+  const matches = `${analysisCount} ${analysisCount === 1 ? 'match' : 'matches'}`
+  return analysisCount === occurrences ? `Flagged in ${matches}` : `Flagged in ${matches} · ${times}`
+}
+
 /** Open habits only (resolved ones are wins, not "keeps coming up"), most recurring first, at most 5. */
 export function recurringHabitRows(rows: readonly RecurringInsightLike[] | null | undefined, now = Date.now()): RecurringHabitRow[] {
   if (!rows?.length) return []
@@ -57,14 +90,18 @@ export function recurringHabitRows(rows: readonly RecurringInsightLike[] | null 
     .sort((a, b) => b.occurrences - a.occurrences)
     .slice(0, MAX_ROWS)
     .map(r => {
-      const title = r.label?.trim() || firstSentence(r.text)
-      const detail = r.label && r.text.trim() ? firstSentence(r.text) : null
+      const { note, maps } = parseHabitText(r.text)
+      const title = r.label?.trim() || firstSentence(note)
+      const detail = r.label && note ? firstSentence(note, MAX_DETAIL) : null
       return {
         id: r.id,
         title,
-        detail: detail && detail !== title ? detail : null,
-        // Whole numbers only (copy rule): a count of analysed matches the coach flagged it in.
-        seen: `Flagged in ${r.occurrences} analysed ${r.occurrences === 1 ? 'match' : 'matches'}`,
+        // One plain line: the coach's latest note for this habit, never the title again.
+        detail: detail && detail.toLowerCase() !== title.toLowerCase() ? detail : null,
+        maps,
+        // Whole numbers only (copy rule). occurrence_count goes up once per coach finding, and one
+        // analysed match can add more than one, so it is "times", not "matches".
+        seen: habitSeen(r.occurrences, r.analysisCount),
         lastSeen: relativeDays(r.lastSeenAt, now),
         trend: trendOf(r.trend, r.status),
       }

@@ -44,7 +44,7 @@ function text(node: any): string {
 describe('PostGameV3', () => {
   it('ready: shows the real result, score, meta, coach line and evidence', () => {
     const out = render({
-      ready: true, tone: 'success', primaryLabel: 'Review coaching', secondaryLabel: 'Web report', score: 'Coaching score 720 / 1000 · B',
+      ready: true, tone: 'success', primaryLabel: 'Review coaching', secondaryLabel: 'Web report', score: 'UpForge score 720',
       summary: { result: 'win', ally: 13, enemy: 11, kills: 18, deaths: 14, assists: 6 },
       matchName: 'Jett', mapName: 'Bind', coachLine: 'Positioning during post-plant', clipCount: 3, showFeedback: true,
     })
@@ -52,7 +52,7 @@ describe('PostGameV3', () => {
     expect(out).toContain('13–11')
     expect(out).toContain('Jett · Bind · 18/14/6 K/D/A')
     expect(out).toContain('Positioning during post-plant')
-    expect(out).toContain('3 clips from your recording · Coaching score 720 / 1000 · B')
+    expect(out).toContain('3 clips from your recording · UpForge score 720')
     expect(out).toContain('Review coaching')
     expect(out).toContain('Was this coaching useful?')
     expect(out).not.toContain('Analysis usually takes')

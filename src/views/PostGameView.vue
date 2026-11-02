@@ -13,7 +13,7 @@
       :primary-label="state === 'ready' && result?.analysis_id ? 'Review coaching' : state === 'ready' ? 'Open report' : 'Open UpForge'"
       :secondary-label="state === 'ready' && result?.analysis_id && analysisUrl ? 'Web report' : null"
       :show-expectations="['preparing', 'uploading', 'analysing'].includes(state)"
-      :score="compactScore"
+      :score="v3ScoreLine"
       :show-feedback="state === 'ready' && Boolean(result?.analysis_id)"
       :feedback-rating="feedbackRating"
       :feedback-text="feedbackText"
@@ -933,6 +933,7 @@ import { demoDownloadProgressLabel, type DemoDownloadProgress } from '../lib/dem
 import PostGameDuelDiagnostics from '../components/post-game/PostGameDuelDiagnostics.vue'
 import PostGameCompactStatus from '../components/post-game/PostGameCompactStatus.vue'
 import PostGameV3 from './v3/PostGameV3.vue'
+import { matchScore } from '../lib/upforge-score'
 import { refreshStudentHub } from '../components/v3/roster-flow/useStudentHub'
 import { sendStateFor } from '../components/v3/roster-flow/roster-flow'
 import { uiV3 } from '../lib/ui-v3'
@@ -983,6 +984,8 @@ const matchDataStatus = ref<'fetched' | 'no_match_id' | 'no_region' | 'no_auth' 
 const killsCapured = ref(0)
 const result = ref<{
   overall_score: number
+  /** Stats-based UpForge score 0–1000 if a payload ever carries it; the AI result usually doesn't. */
+  upforge_score?: number | null
   analysis_id: number
   kills?: number | null
   deaths?: number | null
@@ -1510,6 +1513,15 @@ const compactScore = computed(() => {
   const score = result.value?.overall_score
   if (state.value !== 'ready' || score == null) return null
   return `Coaching score ${score * 10} / 1000 · ${scoreGrade(score)}`
+})
+
+// UI v3: the stats-based UpForge score when present, else the coach's rating out of 10 — never the AI
+// rating under the UpForge name, no letter grade (classic keeps compactScore).
+const v3ScoreLine = computed(() => {
+  if (state.value !== 'ready' || !result.value) return null
+  const s = matchScore(result.value)
+  if (!s) return null
+  return s.kind === 'stats' ? `UpForge score ${s.text}` : `Coach rating ${s.text}`
 })
 
 const roundTimelineCells = computed(() => {
@@ -2497,7 +2509,7 @@ watch(() => [uiV3.value, state.value, result.value?.analysis_id] as const, async
   const send = sendStateFor(hub, id)
   if (send.kind !== 'ready') return
   const eligible = send.coaches.filter(c => c.can_request_review !== false)
-  sendCoachName.value = eligible.length === 1 ? eligible[0].display_name : 'your coach'
+  sendCoachName.value = eligible.length === 1 ? eligible[0].display_name : 'a coach'
 }, { immediate: true })
 
 async function sendToCoach() {
@@ -2588,7 +2600,10 @@ function flashToast(message: string) {
 
 async function copyScore() {
   if (!result.value?.overall_score) return
-  const text = `UpForge Score: ${result.value.overall_score * 10}/1000 (${scoreGrade(result.value.overall_score)} — ${scoreLabel(result.value.overall_score)})`
+  // The AI rating is the coach's opinion: never copied under the UpForge name (stats score when present).
+  const s = matchScore(result.value)
+  if (!s) return
+  const text = s.kind === 'stats' ? `UpForge score: ${s.text} of 1000 (${s.label})` : `Coach rating: ${s.text} (${scoreLabel(result.value.overall_score)})`
   await navigator.clipboard.writeText(text).catch(() => {})
 }
 

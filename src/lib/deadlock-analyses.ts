@@ -1,4 +1,5 @@
 import type { AnalysisItem, DeadlockAnalysisItem } from '../env.d.ts'
+import { cs2RatingTo100 as coachRatingTo100 } from './cs2-analyses'
 
 function parseDeadlockWon(result: string | null): boolean | null {
   if (!result) return null
@@ -24,7 +25,7 @@ export function mapDeadlockToAnalysisItem(a: DeadlockAnalysisItem): AnalysisItem
     assists: a.assists,
     kda: a.kd_ratio,
     combat_score: null,
-    overall_score: rating != null ? (rating > 10 ? rating / 10 : rating) : null,
+    overall_score: coachRatingTo100(rating),
     rounds_won: null,
     rounds_lost: null,
     hs_pct: null,

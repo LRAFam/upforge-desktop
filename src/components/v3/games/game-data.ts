@@ -4,6 +4,7 @@
  * DeadlockDemoPanel and LolStatsPanel. Real data only — nothing here invents a value.
  */
 import type { DeadlockProfileStats, LolMatchSummary } from '../../../env.d.ts'
+import { mapDisplayName } from './display-names'
 
 export type DemoGame = 'cs2' | 'deadlock' | 'lol'
 
@@ -236,9 +237,9 @@ export function cs2MapsHaveWinRate(breakdown: Cs2Profile['valve_stats']['map_bre
   return (breakdown ?? []).some(r => typeof r.win_rate === 'number')
 }
 
+/** "de_vertigo" → "Vertigo" (see display-names.ts, the one map-name helper). */
 export function formatCs2Map(map: string): string {
-  const base = map.replace(/^(de|cs|ar)_/i, '')
-  return base.charAt(0).toUpperCase() + base.slice(1)
+  return mapDisplayName('cs2', map) || map
 }
 
 export function deadlockHeroRows(stats: DeadlockProfileStats | null, limit = 6): BarRow[] {
@@ -317,7 +318,8 @@ export function cs2Stats(profile: Cs2Profile | null, faceit: Cs2Faceit | null): 
     out.push({ value: String(v.matches_tracked), caption: 'Matches tracked', sub: 'In UpForge' })
     if (v.avg_kd != null) out.push({ value: v.avg_kd.toFixed(2), caption: 'Average K/D' })
     const a = v.averages
-    if (a?.adr.value != null) out.push({ value: a.adr.value.toFixed(0), caption: 'ADR', sub: over(a.adr.matches) })
+    // ADR 0 next to kills is an old web demo where damage wasn't parsed (the API now skips those), not a measurement.
+    if (a?.adr.value != null && !(a.adr.value <= 0 && (v.avg_kd ?? 0) > 0)) out.push({ value: a.adr.value.toFixed(0), caption: 'ADR', sub: over(a.adr.matches) })
     if (a?.headshot_pct.value != null) out.push({ value: `${Math.round(a.headshot_pct.value)}%`, caption: 'Headshot kills', sub: over(a.headshot_pct.matches) })
     if (a?.kast_pct.value != null) out.push({ value: `${Math.round(a.kast_pct.value)}%`, caption: 'KAST', sub: over(a.kast_pct.matches) })
     const o = v.opening_duels
@@ -361,8 +363,24 @@ export function deadlockStats(stats: DeadlockProfileStats | null): StatItem[] {
     out.push({ value: `${(s.avg_net_worth / 1000).toFixed(1)}k`, caption: 'Average souls', sub: percentileSub(s.percentiles?.net_worth) })
   }
   const lh = deadlockFarm(stats)
-  if (lh) out.push({ value: String(lh.lastHits), caption: 'Soul orbs secured per match', sub: `${lh.denies} denied · over ${lh.matches} ${lh.matches === 1 ? 'match' : 'matches'}` })
+  if (lh) out.push({ value: String(lh.lastHits), caption: 'Soul orbs secured per match', sub: `${lh.deniedTotal} denied in ${lh.matches} ${lh.matches === 1 ? 'match' : 'matches'}` })
   return out
+}
+
+/** "Haze 1–0 · Yamato 1–0" — wins and losses per hero, not a bare win rate on one game. */
+export function deadlockHeroRecord(stats: DeadlockProfileStats | null, limit = 3): string {
+  return [...(stats?.hero_stats ?? [])].filter(h => h.matches_played > 0)
+    .sort((a, b) => b.matches_played - a.matches_played).slice(0, limit)
+    .map((h) => {
+      const wins = Math.round((h.matches_played * h.win_rate) / 100)
+      return `${h.hero_name} ${wins}–${h.matches_played - wins}`
+    }).join(' · ')
+}
+
+/** Obscurus (tier 0) is Deadlock's unranked badge: say so instead of calling it a rank. */
+export function deadlockRankCaption(rank: { name?: string | null; tier?: number | null } | null | undefined): string {
+  if (!rank) return 'Current rank'
+  return rank.tier === 0 || rank.name === 'Obscurus' ? 'Unranked · play ranked matches to place' : 'Current rank'
 }
 
 /**
@@ -370,12 +388,13 @@ export function deadlockStats(stats: DeadlockProfileStats | null): StatItem[] {
  * these `last_hits` / `denies` (the scoreboard columns), but since the Feb 2025 update troopers need no
  * last hit: the counts are orbs you secured or denied by shooting.
  */
-export function deadlockFarm(stats: DeadlockProfileStats | null): { lastHits: number; denies: number; matches: number } | null {
+export function deadlockFarm(stats: DeadlockProfileStats | null): { lastHits: number; denies: number; deniedTotal: number; matches: number } | null {
   const rows = (stats?.recent_matches ?? []) as Array<DeadlockProfileStats['recent_matches'][number] & DeadlockMatchExtra>
   const counted = rows.filter(m => typeof m.last_hits === 'number' && typeof m.denies === 'number')
   if (!counted.length) return null
-  const avg = (k: 'last_hits' | 'denies') => Math.round(counted.reduce((n, m) => n + (m[k] as number), 0) / counted.length)
-  return { lastHits: avg('last_hits'), denies: avg('denies'), matches: counted.length }
+  const total = (k: 'last_hits' | 'denies') => counted.reduce((n, m) => n + (m[k] as number), 0)
+  // Denies are rare (often 0–1 a match), so they're shown as a count: a rounded average reads "0 denied".
+  return { lastHits: Math.round(total('last_hits') / counted.length), denies: Math.round(total('denies') / counted.length), deniedTotal: total('denies'), matches: counted.length }
 }
 
 export function lolStats(summary: LolSummary | null): StatItem[] {

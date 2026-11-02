@@ -5,8 +5,10 @@ import log from 'electron-log'
 import type { AuthManager } from './auth-manager'
 import { getFrontendBaseUrl } from './api-base'
 import { showAppNotification } from './app-notifications'
+import { toInboxSnapshot, type InboxSnapshot } from '../../src/components/v3/shell/notification-inbox'
 
-const POLL_INTERVAL_MS = 60 * 1000
+// 90 s = 40 calls/hour: the API allows 60/hour for the notifications list, so startup + manual opens stay under it.
+const POLL_INTERVAL_MS = 90 * 1000
 const COACH_NOTIFICATION_TYPES = new Set(['review_completed', 'review_requested', 'review_in_progress'])
 
 export interface ApiNotification {
@@ -79,6 +81,26 @@ export function trimShownIds(ids: Set<number>, max = MAX_SHOWN_IDS): number[] {
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let polling = false
+/** Last inbox answer, shared with the title-bar bell so it never makes its own list request. */
+let latestInbox: InboxSnapshot | null = null
+
+export function getLatestNotifications(): InboxSnapshot | null {
+  return latestInbox
+}
+
+/** Bell click: mark one notification read and update the cached inbox to match. */
+export async function markNotificationReadById(authManager: AuthManager, id: number): Promise<{ ok: boolean }> {
+  try {
+    await authManager.getApi().post(`/api/notifications/${id}/mark-as-read`)
+  } catch {
+    return { ok: false }
+  }
+  if (latestInbox) {
+    const hit = latestInbox.items.find(n => n.id === id && !n.read)
+    if (hit) latestInbox = { ...latestInbox, unreadCount: Math.max(0, latestInbox.unreadCount - 1), items: latestInbox.items.map(n => (n.id === id ? { ...n, read: true } : n)) }
+  }
+  return { ok: true }
+}
 
 function statePath(): string {
   return join(app.getPath('userData'), 'coach-notifications-shown.json')
@@ -139,6 +161,7 @@ async function pollOnce(deps: PollerDeps): Promise<void> {
   try {
     const res = await deps.authManager.getApi().get('/api/notifications')
     const notifications = (res.data?.data?.notifications ?? []) as ApiNotification[]
+    latestInbox = toInboxSnapshot(res.data?.data, Date.now())
     const shown = loadShownIds()
     let changed = false
 

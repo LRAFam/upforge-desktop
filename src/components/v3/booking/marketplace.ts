@@ -9,6 +9,9 @@ export interface MarketCoach {
   name: string
   avatarUrl: string | null
   bannerUrl: string | null
+  /** Valorant player card (avatar fallback when no photo); main agents (next fallback). */
+  playerCardId: string | null
+  mainAgents: string[]
   currentRank: string | null
   peakRank: string | null
   games: string[]
@@ -77,6 +80,7 @@ export function toMarketCoach(raw: unknown): MarketCoach | null {
   return {
     id, name,
     avatarUrl: str(r.avatar_url), bannerUrl: str(r.banner_url),
+    playerCardId: str(r.player_card_id), mainAgents: strs(r.main_agents),
     currentRank: str(r.current_rank), peakRank: str(r.peak_rank),
     games: strs(r.games), roles: strs(r.roles), specialties: strs(r.specialties), languages: strs(r.languages),
     hourlyRate: rate != null && rate >= 0 ? rate : null,
@@ -199,4 +203,17 @@ export function sessionWhen(s: Pick<MarketSession, 'start' | 'minutes'>, locale?
   const day = d.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
   const t = d.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })
   return `${day} · ${t} · ${plural(s.minutes, 'minute')}`
+}
+
+/**
+ * "Join" offer for a coach in Find a coach, from GET /api/coaches/{id}/hub (public roster payload).
+ * null when they don't take students between sessions (no live, open plan).
+ */
+export interface JoinOffer { label: string; paid: boolean }
+export function joinOffer(hub: Record<string, unknown> | null | undefined): JoinOffer | null {
+  if (!hub || hub.roster_open !== true || hub.roster_is_live === false) return null
+  const paid = hub.roster_membership_mode === 'paid'
+  const cents = typeof hub.roster_membership_price_cents === 'number' ? hub.roster_membership_price_cents : null
+  if (!paid) return { label: 'Free plan', paid: false }
+  return { label: cents != null && cents > 0 ? `$${(cents / 100).toFixed(2)} a month` : 'Paid plan', paid: true }
 }

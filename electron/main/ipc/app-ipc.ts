@@ -18,6 +18,7 @@ import { SettingsManager } from '../settings-manager'
 import type { OBSRecorder } from '../obs-recorder'
 import { buildRecorderConfig } from '../obs-output-settings'
 import { hasProAccess } from '../subscription'
+import { shouldSyncPrimaryGame } from '../primary-game-sync'
 import { getActiveUserId } from '../user-session'
 import { resolveRecordingSavePath, recordingSavePathProblem } from '../user-data-paths'
 import { prepareRecordingDirectory } from '../recording-save-safety'
@@ -219,7 +220,10 @@ export function setupAppHandlers(
     onSettingsSaved?.(result)
     if ('primaryGame' in partial && partial.primaryGame !== prev.primaryGame && auth.isAuthenticated()) {
       const game = String(partial.primaryGame)
-      void auth.syncPrimaryGameToApi(game)
+      // Dev builds run against the real account: switching games while testing must not change the
+      // account's primary game on upforge.gg. Set UPFORGE_SYNC_PRIMARY_GAME=1 to test the sync itself.
+      if (shouldSyncPrimaryGame(is.dev, process.env['UPFORGE_SYNC_PRIMARY_GAME'])) void auth.syncPrimaryGameToApi(game)
+      else log.info(`[Settings] Dev build: primary game ${game} kept local (not synced to the account)`)
     }
     if (partial.onboardingComplete === true && !prev.onboardingComplete) {
       trackOnboardingComplete(typeof partial.onboardingRecordingVerified === 'boolean'

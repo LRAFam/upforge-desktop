@@ -95,6 +95,18 @@ export interface ApplyLayoutOptions {
  * Apply layout mins/sizes. Never shrinks a window that already exceeds the new minimum
  * (user keeps their larger size). Compact routes always snap to their target size.
  */
+interface SavedWindowState { bounds: { x: number; y: number; width: number; height: number }; maximized: boolean }
+const savedBeforeCompact = new Map<number, SavedWindowState>()
+
+/** What to restore when leaving a compact route: the saved state, never below the new layout's minimum. */
+export function restoreAfterCompact(saved: SavedWindowState, layout: Pick<WindowLayout, 'minWidth' | 'minHeight'>): { maximize: boolean; bounds: SavedWindowState['bounds'] } {
+  const b = saved.bounds
+  return {
+    maximize: saved.maximized,
+    bounds: { x: b.x, y: b.y, width: Math.max(b.width, layout.minWidth), height: Math.max(b.height, layout.minHeight) },
+  }
+}
+
 export function applyWindowLayout(
   win: BrowserWindow,
   layout: WindowLayout,
@@ -107,6 +119,7 @@ export function applyWindowLayout(
   win.setMinimumSize(layout.minWidth, layout.minHeight)
 
   if (options.maximize) {
+    savedBeforeCompact.delete(win.id) // an explicit maximise replaces any saved size
     if (!win.isMaximized()) {
       const [w, h] = win.getSize()
       if (w < layout.minWidth || h < layout.minHeight) {
@@ -121,6 +134,10 @@ export function applyWindowLayout(
   }
 
   if (layout.compact) {
+    // Remember the user's size before a compact card route, so leaving it restores it.
+    if (!savedBeforeCompact.has(win.id)) {
+      savedBeforeCompact.set(win.id, { bounds: win.getBounds(), maximized: win.isMaximized() })
+    }
     if (!win.isMaximized()) {
       win.setSize(layout.width, layout.height)
       win.center()
@@ -129,6 +146,16 @@ export function applyWindowLayout(
       win.setSize(layout.width, layout.height)
       win.center()
     }
+    return
+  }
+
+  // Leaving a compact route (onboarding, sign-in, post-game preview): put the window back as it was.
+  const saved = savedBeforeCompact.get(win.id)
+  if (saved) {
+    savedBeforeCompact.delete(win.id)
+    const restore = restoreAfterCompact(saved, layout)
+    if (restore.maximize) { win.maximize(); return }
+    win.setBounds(restore.bounds)
     return
   }
 

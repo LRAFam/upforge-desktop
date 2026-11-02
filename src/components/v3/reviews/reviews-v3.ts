@@ -2,8 +2,23 @@
  * Pure helpers for the v3 Coaching reviews screen. Everything here formats data the
  * coaching-history composable already loads — nothing is invented.
  */
+import type { ComputedRef, InjectionKey } from 'vue'
 import type { MatchRowStats } from '../../../lib/dashboard-match-row'
 import type { PendingMatchLifecycleState } from '../../../lib/match-lifecycle'
+import { matchDateMs } from '../matches/match-meta'
+
+/**
+ * Provided by MatchesV3: analysis id → when that match's recording was uploaded (epoch ms).
+ * An analysis can be re-run weeks after the match, so its own created_at is not the match date.
+ */
+export const ARCHIVE_DATES_KEY: InjectionKey<ComputedRef<Map<number, number>>> = Symbol('uf-archive-dates')
+
+/** The match date for a coached session: the earliest of its analysis time and its recording's upload time. */
+export function reviewPlayedAt(a: { id: number; created_at: string; played_at?: string | null }, archiveDates?: Map<number, number> | null): number {
+  // The API's played_at is the real match date; without it, the earliest timestamp we know.
+  if (a.played_at && Number.isFinite(Date.parse(a.played_at))) return Date.parse(a.played_at)
+  return matchDateMs(a.created_at, archiveDates?.get(a.id))
+}
 
 export type ResultTone = 'win' | 'loss' | 'none'
 

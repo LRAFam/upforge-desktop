@@ -1,12 +1,15 @@
 <script setup lang="ts">
-/** Header for the Matches area: label, D2 title, text tabs (Matches · Coaching reviews · Clips), actions slot. */
+/**
+ * Header for the Matches area: one D2 title ("Matches"), the view tabs (All matches · Coaching reviews · Clips)
+ * and an actions slot. The title never repeats the tab (audit 2 Nov: "MATCHES / ALL MATCHES").
+ */
 import { useRouter } from 'vue-router'
 import UfTabs from '../UfTabs.vue'
 
-const props = defineProps<{ active: 'matches' | 'coaching' | 'clips'; title: string; count?: string }>()
+const props = defineProps<{ active: 'matches' | 'coaching' | 'clips'; count?: string }>()
 const router = useRouter()
 const tabs = [
-  { id: 'matches', label: 'Matches', to: { path: '/recordings', query: { view: 'recordings' } } },
+  { id: 'matches', label: 'All matches', to: { path: '/recordings', query: { view: 'recordings' } } },
   { id: 'coaching', label: 'Coaching reviews', to: { path: '/recordings', query: { view: 'coaching' } } },
   { id: 'clips', label: 'Clips', to: { path: '/clips' } },
 ] as const
@@ -20,10 +23,7 @@ function go(id: string) {
 <template>
   <header class="uf-mh">
     <div class="uf-mh-top">
-      <div class="uf-mh-title">
-        <span class="uf-label">Matches</span>
-        <h1 class="uf-d2">{{ title }}</h1>
-      </div>
+      <h1 class="uf-d2 uf-mh-title">Matches</h1>
       <div class="uf-mh-actions">
         <span v-if="count" class="uf-t4">{{ count }}</span>
         <slot />
@@ -36,7 +36,6 @@ function go(id: string) {
 <style scoped>
 .uf-mh { flex: none; padding: 26px 40px 0; display: flex; flex-direction: column; gap: 18px; border-bottom: 1px solid var(--uf-line); }
 .uf-mh-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
-.uf-mh-title { display: flex; flex-direction: column; gap: 10px; }
-.uf-mh-title h1 { margin: 0; }
-.uf-mh-actions { display: flex; align-items: center; gap: 16px; }
+.uf-mh-title { margin: 0; }
+.uf-mh-actions { display: flex; align-items: center; gap: 16px; padding-bottom: 6px; }
 </style>

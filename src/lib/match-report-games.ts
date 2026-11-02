@@ -5,6 +5,7 @@
  */
 import type { FactRow, MatchReportView, NextStep } from './match-report'
 import { buildCs2MatchView, type Cs2StatsV1 } from '../components/v3/matchpage/cs2/cs2-match-view'
+import { deadlockBandArt, deadlockItemBuild, type DeadlockHeroArt } from './deadlock-item-build'
 
 export type ReportGame = 'valorant' | 'lol' | 'deadlock' | 'cs2'
 
@@ -49,6 +50,8 @@ export interface LolReportResponse {
   facts?: LolReportFacts | null
   focus?: { label: string; progress?: { status?: string } } | null
   focus_check?: { hit: boolean } | null
+  /** API 2 Nov 2026+: champion, items, summoner spells, profile icon. */
+  loadout?: { champion_id?: number | null; items?: number[]; summoner_spells?: number[]; profile_icon_id?: number | null } | null
 }
 
 const ROLE: Record<string, string> = { TOP: 'Top', JUNGLE: 'Jungle', MIDDLE: 'Mid', BOTTOM: 'Bot', UTILITY: 'Support' }
@@ -56,6 +59,9 @@ const ROLE: Record<string, string> = { TOP: 'Top', JUNGLE: 'Jungle', MIDDLE: 'Mi
 export function lolReportView(res: LolReportResponse): MatchReportView {
   const v = baseView('lol', res.match_id)
   const f = res.facts ?? {}
+  if (res.loadout && (Array.isArray(res.loadout.items) || Array.isArray(res.loadout.summoner_spells))) {
+    v.loadout = { items: res.loadout.items, summoner_spells: res.loadout.summoner_spells }
+  }
   const c = f.challenges ?? {}
   const opp = f.lane?.opponent_champion ?? null
   const at10 = f.lane?.at?.['10']
@@ -121,11 +127,20 @@ export interface DeadlockReportFacts {
   early_deaths?: number | null
   time_dead_sec?: number | null
 }
-export interface DeadlockReportResponse { match_id: string; facts?: DeadlockReportFacts | null }
+export interface DeadlockReportResponse {
+  match_id: string
+  facts?: DeadlockReportFacts | null
+  /** API 2 Nov 2026+: band art and the item build (top-level, not in facts). */
+  hero_art?: DeadlockHeroArt | null
+  item_build?: unknown
+}
 
 export function deadlockReportView(res: DeadlockReportResponse): MatchReportView {
   const v = baseView('deadlock', res.match_id)
   const f = res.facts ?? {}
+  v.bandArt = deadlockBandArt(res.hero_art)
+  // Older API builds don't send `item_build` at all: leave it undefined so no item section shows.
+  if ('item_build' in res) v.itemBuild = deadlockItemBuild(res.item_build)
   const size = n(f.lobby_size) ? f.lobby_size : null
   const at10 = f.souls_at?.['10']
   const at20 = f.souls_at?.['20']

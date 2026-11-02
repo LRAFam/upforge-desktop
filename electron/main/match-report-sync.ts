@@ -9,6 +9,7 @@ import type { RecentMatchFetchResult } from './recent-match-export'
 import { serializeRecentMatch } from './recent-match-export'
 import type { FocusSyncResult, FocusUpdate } from '../../src/lib/focus'
 import { deriveRoundFacts } from '../../src/lib/focus'
+import { sanitizeUpforgeScore, sanitizeUpforgeScoreBreakdown } from '../../src/lib/upforge-score-breakdown'
 
 export interface SyncState {
   /** Match IDs already sent (or permanently skipped). */
@@ -118,6 +119,8 @@ export async function syncMatchReports(deps: SyncDeps, limit = 20): Promise<Sync
           account: typeof res.data.account?.is_main === 'boolean' ? { is_main: res.data.account.is_main } : null,
           rounds: deriveRoundFacts(matchData),
           report: res.data.report ? { notes: res.data.report.notes ?? null, notes_source: res.data.report.notes_source } : null,
+          upforge_score: sanitizeUpforgeScore(res.data.upforge_score),
+          upforge_score_breakdown: sanitizeUpforgeScoreBreakdown(res.data.upforge_score_breakdown),
           match_id: p.matchId,
           previous_focus: cachedLatest?.focus && focus
             ? cachedLatest.focus.id !== focus.id ? cachedLatest.focus : cachedLatest.previous_focus ?? null

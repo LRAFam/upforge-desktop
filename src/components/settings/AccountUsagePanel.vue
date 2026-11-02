@@ -7,6 +7,7 @@ import { cloudBytes } from '../../lib/cloud-storage'
 import { capacityLabel } from '../../lib/account-usage'
 import { useAccountUsage } from '../../composables/useAccountUsage'
 import { uiV3 } from '../../lib/ui-v3'
+import { canBuyReports, showPurchasedReports } from '../v3/settings/settings-display'
 import { momentsLine, notesLine, roundReviewsLine, type CoachAllowances } from '../../lib/coach-allowances'
 // Coaching allowances (new design): daily coach notes, monthly key moments, round reviews.
 const coach = ref<CoachAllowances | null>(null)
@@ -90,12 +91,14 @@ const date = (value: string) => new Date(value).toLocaleDateString(undefined, { 
         <p v-if="usage.reports.period === 'lifetime'" class="uf-t4">Lifetime allowance. It does not reset each month.</p>
         <p v-else-if="usage.reports.resets_at" class="uf-t4">Resets {{ date(usage.reports.resets_at) }}</p>
         <p v-else-if="usage.reports.reset_on_next_use" class="uf-t4">Your next report starts a new monthly allowance.</p>
-        <p class="uf-t4">{{ plural(usage.reports.purchased, 'purchased report credit') }} · separate from your included allowance</p>
-        <div class="uf-set-actions">
-          <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="purchasing" @click="buyReports">{{ purchasing ? 'Opening checkout…' : 'Buy 3 report credits' }}</button>
-        </div>
-        <p class="uf-t4">One-time purchase for full-match reports, separate from Ask AI coach questions. Review the price in Stripe before paying. Purchased reports do not expire.</p>
-        <p v-if="purchaseNotice" role="status" class="uf-note">{{ purchaseNotice }}</p>
+        <p v-if="showPurchasedReports(usage.reports)" class="uf-t4">{{ plural(usage.reports.purchased, 'purchased report credit') }} · separate from your included allowance</p>
+        <template v-if="canBuyReports(usage.reports)">
+          <div class="uf-set-actions">
+            <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="purchasing" @click="buyReports">{{ purchasing ? 'Opening checkout…' : 'Buy 3 report credits' }}</button>
+          </div>
+          <p class="uf-t4">One-time purchase for full-match reports, separate from Ask AI coach questions. Review the price in Stripe before paying. Purchased reports do not expire.</p>
+          <p v-if="purchaseNotice" role="status" class="uf-note">{{ purchaseNotice }}</p>
+        </template>
       </div>
 
       <div class="uf-usage-row">

@@ -3,6 +3,7 @@
  * (GET /api/match-report/{id}) into what the v3 screen shows. Pure: no network, real data only.
  */
 import type { Focus, NoteClaim } from './focus'
+import { sanitizeUpforgeScore, sanitizeUpforgeScoreBreakdown, type UpforgeScoreBreakdown } from './upforge-score-breakdown'
 
 export interface MatchReportFacts {
   map?: string | null
@@ -35,6 +36,9 @@ export interface MatchReportResponse {
   focus?: Focus | null
   focus_check?: { match_id: string; value: number; hit: boolean } | null
   notes_usage?: { used: number; limit: number } | null
+  /** Stats-based UpForge score 0–1000; null/absent until the API scores the match. */
+  upforge_score?: number | null
+  upforge_score_breakdown?: UpforgeScoreBreakdown | null
 }
 
 export type MatchReportState =
@@ -69,6 +73,15 @@ export interface MatchReportView {
   isAlt: boolean
   /** Coach evidence lines (AI notes on League, CS2 and Deadlock reports). */
   evidence?: string[]
+  /** Stats-based UpForge score 0–1000 (Valorant report); null until the API scores the match. */
+  upforgeScore?: number | null
+  upforgeScoreBreakdown?: UpforgeScoreBreakdown | null
+  /** Deadlock: the hero's art for the band (API `hero_art`); null → game art. */
+  bandArt?: string | null
+  /** Deadlock: items in buy order (API `item_build`); null = not published, [] = none bought. */
+  itemBuild?: import('./deadlock-item-build').DeadlockBuildStep[] | null
+  /** League: spells, items and trinket (API `loadout`). */
+  loadout?: { items?: number[]; summoner_spells?: number[] } | null
 }
 
 /** Coach finding → focus metric, so a next step can open the matching drills. */
@@ -129,6 +142,8 @@ export function matchReportView(res: MatchReportResponse): MatchReportView {
     focusCheck: res.focus_check && focus ? { label: focus.label, hit: res.focus_check.hit } : null,
     nextSteps: nextSteps.slice(0, 3),
     isAlt: res.account?.is_main === false,
+    upforgeScore: sanitizeUpforgeScore(res.upforge_score),
+    upforgeScoreBreakdown: sanitizeUpforgeScoreBreakdown(res.upforge_score_breakdown),
   }
 }
 

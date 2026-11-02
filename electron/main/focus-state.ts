@@ -3,6 +3,7 @@ import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Focus, FocusUpdate } from '../../src/lib/focus'
 import { sanitizeRoundFacts } from '../../src/lib/focus'
+import { sanitizeUpforgeScore, sanitizeUpforgeScoreBreakdown } from '../../src/lib/upforge-score-breakdown'
 import type { SyncState } from './match-report-sync'
 
 function statePath(root: string, userId: number): string {
@@ -32,7 +33,7 @@ export async function readFocusSyncState(root: string, userId: number): Promise<
       synced: Array.isArray(data.synced) ? data.synced.filter((id: unknown) => typeof id === 'string') : [],
       newestSyncedStartMs: Number.isFinite(data.newestSyncedStartMs) ? data.newestSyncedStartMs : null,
       latest: validLatest
-        ? { ...latest, rounds: sanitizeRoundFacts(latest.rounds), account: typeof latest.account?.is_main === 'boolean' ? { is_main: latest.account.is_main } : null }
+        ? { ...latest, rounds: sanitizeRoundFacts(latest.rounds), account: typeof latest.account?.is_main === 'boolean' ? { is_main: latest.account.is_main } : null, upforge_score: sanitizeUpforgeScore(latest.upforge_score), upforge_score_breakdown: sanitizeUpforgeScoreBreakdown(latest.upforge_score_breakdown) }
         : null,
     }
   } catch {

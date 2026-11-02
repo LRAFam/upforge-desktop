@@ -11,7 +11,7 @@ describe('recurringHabitRows', () => {
   it('uses whole-number counts, the first sentence as title and an honest trend', () => {
     const [r] = recurringHabitRows([row({})], NOW)
     expect(r.title).toBe('You peek alone after a teammate dies.')
-    expect(r.seen).toBe('Flagged in 4 analysed matches')
+    expect(r.seen).toBe('Flagged 4 times')
     expect(r.lastSeen).toBe('3 days ago')
     expect(r.trend).toEqual({ label: 'Steady', tone: 'steady' })
   })
@@ -35,6 +35,24 @@ describe('recurringHabitRows', () => {
     const [r] = recurringHabitRows([row({ label: 'Re-peeking after a teammate dies' })], NOW)
     expect(r.title).toBe('Re-peeking after a teammate dies')
     expect(r.detail).toBe('You peek alone after a teammate dies.')
+  })
+
+  it('drops the API prefix (wrong "1 analyses" count) and never repeats the title', () => {
+    const text = 'Untraded deaths — flagged across 1 analyses (133 sightings). Holds isolated positions far from team (R16 [29:36] B Lobby) resulting in untraded deaths. Maps: Lotus, Breeze, Haven, Corrode….'
+    const [r] = recurringHabitRows([row({ label: 'Untraded deaths', text, occurrences: 133 })], NOW)
+    expect(r.title).toBe('Untraded deaths')
+    expect(r.detail).toBe('Holds isolated positions far from team (R16 [29:36] B Lobby) resulting in untraded deaths.')
+    expect(r.detail).not.toContain('analyses')
+    expect(r.maps).toEqual(['Lotus', 'Breeze', 'Haven', 'Corrode'])
+    expect(r.seen).toBe('Flagged 133 times')
+  })
+
+  it('cuts a truncated API note at a whole word', async () => {
+    const { parseHabitText } = await import('./recurring-habits')
+    const p = parseHabitText('Game sense — flagged across 1 analyses (54 sightings). Engages duels while debuffed, where holding the an... Maps: Ascent.')
+    expect(p.note).toBe('Engages duels while debuffed, where holding the…')
+    expect(p.maps).toEqual(['Ascent'])
+    expect(recurringHabitRows([row({ occurrences: 1 })], NOW)).toEqual([])
   })
 
   it('returns nothing for empty or missing data', () => {
@@ -64,5 +82,14 @@ describe('withLocalStatuses', () => {
     const undone = recurringHabitRows(withLocalStatuses(rows, new Map([[1, 'active']])))
     expect(undone.map(r => r.id)).toEqual([1, 2])
     expect(withLocalStatuses(null, new Map())).toEqual([])
+  })
+})
+
+describe('habitSeen (audit 2026-11-02)', () => {
+  it('counts matches when the API tracks them, times otherwise', async () => {
+    const { habitSeen } = await import('./recurring-habits')
+    expect(habitSeen(3, 2)).toBe('Flagged in 2 matches · 3 times')
+    expect(habitSeen(1, 1)).toBe('Flagged in 1 match')
+    expect(habitSeen(133, null)).toBe('Flagged 133 times')
   })
 })

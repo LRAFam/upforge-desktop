@@ -16,6 +16,8 @@ import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { BADGE_PREVIEW_ITEMS, getBadgeIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
 import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../lib/billing'
 import { uiV3 } from '../lib/ui-v3'
+import { usePrimaryGame } from './usePrimaryGame'
+import { cs2AccountHint, cs2SteamNameToShow, followSelectedGame } from '../components/settings/settings-game'
 
 export type RiotAccountRow = {
   id: number
@@ -32,6 +34,7 @@ type UserWithUsage = {
   tier: string
   riot_name: string | null
   riot_tag: string | null
+  riot_region?: string | null
   lol_riot_name?: string | null
   lol_riot_tag?: string | null
   lol_platform?: string | null
@@ -44,6 +47,8 @@ type UserWithUsage = {
   archive_remaining?: number | null
   archive_retention_days?: number | null
   stripe_subscription_status?: string | null
+  /** Linked Discord name (Settings › Account › Discord); null when not linked. */
+  discord_username?: string | null
 }
 
 export const SETTINGS_KEY: InjectionKey<ReturnType<typeof createSettings>> = Symbol('settings')
@@ -611,17 +616,40 @@ function createSettings() {
     accountSteamLinked.value ? 'Steam profile linked' : 'Steam not linked — search by display name on web',
   )
 
-  const accountCs2Hint = computed(() => {
-    if (cs2FaceitLinked.value && cs2FaceitNickname.value) {
-      return `FACEIT: ${cs2FaceitNickname.value}`
-    }
-    return 'Link FACEIT username on web for match sync'
-  })
+  const accountCs2Hint = computed(() => cs2AccountHint(
+    cs2FaceitLinked.value ? cs2FaceitNickname.value : null,
+    cs2SteamNameField.value,
+  ))
   const cs2FaceitLinked = ref(false)
   const cs2FaceitNickname = ref<string | null>(null)
+
+  async function loadCs2Faceit(): Promise<void> {
+    try {
+      const faceit = await window.api.cs2.getFaceitConnection()
+      if (ipcScope.disposed) return
+      cs2FaceitLinked.value = !!faceit?.connected
+      cs2FaceitNickname.value = faceit?.nickname ?? null
+    } catch { /* optional */ }
+  }
+
+  /** The account keeps the CS2 Steam name too; this PC may have none saved (fresh install, another PC). */
+  const cs2AccountSteamName = ref<string | null>(null)
+  async function loadCs2AccountSteamName(): Promise<void> {
+    try {
+      const profile = await window.api.cs2.getProfile()
+      if (!ipcScope.disposed) cs2AccountSteamName.value = profile?.identity?.steam_display_name?.trim() || null
+    } catch { /* optional */ }
+  }
+  /** The Steam name box: this PC's name, else the account's. Typing saves a name on this PC (callers save on change). */
+  const cs2SteamNameField = computed<string>({
+    get: () => cs2SteamNameToShow(settings.cs2SteamName, cs2AccountSteamName.value),
+    set: (value) => { settings.cs2SteamName = value },
+  })
   const deadlockLinked = ref(false)
   const riotAccounts = ref<RiotAccountRow[]>([])
   const riotAccountsMax = ref(1)
+  /** True once the account list call has answered (ok or not), so screens can tell "loading" from "none linked". */
+  const riotAccountsLoaded = ref(false)
 
   const riotAccountsCapLabel = computed(() =>
     `${riotAccounts.value.length} of ${riotAccountsMax.value} accounts used`,
@@ -637,6 +665,8 @@ function createSettings() {
     } catch {
       riotAccounts.value = []
       riotAccountsMax.value = 1
+    } finally {
+      riotAccountsLoaded.value = true
     }
   }
 
@@ -655,17 +685,19 @@ function createSettings() {
   }
 
   async function reloadAccountLinks(): Promise<void> {
-    try {
-      const authUser = await window.api.auth.refreshUser() as UserWithUsage | null
-      if (authUser) user.value = { ...(user.value ?? authUser), ...authUser }
-    } catch { /* optional */ }
-    try {
-      const faceit = await window.api.cs2.getFaceitConnection()
-      cs2FaceitLinked.value = !!faceit?.connected
-      cs2FaceitNickname.value = faceit?.nickname ?? null
-    } catch { /* optional */ }
-    await loadDeadlockLink()
-    await loadRiotAccounts()
+    // Independent lookups: run together so the Riot list never waits on the user refresh, FACEIT or Deadlock.
+    await Promise.all([
+      (async () => {
+        try {
+          const authUser = await window.api.auth.refreshUser() as UserWithUsage | null
+          if (authUser) user.value = { ...(user.value ?? authUser), ...authUser }
+        } catch { /* optional */ }
+      })(),
+      loadCs2Faceit(),
+      loadCs2AccountSteamName(),
+      loadDeadlockLink(),
+      loadRiotAccounts(),
+    ])
   }
 
   const accountSteamLinked = computed(
@@ -771,19 +803,22 @@ function createSettings() {
     } catch { /* non-critical */ }
   }
   
+  // Game-specific blocks (CS2 demo folder, Deadlock diagnostics, FACEIT) follow the title-bar game, also while
+  // Settings is open. The switch has already been saved, so this only mirrors it (see followSelectedGame).
+  const { primaryGame: selectedGame } = usePrimaryGame()
+  watch(selectedGame, (game) => {
+    if (!followSelectedGame(settings, game)) return
+    if (game === 'deadlock') void loadDeadlockLink()
+    else if (game === 'cs2') void loadCs2Faceit()
+  })
+
   async function selectPrimaryGame(game: PrimaryGame): Promise<void> {
     if (settings.primaryGame === game) return
     settings.primaryGame = game
     settings.trainerMouse.game = game
     await window.api.settings.save({ primaryGame: game, trainerMouse: { ...toRaw(settings.trainerMouse) } })
     if (game === 'deadlock') void loadDeadlockLink()
-    else if (game === 'cs2') {
-      try {
-        const faceit = await window.api.cs2.getFaceitConnection()
-        cs2FaceitLinked.value = !!faceit?.connected
-        cs2FaceitNickname.value = faceit?.nickname ?? null
-      } catch { /* optional */ }
-    }
+    else if (game === 'cs2') await loadCs2Faceit()
     showSaved()
   }
   
@@ -1212,11 +1247,9 @@ function createSettings() {
         void window.api.auth.refreshUser()
           .then((authUser) => { if (authUser && !ipcScope.disposed) user.value = { ...user.value, ...(authUser as UserWithUsage) } })
           .catch(() => { /* non-critical */ })
-        if (settings.primaryGame === 'cs2') {
-          void window.api.cs2.getFaceitConnection()
-            .then((faceit) => { cs2FaceitLinked.value = !!faceit?.connected; cs2FaceitNickname.value = faceit?.nickname ?? null })
-            .catch(() => { /* optional */ })
-        }
+        // The Account pane lists every game, so these load whatever the selected game is.
+        void loadCs2Faceit()
+        void loadCs2AccountSteamName()
         if (settings.primaryGame === 'deadlock') void loadDeadlockLink()
       } else {
       try {
@@ -1290,6 +1323,7 @@ function createSettings() {
           archive_remaining: prof.user.archive_stats?.remaining ?? null,
           archive_retention_days: prof.user.archive_stats?.retention_days ?? null,
           stripe_subscription_status: prof.user.stripe_subscription_status ?? null,
+          discord_username: prof.user.discord_username ?? user.value?.discord_username ?? null,
         }
       }
       if (settings.primaryGame === 'deadlock') {
@@ -1365,6 +1399,7 @@ function createSettings() {
     cs2Detecting,
     cs2FaceitLinked,
     cs2FaceitNickname,
+    cs2SteamNameField,
     debouncedSave,
     detectCs2DemoDir,
     devModeActive,
@@ -1440,6 +1475,7 @@ function createSettings() {
     loadRiotAccounts,
     reloadAccountLinks,
     riotAccounts,
+    riotAccountsLoaded,
     riotAccountsAtCap,
     riotAccountsCanAdd,
     riotAccountsCapLabel,

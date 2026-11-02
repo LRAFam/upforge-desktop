@@ -5,6 +5,8 @@ import SettingsToggle from './SettingsToggle.vue'
 import SettingsRow from './SettingsRow.vue'
 import CrosshairSettingsPanel from '../CrosshairSettingsPanel.vue'
 import { uiV3 } from '../../lib/ui-v3'
+import CrosshairEditorV3 from '../v3/settings/CrosshairEditorV3.vue'
+import { shortcutKeyParts } from '../v3/settings/settings-display'
 
 const {
   conflictResults,
@@ -19,6 +21,7 @@ const {
   hotkeyStatus,
   hotkeys,
   inGameOverlayEnabled,
+  isMac,
   visibleInGameFeedbackOptions,
   rebinding,
   setInGameFeedback,
@@ -38,7 +41,7 @@ const HOTKEY_ROWS = [
     <SettingsSection title="Mouse &amp; trainer" hint="Match the aim trainer to how your mouse feels in game">
       <SettingsRow label="Game" hint="The trainer copies this game's sensitivity scale.">
         <select v-model="settings.trainerMouse.game" aria-label="Game" class="uf-select is-inline" @change="debouncedSave">
-          <option value="valorant">Valorant</option><option value="cs2">CS2</option><option value="apex">Apex Legends</option><option value="overwatch2">Overwatch 2</option><option value="custom">Custom</option>
+          <option value="valorant">Valorant</option><option value="cs2">CS2</option><option value="deadlock">Deadlock</option><option value="apex">Apex Legends</option><option value="overwatch2">Overwatch 2</option><option value="custom">Custom</option>
         </select>
       </SettingsRow>
       <div class="uf-field">
@@ -87,7 +90,7 @@ const HOTKEY_ROWS = [
     </SettingsSection>
 
     <SettingsSection title="Crosshair" hint="Preview and edit your trainer crosshair">
-      <crosshair-settings-panel v-model="settings.crosshairSettings" @update:model-value="debouncedSave()" />
+      <CrosshairEditorV3 v-model="settings.crosshairSettings" @update:model-value="debouncedSave()" />
     </SettingsSection>
 
     <SettingsSection id="hotkeys" title="Shortcuts / in-game feedback" hint="How you save clips and know they were saved mid-match" :highlight-id="highlightSection">
@@ -105,7 +108,7 @@ const HOTKEY_ROWS = [
       </div>
       <div class="uf-set-sec-body is-rows uf-rows-top">
         <SettingsRow label="Open or focus window" hint="Fixed system shortcut">
-          <kbd v-for="part in ['Ctrl', 'Shift', 'U']" :key="part" class="uf-kbd">{{ part }}</kbd>
+          <kbd v-for="part in shortcutKeyParts('CommandOrControl+Shift+U', isMac)" :key="part" class="uf-kbd">{{ part }}</kbd>
         </SettingsRow>
         <template v-for="row in HOTKEY_ROWS" :key="row.id">
           <div v-if="!row.overlayOnly || inGameOverlayEnabled" class="uf-set-row">
@@ -117,7 +120,7 @@ const HOTKEY_ROWS = [
             </div>
             <button type="button" class="uf-keybind" :class="{ 'is-listening': rebinding === row.id }" :aria-label="`Change shortcut: ${row.label}`" @click="startRebind(row.id)">
               <span v-if="rebinding === row.id" class="uf-live">Press a key…</span>
-              <kbd v-for="part in hotkeyParts(hotkeys[row.id] ?? row.fallback)" v-else :key="part" class="uf-kbd">{{ part }}</kbd>
+              <kbd v-for="part in shortcutKeyParts(hotkeys[row.id] ?? row.fallback, isMac)" v-else :key="part" class="uf-kbd">{{ part }}</kbd>
             </button>
           </div>
         </template>
@@ -143,6 +146,7 @@ const HOTKEY_ROWS = [
         <select v-model="settings.trainerMouse.game" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none" @change="debouncedSave">
           <option value="valorant">Valorant</option>
           <option value="cs2">CS2</option>
+          <option value="deadlock">Deadlock</option>
           <option value="apex">Apex Legends</option>
           <option value="overwatch2">Overwatch 2</option>
           <option value="custom">Custom</option>

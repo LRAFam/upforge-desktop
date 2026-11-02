@@ -16,6 +16,8 @@ export type RosterMatchVisual = {
   agent?: string | null
   game_type?: string | null
   overall_score?: number | null
+  /** Stats-based UpForge score 0–1000 when the API sends it. */
+  upforge_score?: number | null
   created_at?: string | null
   won?: boolean | null
   kills?: number | null

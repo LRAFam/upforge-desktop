@@ -9,8 +9,8 @@ import UfIcon from '../UfIcon.vue'
 import { railSteps, stepNumber } from './onboarding-steps'
 import './onboarding-v3.css'
 
-const props = defineProps<{ step: number; labels: readonly string[]; initializing: boolean }>()
-const steps = computed(() => railSteps(props.labels, props.step, props.initializing))
+const props = defineProps<{ step: number; labels: readonly string[]; initializing: boolean; skipped?: readonly number[] }>()
+const steps = computed(() => railSteps(props.labels, props.step, props.initializing, props.skipped ?? []))
 const current = computed(() => steps.value.find(s => s.state === 'current') ?? null)
 </script>
 
@@ -21,7 +21,7 @@ const current = computed(() => steps.value.find(s => s.state === 'current') ?? n
     <!-- Compact windows (the onboarding window is 720×600): one band with the step count and progress -->
     <div class="ob-rail-compact">
       <span class="uf-label" style="color: var(--uf-red)">UpForge · setup</span>
-      <span class="uf-d4">{{ current ? `${stepNumber(current.n)} / ${stepNumber(steps.length)}` : 'Getting ready' }}</span>
+      <span class="uf-d4">{{ current ? `${stepNumber(current.pos)} / ${stepNumber(steps.length)}` : 'Getting ready' }}</span>
       <div class="ob-rail-segs" aria-hidden="true">
         <span v-for="s in steps" :key="s.n" :class="`is-${s.state}`" />
       </div>
@@ -36,7 +36,7 @@ const current = computed(() => steps.value.find(s => s.state === 'current') ?? n
         <li v-for="s in steps" :key="s.n" class="ob-step" :class="`is-${s.state}`" :aria-current="s.state === 'current' ? 'step' : undefined">
           <span class="uf-d4 ob-step-n">
             <UfIcon v-if="s.state === 'done'" name="check" :size="20" />
-            <template v-else>{{ stepNumber(s.n) }}</template>
+            <template v-else>{{ stepNumber(s.pos) }}</template>
           </span>
           <span class="uf-t3 ob-step-label">{{ s.label }}</span>
           <span v-if="s.state === 'done'" class="uf-t4">Done</span>
@@ -61,11 +61,12 @@ const current = computed(() => steps.value.find(s => s.state === 'current') ?? n
 .ob-step-label { flex: 1; color: var(--uf-muted); }
 .ob-step.is-current .ob-step-n { color: var(--uf-red); }
 .ob-step.is-current .ob-step-label { color: var(--uf-bone); }
-.ob-step.is-done .ob-step-n { color: var(--uf-win); }
+.ob-step.is-done .ob-step-n { color: var(--uf-bone); }
 .ob-rail-compact { display: none; position: relative; align-items: center; gap: 16px; padding: 0 24px; height: 64px; }
 .ob-rail-segs { flex: 1; display: flex; gap: 4px; max-width: 260px; margin-left: auto; }
 .ob-rail-segs span { flex: 1; height: 4px; background: rgba(236, 232, 225, 0.12); }
-.ob-rail-segs span.is-done { background: var(--uf-win); }
+/* One colour for done (bone), red for where you are now. */
+.ob-rail-segs span.is-done { background: var(--uf-bone); }
 .ob-rail-segs span.is-current { background: var(--uf-red); }
 @media (max-width: 960px) {
   .ob-rail { flex: 0 0 auto; border-bottom: 1px solid var(--uf-line); }

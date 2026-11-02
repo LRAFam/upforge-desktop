@@ -90,7 +90,7 @@ export const GAME_THEMES: Record<PrimaryGame, GameTheme> = {
     chromeGradient: 'from-transparent via-teal-500/70 to-cyan-500/60',
     coachingEmptyTitle: 'Upload a replay for AI coaching',
     coachingEmptyMessage: () =>
-      'Replays auto-upload after matches — or analyze any .dem from the Replays panel',
+      'After a recorded match, choose Review replay on it in Matches (uses 1 analysis). Your stats and a free match report sync on their own.',
     coachingEmptyAction: () => 'Analyze →',
     accountLinkLabel: 'Link Steam by display name',
     goalRankClass: 'text-teal-300',
@@ -101,7 +101,7 @@ export const GAME_THEMES: Record<PrimaryGame, GameTheme> = {
   lol: {
     id: 'lol',
     name: 'League of Legends',
-    shortName: 'LoL',
+    shortName: 'League',
     hexColor: '#c89b3c',
     rgb: '200,155,60',
     artwork: PRIMARY_GAME_ARTWORK.lol,

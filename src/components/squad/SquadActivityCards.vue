@@ -21,6 +21,11 @@ export interface SquadActivityItem {
   deaths?: number | null
   assists?: number | null
   created_at?: string
+  /** When the match was played (API, audit 2026-11-02). */
+  played_at?: string | null
+  won?: boolean | null
+  rounds_won?: number | null
+  rounds_lost?: number | null
   share_token?: string | null
   game?: string | null
 }

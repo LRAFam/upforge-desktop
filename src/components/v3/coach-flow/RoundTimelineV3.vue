@@ -78,7 +78,7 @@ const ticks = computed(() => {
 <style scoped>
 .rt3 { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .rt3-svg { display: block; overflow: visible; }
-.rt3-lbl { fill: var(--uf-faint); font: 500 11px var(--uf-body); font-variant-numeric: tabular-nums; }
+.rt3-lbl { fill: var(--uf-faint); font: 500 12px var(--uf-body); font-variant-numeric: tabular-nums; }
 .rt3-mark { cursor: pointer; outline: none; }
 .rt3-mark:hover rect, .rt3-mark:focus-visible rect { filter: brightness(1.3); }
 .rt3-key { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; }

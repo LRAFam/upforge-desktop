@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DeadlockProfileStats } from '../../../env.d.ts'
-import { deadlockFarm, deadlockRankSeries, deadlockStats, rankSentence } from './game-data'
+import { deadlockFarm, deadlockHeroRecord, deadlockRankCaption, deadlockRankSeries, deadlockStats, rankSentence } from './game-data'
 
 const stats = (summary: Record<string, unknown>, recent: Array<Record<string, unknown>> = []) =>
   ({ summary, recent_matches: recent }) as unknown as DeadlockProfileStats
@@ -19,8 +19,8 @@ describe('deadlockStats', () => {
     const s = stats({ wins: 1, losses: 1, win_rate: 50, avg_kda: '2' }, [
       { last_hits: 200, denies: 10 }, { last_hits: 101, denies: 5 }, { net_worth: 1 },
     ])
-    expect(deadlockFarm(s)).toEqual({ lastHits: 151, denies: 8, matches: 2 })
-    expect(deadlockStats(s).at(-1)).toEqual({ value: '151', caption: 'Soul orbs secured per match', sub: '8 denied · over 2 matches' })
+    expect(deadlockFarm(s)).toEqual({ lastHits: 151, denies: 8, deniedTotal: 15, matches: 2 })
+    expect(deadlockStats(s).at(-1)).toEqual({ value: '151', caption: 'Soul orbs secured per match', sub: '15 denied in 2 matches' })
     expect(deadlockFarm(stats({ wins: 0, losses: 0, win_rate: 0, avg_kda: '0' }))).toBeNull()
   })
 })
@@ -50,5 +50,30 @@ describe('deadlockRankSeries', () => {
 
   it('keeps the old newest-first reading for undated history', () => {
     expect(deadlockRankSeries([{ rank: 31 }, { rank: 25 }]).map(p => p.badge)).toEqual([25, 31])
+  })
+})
+
+describe('deadlock labels', () => {
+  it('shows a rare deny as a count, not a rounded 0 average', () => {
+    const s = stats({ wins: 2, losses: 2, win_rate: 50, avg_kda: '0.92' }, [
+      { last_hits: 72, denies: 0 }, { last_hits: 50, denies: 1 }, { last_hits: 71, denies: 0 }, { last_hits: 136, denies: 0 },
+    ])
+    expect(deadlockStats(s).at(-1)?.sub).toBe('1 denied in 4 matches')
+  })
+
+  it('writes most played heroes as wins–losses', () => {
+    const s = { hero_stats: [
+      { hero_id: 1, hero_name: 'Haze', matches_played: 3, win_rate: 66.7 },
+      { hero_id: 2, hero_name: 'Viscous', matches_played: 1, win_rate: 0 },
+      { hero_id: 3, hero_name: 'Nobody', matches_played: 0, win_rate: 0 },
+    ] } as unknown as DeadlockProfileStats
+    expect(deadlockHeroRecord(s)).toBe('Haze 2–1 · Viscous 0–1')
+    expect(deadlockHeroRecord(null)).toBe('')
+  })
+
+  it('calls Obscurus unranked', () => {
+    expect(deadlockRankCaption({ name: 'Obscurus', tier: 0 })).toMatch(/^Unranked/)
+    expect(deadlockRankCaption({ name: 'Arcanist', tier: 4 })).toBe('Current rank')
+    expect(deadlockRankCaption(null)).toBe('Current rank')
   })
 })

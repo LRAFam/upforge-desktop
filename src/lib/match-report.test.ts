@@ -73,3 +73,12 @@ describe('matchReportPath', () => {
     expect(matchReportPath('cs2', 'x', null)).toBeNull()
   })
 })
+
+describe('matchReportView · UpForge score', () => {
+  it('carries the stats score and breakdown; null on production reports without them', () => {
+    const v = matchReportView({ ...base, upforge_score: 655, upforge_score_breakdown: { baseline: { source: 'prior', tier: null, samples: null }, inputs: [{ key: 'acs', label: 'ACS', value: 241, percentile: 80, weight: 0.3 }] } })
+    expect(v.upforgeScore).toBe(655)
+    expect(v.upforgeScoreBreakdown?.inputs).toHaveLength(1)
+    expect(matchReportView(base).upforgeScore).toBeNull()
+  })
+})

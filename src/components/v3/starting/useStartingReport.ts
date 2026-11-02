@@ -11,14 +11,15 @@ export function useStartingReport(game: Ref<StartingGame>) {
   const loading = ref(data.value === null)
   const generating = ref(false)
 
-  async function load(opts: { generate?: boolean } = {}): Promise<void> {
+  /** `retry`: the player pressed Try again, so a failed generate may run once more this session. */
+  async function load(opts: { generate?: boolean; retry?: boolean } = {}): Promise<void> {
     const g = game.value
     loading.value = data.value === null
     const got = await window.api?.app?.getStartingReport?.(g).catch(() => null)
     if (got?.ok) { data.value = got.report; writeCache(cacheKey(), got.report) }
     loading.value = false
     const status = data.value?.status
-    if (opts.generate && (status === 'none' || status === 'insufficient' || !data.value) && !triedThisSession.has(g)) {
+    if (opts.generate && (status === 'none' || status === 'insufficient' || !data.value) && (opts.retry || !triedThisSession.has(g))) {
       triedThisSession.add(g)
       generating.value = true
       const res = await window.api?.app?.generateStartingReport?.(g).catch(() => null)

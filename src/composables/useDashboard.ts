@@ -96,6 +96,8 @@ export interface DashboardOptions {
 type HomeCache = {
   analyses: AnalysisItem[]
   coachingSnippets: Record<number, string>
+  /** v3 Home: the AI `verdict` per analysis id ('' = loaded, no verdict). */
+  coachingVerdicts?: Record<number, string>
   trainerLastSession: { score: number; scenario: string; date: string } | null
   trainerSessionCount: number
 }
@@ -138,6 +140,9 @@ function createDashboard(opts: DashboardOptions = {}) {
   const analysesLoading = ref(true)
   const hiddenAnalysisIds = ref<Set<number>>(loadHiddenAnalyses())
   const coachingSnippets = ref<Record<number, string>>({})
+  /** v3 Home only: the analysis `verdict` (what decided the match), from the same detail call as the snippet. */
+  const coachingVerdicts = ref<Record<number, string>>({})
+  const coachingSnippetsLoading = ref(false)
   const coachReviewByAnalysisId = ref<Record<number, CoachReviewSummary>>({})
   const pendingRecordings = ref<PendingRecording[]>([])
   const uploadProgressByRecordingId = ref<Record<string, number>>({})
@@ -290,6 +295,7 @@ function createDashboard(opts: DashboardOptions = {}) {
     hydratedGame = primaryGame.value
     analyses.value = hit.analyses
     coachingSnippets.value = { ...(hit.coachingSnippets ?? {}) }
+    coachingVerdicts.value = { ...(hit.coachingVerdicts ?? {}) }
     trainerLastSession.value = hit.trainerLastSession ?? null
     trainerSessionCount.value = hit.trainerSessionCount ?? 0
     analysesLoading.value = false
@@ -301,6 +307,7 @@ function createDashboard(opts: DashboardOptions = {}) {
     writeCache<HomeCache>(homeKey(game), {
       analyses: analyses.value,
       coachingSnippets: coachingSnippets.value,
+      coachingVerdicts: coachingVerdicts.value,
       trainerLastSession: trainerLastSession.value,
       trainerSessionCount: trainerSessionCount.value,
     })
@@ -316,6 +323,7 @@ function createDashboard(opts: DashboardOptions = {}) {
       // Drawn from another game's cache before settings loaded: redraw for the right game.
       analyses.value = []
       coachingSnippets.value = {}
+      coachingVerdicts.value = {}
       analysesLoading.value = true
       hydratedGame = null
     }
@@ -355,6 +363,8 @@ function createDashboard(opts: DashboardOptions = {}) {
   hydrateHome()
   const analysisCompleteToast = ref<{
     score: number
+    /** Stats-based UpForge score 0–1000 when the API has calculated it. */
+    upforgeScore?: number | null
     agent: string | null
     analysisId?: number | null
     remaining?: number | null
@@ -789,17 +799,28 @@ function createDashboard(opts: DashboardOptions = {}) {
   }
 
   async function loadCoachingSnippets(items: AnalysisItem[]) {
-    const toFetch = items.filter(a => !isAnalysisProcessing(a) && !coachingSnippets.value[a.id])
-    await Promise.all(toFetch.map(async (a) => {
-      const detail = await window.api.analyses.getDetail(a.id).catch(() => null)
-      const snippet = detail?.top_issue
-        ?? detail?.priority_improvements?.[0]
-        ?? detail?.match_highlights?.[0]?.reason
-        ?? detail?.heatmap_insight
-        ?? detail?.verdict
-        ?? null
-      if (snippet) coachingSnippets.value[a.id] = snippet
-    }))
+    // Snippets for every row; the verdict only for the newest (Home's hero match), so a cache
+    // without verdicts costs one extra detail call, not ten.
+    const newestId = items[0]?.id
+    const toFetch = items.filter(a => !isAnalysisProcessing(a)
+      && (!coachingSnippets.value[a.id] || (a.id === newestId && coachingVerdicts.value[a.id] === undefined)))
+    if (!toFetch.length) return
+    coachingSnippetsLoading.value = true
+    try {
+      await Promise.all(toFetch.map(async (a) => {
+        const detail = await window.api.analyses.getDetail(a.id).catch(() => null)
+        const snippet = detail?.top_issue
+          ?? detail?.priority_improvements?.[0]
+          ?? detail?.match_highlights?.[0]?.reason
+          ?? detail?.heatmap_insight
+          ?? detail?.verdict
+          ?? null
+        if (snippet) coachingSnippets.value[a.id] = snippet
+        if (detail) coachingVerdicts.value = { ...coachingVerdicts.value, [a.id]: typeof detail.verdict === 'string' ? detail.verdict : '' }
+      }))
+    } finally {
+      coachingSnippetsLoading.value = false
+    }
     persistHome()
   }
 
@@ -933,6 +954,7 @@ function createDashboard(opts: DashboardOptions = {}) {
         if (analysisToastTimer) clearTimeout(analysisToastTimer)
         analysisCompleteToast.value = {
           score: newest.overall_score,
+          upforgeScore: newest.upforge_score ?? null,
           agent: newest.agent ?? null,
           analysisId: newest.id,
           remaining: quotaRemaining.value,
@@ -1479,6 +1501,7 @@ function createDashboard(opts: DashboardOptions = {}) {
     analyses.value = []
     if (cacheFirst) {
       coachingSnippets.value = {}
+      coachingVerdicts.value = {}
       trainerLastSession.value = null
       trainerSessionCount.value = 0
       analysesLoading.value = true
@@ -1809,6 +1832,8 @@ function createDashboard(opts: DashboardOptions = {}) {
     analyses,
     analysesLoading,
     coachingSnippets,
+    coachingVerdicts,
+    coachingSnippetsLoading,
     coachReviewByAnalysisId,
     pendingRecordings,
     analysingIds,

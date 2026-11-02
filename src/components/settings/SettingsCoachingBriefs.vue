@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import type { CoachingPreferences } from '../../lib/coaching-preferences'
-import { coachingSkipMessage } from '../../lib/coaching-preferences'
+import { coachingSkipMessage, coachingSkipNeedsDiscord } from '../../lib/coaching-preferences'
+import { useRouter } from 'vue-router'
+import { DISCORD_LINK_ROUTE } from './discord-link'
 import SettingsSection from './SettingsSection.vue'
 import { uiV3 } from '../../lib/ui-v3'
 
 const preferences = ref<CoachingPreferences | null>(null)
 const busy = ref(false)
 const message = ref('')
+// Pre-game skip because Discord isn't linked: offer a straight link to the Discord row.
+const needsDiscord = ref(false)
+const router = useRouter()
+function openDiscordRow() { router.push(DISCORD_LINK_ROUTE).catch(() => {}) }
 onMounted(async () => {
   try { preferences.value = await window.api.coaching.preferences() }
   catch { message.value = 'Could not load coaching preferences. Reopen Settings to try again.' }
@@ -15,6 +21,7 @@ onMounted(async () => {
 async function save() {
   if (!preferences.value) return
   busy.value = true
+  needsDiscord.value = false
   try {
     preferences.value = await window.api.coaching.savePreferences({ ...preferences.value })
     message.value = 'Coaching preferences saved.'
@@ -26,7 +33,8 @@ async function pregame() {
   try {
     const result = await window.api.coaching.pregame()
     message.value = result.discord_sent ? 'Brief sent to Discord.' : coachingSkipMessage(result.reason)
-  } catch { message.value = 'Could not request the brief. Try again later.' }
+    needsDiscord.value = !result.discord_sent && coachingSkipNeedsDiscord(result.reason)
+  } catch { message.value = 'Could not request the brief. Try again later.'; needsDiscord.value = false }
   finally { busy.value = false }
 }
 </script>
@@ -82,7 +90,7 @@ async function pregame() {
       <p class="text-gray-500">Request a post-game debrief from the match screen. Pre-game briefs use saved advice and do not spend AI credits.</p>
     </fieldset>
     <p v-else-if="!message" :class="uiV3 ? 'uf-t4' : 'text-xs text-gray-500'">Loading preferences...</p>
-    <p v-if="message && uiV3" role="status" class="uf-note">{{ message }}</p>
+    <p v-if="message && uiV3" role="status" class="uf-note">{{ message }}<template v-if="needsDiscord"> <button type="button" class="uf-link" @click="openDiscordRow">Link Discord →</button></template></p>
     <p v-else-if="message" role="status" class="mt-2 text-xs text-gray-300">{{ message }}</p>
   </SettingsSection>
 </template>

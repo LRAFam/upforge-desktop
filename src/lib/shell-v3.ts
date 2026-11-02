@@ -127,3 +127,52 @@ export function createToastQueue<T>(opts: {
     },
   }
 }
+
+// ── audit 2026-11-02 — shell: title bar + nav rules ─────────────────────────
+
+/**
+ * Title-bar account label: one format for every game. The in-game identity for the current game
+ * when it's linked (Riot ID for Valorant/League, Steam name for CS2), else the UpForge username.
+ * No game suffix: the game switcher beside it already shows the game.
+ */
+export function titleBarAccountLabel(
+  game: string,
+  ids: { riotId?: string | null; lolRiotId?: string | null; cs2SteamName?: string | null; userName?: string | null },
+): string | null {
+  const clean = (v: string | null | undefined) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  const inGame = game === 'valorant' ? clean(ids.riotId)
+    : game === 'lol' ? clean(ids.lolRiotId)
+      : game === 'cs2' ? clean(ids.cs2SteamName)
+        : null
+  return inGame ?? clean(ids.userName) ?? clean(ids.riotId)
+}
+
+/**
+ * What the title-bar status shows: 'recording', the OBS state, or nothing.
+ * When the OBS banner is on screen (it carries the actions), the title bar stays quiet so the
+ * message appears once.
+ */
+export function titleBarObsConnected(opts: {
+  recording: boolean
+  obsConnected: boolean | null
+  showChip: boolean
+  bannerShown: boolean
+}): boolean | null {
+  if (opts.recording) return opts.obsConnected ?? true
+  if (!opts.showChip || opts.bannerShown) return null
+  return opts.obsConnected
+}
+
+/**
+ * UI v3 routes that stay in the nav for every game, so the sidebar doesn't move when the game
+ * changes: Progress (per-game stats), Practice (the aim trainer is game-agnostic; sensitivity
+ * follows the chosen game) and Squad (members only — the squad plan covers every game).
+ */
+// Squad is a paid team plan for teams who may play any game: members reach it in every game
+// (user decision 2 Nov 2026). Non-members never see it (SidebarV3 checks membership).
+// Students: coaches review students' matches whatever game they have selected.
+export const V3_ALL_GAME_ROUTES = ['/stats', '/training', '/squad', '/students'] as const
+
+export function v3AllowedRoutes(gameRoutes: readonly string[]): string[] {
+  return [...new Set([...gameRoutes, ...V3_ALL_GAME_ROUTES])]
+}

@@ -9,11 +9,11 @@ import AccountSwitcherV3 from './accounts/AccountSwitcherV3.vue'
 import { useRoute } from 'vue-router'
 import type { PrimaryGame } from '../../lib/games'
 import UfIcon from './UfIcon.vue'
+import NotificationBellV3 from './shell/NotificationBellV3.vue'
 import upforgeIcon from '../../assets/upforge-icon.webp'
-import valorantLogo from '../../assets/games/valorant-logo.svg'
-import cs2Logo from '../../assets/games/cs2-icon.svg'
-import deadlockLogo from '../../assets/games/deadlock-icon.png'
-import lolLogo from '../../assets/games/lol-icon.webp'
+import { titleBarGames } from './games/display-names'
+import PlayerAvatar from './identity/PlayerAvatar.vue'
+import type { PlayerIdentity } from '../../lib/player-identity'
 
 defineProps<{
   isMac: boolean
@@ -22,6 +22,8 @@ defineProps<{
   obsConnected: boolean | null
   obsTitle?: string
   identity?: string | null
+  /** Your avatar (player card → main agent → letter); the user icon when absent. */
+  avatar?: PlayerIdentity | null
 }>()
 const emit = defineEmits<{ minimize: []; close: []; account: [] }>()
 // Account menu: the current game's linked accounts; "Manage accounts" opens Settings › Account.
@@ -31,12 +33,9 @@ function manageAccounts() { accountOpen.value = false; emit('account') }
 const { primaryGame, setPrimaryGame } = usePrimaryGame()
 // Onboarding picks the game itself (step 2), so the switcher hides there.
 const route = useRoute()
-const games: Array<{ id: PrimaryGame; name: string; logo: string }> = [
-  { id: 'valorant', name: 'Valorant', logo: valorantLogo },
-  { id: 'cs2', name: 'CS2', logo: cs2Logo },
-  { id: 'deadlock', name: 'Deadlock', logo: deadlockLogo },
-  { id: 'lol', name: 'League', logo: lolLogo },
-]
+// Same-size square marks (src/assets/games), one selected state: full colour + the game's accent underline.
+const games = titleBarGames()
+function pick(id: PrimaryGame): void { if (primaryGame.value !== id) void setPrimaryGame(id) }
 </script>
 
 <template>
@@ -44,8 +43,9 @@ const games: Array<{ id: PrimaryGame; name: string; logo: string }> = [
     <img :src="upforgeIcon" alt="UpForge" class="uf-titlebar-mark">
     <nav v-if="!route.path.startsWith('/onboarding')" class="uf-games -webkit-no-drag" aria-label="Game">
       <button v-for="g in games" :key="g.id" type="button" class="uf-game" :class="{ 'is-on': primaryGame === g.id }"
-        :title="g.name" :aria-pressed="primaryGame === g.id" @click="setPrimaryGame(g.id)">
-        <img :src="g.logo" :alt="g.name">
+        :style="{ '--uf-game-accent': g.accent }" :title="primaryGame === g.id ? `${g.name} (current game)` : `Switch to ${g.name}`"
+        :aria-label="g.name" :aria-pressed="primaryGame === g.id" @click="pick(g.id)">
+        <img :src="g.logo" alt="" width="20" height="20">
       </button>
     </nav>
     <div style="flex: 1" />
@@ -54,8 +54,10 @@ const games: Array<{ id: PrimaryGame; name: string; logo: string }> = [
       <span class="uf-dot" :style="{ background: obsConnected ? 'var(--uf-win)' : 'var(--uf-gold)' }" />{{ obsConnected ? 'Recording ready' : 'OBS not connected' }}
     </span>
     <div class="uf-sep" />
+    <NotificationBellV3 v-if="!route.path.startsWith('/onboarding')" />
     <button type="button" class="uf-account -webkit-no-drag" aria-haspopup="dialog" :aria-expanded="accountOpen" @click="accountOpen = !accountOpen">
-      <UfIcon name="user" :size="16" /><span>{{ identity || 'Account' }}</span>
+      <PlayerAvatar v-if="avatar" :identity="avatar" :size="24" />
+      <UfIcon v-else name="user" :size="16" /><span>{{ identity || 'Account' }}</span>
     </button>
     <AccountSwitcherV3 :open="accountOpen" @close="accountOpen = false" @manage="manageAccounts" />
     <div v-if="!isMac && showWindowControls" class="uf-winctl -webkit-no-drag">
@@ -68,11 +70,13 @@ const games: Array<{ id: PrimaryGame; name: string; logo: string }> = [
 <style scoped>
 .uf-titlebar { position: relative; height: 44px; flex: none; display: flex; align-items: center; gap: 18px; padding: 0 0 0 16px; background: var(--uf-chrome); border-bottom: 1px solid var(--uf-line); z-index: 30; }
 .uf-titlebar-mark { width: 22px; height: 22px; }
-.uf-games { display: flex; gap: 2px; }
-.uf-game { width: 34px; height: 30px; display: flex; align-items: center; justify-content: center; background: none; border: 0; cursor: pointer; }
-.uf-game img { height: 16px; width: auto; opacity: 0.4; }
-.uf-game.is-on { background: rgba(255, 70, 85, 0.12); box-shadow: inset 0 -2px 0 var(--uf-red); }
-.uf-game.is-on img, .uf-game:hover img { opacity: 1; }
+.uf-games { display: flex; align-self: stretch; gap: 2px; }
+.uf-game { width: 40px; display: flex; align-items: center; justify-content: center; background: none; border: 0; cursor: pointer; }
+.uf-game img { width: 20px; height: 20px; object-fit: contain; opacity: 0.5; filter: grayscale(1); transition: opacity 0.15s, filter 0.15s; }
+.uf-game:hover { background: var(--uf-hover); }
+.uf-game:hover img { opacity: 0.85; }
+.uf-game.is-on { box-shadow: inset 0 -2px 0 var(--uf-game-accent, var(--uf-red)); }
+.uf-game.is-on img { opacity: 1; filter: none; }
 .uf-status { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--uf-muted); }
 .uf-dot { width: 6px; height: 6px; border-radius: 3px; }
 .uf-sep { width: 1px; height: 18px; background: var(--uf-line-2); }

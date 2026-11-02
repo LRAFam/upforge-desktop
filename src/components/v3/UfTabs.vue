@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * Text tabs for UI v3. `page` = view switch under a D2 title (15/600, 22px gap).
- * `filter` = list filters (13/600). The active tab is bone with a 2px red underline.
+ * `filter` = list filters (13/600), quieter: the active filter gets a 1px bone underline.
+ * On `page` tabs the active tab is bone with a 2px red underline.
  */
 withDefaults(defineProps<{
   items: ReadonlyArray<{ key: string; label: string; count?: number | string | null }>
@@ -40,8 +41,9 @@ function onKey(e: KeyboardEvent, items: ReadonlyArray<{ key: string }>, index: n
 .uf-tabs--divider { border-bottom: 1px solid var(--uf-line); }
 .uf-tab { display: inline-flex; align-items: baseline; gap: 6px; background: none; border: 0; cursor: pointer; color: var(--uf-faint); }
 .uf-tabs--page .uf-tab { font: 600 15px/1 var(--uf-body); padding: 0 0 12px; }
-.uf-tabs--filter .uf-tab { font: 600 13px/1 var(--uf-body); padding: 0 0 8px; }
+.uf-tabs--filter .uf-tab { font: 600 13px/1 var(--uf-body); padding: 0 0 6px; }
 .uf-tab:hover { color: var(--uf-bone); }
 .uf-tab.is-on { color: var(--uf-bone); box-shadow: inset 0 -2px 0 var(--uf-red); }
+.uf-tabs--filter .uf-tab.is-on { box-shadow: inset 0 -1px 0 var(--uf-bone); }
 .uf-tab-count { font: 400 13px/1 var(--uf-body); color: var(--uf-faint); font-variant-numeric: tabular-nums; }
 </style>

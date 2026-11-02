@@ -10,6 +10,8 @@ import type { MatchSummary } from '../../../composables/vod/match-summary'
 import { formatGameMode, getAgentImage, getMapImage } from '../../../lib/valorant'
 import { getMapImage as getLolMapImage } from '../../../lib/lol'
 import UfHeroBand from '../UfHeroBand.vue'
+import { mapDisplayName } from '../games/display-names'
+import { matchMapArt } from '../matches/match-meta'
 import UfSkeleton from '../UfSkeleton.vue'
 
 const props = defineProps<{ summary: MatchSummary | null; workspace: boolean; roundsWidth: number; detailsWidth: number; cloud?: boolean }>()
@@ -18,12 +20,13 @@ const s = computed(() => props.summary)
 const art = computed(() => {
   if (!s.value) return undefined
   if (s.value.game === 'lol') return getLolMapImage() || undefined
+  if (s.value.game === 'cs2') return matchMapArt('cs2', s.value.map) || undefined
   return s.value.game === 'valorant' ? getMapImage(s.value.map) || undefined : undefined
 })
 const agentImg = computed(() => (s.value?.game === 'valorant' ? getAgentImage(s.value.agent) || '' : ''))
 const result = computed(() => (s.value?.won == null ? undefined : s.value.won ? 'VICTORY' : 'DEFEAT'))
 const tone = computed<'win' | 'loss' | 'none'>(() => (s.value?.won == null ? 'none' : s.value.won ? 'win' : 'loss'))
-const meta = computed(() => (s.value ? [s.value.map, s.value.mode ? formatGameMode(s.value.mode) : null, s.value.agent].filter(Boolean).join(' · ') : ''))
+const meta = computed(() => (s.value ? [s.value.game === 'cs2' ? mapDisplayName('cs2', s.value.map) : s.value.map, s.value.mode ? formatGameMode(s.value.mode) : null, s.value.agent].filter(Boolean).join(' · ') : ''))
 const hasScore = computed(() => s.value?.ally != null && s.value?.enemy != null)
 const hasKda = computed(() => s.value?.kills != null && s.value?.deaths != null && s.value?.assists != null)
 const roundBased = computed(() => !s.value || s.value.game === 'valorant' || s.value.game === 'cs2')

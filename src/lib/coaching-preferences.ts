@@ -16,9 +16,14 @@ export function coachingSkipMessage(reason?: string): string {
     case 'no_new_evidence': return 'No new repeated pattern was found in the captured rounds.'
     case 'no_relevant_advice': return 'No relevant advice is available for this agent and map yet.'
     case 'missing_match_context': return 'Waiting for confirmed agent, map and match details.'
-    case 'discord_not_linked': return 'Link Discord to receive pre-game briefs.'
+    case 'discord_not_linked': return 'Link Discord in Settings › Account to receive pre-game briefs.'
     case 'delivery_failed': return 'Discord could not receive this brief. Check your DM settings.'
     case 'already_requested': return 'This match’s brief was already requested.'
     default: return 'No automatic brief was sent for this match.'
   }
+}
+
+/** Skip reasons the user fixes by linking Discord (Settings › Account › Discord). */
+export function coachingSkipNeedsDiscord(reason?: string): boolean {
+  return reason === 'discord_not_linked'
 }

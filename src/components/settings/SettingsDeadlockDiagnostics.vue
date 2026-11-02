@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { uiV3 } from '../../lib/ui-v3'
+import { deadlockPhaseLabel } from '../../lib/deadlock'
+import { deadlockRecordingHero, loadDeadlockHeroesOnce } from '../../lib/deadlock-hero-names'
 
 type DetectionStatus = Awaited<ReturnType<typeof window.api.deadlock.getDetectionStatus>>
 
@@ -16,6 +18,7 @@ function flag(ok: boolean): string {
 }
 
 onMounted(() => {
+  if (uiV3.value) void loadDeadlockHeroesOnce()
   void refresh()
   timer = setInterval(() => { void refresh() }, 2000)
 })
@@ -32,12 +35,12 @@ onUnmounted(() => {
       <p class="uf-t4">UpForge reads Deadlock match data from Steam&apos;s local cache — no launch options needed. Keep Steam open while you play.</p>
     </div>
     <dl v-if="status" class="uf-dl">
-      <dt>Phase</dt><dd class="uf-mono">{{ status.phase }}</dd>
+      <dt>Status</dt><dd>{{ deadlockPhaseLabel(status.phase) }}</dd>
       <dt>Steam cache active</dt><dd :class="status.logReceiving ? 'is-ok' : 'is-warn'">{{ status.logReceiving ? 'Yes' : 'No' }}</dd>
       <dt>Ready to record</dt><dd :class="status.readyToRecord ? 'is-ok' : 'is-warn'">{{ status.readyToRecord ? 'Yes' : 'No — waits for match' }}</dd>
-      <dt>Replay on CDN</dt><dd :class="status.replayLive ? 'is-ok' : 'is-warn'">{{ status.replayLive ? 'Yes' : 'No' }}</dd>
+      <dt>Replay available from Valve</dt><dd :class="status.replayLive ? 'is-ok' : 'is-warn'">{{ status.replayLive ? 'Yes' : 'Not yet' }}</dd>
       <template v-if="status.activeMatchId"><dt>Match ID</dt><dd class="uf-mono">{{ status.activeMatchId }}</dd></template>
-      <template v-if="status.heroKey"><dt>Hero</dt><dd class="uf-mono">{{ status.heroKey }}</dd></template>
+      <template v-if="status.heroKey"><dt>Hero</dt><dd>{{ deadlockRecordingHero(status.heroKey) }}</dd></template>
     </dl>
     <p v-if="status?.lastLogLine" class="uf-mono">{{ status.lastLogLine }}</p>
     <p v-if="status?.replayDir" class="uf-mono" :title="status.replayDir">Replays: {{ status.replayDir }}</p>

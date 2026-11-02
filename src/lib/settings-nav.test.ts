@@ -27,6 +27,7 @@ describe('resolveSettingsSection', () => {
     expect(resolveSettingsSection('obs')).toBe('obs')
     expect(resolveSettingsSection('storage')).toBe('storage')
     expect(resolveSettingsSection('discord')).toBe('discord')
+    expect(resolveSettingsSection('discord-link')).toBe('discord-link')
     expect(resolveSettingsSection('developer')).toBe('developer')
   })
 

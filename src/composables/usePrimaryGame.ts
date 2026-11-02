@@ -6,6 +6,14 @@ import {
 } from '../lib/games'
 
 const primaryGame = ref<PrimaryGame>('valorant')
+
+/** Games the aim trainer converts sensitivity for (upforge-trainer MouseSensitivity.gd). */
+const TRAINER_SENS_GAMES: ReadonlySet<PrimaryGame> = new Set(['valorant', 'cs2', 'deadlock'])
+
+/** Settings to save on a game switch: the trainer's sensitivity game follows only for games it supports. */
+export function primaryGameSwitchPatch(game: PrimaryGame, trainerMouse: Record<string, unknown> | undefined): { primaryGame: PrimaryGame; trainerMouse?: Record<string, unknown> } {
+  return TRAINER_SENS_GAMES.has(game) ? { primaryGame: game, trainerMouse: { ...trainerMouse, game } } : { primaryGame: game }
+}
 let loaded = false
 
 export function usePrimaryGame() {
@@ -18,9 +26,7 @@ export function usePrimaryGame() {
   async function loadFromSettings(): Promise<PrimaryGame> {
     try {
       const settings = await window.api.settings.get()
-      primaryGame.value = normalizePrimaryGame(
-        settings.primaryGame ?? settings.trainerMouse?.game,
-      )
+      primaryGame.value = normalizePrimaryGame(settings.primaryGame ?? settings.trainerMouse?.game)
     } catch {
       primaryGame.value = 'valorant'
     }
@@ -30,10 +36,7 @@ export function usePrimaryGame() {
 
   async function setPrimaryGame(game: PrimaryGame): Promise<void> {
     const current = await window.api.settings.get()
-    await window.api.settings.save({
-      primaryGame: game,
-      trainerMouse: { ...current.trainerMouse, game },
-    })
+    await window.api.settings.save(primaryGameSwitchPatch(game, current.trainerMouse) as Parameters<typeof window.api.settings.save>[0])
     primaryGame.value = game
   }
 

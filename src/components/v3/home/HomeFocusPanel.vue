@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /** Focus column on Home: the one measured habit, its game slots and a manual "check my matches". */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { focusHeadline, focusSlots, focusSubline } from '../../../lib/focus'
+import { focusSlots, focusSubline } from '../../../lib/focus'
+import { focusTitleParts } from './home-v3'
 import { createFocusCardState } from '../../../composables/useFocusCard'
 import type { FocusResponse, FocusUpdate } from '../../../lib/focus'
 import { readCache, writeCache } from '../../../lib/stale-cache'
@@ -16,6 +17,7 @@ const state = createFocusCardState(window.api.app, { initial: cached?.success ? 
 const fromSkeleton = !cached
 const { data, loading, loadError, syncing, syncMessage, syncNow } = state
 const focus = computed(() => data.value?.focus ?? null)
+const titleParts = computed(() => (focus.value ? focusTitleParts(focus.value) : null))
 const slots = computed(() => (focus.value ? focusSlots(focus.value) : []))
 const gameIndex = computed(() => Math.min((focus.value?.progress.games_played ?? 0) + 1, focus.value?.progress.games_required ?? 1))
 const kicker = computed(() => {
@@ -72,7 +74,11 @@ onUnmounted(() => {
   <section class="hf" aria-labelledby="hf-title">
     <p class="uf-label" :style="{ color: focus ? 'var(--uf-red)' : undefined }">{{ kicker }}</p>
     <template v-if="focus">
-      <h2 id="hf-title" class="uf-d2 hf-title" :class="{ 'uf-reveal': fromSkeleton }">{{ focusHeadline(focus) }}</h2>
+      <!-- Type roles: the habit is a sentence (Plex), only the short goal uses the display face. -->
+      <div class="hf-head" :class="{ 'uf-reveal': fromSkeleton }">
+        <h2 id="hf-title" class="uf-t3 hf-title">{{ titleParts!.title }}</h2>
+        <p class="uf-d4 hf-goal">{{ titleParts!.goal }}</p>
+      </div>
       <ol class="hf-slots" aria-label="Focus games">
         <li v-for="(s, i) in slots" :key="i" :class="`hf-slot hf-slot--${s}`"
           :aria-label="`Game ${i + 1}: ${s === 'pending' ? 'not played yet' : s === 'hit' ? 'target hit' : 'target missed'}`">
@@ -105,7 +111,9 @@ onUnmounted(() => {
 
 <style scoped>
 .hf { display: flex; flex-direction: column; gap: 12px; }
+.hf-head { display: flex; flex-direction: column; gap: 4px; }
 .hf-title { margin: 0; }
+.hf-goal { margin: 0; color: var(--uf-bone); }
 .hf-streak { margin: 0; color: var(--uf-bone); font-weight: 600; }
 .hf-share { align-self: flex-start; }
 .hf-slots { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; }

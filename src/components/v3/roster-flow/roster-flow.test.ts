@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   coachReplies, markReplySeen, newReplyIds, parseCoachInvite, readJoinCoachLater, readSeenReplies, replySentence,
   setJoinCoachLater,
-  sendStateFor, teamBadgeCount, unseenReplies, type StudentHub,
+  sendStateFor, coachBadgeCounts, sendLabel, showStudentsNav, replyTitle, unseenReplies, type StudentHub,
 } from './roster-flow'
 
 class Mem implements Storage {
@@ -47,7 +47,8 @@ describe('coach replies', () => {
   it('lists completed reviews newest first with a plain sentence', () => {
     const r = coachReplies(hub())
     expect(r.map(x => x.reviewId)).toEqual([10, 9, 3])
-    expect(replySentence(r[0])).toBe('Coach Vex reviewed your Sunset 9–13 match.')
+    expect(replySentence(r[0])).toBe('Coach Vex left notes on your Sunset 9–13 match.')
+    expect(replyTitle(r[0])).toBe('Coach Vex replied')
   })
   it('hides replies already opened and older than two weeks', () => {
     expect(unseenReplies(hub(), new Set([10]), NOW).map(r => r.reviewId)).toEqual([9])
@@ -73,7 +74,7 @@ describe('sendStateFor', () => {
   })
   it('explains when every coach is at a limit', () => {
     const blocked = hub({ coaches: [{ coach_id: 7, display_name: 'Coach Vex', can_request_review: false, can_request_reason: 'Monthly limit reached' }] })
-    expect(sendStateFor(blocked, 999)).toEqual({ kind: 'blocked', reason: 'Monthly limit reached' })
+    expect(sendStateFor(blocked, 999)).toEqual({ kind: 'blocked', reason: 'Monthly limit reached', coachName: 'Coach Vex', code: null })
   })
   it('is ready with the coach list otherwise', () => {
     const s = sendStateFor(hub(), 999)
@@ -82,10 +83,24 @@ describe('sendStateFor', () => {
   })
 })
 
-describe('teamBadgeCount', () => {
-  it('adds unopened replies and open coach requests', () => {
-    expect(teamBadgeCount(2, [{ status: 'pending' }, { status: 'in_progress' }, { status: 'completed' }])).toBe(4)
-    expect(teamBadgeCount(0, null)).toBe(0)
+describe('nav split (Option A)', () => {
+  it('splits the badge by job: Coaches = unopened notes, Students = matches waiting for your notes', () => {
+    expect(coachBadgeCounts(2, [{ status: 'pending' }, { status: 'in_progress' }, { status: 'completed' }])).toEqual({ coaches: 2, students: 2 })
+    expect(coachBadgeCounts(0, null)).toEqual({ coaches: 0, students: 0 })
+    expect(coachBadgeCounts(-1, [{ status: 'pending' }])).toEqual({ coaches: 0, students: 1 })
+  })
+
+  it('shows Students only for accounts with a coach profile', () => {
+    expect(showStudentsNav(true)).toBe(true)
+    expect(showStudentsNav(false)).toBe(false)
+    expect(showStudentsNav(null)).toBe(false)
+    expect(showStudentsNav(undefined)).toBe(false)
+  })
+
+  it('names the coach on send buttons', () => {
+    expect(sendLabel([{ display_name: 'astar' }])).toBe('Send to astar')
+    expect(sendLabel([{ display_name: 'astar' }, { display_name: 'Crystalf1sh' }])).toBe('Send to a coach')
+    expect(sendLabel([{ display_name: 'astar' }, { display_name: 'Crystalf1sh', can_request_review: false }])).toBe('Send to astar')
   })
 })
 
