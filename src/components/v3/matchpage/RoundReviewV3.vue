@@ -107,6 +107,9 @@ const canAsk = computed(() => available.value && shownRound.value != null && !cu
         <span class="uf-t3">Round {{ r.round_number }}</span>
         <span v-if="!isDone(r)" class="uf-t4 uf-live">Reviewing this round…</span>
         <span v-else-if="r.status === 'failed'" class="uf-t4">Couldn't review · round review returned</span>
+        <span v-else-if="r.replay_data" class="uf-t4 rr3-replay" :class="{ 'is-on': r.replay_data === 'on' }" :title="r.replay_note ?? undefined">
+          Replay data: {{ r.replay_data }}
+        </span>
       </div>
       <!-- Round timeline, positions on the map and numbered fixes; Watch seeks this page's player. -->
       <RoundReviewVisualV3 v-if="r.status === 'completed'" :review="{ round_number: r.round_number, story: r.story, fixes: r.fixes ?? [] }"
@@ -132,6 +135,8 @@ const canAsk = computed(() => available.value && shownRound.value != null && !cu
 .rr3-review { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--uf-line); }
 .rr3-review-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .rr3-story { margin: 0; max-width: 72ch; }
+.rr3-replay { white-space: nowrap; }
+.rr3-replay.is-on { color: var(--uf-win); }
 .rr3-fixes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .rr3-fix { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--uf-line); }
 .rr3-fix p { margin: 0; }
