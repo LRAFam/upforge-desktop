@@ -134,6 +134,8 @@ export interface AppSettings {
   cs2SteamName?: string
   /** Developer / admin mode — unlocked by tapping the version number 5 times in Settings */
   devModeEnabled: boolean
+  /** Download VALORANT match replays from Riot after each match and upload them for replay-based coaching */
+  valorantReplayUpload: boolean
   /** OBS WebSocket recording — always on; kept for settings migration */
   obsEnabled: boolean
   /** OBS WebSocket host (default: localhost) */
@@ -245,6 +247,7 @@ const DEFAULTS: AppSettings = {
   cachedEncoder: null,
   cachedUseDdagrab: null,
   devModeEnabled: false,
+  valorantReplayUpload: true,
   obsEnabled: true,
   obsHost: '127.0.0.1',
   obsPort: 4455,

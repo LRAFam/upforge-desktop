@@ -52,6 +52,27 @@
             ? `Saved ${(replayResult.bytes / 1048576).toFixed(1)} MB (${replayResult.gameVersion}) to ${replayResult.file}`
             : `Failed: ${replayResult.error}${replayResult.matchId ? ` (match ${replayResult.matchId})` : ''}` }}
         </p>
+        <div class="flex items-center justify-between gap-3 pt-2">
+          <p class="text-[11px] text-gray-500">Automatic sync runs every 5 minutes in the menus and uploads new replays.</p>
+          <button
+            class="px-3 py-1.5 rounded-lg text-xs bg-white/[0.06] hover:bg-white/[0.10] disabled:opacity-50"
+            :disabled="syncBusy"
+            @click="syncReplays"
+          >
+            {{ syncBusy ? 'Syncing…' : 'Sync replays now' }}
+          </button>
+        </div>
+        <p v-if="syncError" class="text-[11px] text-red-400">Failed: {{ syncError }}</p>
+        <p v-if="syncResult" class="text-[11px] text-gray-400">
+          {{ syncResult.run.ran
+            ? `Uploaded ${syncResult.run.uploaded.length}, failed ${syncResult.run.failed.length}, retrying later ${syncResult.run.pending.length}`
+            : `Didn't run: ${syncResult.run.reason}` }}
+        </p>
+        <ul v-if="syncRows.length" class="text-[11px] space-y-0.5">
+          <li v-for="[id, e] in syncRows" :key="id" :class="e.status === 'uploaded' ? 'text-emerald-400' : e.status === 'failed' ? 'text-red-400' : 'text-amber-300'">
+            {{ id.slice(0, 8) }} · {{ e.status }}{{ e.error ? ` (${e.error})` : '' }} · try {{ e.attempts }}{{ e.gameVersion ? ` · ${e.gameVersion}` : '' }}
+          </li>
+        </ul>
       </div>
 
       <!-- Loading -->
@@ -482,6 +503,23 @@ async function downloadReplay() {
     replayBusy.value = false
   }
 }
+type SyncResult = Awaited<ReturnType<typeof window.api.dev.syncValorantReplays>>
+const syncBusy = ref(false)
+const syncResult = ref<SyncResult | null>(null)
+const syncError = ref<string | null>(null)
+async function syncReplays() {
+  syncBusy.value = true
+  syncError.value = null
+  try {
+    syncResult.value = await window.api.dev.syncValorantReplays()
+  } catch (err) {
+    syncError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    syncBusy.value = false
+  }
+}
+const syncRows = computed(() => Object.entries(syncResult.value?.state ?? {})
+  .sort((a, b) => b[1].lastTryMs - a[1].lastTryMs).slice(0, 10))
 const loading = ref(false)
 const error = ref<string | null>(null)
 const lastRefreshed = ref('')

@@ -211,6 +211,8 @@ export interface AppSettings {
   cachedUseDdagrab: boolean | null
   /** Developer / admin mode — unlocked by tapping version 5× in Settings */
   devModeEnabled: boolean
+  /** Download VALORANT replays after each match and upload them for replay-based coaching */
+  valorantReplayUpload?: boolean
   /** Set to true once the first-run onboarding wizard has been completed */
   onboardingComplete?: boolean
   /** Unlocked achievement IDs mapped to ISO date strings */
@@ -1014,6 +1016,10 @@ declare global {
           | { ok: true; matchId: string; file: string; bytes: number; gameVersion: string }
           | { ok: false; error: string; matchId?: string }
         >
+        syncValorantReplays: () => Promise<{
+          run: { ran: boolean; reason?: string; uploaded: string[]; failed: string[]; pending: string[] }
+          state: Record<string, { status: 'uploaded' | 'pending' | 'failed'; attempts: number; lastTryMs: number; error?: string; gameVersion?: string; sizeBytes?: number }>
+        }>
         unmountProductionVod: () => Promise<{ ok: true; removed: boolean }>
         getDiagnostics: () => Promise<{
           app: { version: string; platform: string; arch: string; electronVersion: string; nodeVersion: string; isDev: boolean }

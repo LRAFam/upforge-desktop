@@ -14,6 +14,12 @@ describe('parseRiotMatchHistory', () => {
     })).toEqual([{ matchId: 'match-1', gameStartTimeMs: null }])
   })
 
+  it('keeps the queue so replay sync can skip modes without replays', () => {
+    expect(parseRiotMatchHistory({
+      History: [{ MatchID: 'm', GameStartTimeMillis: 5, QueueID: 'competitive' }],
+    })).toEqual([{ matchId: 'm', gameStartTimeMs: 5, queueId: 'competitive' }])
+  })
+
   it('rejects malformed history entries', () => {
     expect(parseRiotMatchHistory({ History: [{ GameStartTimeMillis: 1 }, null] })).toEqual([])
   })

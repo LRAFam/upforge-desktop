@@ -1,5 +1,7 @@
 import { getApiBaseUrl } from './api-base'
 import { saveReplay } from './valorant-replay-download'
+import { ValorantReplaySync, type ReplaySyncState } from './valorant-replay-sync'
+import { ValorantReplayUploader } from './valorant-replay-uploader'
 import { resolveValorantGameMode } from './riot-queue-id'
 import { hasValorantReturnedToMenus, isValorantStillInLiveMatch } from './valorant-match-end'
 import { startRecordingWhenReady } from './recording-start'
@@ -7130,6 +7132,31 @@ async function startApp(): Promise<void> {
     const file = saveReplay(dir, res.matchId!, res.bytes)
     return { ok: true as const, matchId: res.matchId!, file, bytes: res.bytes.length, gameVersion: res.gameVersion }
   })
+
+  // Replay sync: after matches, download the player's own replays from Riot and upload them for coaching.
+  const replaySyncFile = join(app.getPath('userData'), 'valorant-replay-sync.json')
+  const replayUploader = new ValorantReplayUploader(() => authManager.getToken(), app.getVersion())
+  const replaySync = new ValorantReplaySync({
+    enabled: () => settingsManager.get().valorantReplayUpload !== false && !!authManager.getToken(),
+    isMatchActive: () => riotLocalApi.isMatchActive(),
+    listRecentMatches: (n) => riotLocalApi.listRecentMatches(n),
+    download: (id) => riotLocalApi.downloadOwnReplay(id),
+    upload: (id, bytes, m) => replayUploader.upload(id, bytes, m),
+    report: (id, error, m) => replayUploader.report(id, error, m),
+    loadState: () => {
+      try { return JSON.parse(fs.readFileSync(replaySyncFile, 'utf8')) as ReplaySyncState } catch { return {} }
+    },
+    saveState: (state) => {
+      // Keep the newest 200 entries; older matches can't be downloaded again anyway (replays expire each patch).
+      const kept = Object.fromEntries(Object.entries(state).sort((a, b) => b[1].lastTryMs - a[1].lastTryMs).slice(0, 200))
+      try { fs.writeFileSync(replaySyncFile, JSON.stringify(kept)) } catch (err) { console.warn('[ReplaySync] save failed', err) }
+    },
+    log: (msg) => console.log(msg),
+  })
+  const runReplaySync = () => { void replaySync.run().catch((err) => console.warn('[ReplaySync] run failed', err)) }
+  setTimeout(runReplaySync, 90_000)
+  setInterval(runReplaySync, 5 * 60_000)
+  ipcMain.handle('dev:valorant-replay:sync', async () => ({ run: await replaySync.run(), state: replaySync.status() }))
 
   ipcMain.handle('dev:get-diagnostics', async () => {
     const analysisPipeline = await buildAnalysisPipelineDiagnostics({

@@ -232,6 +232,7 @@ const api = {
     getDiagnostics: () => ipcRenderer.invoke('dev:get-diagnostics'),
     downloadValorantReplay: (matchId?: string) =>
       ipcRenderer.invoke('dev:valorant-replay:download', { matchId }),
+    syncValorantReplays: () => ipcRenderer.invoke('dev:valorant-replay:sync'),
   },
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),

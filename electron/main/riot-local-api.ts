@@ -1842,6 +1842,14 @@ export class RiotLocalApi {
     return { ...res, matchId: id }
   }
 
+  /** The player's recent matches (newest first), or null when the Riot client isn't ready. */
+  async listRecentMatches(limit = 10): Promise<RiotMatchHistoryEntry[] | null> {
+    if (!this.accessToken || !this.entitlementsToken || !this.region) {
+      if (!(await this.initAuth())) return null
+    }
+    return this._fetchRecentMatchHistory(limit)
+  }
+
   async isMatchActive(): Promise<boolean> {
     const state = await this.getSessionState()
     return state?.sessionLoopState === 'INGAME'
