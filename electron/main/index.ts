@@ -7181,11 +7181,12 @@ async function startApp(): Promise<void> {
     saveState: (state) => {
       // Keep the newest 200 entries; older matches can't be downloaded again anyway (replays expire each patch).
       const kept = Object.fromEntries(Object.entries(state).sort((a, b) => b[1].lastTryMs - a[1].lastTryMs).slice(0, 200))
-      try { fs.writeFileSync(replaySyncFile, JSON.stringify(kept)) } catch (err) { console.warn('[ReplaySync] save failed', err) }
+      try { fs.writeFileSync(replaySyncFile, JSON.stringify(kept)) } catch (err) { log.warn('[ReplaySync] save failed', err) }
     },
-    log: (msg) => console.log(msg),
+    // electron-log so replay sync shows up in main.log next to [MainLag] when diagnosing post-match lag.
+    log: (msg) => log.info(msg),
   })
-  const runReplaySync = () => { void replaySync.run().catch((err) => console.warn('[ReplaySync] run failed', err)) }
+  const runReplaySync = () => { void replaySync.run().catch((err) => log.warn('[ReplaySync] run failed', err)) }
   setTimeout(runReplaySync, 90_000)
   setInterval(runReplaySync, 5 * 60_000)
   ipcMain.handle('dev:valorant-replay:sync', async () => ({ run: await replaySync.run(), state: replaySync.status() }))

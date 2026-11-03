@@ -3,6 +3,9 @@
  * Content-Security-Policy only allows the UpForge API, not the storage host behind the short-lived link.
  */
 import zlib from 'zlib'
+import { promisify } from 'util'
+
+const gunzip = promisify(zlib.gunzip)
 import { getApiBaseUrl } from './api-base'
 import { httpsGet, type HttpGet } from './valorant-replay-download'
 
@@ -25,7 +28,7 @@ export async function fetchViewerReplay(matchId: string, token: string | null, g
     if (info.status !== 'parsed' || !info.compact_url) return { ok: false, status: info.status ?? 'none' }
     const file = await get(info.compact_url, {})
     if (file.status !== 200) return { ok: false, status: 'parsed', error: `storage_http_${file.status}` }
-    const raw = file.body[0] === 0x1f && file.body[1] === 0x8b ? zlib.gunzipSync(file.body) : file.body
+    const raw = file.body[0] === 0x1f && file.body[1] === 0x8b ? await gunzip(file.body) : file.body
     const compact = JSON.parse(raw.toString('utf8'))
     cache.set(id, compact)
     if (cache.size > 3) cache.delete(cache.keys().next().value as string)
