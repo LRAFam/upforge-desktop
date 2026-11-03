@@ -1784,7 +1784,7 @@ declare global {
         analyzeMatch: (matchId: string) => Promise<{ ok: boolean; analysis_id?: number; error?: string }>
       }
       deepLink: {
-        takePending: () => Promise<{ kind: 'roster-join'; coachId: number } | null>
+        takePending: () => Promise<{ kind: 'roster-join'; coachId: number } | { kind: 'open-analysis'; game: 'valorant' | 'cs2' | 'deadlock' | 'lol'; analysisId: number } | null>
       }
       forgeRank: {
         prestige: () => Promise<{ success: boolean; forge_rank?: ForgeRankInfo; message?: string }>

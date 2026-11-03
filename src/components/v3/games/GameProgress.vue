@@ -146,7 +146,7 @@ function openWeb() {
 <template>
   <div class="gprog">
     <GameMark :game="game" label="Your progress">
-      <button type="button" class="uf-link" @click="openWeb">View on web →</button>
+      <button type="button" class="uf-link" @click="openWeb">More on upforge.gg →</button>
     </GameMark>
 
     <div v-if="!gd.loaded.value" class="gprog-skel" role="status" :aria-label="`Loading your ${GAME_NAME[game]} stats`">
@@ -310,7 +310,7 @@ function openWeb() {
           </template>
           <template v-else-if="game === 'lol'">
             <span class="uf-label">Riot match reports</span>
-            <button v-for="r in gd.lol.analyses.slice(0, 6)" :key="r.id" type="button" class="gprog-line gprog-btn" @click="a.lolOpenResults(r.id)">
+            <button v-for="r in gd.lol.analyses.slice(0, 6)" :key="r.id" type="button" class="gprog-line gprog-btn" @click="a.lolOpenResults(r)">
               <span class="gprog-name gprog-grow"><img v-if="r.champion && championIconUrl(r.champion)" :src="championIconUrl(r.champion)" alt="" width="22" height="22"><span class="uf-t3">{{ r.champion ?? 'Match' }}</span></span>
               <span class="uf-t4">{{ lolAnalysisStatus(r) }} →</span>
             </button>

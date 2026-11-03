@@ -223,6 +223,7 @@ import { shouldUseOnboardingBonus } from '../../src/lib/onboarding-match-mission
 import { parseMatchHighlightsFromApi } from '../../src/lib/match-highlights'
 import { extractSpatialFromAnalysisPayload } from '../../src/lib/analysis-enrichment'
 import { desktopVodResultsUrl, isPrimaryGame } from '../../src/lib/games'
+import { analysisScoreText, coachingReadyBody } from '../../src/lib/analysis-ready-copy'
 import { RecordingsStore, riotAccountRole, type ClipOnlyReason, type PendingRecording } from './recordings-store'
 import { ProductionVodFixtureLibrary } from './production-vod-fixture'
 import {
@@ -1945,7 +1946,8 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
   }
 
   clearPendingJob()
-  logActivity(`Analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
+  const scoreText = analysisScoreText(result)
+  logActivity(`Analysis ready${scoreText ? ` — ${scoreText}` : ''}`)
 
   const rec = ctx.recordingId
     ? recordingsStore.getById(ctx.recordingId)
@@ -2011,12 +2013,7 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
   }
   mainWindow?.webContents.send('dashboard:refresh')
 
-  const notifAgent = ctx.agent ?? gameLabel(ctx.game)
-  const notifMap = ctx.map ? ` on ${ctx.map}` : ''
-  const notifBody = score != null
-    ? `${notifAgent}${notifMap} — ${score}/100`
-    : `${notifAgent}${notifMap}`.trim()
-  notifyCoachingReady(notifBody, analysisId ?? undefined)
+  notifyCoachingReady(coachingReadyBody(ctx.agent ?? gameLabel(ctx.game), ctx.map, result), analysisId ?? undefined)
   tray?.setToolTip(idleTooltip(ctx.game))
 }
 
@@ -5919,17 +5916,13 @@ async function resumePollForJob(
         }
         notifyRecordingsUpdated()
       }
-      logActivity(`Resumed analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
+      const resumedResult = status.result as Record<string, unknown> | undefined
+      const scoreText = analysisScoreText(resumedResult)
+      logActivity(`Resumed analysis ready${scoreText ? ` — ${scoreText}` : ''}`)
       mainWindow?.webContents.send('dashboard:refresh')
       tray?.setToolTip(idleTooltip(game))
-      const notifAgent = agent ?? gameLabel(game)
-      const notifMap = map ? ` on ${map}` : ''
-      const notifScore = score != null ? ` — Score: ${score}/100` : ''
-      showAppNotification({
-        title: 'UpForge — Analysis Ready',
-        body: `${notifAgent}${notifMap}${notifScore}`,
-        silent: notifySilent(),
-      })
+      // Same notification as a live analysis: clicking it opens the result in the app.
+      notifyCoachingReady(coachingReadyBody(agent ?? gameLabel(game), map, resumedResult), analysisId ?? undefined)
     },
     onFailed: (userMessage, rawError, status) => {
       const rec = recordingsStore.getByJobId(jobId)
@@ -6524,7 +6517,8 @@ async function performUploadAndAnalyse(
         const improvements = completedResult.priority_improvements as string[] | undefined
         const topIssue = completedResult.top_issue as string | undefined
         const insightText = (improvements && improvements.length > 0) ? improvements[0] : (topIssue ?? null)
-        logActivity(`Analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
+        const scoreText = analysisScoreText(completedResult)
+        logActivity(`Analysis ready${scoreText ? ` — ${scoreText}` : ''}`)
         if (insightText) {
           const insight = { text: insightText, score: score ?? 0, agent: agent ?? null, analysisId: analysisId ?? null, date: new Date().toISOString() }
           settingsManager.save({ lastInsight: insight })
@@ -6621,17 +6615,13 @@ async function performUploadAndAnalyse(
         }
         mainWindow?.webContents.send('dashboard:refresh')
         tray?.setToolTip(idleTooltip(game))
-        const notifAgent = agent ?? gameLabel(game)
-        const notifMap = map ? ` on ${map}` : ''
-        const notifBody = score != null
-          ? `${notifAgent}${notifMap} — ${score}/100`
-          : `${notifAgent}${notifMap}`.trim()
-        notifyCoachingReady(notifBody, analysisId ?? undefined)
+        notifyCoachingReady(coachingReadyBody(agent ?? gameLabel(game), map, completedResult), analysisId ?? undefined)
         if (!targetWindow.isDestroyed()) {
           targetWindow.flashFrame(true)
           targetWindow.once('focus', () => targetWindow.flashFrame(false))
         }
-        if (analysisId && isPrimaryGame(game) && settingsManager?.get()?.autoOpenBrowser !== false) {
+        // Results open in the app (notification / post-game). The web report opens only if the player turned this on.
+        if (analysisId && isPrimaryGame(game) && settingsManager?.get()?.autoOpenBrowser === true) {
           shell.openExternal(desktopVodResultsUrl(game, analysisId))
         }
         void (async () => {

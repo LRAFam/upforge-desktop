@@ -7,6 +7,7 @@ import {
   withOnboardingComplete,
 } from './onboarding-settings'
 import { migrateObsPreserveSceneDefaultV2 } from './obs-preserve-scene-migrate'
+import { migrateAutoOpenBrowserInApp } from './auto-open-browser-migrate'
 import {
   resolveRecordingOutput,
   type RecordingPresetId,
@@ -154,6 +155,8 @@ export interface AppSettings {
   obsNonMatchRecordingPaths?: string[]
   /** One-time migration: force UpForge scene switch default (v2). */
   obsPreserveSceneDefaultV2?: boolean
+  /** One-time migration: old installs had "Open results in browser" on by default; turned off once. */
+  autoOpenBrowserInAppV1?: boolean
   /** Milliseconds to wait for OBS outputActive after StartRecord (env UPFORGE_OBS_RECORD_VERIFY_MS overrides). */
   obsRecordVerifyMs?: number
   /** ISO timestamp when OBS preflight last passed. */
@@ -323,6 +326,8 @@ export class SettingsManager {
       parsed = autoAnalyseConsent.settings
       const beforeMigrate = parsed.obsPreserveSceneDefaultV2 === true
       parsed = migrateObsPreserveSceneDefaultV2(parsed)
+      const autoOpenBrowserMigrate = migrateAutoOpenBrowserInApp(parsed)
+      parsed = autoOpenBrowserMigrate.settings
       // Migrate trainerMouse.game → primaryGame for existing installs
       if (!parsed.primaryGame && parsed.trainerMouse?.game) {
         const g = parsed.trainerMouse.game
@@ -343,7 +348,7 @@ export class SettingsManager {
         merged.savePath = DEFAULTS.savePath
       }
       const result = { ...merged, ...applyRecordingPresetFields(merged) }
-      if (!beforeMigrate || autoAnalyseConsent.migrated) {
+      if (!beforeMigrate || autoAnalyseConsent.migrated || autoOpenBrowserMigrate.migrated) {
         try {
           fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
           fs.writeFileSync(this.filePath, JSON.stringify(result, null, 2))
@@ -356,6 +361,7 @@ export class SettingsManager {
       return {
         ...DEFAULTS,
         obsPreserveSceneDefaultV2: true,
+        autoOpenBrowserInAppV1: true,
       }
     }
   }

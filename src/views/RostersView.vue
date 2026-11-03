@@ -11,7 +11,7 @@ import {
   type RosterMatchVisual,
 } from '../lib/roster-match-display'
 import { openWebFeature, WEB_BASE } from '../lib/web-explore-links'
-import { openAnalysisVodReview } from '../lib/open-vod-review'
+import { openAnalysisInApp } from '../lib/open-analysis-in-app'
 import { getRankIconUrl } from '../lib/valorant'
 import RostersV3 from './v3/RostersV3.vue'
 import { uiV3 } from '../lib/ui-v3'
@@ -346,15 +346,8 @@ function monthLimitPct(coach: RosterCoach): number | null {
 function openAnalysis(row: RosterMatchVisual & { id?: number }) {
   const analysisId = row.id
   if (!analysisId) return
-  const game = row.game_type || 'valorant'
-  if (game === 'valorant') {
-    // ?id= is a local recording id; an analysis opens by timelineId (fixes "Recording timeline not found").
-    void openAnalysisVodReview(router, analysisId, { coachNotes: true, source: 'desktop_rosters' })
-      .then(ok => { if (!ok) void openWebFeature(`/${game}/results/${analysisId}`, true) })
-      .catch(() => {})
-    return
-  }
-  void openWebFeature(`/${game}/results/${analysisId}`, true)
+  // Every game opens in the app (match page by timelineId, else Coaching reviews) — never the website.
+  void openAnalysisInApp(router, analysisId, { coachNotes: true, source: 'desktop_rosters' })
 }
 
 function openNotes(review: HubReview) {

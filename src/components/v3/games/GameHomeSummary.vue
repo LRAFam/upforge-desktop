@@ -124,7 +124,7 @@ function openWeb() {
         <span class="uf-t4">{{ lolFocusSubline(lolFocus) }}</span>
       </div>
       <template v-if="game === 'lol' && data.lol.analyses.length">
-        <button v-for="r in data.lol.analyses.slice(0, 3)" :key="r.id" type="button" class="gsum-row" @click="a.lolOpenResults(r.id)">
+        <button v-for="r in data.lol.analyses.slice(0, 3)" :key="r.id" type="button" class="gsum-row" @click="a.lolOpenResults(r)">
           <span class="gsum-champ"><img v-if="r.champion && championIconUrl(r.champion)" :src="championIconUrl(r.champion)" alt="" width="24" height="24"><span class="uf-t3">{{ r.champion ?? 'Match' }}</span></span>
           <span class="uf-t4">{{ r.status === 'completed' ? 'Report ready' : lolAnalysisStatus(r) }}</span>
         </button>
@@ -133,7 +133,7 @@ function openWeb() {
 
     <span class="gsum-links">
       <button type="button" class="uf-link" @click="router.push('/stats')">See progress →</button>
-      <button type="button" class="uf-link" @click="openWeb">View on web →</button>
+      <button type="button" class="uf-link" @click="openWeb">More on upforge.gg →</button>
       <button v-if="game === 'cs2' && !data.cs2.faceit?.connected" type="button" class="uf-link" @click="a.cs2ConnectFaceit()">Connect FACEIT →</button>
       <button v-if="game === 'cs2'" type="button" class="uf-link" @click="a.cs2Settings()">Steam name →</button>
       <button v-if="game === 'lol' && !lolRiotDown && !data.lol.matches.length && data.lol.riotSource === 'valorant'" type="button" class="uf-link" @click="router.push({ path: '/settings', query: { tab: 'account', link: 'lol' } })">Link League Riot ID →</button>

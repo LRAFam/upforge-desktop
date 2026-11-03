@@ -6,6 +6,10 @@
  *   upforge://roster/join?code=123        (alias; roster invites are the coach's public id)
  *   upforge://coaches/123                 (mirrors the web invite path upforge.gg/coaches/123#join-roster)
  *
+ * Accepted (an analysis result → open it in the app; from the web results page's "Open in the UpForge app"):
+ *   upforge://analysis/<game>/<id>        game: valorant | cs2 | deadlock | lol · id: 1–10 digits, no leading 0
+ *                                         (mirrors upforge.gg/<game>/results/<id>)
+ *
  * Never navigates to, opens or forwards the raw URL. The action is held in the main process until a
  * signed-in renderer takes it (so a link clicked before sign-in still lands after signing in).
  */
@@ -13,10 +17,15 @@
 export const DEEP_LINK_SCHEME = 'upforge'
 const MAX_URL_LENGTH = 256
 const COACH_ID = /^[1-9]\d{0,8}$/
+const ANALYSIS_ID = /^[1-9]\d{0,9}$/
+const ANALYSIS_GAMES = ['valorant', 'cs2', 'deadlock', 'lol'] as const
+export type DeepLinkGame = typeof ANALYSIS_GAMES[number]
 /** A pending link older than this is dropped (the user has moved on). */
 export const PENDING_TTL_MS = 30 * 60 * 1000
 
-export type DeepLinkAction = { kind: 'roster-join'; coachId: number }
+export type DeepLinkAction =
+  | { kind: 'roster-join'; coachId: number }
+  | { kind: 'open-analysis'; game: DeepLinkGame; analysisId: number }
 
 function coachIdFrom(value: string | null | undefined): number | null {
   if (!value || !COACH_ID.test(value)) return null
@@ -30,6 +39,8 @@ export function parseUpforgeDeepLink(raw: unknown): DeepLinkAction | null {
   if (!text || text.length > MAX_URL_LENGTH) return null
   // None of the allowed shapes need encoding, whitespace or fragments; refuse anything that has them.
   if (/[%\s#\\]/.test(text)) return null
+  // URL() resolves "." / ".." segments; refuse them so the parsed path is exactly what was sent.
+  if (/\/\.{1,2}(?=\/|\?|$)/.test(text)) return null
   if (!text.toLowerCase().startsWith(`${DEEP_LINK_SCHEME}://`)) return null
   let url: URL
   try {
@@ -56,6 +67,16 @@ export function parseUpforgeDeepLink(raw: unknown): DeepLinkAction | null {
     if (!m || url.search) return null
     const coachId = coachIdFrom(m[1])
     return coachId == null ? null : { kind: 'roster-join', coachId }
+  }
+
+  if (host === 'analysis') {
+    const m = /^\/([a-z0-9]{2,8})\/([^/]+)$/i.exec(path)
+    if (!m || url.search) return null
+    const name = m[1].toLowerCase()
+    const game = (ANALYSIS_GAMES as readonly string[]).includes(name) ? name as DeepLinkGame : null
+    if (!game || !ANALYSIS_ID.test(m[2])) return null
+    const analysisId = Number(m[2])
+    return Number.isSafeInteger(analysisId) ? { kind: 'open-analysis', game, analysisId } : null
   }
 
   return null

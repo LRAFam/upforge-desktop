@@ -170,7 +170,7 @@ const clipsLine = computed(() => {
 
       <div class="pg3-actions uf-rise uf-d3s">
         <UfButton variant="primary" :icon="ready ? 'spark' : undefined" @click="$emit('primary')">{{ primaryLabel }}</UfButton>
-        <UfButton v-if="secondaryLabel" variant="secondary" @click="$emit('secondary')">{{ secondaryLabel }}</UfButton>
+        <UfButton v-if="secondaryLabel" variant="link" @click="$emit('secondary')">{{ secondaryLabel }}</UfButton>
         <button type="button" class="uf-link" @click="$emit('close')">Dismiss</button>
       </div>
 

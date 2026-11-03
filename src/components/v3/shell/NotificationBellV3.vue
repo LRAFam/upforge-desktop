@@ -9,6 +9,7 @@ import { useRouter } from 'vue-router'
 import UfIcon from '../UfIcon.vue'
 import { inboxAge, inboxTarget, type InboxItem, type InboxSnapshot } from './notification-inbox'
 import { openWebFeature } from '../../../lib/web-explore-links'
+import { openAnalysisInApp } from '../../../lib/open-analysis-in-app'
 
 const router = useRouter()
 const snap = ref<InboxSnapshot | null>(null)
@@ -39,6 +40,7 @@ async function openItem(item: InboxItem): Promise<void> {
   }
   const target = inboxTarget(item)
   if (target?.kind === 'app') await router.push({ path: target.path, query: target.query }).catch(() => {})
+  else if (target?.kind === 'analysis') await openAnalysisInApp(router, target.analysisId, { source: 'desktop_bell' })
   else if (target?.kind === 'web') await openWebFeature(target.path)
 }
 

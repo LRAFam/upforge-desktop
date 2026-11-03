@@ -12,7 +12,7 @@ import UfButton from '../UfButton.vue'
 import UfSkeleton from '../UfSkeleton.vue'
 import { useStaleLoad } from '../../../lib/stale-cache'
 import { openWebFeature } from '../../../lib/web-explore-links'
-import { openAnalysisVodReview } from '../../../lib/open-vod-review'
+import { openAnalysisInApp } from '../../../lib/open-analysis-in-app'
 import { plural } from '../../../lib/plural'
 import { groupSessions, sessionWhen, toMarketSession, toPaidReview, type MarketSession, type PaidReview } from './marketplace'
 
@@ -37,14 +37,8 @@ const empty = computed(() => !groups.value.upcoming.length && !groups.value.past
 function openSession(s: MarketSession) { void openWebFeature(`/coaching/session/${s.id}`, true) }
 function openReview(r: PaidReview) {
   if (!r.analysisId) return
-  const game = r.game || 'valorant'
-  if (game === 'valorant') {
-    void openAnalysisVodReview(router, r.analysisId, { coachNotes: true, source: 'desktop_bookings' })
-      .then(ok => { if (!ok) void openWebFeature(`/${game}/results/${r.analysisId}`, true) })
-      .catch(() => {})
-    return
-  }
-  void openWebFeature(`/${game}/results/${r.analysisId}`, true)
+  // Every game opens in the app (match page, else Coaching reviews) — never the website.
+  void openAnalysisInApp(router, r.analysisId, { coachNotes: true, source: 'desktop_bookings' })
 }
 const fmtDay = (t: number | null) => (t == null ? '' : new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }))
 </script>
