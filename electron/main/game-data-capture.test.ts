@@ -193,7 +193,8 @@ describe('GameDataCapture — Deadlock', () => {
     c.setArmed(true)
     await c.deadlockMatchStarted(1)
     c.deadlockMatchEnded()
-    expect(c.getStatus().last?.deadlock?.consoleLogHint).toMatch(/-condebug/)
+    // The status is filled in after the batched (async) summary write, so wait for it.
+    await vi.waitFor(() => expect(c.getStatus().last?.deadlock?.consoleLogHint).toMatch(/-condebug/))
   })
 
   it('ignores CS2 bodies while a Deadlock capture is running', async () => {
