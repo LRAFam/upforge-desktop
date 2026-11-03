@@ -26,7 +26,9 @@ describe('CS2 GSI cfg for diagnostics capture', () => {
     const full = gsiCfgContents(true)
     for (const c of FULL_GSI_COMPONENTS) expect(full).toContain(`"${c}" "1"`)
     expect(FULL_GSI_COMPONENTS).toHaveLength(17)
-    expect(full).toContain('"throttle" "0.1"')
+    // 0.2 s, not 0.1 s with no buffer: 10 POST/s of all-player JSON was the in-game cost (CS2 builds it).
+    expect(full).toContain('"throttle" "0.2"')
+    expect(full).toContain('"buffer"  "0.1"')
     const normal = gsiCfgContents(false)
     expect(normal).not.toContain('allplayers')
     expect(normal).toContain('"throttle" "0.5"')

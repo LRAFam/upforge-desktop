@@ -48,7 +48,7 @@ They contain the owner's Steam ID (and in-match player names).
 | 4 | `phase_countdowns` presence + phases |
 | 5 | `allplayers` / `grenades` non-empty while alive vs dead-or-spectating |
 | 6 | bodies where `player.steamid != provider.steamid`; delay from own death to switch; provider id stable |
-| 7 | gaps between POSTs (median/p95/max), gaps > 2 s while round live, posts per round. Throttle 0.1 during capture; compare with a normal capture for 0.5 |
+| 7 | gaps between POSTs (median/p95/max), gaps > 2 s while round live, posts per round. Throttle 0.2 (buffer 0.1) during capture; compare with a normal capture for 0.5 |
 | 8 | per kill: `match_stats.kills`, `state.round_kills`, `state.round_killhs` deltas + active weapon |
 | 9 | kill wall-clock times (`receivedAt`, `provider.timestamp`) — compare with demo ticks offline |
 | 10 | times of the **app's own** Valve GC lookups (normal retry schedule) — share code not observable |
@@ -61,7 +61,7 @@ They contain the owner's Steam ID (and in-match player names).
 
 ## Design notes / limits
 
-- CS2 cfg: while armed, `gamestate_integration_upforge.cfg` requests all 17 components, throttle 0.1,
+- CS2 cfg: while armed, `gamestate_integration_upforge.cfg` requests all 17 components, throttle 0.2 (buffer 0.1),
   buffer 0, heartbeat 5. Restored to the normal (byte-identical) cfg when capture ends or is switched off.
   CS2 must restart to load either.
 - CS2 capture starts on the first live/warmup body, ends when the map block disappears (back to menu),

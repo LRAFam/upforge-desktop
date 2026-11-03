@@ -5,6 +5,14 @@ import type { MatchData } from './riot-local-api'
 import { recordingPathVariants, sourcePathForCompressed, deleteLocalRecordingFiles } from './vod-compressor'
 import { recordingMatchesLinkedRiot, localMediaRoot, type LinkedRiotId } from './user-data-paths'
 import { healRecordingPath } from './heal-recording-paths'
+import {
+  catalogueWriter,
+  installTimeline,
+  loadTimelinesInBackground,
+  parseCatalogue,
+  rowHasTimeline,
+  rowTimelineSummary,
+} from './recordings-store-files'
 
 function recordingStemKey(filePath: string): string {
   const stem = path.basename(filePath, '.mp4')
@@ -17,7 +25,8 @@ function preferRecordingEntry(a: PendingRecording, b: PendingRecording): Pending
   const bCompressed = sourcePathForCompressed(b.path) != null
   if (aCompressed !== bCompressed) return aCompressed ? a : b
   if (a.analysed !== b.analysed) return a.analysed ? a : b
-  if ((a.timeline != null) !== (b.timeline != null)) return a.timeline ? a : b
+  // rowHasTimeline: never load a timeline file just to compare rows.
+  if (rowHasTimeline(a) !== rowHasTimeline(b)) return rowHasTimeline(a) ? a : b
   return a.recordedAt >= b.recordedAt ? a : b
 }
 
@@ -124,8 +133,9 @@ function matchesLinkedAccount(r: PendingRecording, linkedRiot?: LinkedRiotId | n
   // This link is the selected Valorant account, not a cross-game identity.
   // Other games remain isolated by the owning UpForge user's catalogue.
   if (r.game !== 'valorant') return true
-  const name = r.riotName?.trim() || r.timeline?.playerName?.trim()
-  const tag = r.riotTag?.trim() || r.timeline?.playerTag?.trim()
+  const summary = r.riotName?.trim() && r.riotTag?.trim() ? null : rowTimelineSummary(r)
+  const name = r.riotName?.trim() || summary?.playerName?.trim()
+  const tag = r.riotTag?.trim() || summary?.playerTag?.trim()
   return recordingMatchesLinkedRiot(name, tag, linkedRiot)
 }
 
@@ -141,8 +151,9 @@ export function riotAccountRole(
 ): 'main' | 'alt' | null {
   const accounts = r.game === 'valorant' ? linked : r.game === 'lol' ? lolLinked : null
   if (!accounts) return null
-  const name = (r.riotName?.trim() || r.timeline?.playerName?.trim() || '').toLowerCase()
-  const tag = (r.riotTag?.trim() || r.timeline?.playerTag?.trim() || '').toLowerCase()
+  const summary = r.riotName?.trim() && r.riotTag?.trim() ? null : rowTimelineSummary(r)
+  const name = (r.riotName?.trim() || summary?.playerName?.trim() || '').toLowerCase()
+  const tag = (r.riotTag?.trim() || summary?.playerTag?.trim() || '').toLowerCase()
   if (!name || !tag) return null
   const hit = accounts.find(l => (l.name ?? '').toLowerCase() === name && (l.tag ?? '').toLowerCase() === tag)
   return hit ? (hit.isMain ? 'main' : 'alt') : null
@@ -150,11 +161,36 @@ export function riotAccountRole(
 
 export class RecordingsStore {
   private libraries = new Map<number | null, PendingRecording[]>()
+  private timelineLoads = new Map<number | null, Promise<void>>()
   private userId: number | null = null
 
   private get recordings(): PendingRecording[] { return this.libraries.get(this.userId)! }
   private set recordings(items: PendingRecording[]) { this.libraries.set(this.userId, items) }
-  private get filePath(): string { return path.join(localMediaRoot(this.userId), 'recordings.json') }
+  private get filePath(): string { return RecordingsStore.indexPathFor(this.userId) }
+  private static indexPathFor(userId: number | null): string { return path.join(localMediaRoot(userId), 'recordings.json') }
+
+  /** A row's timeline was replaced (setter) — write that timeline file and the index. */
+  private timelineChanged(userId: number | null, id: string): void {
+    const writer = catalogueWriter(RecordingsStore.indexPathFor(userId))
+    writer.markTimelineDirty(id)
+    writer.schedule(() => this.libraries.get(userId) ?? [])
+  }
+
+  /** Resolves once every timeline of the current catalogue is in memory (no sync reads after). */
+  timelinesReady(): Promise<void> {
+    return this.timelineLoads.get(this.userId) ?? Promise.resolve()
+  }
+
+  /** Full timeline without blocking: in memory, or read from its file asynchronously. */
+  async getTimelineAsync(id: string): Promise<MatchData | null> {
+    await this.timelinesReady()
+    return this.getById(id)?.timeline ?? null
+  }
+
+  /** Resolves when all pending writes of the current catalogue are on disk. */
+  flush(): Promise<void> {
+    return catalogueWriter(this.filePath).flush()
+  }
 
   constructor() {
     this.recordings = this.load()
@@ -179,10 +215,21 @@ export class RecordingsStore {
     const target = this.forUser(userId)
     const ids = new Set(target.recordings.map(item => item.id))
     const incoming = guest.recordings.filter(item => !ids.has(item.id))
+    const writer = catalogueWriter(RecordingsStore.indexPathFor(userId))
+    for (const rec of incoming) {
+      // Load it now (login only, rare): the guest catalogue's cleanup removes its files.
+      void rec.timeline
+      // Re-home the timeline: its changes now belong to the target catalogue.
+      installTimeline(rec, {}, () => this.timelineChanged(userId, rec.id))
+      if (rowHasTimeline(rec)) writer.markTimelineDirty(rec.id)
+    }
     target.recordings = [...incoming, ...target.recordings]
     target.persist()
+    // Login only: the target must be on disk before the guest catalogue lets go (throws if not).
+    catalogueWriter(target.filePath).flushSync({ throwOnError: true })
     guest.recordings = []
     guest.persist()
+    catalogueWriter(guest.filePath).flushSync()
     return incoming.length
   }
 
@@ -205,9 +252,19 @@ export class RecordingsStore {
   }
 
   private load(searchDirs: string[] = []): PendingRecording[] {
+    const indexPath = this.filePath
+    const userId = this.userId
+    const writer = catalogueWriter(indexPath)
+    // Another store instance in this process has unsaved changes for this file: write them first.
+    if (writer.pending) writer.flushSync()
     try {
-      const raw = fs.readFileSync(this.filePath, 'utf-8')
-      const all: PendingRecording[] = JSON.parse(raw)
+      // The index is small (no timelines); a legacy inline file is read once, then migrated.
+      const raw = fs.readFileSync(indexPath, 'utf-8')
+      const { rows: all, legacyInline } = parseCatalogue<PendingRecording>(
+        indexPath,
+        raw,
+        (id) => this.timelineChanged(userId, id),
+      )
 
       // Heal before pruning — migration can move files while JSON still points at
       // the old folder, which used to wipe pending matches from the dashboard.
@@ -231,30 +288,21 @@ export class RecordingsStore {
         return false
       })
       const deduped = this.dedupeSiblingRecordings(pruned)
-      if (deduped.length !== all.length || healedAny) {
-        fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
-        fs.writeFileSync(this.filePath, JSON.stringify(deduped, null, 2))
+      if (legacyInline) writer.markLegacyMigration(deduped)
+      if (deduped.length !== all.length || healedAny || legacyInline) {
+        writer.schedule(() => this.libraries.get(userId) ?? [])
       }
+      this.timelineLoads.set(userId, loadTimelinesInBackground(deduped))
       return deduped
     } catch {
       return []
     }
   }
 
+  /** Debounced async write of this catalogue (index + changed timelines). Never blocks. */
   private persist(): void {
-    try {
-      fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
-      fs.writeFileSync(`${this.filePath}.tmp`, JSON.stringify(this.recordings, null, 2))
-      fs.renameSync(`${this.filePath}.tmp`, this.filePath)
-    } catch (err: unknown) {
-      const code = (err as NodeJS.ErrnoException).code
-      if (code === 'ENOSPC') {
-        console.error('[RecordingsStore] Disk full — could not persist recordings list')
-      } else {
-        console.error('[RecordingsStore] Failed to persist recordings:', err)
-      }
-      throw err
-    }
+    const userId = this.userId
+    catalogueWriter(this.filePath).schedule(() => this.libraries.get(userId) ?? [])
   }
 
   add(data: NewRecording, recordedAt = Date.now()): PendingRecording {
@@ -273,6 +321,9 @@ export class RecordingsStore {
       pipelineStatus: data.pipelineStatus ?? 'pending',
       fileSizeBytes,
     }
+    const userId = this.userId
+    installTimeline(recording, { value: data.timeline ?? null }, () => this.timelineChanged(userId, recording.id))
+    if (recording.timeline) catalogueWriter(this.filePath).markTimelineDirty(recording.id)
     this.recordings.unshift(recording)
     if (this.userId != null && this.recordings.length > 50) {
       const evicted = this.recordings.slice(50).filter(rec => !rec.savedOffline)

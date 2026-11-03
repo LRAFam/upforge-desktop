@@ -74,7 +74,13 @@ export function pickHandoffGameWhenIdleInMenu(
   return pickGameToTrack(others, watchGame)
 }
 
+export interface GameDetectorOptions {
+  /** Full `tasklist /fo csv /nh` output. Injected by tests; Windows uses tasklist. */
+  listProcesses?: () => Promise<string>
+}
+
 export class GameDetector extends EventEmitter {
+  private readonly _listProcesses: (() => Promise<string>) | null
   private _polling = false
   private _interval: NodeJS.Timeout | null = null
   private _activeGame: string | null = null
@@ -85,6 +91,11 @@ export class GameDetector extends EventEmitter {
   /** Last primary game from settings — preferred when multiple games are running. */
   private _watchGame: string | null = null
   private _valorantClientOpen = false
+
+  constructor(opts: GameDetectorOptions = {}) {
+    super()
+    this._listProcesses = opts.listProcesses ?? null
+  }
 
   start(): void {
     if (this._polling) return
@@ -179,6 +190,21 @@ export class GameDetector extends EventEmitter {
   }
 
   /**
+   * Start a fresh match watch for a game that is still running (after a match ended / was skipped).
+   * Keeps the game active so the next poll does NOT emit a second game-started: two emits used to run
+   * two CS2 match flows at once, each starting and stopping recordings ("app"/"cs2" lines alternating).
+   */
+  rearmWatch(game: string): void {
+    this.reviveActiveGame(game)
+    this.emit('game-started', game)
+  }
+
+  /** Run one process poll now (tests). */
+  pollOnce(): Promise<void> {
+    return this._poll()
+  }
+
+  /**
    * Tri-state process probe. Prefer this over boolean checks when deciding to cancel
    * match-wait — `'unknown'` must not count as a process exit.
    */
@@ -229,13 +255,15 @@ export class GameDetector extends EventEmitter {
 
   private async _poll(): Promise<void> {
     // Game detection only works on Windows — Valorant/CS2 don't run on Mac/Linux
-    if (!IS_WIN) return
+    if (!IS_WIN && !this._listProcesses) return
 
     try {
-      const { stdout } = await execAsync(
-        'tasklist /fo csv /nh',
-        { windowsHide: true, timeout: 4000, maxBuffer: 2 * 1024 * 1024 },
-      )
+      const stdout = this._listProcesses
+        ? await this._listProcesses()
+        : (await execAsync(
+            'tasklist /fo csv /nh',
+            { windowsHide: true, timeout: 4000, maxBuffer: 2 * 1024 * 1024 },
+          )).stdout
       const runningGames = runningGamesFromTasklist(stdout)
       const valorantClientOpen = isValorantClientOpenFromTasklist(stdout)
       if (valorantClientOpen !== this._valorantClientOpen) {

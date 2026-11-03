@@ -26,6 +26,18 @@ let server: http.Server | null = null
 let latestPayload: SteamGsiPayload | null = null
 let latestAt = 0
 let sawLiveMatch = false
+/** Map the live match is on (lower-case); a different live map means a new match. */
+let liveMapName: string | null = null
+/** First POST with no map (main menu / disconnected) since the match was last live. */
+let leftServerAt: number | null = null
+let sawGameover = false
+let switchedMap = false
+
+/**
+ * Leaving the server (main menu, crash, disconnect) only ends the match after this long without a
+ * map, so a reconnect to the same match keeps one recording instead of splitting it.
+ */
+export const CS2_LEFT_SERVER_GRACE_MS = 90_000
 let serverListening = false
 let serverPortBlocked = false
 
@@ -41,17 +53,7 @@ export function startSteamGsiServer(): void {
     let body = ''
     req.on('data', (chunk) => { body += String(chunk) })
     req.on('end', () => {
-      // Diagnostics capture (off by default) — raw body, before parsing.
-      try { getGameDataCapture()?.ingestGsi(body) } catch { /* never block detection */ }
-      try {
-        const payload = JSON.parse(body) as SteamGsiPayload
-        latestPayload = payload
-        latestAt = Date.now()
-        if (isGsiMatchLive(payload)) sawLiveMatch = true
-        cs2GsiTracker.ingest(payload as Cs2GsiPayload, latestAt)
-      } catch {
-        /* ignore malformed payloads */
-      }
+      ingestGsiBody(body)
       res.writeHead(200)
       res.end()
     })
@@ -76,6 +78,19 @@ export function startSteamGsiServer(): void {
   })
 }
 
+/** One GSI POST body (what the HTTP handler receives). Exported so tests can replay real sequences. */
+export function ingestGsiBody(body: string, at: number = Date.now()): void {
+  let payload: SteamGsiPayload | null = null
+  try { payload = JSON.parse(body) as SteamGsiPayload } catch { /* malformed — capture still keeps the raw text */ }
+  // Diagnostics capture (off by default). Parsed once here; capture reuses it.
+  try { getGameDataCapture()?.ingestGsi(body, payload ?? null) } catch { /* never block detection */ }
+  if (!payload || typeof payload !== 'object') return
+  latestPayload = payload
+  latestAt = at
+  noteMatchLifecycle(payload, at)
+  try { cs2GsiTracker.ingest(payload as Cs2GsiPayload, at) } catch { /* timeline only */ }
+}
+
 export function isGsiServerReady(): boolean {
   return serverListening
 }
@@ -86,6 +101,28 @@ export function isGsiPortBlocked(): boolean {
 
 export function resetSteamGsiSession(): void {
   sawLiveMatch = false
+  liveMapName = null
+  leftServerAt = null
+  sawGameover = false
+  switchedMap = false
+}
+
+function noteMatchLifecycle(payload: SteamGsiPayload, at: number): void {
+  const mapName = (payload.map?.name ?? '').toLowerCase()
+  const phase = (payload.map?.phase ?? '').toLowerCase()
+  if (!mapName || mapName === 'menu') {
+    if (sawLiveMatch && leftServerAt == null) leftServerAt = at
+    return
+  }
+  if (phase === 'gameover') {
+    if (sawLiveMatch) sawGameover = true
+    return
+  }
+  if (!isGsiMatchLive(payload)) return
+  if (sawLiveMatch && liveMapName && liveMapName !== mapName) switchedMap = true
+  sawLiveMatch = true
+  liveMapName ??= mapName
+  leftServerAt = null
 }
 
 export function isGsiReceiving(maxAgeMs = 35_000): boolean {
@@ -105,7 +142,7 @@ const LIVE_MAP_PHASES = new Set([
   'paused',
 ])
 
-const LIVE_ROUND_PHASES = new Set(['live', 'freezetime'])
+const LIVE_ROUND_PHASES = new Set(['live', 'freezetime', 'over'])
 
 export function isGsiMatchLive(payload: SteamGsiPayload | null = latestPayload): boolean {
   if (!payload?.map?.name) return false
@@ -115,6 +152,8 @@ export function isGsiMatchLive(payload: SteamGsiPayload | null = latestPayload):
   const phase = (payload.map.phase ?? '').toLowerCase()
   if (phase === 'gameover') return false
   if (LIVE_MAP_PHASES.has(phase)) return true
+  // On a map with an unknown phase (e.g. a tactical timeout) — still in the match.
+  if (phase) return true
 
   // Some CS2 builds omit map.phase briefly; round.phase is a reliable fallback.
   const roundPhase = (payload.round?.phase ?? '').toLowerCase()
@@ -131,18 +170,26 @@ export function getLatestGsiPayload(): SteamGsiPayload | null {
   return latestPayload
 }
 
-/** True after a live match was seen and GSI reports return to menu / game over. */
-export function isGsiMatchEnded(payload: SteamGsiPayload | null = latestPayload): boolean {
-  if (!sawLiveMatch || !payload) return false
+export type GsiMatchEndReason = 'gameover' | 'left-server' | 'map-changed'
 
-  const phase = (payload.map?.phase ?? '').toLowerCase()
-  if (phase === 'gameover') return true
+/**
+ * Why the live match is over, or null while it is still on. A match ends only on game over, a
+ * switch to a different map, or no map for CS2_LEFT_SERVER_GRACE_MS (left / crashed without
+ * reconnecting). Never on `player.activity === 'menu'` (the in-match Esc menu), chat, death /
+ * spectating (`player` becomes the spectated player), halftime, round over, or a GSI gap.
+ * Closing CS2 is handled by the process watcher.
+ */
+export function gsiMatchEndReason(now: number = Date.now()): GsiMatchEndReason | null {
+  if (!sawLiveMatch) return null
+  if (sawGameover) return 'gameover'
+  if (switchedMap) return 'map-changed'
+  if (leftServerAt != null && now - leftServerAt >= CS2_LEFT_SERVER_GRACE_MS) return 'left-server'
+  return null
+}
 
-  const mapName = (payload.map?.name ?? '').toLowerCase()
-  if (mapName === 'menu') return true
-
-  const activity = (payload.player?.activity ?? '').toLowerCase()
-  return activity === 'menu'
+/** True after a live match was seen and GSI reports it finished (see gsiMatchEndReason). */
+export function isGsiMatchEnded(now: number = Date.now()): boolean {
+  return gsiMatchEndReason(now) != null
 }
 
 /** Every CS2 GSI component — only requested while a diagnostics capture is armed. */
@@ -182,8 +229,8 @@ export function gsiCfgContents(full = false): string {
 {
     "uri" "http://127.0.0.1:${STEAM_GSI_PORT}"
     "timeout" "5.0"
-    "buffer"  "0.0"
-    "throttle" "0.1"
+    "buffer"  "0.1"
+    "throttle" "0.2"
     "heartbeat" "5.0"
     "data"
     {

@@ -486,6 +486,8 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
     }
   }
   ipcMain.handle('recordings:get-timeline', async (_e, { id }: { id: string }) => {
+    // Timelines live in their own files and load in the background; never read one synchronously here.
+    await recordingsStore.timelinesReady?.()
     const recording = recordingsStore.getById(id) ?? productionVodFixtures.getById(id)
     if (recording) return reviewTimeline(recording)
     const cloud = await archiveReview(id)

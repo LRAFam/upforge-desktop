@@ -9,6 +9,7 @@ vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn(), error:
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
 import { OBSRecorder } from './obs-recorder'
 import { RecordingsStore } from './recordings-store'
+import { catalogueWriter } from './recordings-store-files'
 import { FfmpegProgressParser } from './ffmpeg-progress'
 import { backgroundWork } from './background-work'
 import { RiotLocalApi } from './riot-local-api'
@@ -131,7 +132,10 @@ describe('performance cleanup regressions', () => {
     expect(store.recordings[0].analysisProgress).toBe(30)
     expect(write).not.toHaveBeenCalled()
     store.markArchived('target', 'archive-id')
-    expect(write).toHaveBeenCalledOnce()
+    // Durable change: scheduled on the async, debounced writer — never a sync write on the main thread.
+    expect(write).not.toHaveBeenCalled()
+    expect(catalogueWriter(store.filePath).pending).toBe(true)
+    catalogueWriter(store.filePath).discard()
   })
 
   it('parses split FFmpeg records incrementally without retaining historical logs', () => {

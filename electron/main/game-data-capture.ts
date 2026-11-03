@@ -45,8 +45,11 @@ export const DEADLOCK_API_DELAYS_MS = [5 * 60_000, 20 * 60_000, 45 * 60_000]
 export const DEADLOCK_REPLAY_HEAD_DELAYS_MS = [0, 5 * 60_000, 20 * 60_000]
 /** CS2 writes an auto-recorded client demo at match end. */
 export const CS2_LOCAL_DEMO_CHECK_MS = 2 * 60_000
-/** Throttle used by the all-components cfg (steam-gsi-server FULL cfg). */
-const FULL_GSI_THROTTLE_S = 0.1
+/** Throttle used by the all-components cfg (steam-gsi-server gsiCfgContents(true)). Keep in sync. */
+const FULL_GSI_THROTTLE_S = 0.2
+/** Capture lines are batched and appended asynchronously at most this often. */
+const FLUSH_INTERVAL_MS = 2_000
+const FLUSH_MAX_BYTES = 1024 * 1024
 const MAX_AFTER_MATCH_EVENTS = 100
 
 export type CaptureStopReason = 'match-ended' | 'size-limit' | 'game-closed' | 'switched-off'
@@ -109,7 +112,9 @@ interface PersistedState {
 interface ActiveCapture {
   summary: CaptureSummary
   dataPath: string
-  fd: number
+  /** Lines not yet on disk — flushed in one async append (never sync I/O per GSI POST). */
+  pending: string[]
+  pendingBytes: number
   gameoverAt: number | null
   /** Deadlock: console.log size at match start. */
   consoleOffsets: Array<{ path: string; size: number }>
@@ -225,6 +230,8 @@ export class GameDataCapture {
   private readonly fetchImpl: GameDataCaptureOptions['fetchImpl']
   private afterTimers: Array<ReturnType<typeof setTimeout>> = []
   private replayHeadScheduled = false
+  private flushTimer: ReturnType<typeof setTimeout> | null = null
+  private writeChain: Promise<void> = Promise.resolve()
 
   constructor(opts: GameDataCaptureOptions) {
     this.dir = opts.dir
@@ -310,10 +317,9 @@ export class GameDataCapture {
     try {
       fs.mkdirSync(this.dir, { recursive: true })
       const dataPath = path.join(this.dir, dataName)
-      const fd = fs.openSync(dataPath, 'a')
       const summary = emptySummary(game, at)
       summary.files.push(dataName)
-      this.active = { summary, dataPath, fd, gameoverAt: null, consoleOffsets: [] }
+      this.active = { summary, dataPath, pending: [], pendingBytes: 0, gameoverAt: null, consoleOffsets: [] }
       return this.active
     } catch {
       return null
@@ -329,21 +335,42 @@ export class GameDataCapture {
       this.finish('size-limit')
       return false
     }
-    try {
-      fs.writeSync(a.fd, line + '\n')
-      a.summary.bytesWritten += bytes
-      return true
-    } catch {
-      return false
+    a.pending.push(line)
+    a.pendingBytes += bytes
+    a.summary.bytesWritten += bytes
+    if (a.pendingBytes >= FLUSH_MAX_BYTES) this.flush(a)
+    else if (!this.flushTimer) {
+      this.flushTimer = setTimeout(() => { this.flushTimer = null; if (this.active) this.flush(this.active) }, FLUSH_INTERVAL_MS)
+      this.flushTimer.unref?.()
     }
+    return true
+  }
+
+  /** Append buffered lines off the main thread, in order. */
+  private flush(a: ActiveCapture): void {
+    if (!a.pending.length) return
+    const chunk = a.pending.join('\n') + '\n'
+    a.pending = []
+    a.pendingBytes = 0
+    this.writeChain = this.writeChain
+      .then(() => fs.promises.appendFile(a.dataPath, chunk, 'utf-8'))
+      .catch(() => { /* diagnostics only */ })
+  }
+
+  /** Resolves once every captured line has been written (tests / shutdown). */
+  async flushed(): Promise<void> {
+    if (this.active) this.flush(this.active)
+    await this.writeChain
   }
 
   private finish(reason: CaptureStopReason): CaptureSummary | null {
     const a = this.active
     if (!a) return null
     this.clearTimers()
+    if (this.flushTimer) clearTimeout(this.flushTimer)
+    this.flushTimer = null
+    this.flush(a)
     if (a.summary.game === 'deadlock') this.copyDeadlockConsole(a)
-    try { fs.closeSync(a.fd) } catch { /* ignore */ }
     a.summary.endedAt = this.now()
     a.summary.stopReason = reason
     a.summary.afterMatch = []
@@ -383,12 +410,14 @@ export class GameDataCapture {
   // ── CS2 ─────────────────────────────────────────────────────────────────
 
   /** Called by the GSI server for EVERY POST body (raw text, before parsing). */
-  ingestGsi(rawBody: string): void {
+  ingestGsi(rawBody: string, parsed?: unknown): void {
     if (!this.active && !this.isArmed()) return
     if (this.active && this.active.summary.game !== 'cs2') return
     const at = this.now()
-    let body: unknown = null
-    try { body = JSON.parse(rawBody) } catch { body = null }
+    let body: unknown = parsed ?? null
+    if (parsed === undefined) {
+      try { body = JSON.parse(rawBody) } catch { body = null }
+    }
     const state: GsiState = body == null ? 'other' : classifyGsiBody(body)
 
     if (!this.active) {
