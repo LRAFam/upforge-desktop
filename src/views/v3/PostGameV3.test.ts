@@ -44,7 +44,7 @@ function text(node: any): string {
 describe('PostGameV3', () => {
   it('ready: shows the real result, score, meta, coach line and evidence', () => {
     const out = render({
-      ready: true, tone: 'success', primaryLabel: 'Review coaching', secondaryLabel: 'Web report', score: 'UpForge score 720',
+      ready: true, tone: 'success', primaryLabel: 'Review coaching', secondaryLabel: 'Open on upforge.gg', score: 'UpForge score 720',
       summary: { result: 'win', ally: 13, enemy: 11, kills: 18, deaths: 14, assists: 6 },
       matchName: 'Jett', mapName: 'Bind', coachLine: 'Positioning during post-plant', clipCount: 3, showFeedback: true,
     })

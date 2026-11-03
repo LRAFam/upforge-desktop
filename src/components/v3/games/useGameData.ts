@@ -11,6 +11,7 @@ import { readCache, writeCache } from '../../../lib/stale-cache'
 import type { LolRankPayload } from '../../../lib/lol-progress'
 import type { Focus } from '../../../lib/focus'
 import { lolIdentity } from '../../../lib/lol-display'
+import { openLolAnalysisInApp } from '../../../lib/open-analysis-in-app'
 import type { LolRecentResult } from '../../../lib/lol-recent'
 
 /** Recent games with Riot's error state; older preloads only have the plain list. */
@@ -39,7 +40,9 @@ export function useGameData(game: Readonly<Ref<PrimaryGame>>) {
   const loaded = computed(() => loadedFor.value === game.value)
 
   const cs2 = reactive({ profile: null as Cs2Profile | null, faceit: null as Cs2Faceit | null, demos: null as FileList | null, detecting: false, detectError: '' })
-  const deadlock = reactive({ linked: false, stats: null as DeadlockProfileStats | null, replays: null as FileList | null, analyses: [] as DeadlockAnalysisItem[], uploads: {} as Record<string, UploadState> })
+  const deadlock = reactive({ linked: false, stats: null as DeadlockProfileStats | null, replays: null as FileList | null, analyses: [] as DeadlockAnalysisItem[], uploads: {} as Record<string, UploadState>,
+    /** The replay review open in the app (job id), after "Analyse"/"View" on a replay. */
+    reviewJobId: null as string | null })
   const lol = reactive({
     linked: false, riotLabel: '', riotSource: null as 'league' | 'valorant' | null, matches: [] as LolMatchSummary[], analyses: [] as LolAnalysisItem[], rank: null as LolRankPayload | null, focus: null as Focus | null,
     /** Riot couldn't list games (or only some): shown instead of "no games". Null = the list is complete. */
@@ -178,15 +181,16 @@ export function useGameData(game: Readonly<Ref<PrimaryGame>>) {
 
   async function analyzeReplay(path: string) {
     const existing = deadlock.uploads[path]
+    // Reviews open in the app (DeadlockReviewV3 shows "still being written" until it's ready).
     if (existing?.status === 'done' && existing.jobId) {
-      void window.api.deadlock.openResults(existing.jobId)
+      deadlock.reviewJobId = existing.jobId
       return
     }
     deadlock.uploads[path] = { busy: true, status: 'uploading', pct: 0 }
     const res = await window.api.deadlock.uploadDemo(path)
     if (res.ok) {
       deadlock.uploads[path] = { busy: false, status: 'done', pct: 100, jobId: res.jobId }
-      void window.api.deadlock.openResults(res.jobId)
+      deadlock.reviewJobId = res.jobId
     } else {
       deadlock.uploads[path] = { busy: false, status: 'error', pct: 0, error: res.error }
     }
@@ -201,9 +205,11 @@ export function useGameData(game: Readonly<Ref<PrimaryGame>>) {
     deadlockOpenFolder: () => void window.api.deadlock.openReplaysFolder(),
     deadlockOpenWeb: () => void window.api.deadlock.openDashboard(),
     deadlockConnect: () => void window.api.deadlock.openConnectSteam(),
+    deadlockCloseReview: () => { deadlock.reviewJobId = null },
     lolOpenWeb: () => void window.api.lol.openHistory(),
     lolConnect: () => void window.api.lol.openConnectRiot(),
-    lolOpenResults: (id: number) => void window.api.lol.openResults(id),
+    /** A League stats analysis opens its in-app League report (the web is only a secondary link). */
+    lolOpenResults: (row: { id: number; match_id?: string | null }) => void openLolAnalysisInApp(router, row),
     lolRecordings: () => void router.push({ path: '/recordings', query: { game: 'lol' } }),
   }
 

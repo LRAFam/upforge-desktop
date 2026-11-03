@@ -3,6 +3,7 @@
 import { computed } from 'vue'
 import { formatAge, formatSize } from './game-data'
 import type { GameData } from './useGameData'
+import DeadlockReviewV3 from './DeadlockReviewV3.vue'
 
 const props = defineProps<{ game: 'cs2' | 'deadlock'; data: GameData; limit?: number }>()
 
@@ -60,6 +61,8 @@ function openFolder() {
       </div>
       <p class="uf-t4">Attach {{ noun }}s to recordings after each match{{ game === 'deadlock' ? ' for the kill timeline and clips' : '' }}.</p>
     </template>
+    <!-- A replay's review opens here in the app; the dialog keeps "Full report on the web" as a quiet link. -->
+    <DeadlockReviewV3 v-if="game === 'deadlock'" :open="!!data.deadlock.reviewJobId" :job-id="data.deadlock.reviewJobId" @close="a.deadlockCloseReview()" />
   </section>
 </template>
 

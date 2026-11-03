@@ -38,8 +38,9 @@ describe('inboxTarget', () => {
   })
 
   it('sends web-only items to upforge.gg paths', () => {
-    expect(inboxTarget({ type: 'analysis_complete', data: { analysis_log_id: 7, game_type: 'cs2' } })).toEqual({ kind: 'web', path: '/cs2/results/7' })
-    expect(inboxTarget({ type: 'analysis_complete', data: { analysis_log_id: 7, game_type: '../evil' } })).toEqual({ kind: 'web', path: '/valorant/results/7' })
+    expect(inboxTarget({ type: 'analysis_complete', data: { analysis_log_id: 7, game_type: 'cs2' } })).toEqual({ kind: 'analysis', analysisId: 7 })
+    expect(inboxTarget({ type: 'analysis_complete', data: { analysis_log_id: '7', game_type: '../evil' } })).toEqual({ kind: 'analysis', analysisId: 7 })
+    expect(inboxTarget({ type: 'analysis_complete', data: { analysis_log_id: '07x' } })).toEqual({ kind: 'app', path: '/recordings' })
     expect(inboxTarget({ type: 'review_requested', data: { review_id: 5 } })).toEqual({ kind: 'web', path: '/coach-dashboard/reviews/feed?review=5' })
     expect(inboxTarget({ type: 'review_received', data: {} })).toEqual({ kind: 'web', path: '/my-coaches' })
     expect(inboxTarget({ type: 'other', data: { guide_id: 4, action: 'view_guide' } })).toEqual({ kind: 'web', path: '/guides/4' })

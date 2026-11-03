@@ -1,67 +1,25 @@
 import type { Router } from 'vue-router'
 import type { AnalysisItem } from '../env.d.ts'
 import type { PrimaryGame } from './games'
-import { analysisResultsUrl, desktopVodResultsUrl } from './games'
-import { pendingTimeline } from '../stores/pendingTimeline'
 import { isAnalysisProcessing } from './dashboard-match-row'
+import { coachingReviewsLocation, openAnalysisInApp } from './open-analysis-in-app'
 
-/** Open an analysis row — timeline in-app (Valorant), web, or Deadlock results. */
+/**
+ * Open an analysis row (Home, Coaching reviews) inside the app — never the browser.
+ * Match page when a timeline exists; otherwise Coaching reviews with the row selected
+ * (Deadlock replay reviews, CS2 web-demo reviews and analyses still being written show there).
+ */
 export async function openGameAnalysis(
   game: PrimaryGame,
   item: AnalysisItem,
   router: Router,
 ): Promise<void> {
-  if (item.game_mode === 'DEADLOCK' && item.job_id) {
-    void window.api.deadlock.openResults(item.job_id)
+  const noTimeline = item.game_mode === 'DEADLOCK'
+    || (game === 'cs2' && item.cs2_source !== 'desktop_vod')
+    || isAnalysisProcessing(item)
+  if (noTimeline) {
+    await router.push(coachingReviewsLocation(item.id)).catch(() => {})
     return
   }
-  if (game === 'cs2') {
-    if (item.cs2_source === 'desktop_vod' && item.id) {
-      try {
-        const data = await window.api.analyses.getTimeline(item.id)
-        if (data) {
-          pendingTimeline.value = data
-          await router.push({ path: '/vod-review', query: { timelineId: String(item.id) } })
-          void window.api.funnel?.trackReportOpened?.({
-            analysis_id: item.id,
-            source: 'desktop_dashboard_cs2_vod',
-          })
-          return
-        }
-      } catch { /* fall through to web */ }
-      window.open(desktopVodResultsUrl('cs2', item.id), '_blank')
-      return
-    }
-    if (item.job_id) {
-      window.open(analysisResultsUrl('cs2', item.job_id), '_blank')
-      return
-    }
-  }
-  if (game === 'lol' && item.id) {
-    window.open(desktopVodResultsUrl('lol', item.id), '_blank')
-    void window.api.funnel?.trackReportOpened?.({
-      analysis_id: item.id,
-      source: 'desktop_dashboard_lol_vod',
-    })
-    return
-  }
-  if (game === 'valorant' && !isAnalysisProcessing(item)) {
-    try {
-      const data = await window.api.analyses.getTimeline(item.id)
-      if (data) {
-        pendingTimeline.value = data
-        await router.push({ path: '/vod-review', query: { timelineId: String(item.id) } })
-        void window.api.funnel?.trackReportOpened?.({
-          analysis_id: item.id,
-          source: 'desktop_dashboard_valorant',
-        })
-        return
-      }
-    } catch { /* fall through to web */ }
-  }
-  window.open(analysisResultsUrl(game, item.id), '_blank')
-  void window.api.funnel?.trackReportOpened?.({
-    analysis_id: item.id,
-    source: `desktop_dashboard_${game}_web`,
-  })
+  await openAnalysisInApp(router, item.id, { source: `desktop_dashboard_${game}` })
 }

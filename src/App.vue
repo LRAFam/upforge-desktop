@@ -294,6 +294,7 @@ import SidebarV3 from './components/v3/SidebarV3.vue'
 import { uiV3 } from './lib/ui-v3'
 import { openWebFeature } from './lib/web-explore-links'
 import { deepLinkRoute } from './lib/deep-link-route'
+import { openAnalysisInApp, openDeepLinkAnalysis } from './lib/open-analysis-in-app'
 import { setCacheScope } from './lib/stale-cache'
 import { titleBarAccountLabel, titleBarObsConnected, updateBannerLine, v3AllowedRoutes } from './lib/shell-v3'
 import { openUpgrade as startUpgrade } from './lib/upgrade'
@@ -584,6 +585,7 @@ async function consumeDeepLink(): Promise<void> {
     const target = deepLinkRoute(action, uiV3.value)
     if (!target) return
     if (target.type === 'route') await router.push(target.location).catch(() => {})
+    else if (target.type === 'analysis') await openDeepLinkAnalysis(router, target)
     else await openWebFeature(target.path)
   } catch { /* nothing held or IPC unavailable */ }
 }
@@ -771,6 +773,13 @@ onMounted(async () => {
   const deepLinkCleanup = api.on('deep-link:available', () => { void consumeDeepLink() })
   ;(window as Window & { _deepLinkCleanup?: () => void })._deepLinkCleanup = deepLinkCleanup
 
+  // "Coaching ready" notification click: open the result in the app from any screen (never the browser).
+  const openAnalysisCleanup = api.on('dashboard:open-latest-analysis', (...args: unknown[]) => {
+    const id = (args[0] as { analysisId?: unknown } | undefined)?.analysisId
+    if (typeof id === 'number') void openAnalysisInApp(router, id, { source: 'desktop_notification' })
+  })
+  ;(window as Window & { _openAnalysisCleanup?: () => void })._openAnalysisCleanup = openAnalysisCleanup
+
   const sessionCleanup = api.on('session:user-changed', (...args: unknown[]) => {
     const payload = args[0] as { userId?: number | null } | undefined
     void applySessionUser(payload?.userId ?? null)
@@ -827,6 +836,8 @@ onUnmounted(() => {
   const riotLinkCleanup = (window as Window & { _riotLinkCleanup?: () => void })._riotLinkCleanup
   riotLinkCleanup?.()
   delete (window as Window & { _riotLinkCleanup?: () => void })._riotLinkCleanup
+  ;(window as Window & { _openAnalysisCleanup?: () => void })._openAnalysisCleanup?.()
+  delete (window as Window & { _openAnalysisCleanup?: () => void })._openAnalysisCleanup
   const settingsCleanup = (window as Window & { _settingsCleanup?: () => void })._settingsCleanup
   settingsCleanup?.()
   delete (window as Window & { _settingsCleanup?: () => void })._settingsCleanup

@@ -15,3 +15,20 @@ describe('deepLinkRoute', () => {
     }
   })
 })
+
+describe('deepLinkRoute · analysis results', () => {
+  it('opens analyses in the app in both designs', () => {
+    for (const ui of [true, false]) {
+      expect(deepLinkRoute({ kind: 'open-analysis', game: 'cs2', analysisId: 77 }, ui)).toEqual({ type: 'analysis', game: 'cs2', analysisId: 77 })
+    }
+  })
+  it('rejects bad games and ids', () => {
+    for (const bad of [
+      { kind: 'open-analysis', game: 'dota', analysisId: 1 },
+      { kind: 'open-analysis', game: 'lol', analysisId: 0 },
+      { kind: 'open-analysis', game: 'lol', analysisId: '5' },
+      { kind: 'open-analysis', game: 'lol', analysisId: 1.5 },
+      { kind: 'open-analysis', analysisId: 1 },
+    ]) expect(deepLinkRoute(bad, true)).toBeNull()
+  })
+})

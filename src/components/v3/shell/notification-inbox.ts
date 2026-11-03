@@ -58,9 +58,10 @@ export function toInboxSnapshot(raw: unknown, now: number): InboxSnapshot {
   return { items, unreadCount, fetchedAt: now }
 }
 
-/** Where clicking an item goes: an in-app route, an upforge.gg path, or nowhere (just marks read). */
+/** Where clicking an item goes: an in-app route, an analysis result (opened in the app), an upforge.gg path, or nowhere (just marks read). */
 export type InboxTarget =
   | { kind: 'app'; path: string; query?: Record<string, string> }
+  | { kind: 'analysis'; analysisId: number }
   | { kind: 'web'; path: string }
   | null
 
@@ -69,8 +70,6 @@ function idOf(v: unknown): string | null {
   if (typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v)) return v
   return null
 }
-
-const RESULT_GAMES = new Set(['valorant', 'cs2', 'deadlock', 'lol'])
 
 /** Mirrors the web bell (upforge-frontend NotificationDropdown) and the desktop coach poller. */
 export function inboxTarget(item: Pick<InboxItem, 'type' | 'data'>): InboxTarget {
@@ -88,9 +87,13 @@ export function inboxTarget(item: Pick<InboxItem, 'type' | 'data'>): InboxTarget
     return { kind: 'web', path: '/my-coaches' }
   }
   if (t === 'analysis_complete') {
-    const logId = idOf(d.analysis_log_id)
-    const game = typeof d.game_type === 'string' && RESULT_GAMES.has(d.game_type) ? d.game_type : 'valorant'
-    return logId ? { kind: 'web', path: `/${game}/results/${logId}` } : { kind: 'app', path: '/recordings' }
+    // Results open in the app (match page, else Coaching reviews) for every game, never the website.
+    const logId = d.analysis_log_id
+    return typeof logId === 'number' && Number.isSafeInteger(logId) && logId > 0
+      ? { kind: 'analysis', analysisId: logId }
+      : typeof logId === 'string' && /^[1-9]\d{0,9}$/.test(logId)
+        ? { kind: 'analysis', analysisId: Number(logId) }
+        : { kind: 'app', path: '/recordings' }
   }
   if (t === 'analysis_failed') return { kind: 'app', path: '/recordings' }
   if (t === 'review_requested') {

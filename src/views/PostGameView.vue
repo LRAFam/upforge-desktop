@@ -11,7 +11,7 @@
       :status="compactStatus"
       :timing="compactTiming"
       :primary-label="state === 'ready' && result?.analysis_id ? 'Review coaching' : state === 'ready' ? 'Open report' : 'Open UpForge'"
-      :secondary-label="state === 'ready' && result?.analysis_id && analysisUrl ? 'Web report' : null"
+      :secondary-label="state === 'ready' && result?.analysis_id && analysisUrl ? 'Open on upforge.gg' : null"
       :show-expectations="['preparing', 'uploading', 'analysing'].includes(state)"
       :score="v3ScoreLine"
       :show-feedback="state === 'ready' && Boolean(result?.analysis_id)"
@@ -61,7 +61,7 @@
       :status="compactStatus"
       :timing="compactTiming"
       :primary-label="state === 'ready' && result?.analysis_id ? 'Review coaching' : state === 'ready' ? 'Open report' : 'Open UpForge'"
-      :secondary-label="state === 'ready' && result?.analysis_id && analysisUrl ? 'Web report' : null"
+      :secondary-label="state === 'ready' && result?.analysis_id && analysisUrl ? 'Open on upforge.gg' : null"
       :show-expectations="['preparing', 'uploading', 'analysing'].includes(state)"
       :score="compactScore"
       :show-feedback="state === 'ready' && Boolean(result?.analysis_id)"
@@ -463,7 +463,7 @@
           <button
             class="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition-all shadow-lg"
             :style="{ background: `linear-gradient(135deg, ${agentAccentColor || '#dc2626'}, ${agentAccentColor ? agentAccentColor + 'cc' : '#ea580c'})`, boxShadow: `0 4px 14px ${agentAccentColor || '#dc2626'}40` }"
-            @click="viewFullAnalysis"
+            @click="openNativeAnalysisReview"
           >
             <span>Open full report</span>
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2358,8 +2358,10 @@ function viewFullAnalysis() {
 
 async function handleCompactPrimary() {
   if (state.value === 'ready') {
+    // Results open in the main window; the web report is only the secondary link.
     if (result.value?.analysis_id) await openNativeAnalysisReview()
-    else viewFullAnalysis()
+    else if (gameInfo.value.game === 'valorant' && matchId.value && matchId.value !== 'preview-match-id') await openMatchReport()
+    else await handoffToMain({ path: '/recordings', query: { view: 'coaching' } })
     return
   }
   await handoffToMain('/dashboard')

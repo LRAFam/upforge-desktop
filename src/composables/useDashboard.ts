@@ -49,7 +49,7 @@ import {
 } from '../lib/analyse-gate'
 import { POST_MATCH_COPY } from '../lib/post-match-copy'
 import { filterAnalysesForPrimaryGame } from '../lib/analysis-display'
-import { desktopVodResultsUrl } from '../lib/games'
+import { openAnalysisInApp } from '../lib/open-analysis-in-app'
 
 export interface LolRecentMatch {
   match_id: string
@@ -1339,8 +1339,9 @@ function createDashboard(opts: DashboardOptions = {}) {
     setTimeout(() => { simulating.value = false; simStatus.value = 'Done' }, durationMs + 500)
   }
 
+  /** Results open in the app (match page, else Coaching reviews) — never the browser. */
   function openAnalysis(id: number) {
-    window.open(desktopVodResultsUrl(primaryGame.value, id), '_blank')
+    return openAnalysisInApp(router, id, { source: 'desktop_dashboard' })
   }
 
   async function openAnalysisRow(a: AnalysisItem) {
@@ -1728,10 +1729,8 @@ function createDashboard(opts: DashboardOptions = {}) {
       if (activityToastTimer) clearTimeout(activityToastTimer)
       activityToastTimer = setTimeout(() => { activityToast.value = null }, 8000)
     }))
-    ipcCleanup.push(window.api.on('dashboard:open-latest-analysis', (...args: unknown[]) => {
-      const data = args[0] as { analysisId?: number }
-      if (data?.analysisId != null) void openAnalysis(data.analysisId)
-    }))
+    // 'dashboard:open-latest-analysis' (the "Coaching ready" notification) is handled app-wide in App.vue,
+    // so it opens the in-app result from any screen.
     ipcCleanup.push(window.api.on('dashboard:analyse-recording', (...args: unknown[]) => {
       const data = args[0] as { id?: string }
       if (data?.id) void analyseRecording(data.id)
