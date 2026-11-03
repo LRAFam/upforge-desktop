@@ -11,6 +11,7 @@ import UfSkeleton from '../UfSkeleton.vue'
 import EmptyArt from '../empty/EmptyArt.vue'
 import { pendingMatchLifecycleState, pendingMatchStatusLabel } from '../../../lib/match-lifecycle'
 import { recordingRowStats } from '../../../lib/dashboard-match-row'
+import { normalizeAgentName } from '../../../lib/valorant'
 import { ARCHIVE_DATES_KEY, kdaLine, pendingDot, resultTone, reviewPlayedAt, scoreLine, sessionStatusLabel } from './reviews-v3'
 
 const {
@@ -74,7 +75,7 @@ const mapArt = (map: string | null) => (map ? getMapListViewImage(map) || matchM
             <img v-if="rec.agent && getAgentImage(rec.agent)" :src="getAgentImage(rec.agent)" alt="" class="rv3-agent" loading="lazy" decoding="async">
           </span>
           <span class="rv3-main">
-            <span class="uf-t3 rv3-trunc">{{ matchMapLabel(rec.game, rec.map) }} · {{ rec.agent || 'Unknown agent' }}</span>
+            <span class="uf-t3 rv3-trunc">{{ matchMapLabel(rec.game, rec.map) }} · {{ normalizeAgentName(rec.agent) || 'Unknown agent' }}</span>
             <span class="uf-t4 rv3-trunc">
               <span v-if="kdaLine(recordingRowStats(rec))">{{ kdaLine(recordingRowStats(rec)) }} K/D/A · </span>{{ pendingMatchStatusLabel(rec) }}<span v-if="rec.productionFixture"> · Production fixture</span>
             </span>
@@ -104,7 +105,7 @@ const mapArt = (map: string | null) => (map ? getMapListViewImage(map) || matchM
             <img v-if="a.agent && getAgentImage(a.agent)" :src="getAgentImage(a.agent)" alt="" class="rv3-agent" loading="lazy" decoding="async">
           </span>
           <span class="rv3-main">
-            <span class="uf-t3 rv3-trunc">{{ a.map ? matchMapLabel(null, a.map) : 'Unknown map' }} · {{ a.agent || 'Unknown agent' }}</span>
+            <span class="uf-t3 rv3-trunc">{{ a.map ? matchMapLabel(null, a.map) : 'Unknown map' }} · {{ normalizeAgentName(a.agent) || 'Unknown agent' }}</span>
             <span class="uf-t4 rv3-trunc">
               {{ formatMatchDate(playedAt(a)) }}<span v-if="kdaLine(a)"> · {{ kdaLine(a) }} K/D/A</span> · {{ sessionStatusLabel(a.status, coachReviewByAnalysisId[a.id]?.status) }}
             </span>

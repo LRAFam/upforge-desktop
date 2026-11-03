@@ -18,6 +18,7 @@ const AGENT_CDN_UUIDS: Record<string, string> = {
   fade: 'dade69b4-4f5a-8528-247b-219e5a1facd6',
   gekko: 'e370fa57-4757-3604-3648-499e1f642d3f',
   harbor: '95b78ed7-4637-86d9-7e41-71ba8c293152',
+  hush: 'ddd5a15c-4fbe-42fa-3789-11a55ca5ee04',
   iso: '0e38b510-41a8-5780-5e8f-568b2a4f2d6c',
   jett: 'add6443a-41bd-e414-f6ad-e58d267f4e95',
   kayo: '601dbbe7-43ce-be57-2a40-4abd24953621',
@@ -39,12 +40,35 @@ const AGENT_CDN_UUIDS: Record<string, string> = {
   yoru: '7f94d92c-4234-0a36-9646-3a87eb8b5c89',
 }
 
+const AGENT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const AGENT_NAME_BY_UUID: Record<string, string> = Object.fromEntries(
+  Object.entries(AGENT_CDN_UUIDS).map(([key, uuid]) => [
+    uuid,
+    key === 'kayo' ? 'KAY/O' : key.charAt(0).toUpperCase() + key.slice(1),
+  ]),
+)
+
 /**
- * Returns a CDN display-icon URL for the given agent name.
+ * Display name for a stored agent value. Older builds stored the raw Riot uuid when an agent
+ * was newer than their tables; turn known uuids back into names and leave everything else as is.
+ */
+export function normalizeAgentName(agent: string | null | undefined): string | null {
+  const value = agent?.trim()
+  if (!value) return null
+  if (AGENT_UUID_RE.test(value)) return AGENT_NAME_BY_UUID[value.toLowerCase()] ?? value
+  return value
+}
+
+/**
+ * Returns a CDN display-icon URL for the given agent name (or raw Riot agent uuid).
  */
 export function getAgentImage(agentName: string | null | undefined): string {
   if (!agentName) return ''
-  const key = agentName.toLowerCase().replace(/[/\s]/g, '')
+  const trimmed = agentName.trim()
+  // An agent newer than this build is stored as its uuid — the CDN serves art by uuid directly.
+  if (AGENT_UUID_RE.test(trimmed)) return `https://media.valorant-api.com/agents/${trimmed.toLowerCase()}/displayicon.png`
+  const key = trimmed.toLowerCase().replace(/[/\s]/g, '')
   const uuid = AGENT_CDN_UUIDS[key]
   if (uuid) return `https://media.valorant-api.com/agents/${uuid}/displayicon.png`
   return ''
@@ -129,6 +153,7 @@ const AGENT_ROLES: Record<string, string> = {
   neon: 'Duelist',
   iso: 'Duelist',
   waylay: 'Duelist',
+  hush: 'Duelist',
   brimstone: 'Controller',
   omen: 'Controller',
   viper: 'Controller',
@@ -173,6 +198,7 @@ const AGENT_COLORS: Record<string, string> = {
   fade: '#7b3fa8',
   gekko: '#4ec94e',
   harbor: '#17b0a0',
+  hush: '#f47ac7',
   iso: '#3a85d4',
   jett: '#91c9f0',
   kayo: '#d43a3a',

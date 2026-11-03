@@ -4,7 +4,10 @@
  * Extracted from riot-local-api.ts to keep that file focused on network I/O.
  *
  * Source: valorant-api.com — update tables when new agents/weapons/maps are released.
+ * Agents and maps missing here fall back to names fetched from valorant-api.com at runtime
+ * (valorant-content-fallback.ts), so a new release never shows as a raw id.
  */
+import { fallbackAgentName, fallbackMapName } from './valorant-content-fallback'
 
 // Source: valorant-api.com/v1/agents?isPlayableCharacter=true — regenerated 2026-04-25
 const AGENT_UUID_TO_NAME: Record<string, string> = {
@@ -18,6 +21,7 @@ const AGENT_UUID_TO_NAME: Record<string, string> = {
   'dade69b4-4f5a-8528-247b-219e5a1facd6': 'Fade',
   'e370fa57-4757-3604-3648-499e1f642d3f': 'Gekko',
   '95b78ed7-4637-86d9-7e41-71ba8c293152': 'Harbor',
+  'ddd5a15c-4fbe-42fa-3789-11a55ca5ee04': 'Hush',
   '0e38b510-41a8-5780-5e8f-568b2a4f2d6c': 'Iso',
   'add6443a-41bd-e414-f6ad-e58d267f4e95': 'Jett',
   '601dbbe7-43ce-be57-2a40-4abd24953621': 'KAY/O',
@@ -39,10 +43,13 @@ const AGENT_UUID_TO_NAME: Record<string, string> = {
   '7f94d92c-4234-0a36-9646-3a87eb8b5c89': 'Yoru',
 }
 
-/** Resolve a Riot characterId UUID to a display name, returning the UUID unchanged if unknown. */
+/**
+ * Resolve a Riot characterId UUID to a display name: static table, then the fetched
+ * valorant-api.com names, else the UUID unchanged (a later call resolves it once fetched).
+ */
 export function resolveAgentName(characterId: string | null | undefined): string | null {
   if (!characterId) return null
-  return AGENT_UUID_TO_NAME[characterId.toLowerCase()] ?? characterId
+  return AGENT_UUID_TO_NAME[characterId.toLowerCase()] ?? fallbackAgentName(characterId) ?? characterId
 }
 
 /**
@@ -204,7 +211,7 @@ const MAP_CODENAME_TO_NAME: Record<string, string> = {
 export function resolveMapName(mapId: string | null | undefined): string | null {
   if (!mapId) return null
   const segment = mapId.split('/').filter(Boolean).pop() ?? mapId
-  return MAP_CODENAME_TO_NAME[segment.toLowerCase()] ?? segment
+  return MAP_CODENAME_TO_NAME[segment.toLowerCase()] ?? fallbackMapName(segment) ?? segment
 }
 
 /** Convert a Riot competitive tier number to a human-readable rank string. */
