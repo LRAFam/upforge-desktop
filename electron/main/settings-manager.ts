@@ -94,7 +94,7 @@ export interface AppSettings {
   /** Which monitor to capture. 'auto' detects from the game window; numbers are 0-based display index. */
   captureMonitor: 'auto' | number
   /** Last completed analysis insight — persisted for dashboard display */
-  lastInsight?: { text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null
+  lastInsight?: { text: string; score: number; agent: string | null; analysisId: number | null; date: string; /** Missing on entries saved before 3.2.4 (all Valorant). */ game?: string } | null
   /** Rolling RPG-style skill scores updated after each analysis */
   skillProfile?: import('../../src/lib/skill-profile').SkillProfileSnapshot | null
   /** Previous snapshot for trend arrows on dashboard */

@@ -1,3 +1,4 @@
+import { insightForGame, type LastInsight } from '../lib/last-insight'
 import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import { singleFlight } from '../lib/single-flight'
 import { ref, computed, inject, provide, watch, onMounted, onUnmounted, type InjectionKey } from 'vue'
@@ -267,7 +268,9 @@ function createDashboard(opts: DashboardOptions = {}) {
   const upgradeNeeded = ref(false)
   const activityLog = ref<{ time: number; message: string; game?: string }[]>([])
   const demoDownloadProgress = ref<DemoDownloadProgress | null>(null)
-  const lastInsight = ref<{ text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null>(null)
+  /** Saved account-wide; `lastInsight` is only the copy for the selected game (no Valorant note on CS2). */
+  const savedLastInsight = ref<LastInsight | null>(null)
+  const lastInsight = computed(() => insightForGame(savedLastInsight.value, primaryGame.value))
   const lastInsightTraining = ref(false)
   const trainerLastSession = ref<{ score: number; scenario: string; date: string } | null>(null)
   const trainerSessionCount = ref(0)
@@ -318,8 +321,8 @@ function createDashboard(opts: DashboardOptions = {}) {
    * v3 mount: every section fills in as soon as its own call returns, instead of waiting for
    * profile + analyses + playstyle + recordings + the auth refresh together.
    */
-  async function mountCacheFirst(saved: { lastInsight?: typeof lastInsight.value } | null): Promise<void> {
-    if (saved?.lastInsight) lastInsight.value = saved.lastInsight
+  async function mountCacheFirst(saved: { lastInsight?: LastInsight | null } | null): Promise<void> {
+    if (saved?.lastInsight) savedLastInsight.value = saved.lastInsight
     if (hydratedGame && hydratedGame !== primaryGame.value) {
       // Drawn from another game's cache before settings loaded: redraw for the right game.
       analyses.value = []
@@ -1551,7 +1554,7 @@ function createDashboard(opts: DashboardOptions = {}) {
     applyFromSettings(earlySettings)
 
     if (cacheFirst) {
-      await mountCacheFirst(earlySettings as { lastInsight?: typeof lastInsight.value })
+      await mountCacheFirst(earlySettings as { lastInsight?: LastInsight | null })
     } else {
     const [prof, recent, playstyle, pending] = await Promise.all([
       window.api.profile.get().catch(() => null),
@@ -1606,11 +1609,11 @@ function createDashboard(opts: DashboardOptions = {}) {
     }
 
     const savedSettings = await window.api.settings.get().catch(() => null) as ({
-      lastInsight?: typeof lastInsight.value
+      lastInsight?: LastInsight | null
       skillProfile?: SkillProfileSnapshot | null
       skillProfilePrevious?: SkillProfileSnapshot | null
     } | null)
-    if (savedSettings?.lastInsight) lastInsight.value = savedSettings.lastInsight
+    if (savedSettings?.lastInsight) savedLastInsight.value = savedSettings.lastInsight
     skillProfile.value = savedSettings?.skillProfile ?? null
     skillProfilePrevious.value = savedSettings?.skillProfilePrevious ?? null
     void maybeShowDiskMigrationHint()
@@ -1665,7 +1668,7 @@ function createDashboard(opts: DashboardOptions = {}) {
       await loadAnalyses()
     }))
     ipcCleanup.push(window.api.on('dashboard:last-insight', (...args: unknown[]) => {
-      lastInsight.value = args[0] as typeof lastInsight.value
+      savedLastInsight.value = args[0] as LastInsight | null
     }))
     // Single-flight: a burst of updates after a match must not stack parallel full-list fetches.
     ipcCleanup.push(window.api.on('recordings:updated', singleFlight(loadPendingRecordings)))

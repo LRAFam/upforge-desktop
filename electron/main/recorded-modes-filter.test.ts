@@ -71,3 +71,12 @@ describe('normalizeCs2GameMode', () => {
     expect(normalizeCs2GameMode('wingman')).toBe('WINGMAN')
   })
 })
+
+describe('CS2 GSI map.mode aliases', () => {
+  it('maps Valve GSI mode strings', () => {
+    expect(normalizeCs2GameMode('scrimcomp2v2')).toBe('WINGMAN')
+    expect(normalizeCs2GameMode('gungameprogressive')).toBe('ARMS_RACE')
+    expect(normalizeCs2GameMode('casual')).toBe('CASUAL')
+    expect(normalizeCs2GameMode('custom')).toBe('CUSTOM')
+  })
+})

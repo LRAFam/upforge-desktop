@@ -15,6 +15,7 @@ import {
 } from 'csgo-protobuf'
 import { getCs2ValveDemoDownloadDir } from './cs2-demo-dirs'
 import {
+  describeValveCandidates,
   pickValveMatchForSession,
   valveMatchFromProtobuf,
   type ValveMatchSummary,
@@ -36,9 +37,33 @@ const BOILER_EXIT = {
   WriteFileFailure: 9,
 } as const
 
+/**
+ * Why a Valve demo fetch did not produce a file. The retry policy (cs2-demo-retrieval.ts) uses this
+ * to decide whether trying again can help: `no_match` is Steam's answer for this account, not a
+ * network blip, so it must not be retried every few seconds.
+ */
+export type ValveDemoFailureCode =
+  | 'unsupported'
+  | 'steam_offline'
+  | 'no_cs2_dir'
+  | 'cs2_running'
+  | 'gc_failed'
+  | 'no_match'
+  | 'download_failed'
+
 export type ValveDemoDownloadResult =
   | { ok: true; demoPath: string; match: ValveMatchSummary }
-  | { ok: false; error: string; code?: string }
+  | { ok: false; error: string; code?: ValveDemoFailureCode }
+
+/** A boiler/GC failure with the code the retry policy needs. */
+class ValveDemoError extends Error {
+  constructor(message: string, readonly code: ValveDemoFailureCode) {
+    super(message)
+  }
+}
+
+export const CS2_DEMO_NO_MATCH_MESSAGE =
+  'Steam has not returned this match\'s demo. Download it in CS2 (Watch → Your Matches), then attach the .dem file.'
 
 function boilerPlatformDir(): string {
   if (process.platform === 'win32') return 'win32-x64'
@@ -86,7 +111,7 @@ async function ensureCs2Closed(): Promise<void> {
     timeout: 5000,
   })
   if (stdout.toLowerCase().includes('cs2.exe')) {
-    throw new Error('Close CS2 to let UpForge fetch the demo, or download it in-game and attach it.')
+    throw new ValveDemoError('Close CS2 to let UpForge fetch the demo, or download it in-game and attach it.', 'cs2_running')
   }
 }
 
@@ -106,6 +131,20 @@ function boilerExitMessage(code: number): string {
       return 'No recent Valve matchmaking matches found on this Steam account.'
     default:
       return `Steam demo lookup failed (code ${code}).`
+  }
+}
+
+function boilerExitCode(code: number): ValveDemoFailureCode {
+  switch (code) {
+    case BOILER_EXIT.SteamNotRunningOrLoggedIn:
+    case BOILER_EXIT.UserNotLoggedIn:
+      return 'steam_offline'
+    case BOILER_EXIT.AlreadyConnected:
+      return 'cs2_running'
+    case BOILER_EXIT.NoMatchesFound:
+      return 'no_match'
+    default:
+      return 'gc_failed'
   }
 }
 
@@ -157,7 +196,8 @@ async function fetchRecentValveMatchesFromGc(): Promise<CMsgGCCStrike15_v2_Match
       void (async () => {
         if (code !== BOILER_EXIT.Success) {
           cleanup()
-          reject(new Error(boilerExitMessage(code ?? BOILER_EXIT.Error)))
+          const exit = code ?? BOILER_EXIT.Error
+          reject(new ValveDemoError(boilerExitMessage(exit), boilerExitCode(exit)))
           return
         }
         if (!fs.existsSync(infoPath)) {
@@ -214,17 +254,16 @@ export async function downloadCs2ValveDemoForSession(opts: {
     matches = await listRecentValveMatches()
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    log.warn('[CS2ValveDemo] GC fetch failed:', message)
-    return { ok: false, error: message, code: 'gc_failed' }
+    const code = err instanceof ValveDemoError ? err.code : 'gc_failed'
+    log.warn('[CS2ValveDemo] GC fetch failed:', code, message)
+    return { ok: false, error: code === 'no_match' ? CS2_DEMO_NO_MATCH_MESSAGE : message, code }
   }
 
   const match = pickValveMatchForSession(matches, opts.matchSessionStartMs, opts.gsiMap)
   if (!match) {
-    return {
-      ok: false,
-      error: 'Steam has not returned one unambiguous demo for this match. You can choose the matching .dem file manually.',
-      code: 'no_match',
-    }
+    // Evidence for the next log: how far each listed match is from this session (no ids, no names).
+    log.info('[CS2ValveDemo] No single match for session', describeValveCandidates(matches, opts.matchSessionStartMs, opts.gsiMap))
+    return { ok: false, error: CS2_DEMO_NO_MATCH_MESSAGE, code: 'no_match' }
   }
 
   const demoPath = path.join(downloadDir, `${match.fileName}.dem`)

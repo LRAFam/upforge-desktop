@@ -181,6 +181,8 @@ const moreDetailSummary = computed(() => moreDetail.value.summary)
 const showDemoPendingPanel = computed(() => {
   if (!timeline.value || !recordingId.value) return false
   if (!usesAsyncDemoSync(timeline.value.game)) return false
+  // GSI-only CS2 events fill the video markers, but the demo is still missing: keep the attach panel.
+  if (timeline.value.cs2LiveOnly) return true
   return !recordingTimelineReady({
     kills: timeline.value.kills,
     deaths: timeline.value.deaths,
@@ -215,6 +217,7 @@ const noVideoHint = computed((): string => {
           :map="timeline!.map"
           :recorded-at="timeline!.recordedAt"
           :recording-id="recordingId"
+          :live-only="!!timeline!.cs2LiveOnly"
           @demo-linked="reloadTimelineFromStore"
         />
         <!-- CS2 (v3): offer the matching FACEIT match when the demo isn't parsed yet. -->

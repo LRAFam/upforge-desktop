@@ -59,6 +59,8 @@ export async function attachDemoFileToRecording(opts: {
     game: rec.game as SourceGame,
     demoPath: normalized,
     map: rec.map ?? rec.timeline?.map ?? null,
+    // The demo cannot tell Wingman from Competitive; keep what GSI saw at match start.
+    gameMode: rec.gameMode || rec.timeline?.gameMode || null,
     matchStartTime: inferredMatchStart,
     recordingStartTime: recordingStartMs,
     localPlayerName: opts.localPlayerName ?? null,

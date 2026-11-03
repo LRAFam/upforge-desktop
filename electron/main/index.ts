@@ -1,3 +1,5 @@
+// Must stay the first import: redirects userData before any other module loads in self-test mode.
+import { selftestRequest } from './selftest-early'
 import { getApiBaseUrl } from './api-base'
 import { createCoalescedNotifier, createVodProbeSweep } from './vod-probe-sweep'
 import { createCallRateLogger, startMainLoopLagMonitor } from './main-loop-lag'
@@ -146,6 +148,7 @@ import {
   type GameId,
 } from './game-config'
 import {
+  emptyMatchData,
   resolveMatchSessionStartMs,
 } from './recording-sync'
 import { applySpatialEnrichment } from './spatial/enrich'
@@ -243,8 +246,10 @@ import { PerformanceManager } from './performance-manager'
 import { TrainerBridge } from './trainer-bridge'
 import type { MatchData } from './riot-types'
 import log from 'electron-log'
-import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
-import { recordErrorActivity, clearErrorActivity } from './error-activity'
+import { setupMainProcessErrorHandlers, reportError, reportDiagnostic } from './error-reporter'
+import { recordErrorActivity, clearErrorActivity, recentErrorActivity } from './error-activity'
+import { runSelftest } from './selftest'
+import { createDiagnosticReporter, type DiagnosticEvent, type DiagnosticRateState } from './diagnostic-reporter'
 import { reportPipelineError, shouldReportAnalysisPipelineError } from './pipeline-errors'
 import {
   CRITICAL_FREE_DISK_BYTES,
@@ -330,6 +335,7 @@ import {
   getLatestGsiMap,
   getLatestGsiPayload,
   STEAM_GSI_PORT,
+  cs2GsiTracker,
 } from './steam-gsi-server'
 import {
   startDeadlockLogWatcher,
@@ -375,7 +381,7 @@ import {
   scheduleLateClipRetry,
   type LateClipRetryDeps,
 } from './late-clip-retry'
-import { downloadCs2ValveDemoForSession } from './cs2-valve-demo-downloader'
+import { downloadCs2ValveDemoForSession, type ValveDemoFailureCode } from './cs2-valve-demo-downloader'
 import { clearDemoDownloadProgress, sendDemoDownloadProgress } from './demo-download-notify'
 import {
   linkReviewTimeline, parseReviewStatus, pollDeadlockReplayReview, startDeadlockReplayReview,
@@ -1242,6 +1248,8 @@ let currentRecordingStartTime: number | null = null
 /** GSI match-live timestamp (CS2 / Deadlock) — when map_phase went live */
 let currentMatchStartTime: number | null = null
 let currentGsiMapName: string | null = null
+/** Mode seen when the current capture started (CS2 GSI map.mode, Valorant presence…). Kept for match end. */
+let currentMatchGameMode: string | null = null
 // Auto-hide timer for overlay flash feedback (clip bookmarked while overlay is hidden)
 let overlayAutoHideTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -2387,11 +2395,11 @@ function refreshReplayTimelineForRecording(
         cs2DemoRetrievalStatus.set(recordingId, {
           state: 'waiting_match_data',
           message: error instanceof Error ? error.message : 'Demo retrieval failed.',
+          code: 'gc_failed',
         })
+        notifyRecordingsUpdated()
       }
       return false
-    } finally {
-      if (scope === replayScope) notifyRecordingsUpdated()
     }
   }).finally(() => {
     if (replayAttempts.get(recordingId) === attempt) replayAttempts.delete(recordingId)
@@ -2421,9 +2429,13 @@ async function retrieveReplayTimelineForRecording(
     watchDeadlockReview(recordingId)
     return false
   }
-  const setStatus = (state: 'syncing' | 'waiting_match_data', message: string) => {
+  const setStatus = (state: 'syncing' | 'waiting_match_data', message: string, code?: ValveDemoFailureCode) => {
     if (rec.game !== 'cs2' || !valid()) return
-    cs2DemoRetrievalStatus.set(recordingId, { state, message })
+    const previous = cs2DemoRetrievalStatus.get(recordingId)
+    cs2DemoRetrievalStatus.set(recordingId, { state, message, ...(code ? { code } : {}) })
+    // Each `recordings:updated` reloads the whole list in several views. Only push a change the
+    // user can see; transient "checking…" steps ride on the demo-download progress channel.
+    if (state === 'syncing' || (previous?.state === state && previous.message === message)) return
     sendAnalysisReadinessUpdate(recordingId, postGameWindow, getAnalysisReadiness(rec))
   }
   if (shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
@@ -2478,11 +2490,12 @@ async function retrieveReplayTimelineForRecording(
         log.info('[Replay] CS2 Valve demo downloaded:', valve.demoPath)
         parsed = {
           demoPath: valve.demoPath,
-          timeline: await buildTimelineFromDemo({ ...replayCtx, demoPath: valve.demoPath, map: replayCtx.gsiMap }),
+          // Keep the mode GSI saw at match start (the demo header does not say Wingman vs Competitive).
+          timeline: await buildTimelineFromDemo({ ...replayCtx, demoPath: valve.demoPath, map: replayCtx.gsiMap, gameMode: rec.gameMode || null }),
         }
       } else {
-        setStatus('waiting_match_data', valve.error)
-        log.info('[CS2ValveDemo]', valve.error)
+        setStatus('waiting_match_data', valve.error, valve.code ?? 'gc_failed')
+        log.info('[CS2ValveDemo]', valve.code ?? 'gc_failed', valve.error)
       }
     } finally {
       clearDemoDownloadProgress(notifyWindows())
@@ -2513,7 +2526,9 @@ async function retrieveReplayTimelineForRecording(
   if (!valid()) return false
   if (!parsed.timeline || !hasRichMatchData(parsed.timeline)) {
     if (cs2DemoRetrievalStatus.get(recordingId)?.state === 'syncing') {
-      setStatus('waiting_match_data', 'No usable match stats found in the demo. Check that it belongs to this recording.')
+      // Back off (not the 5 s default) so a bad local demo is not re-parsed every few seconds.
+      if (parsed.demoPath) setStatus('waiting_match_data', 'No usable match stats found in the demo. Check that it belongs to this recording.', 'download_failed')
+      else setStatus('waiting_match_data', 'Waiting for the CS2 demo.', 'gc_failed')
     }
     return false
   }
@@ -3751,6 +3766,29 @@ function setupGameDetection(): void {
       logActivity(`${game === 'cs2' ? 'CS2' : 'Deadlock'} demo missing at match end`, game)
     }
 
+    if (game === 'cs2') {
+      // GSI is the only event source until Steam lists the demo (Wingman/Casual demos may never be
+      // listed). Kept apart from kill/stat fields so it cannot unlock Analyse.
+      const live = cs2GsiTracker.summary()
+      cs2GsiTracker.stop()
+      log.info('[CS2Live]', live
+        ? `kills=${live.events.filter(e => e.type === 'kill').length} deaths=${live.events.filter(e => e.type === 'death').length} rounds=${live.rounds.length} score=${live.allyScore ?? '?'}-${live.enemyScore ?? '?'}`
+        : 'no GSI events (restart CS2 once so the updated GSI config loads)')
+      if (live) {
+        if (!timeline) {
+          timeline = emptyMatchData('cs2', currentRecordingStartTime ?? matchSessionStart)
+          timeline.matchStartTime = currentMatchStartTime
+          timeline.gameplayStartTime = currentMatchStartTime
+          timeline.map = currentGsiMapName
+        }
+        if (!timeline.gameMode && currentMatchGameMode) timeline.gameMode = currentMatchGameMode
+        timeline.cs2Live = live
+        if (!timeline.finalScore && live.allyScore != null && live.enemyScore != null) {
+          timeline.finalScore = { allyScore: live.allyScore, enemyScore: live.enemyScore }
+        }
+      }
+    }
+
     if (normalizePrimaryGame(game) === 'lol' && timeline) {
       logActivity(formatLolMatchEndActivity({
         source: endSource,
@@ -3806,7 +3844,9 @@ function setupGameDetection(): void {
     const agent = timeline?.agent ?? (game === 'deadlock' ? getDeadlockHero() : null) ?? null
     const gameMode = resolveGameMode(game, {
       map,
-      timelineMode: timeline?.gameMode,
+      // CS2 has no live timeline: the GSI mode from match start (e.g. WINGMAN) is the only source.
+      // Without it every CS2 match was saved as the COMPETITIVE default.
+      timelineMode: (game === 'cs2' ? currentMatchGameMode : null) ?? timeline?.gameMode ?? currentMatchGameMode ?? undefined,
       valorantLiveMode: riotLocalApi.getLastGameMode(),
     })
     const autoAnalyse = config?.autoAnalyse !== false
@@ -4538,6 +4578,7 @@ function setupGameDetection(): void {
       currentRecordingStartTime = null
       currentMatchStartTime = null
       currentGsiMapName = null
+      currentMatchGameMode = null
     }
   }
 
@@ -5302,6 +5343,7 @@ function setupGameDetection(): void {
     }
 
     if (!gameMode) gameMode = 'COMPETITIVE'
+    currentMatchGameMode = gameMode
     matchHandled = false
     if (matchStartTime != null) currentMatchStartTime = matchStartTime
 
@@ -5482,6 +5524,7 @@ function setupGameDetection(): void {
         const recStartTime = Date.now()
         if (game === 'valorant') riotLocalApi.setRecordingStartTime(recStartTime)
         else if (game === 'lol') lolLiveClientApi.setRecordingStartTime(recStartTime)
+        else if (game === 'cs2') cs2GsiTracker.start(recStartTime)
         currentRecordingStartTime = recStartTime
         hotkeyBookmarks.length = 0 // clear any stale bookmarks from previous match
       } else {
@@ -5491,6 +5534,10 @@ function setupGameDetection(): void {
           ?? Date.now()
         if (game === 'valorant') riotLocalApi.setRecordingStartTime(recStartTime)
         else if (game === 'lol') lolLiveClientApi.setRecordingStartTime(recStartTime)
+        else if (game === 'cs2') {
+          if (cs2GsiTracker.active) cs2GsiTracker.setRecordingStart(recStartTime)
+          else cs2GsiTracker.start(recStartTime)
+        }
         currentRecordingStartTime = recStartTime
       }
       // Push recording=true to the overlay immediately — don't wait for the poll cycle
@@ -6520,7 +6567,7 @@ async function performUploadAndAnalyse(
         const scoreText = analysisScoreText(completedResult)
         logActivity(`Analysis ready${scoreText ? ` — ${scoreText}` : ''}`)
         if (insightText) {
-          const insight = { text: insightText, score: score ?? 0, agent: agent ?? null, analysisId: analysisId ?? null, date: new Date().toISOString() }
+          const insight = { text: insightText, score: score ?? 0, agent: agent ?? null, analysisId: analysisId ?? null, date: new Date().toISOString(), game }
           settingsManager.save({ lastInsight: insight })
           mainWindow?.webContents.send('dashboard:last-insight', insight)
         }
@@ -6760,6 +6807,24 @@ async function performUploadAndAnalyse(
   }
 }
 
+/** `[MainLag]` → rate-limited diagnostic report (packaged builds only; see diagnostic-reporter.ts). */
+let reportMainLag: (event: DiagnosticEvent) => boolean = () => false
+
+function createMainLagReporter(): (event: DiagnosticEvent) => boolean {
+  const statePath = join(app.getPath('userData'), 'diagnostic-reports.json')
+  return createDiagnosticReporter({
+    enabled: app.isPackaged && process.env.UPFORGE_SELFTEST !== '1',
+    send: reportDiagnostic,
+    context: () => ({
+      game: gameDetector.currentGame() ?? (settingsManager ? normalizePrimaryGame(settingsManager.get().primaryGame) : null),
+      recordingCount: recordingsStore ? recordingsStore.getAll().length : null,
+      activity: recentErrorActivity(),
+    }),
+    loadState: () => JSON.parse(fs.readFileSync(statePath, 'utf8')) as DiagnosticRateState,
+    saveState: (state) => fs.writeFileSync(statePath, JSON.stringify(state)),
+  })
+}
+
 function createSplashWindow(): BrowserWindow {
   return _createSplashWindow()
 }
@@ -6767,7 +6832,11 @@ function createSplashWindow(): BrowserWindow {
 async function startApp(): Promise<void> {
   await app.whenReady()
   electronApp.setAppUserModelId('gg.upforge.desktop')
-  startMainLoopLagMonitor((message) => log.warn(message))
+  reportMainLag = createMainLagReporter()
+  startMainLoopLagMonitor((message, lagMs) => {
+    log.warn(message)
+    reportMainLag({ kind: 'main_stall', stallMs: lagMs })
+  })
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -7752,8 +7821,12 @@ async function startApp(): Promise<void> {
     notify: notifyRecordingsUpdated,
   })
 
-  const countRecordingsGet = createCallRateLogger('recordings:get', (message) => log.warn(message))
-  const countRecordingsListAll = createCallRateLogger('recordings:list-all', (message) => log.warn(message))
+  const logAndReportBurst = (label: string) => (message: string, burst: { callCount: number; windowS: number }) => {
+    log.warn(message)
+    reportMainLag({ kind: 'call_burst', label, ...burst })
+  }
+  const countRecordingsGet = createCallRateLogger('recordings:get', logAndReportBurst('recordings:get'))
+  const countRecordingsListAll = createCallRateLogger('recordings:list-all', logAndReportBurst('recordings:list-all'))
 
   ipcMain.handle('recordings:get', async () => {
     countRecordingsGet()
@@ -8337,11 +8410,22 @@ app.on('open-url', (event, url) => {
 // Windows/Linux cold start: the link is in our own argv.
 acceptDeepLink(findDeepLinkInArgv(process.argv))
 // Register the handler only for installed builds, so a dev checkout never claims upforge:// on the machine.
-if (app.isPackaged && !app.isDefaultProtocolClient(DEEP_LINK_SCHEME)) {
+if (!selftestRequest && app.isPackaged && !app.isDefaultProtocolClient(DEEP_LINK_SCHEME)) {
   try { app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME) } catch (err) { log.warn('[DeepLink] Could not register protocol:', err) }
 }
 
 void (async () => {
+  if (selftestRequest) {
+    // Hard stop in case the worker neither answers nor times out.
+    setTimeout(() => app.exit(2), 150_000)
+    const code = await runSelftest(
+      selftestRequest,
+      { appVersion: APP_VERSION, platform: process.platform, arch: process.arch, packaged: app.isPackaged },
+      { write: (line) => process.stdout.write(line), file: process.env.UPFORGE_SELFTEST_OUT },
+    )
+    app.exit(code)
+    return
+  }
   const role = await resolveInstanceLock()
   if (role === 'duplicate') {
     app.quit()
