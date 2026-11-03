@@ -121,6 +121,25 @@ export interface CoachingDrill {
   } | null
 }
 
+/** Settings › Advanced diagnostics capture (electron/main/game-data-capture.ts). */
+export interface GameDataCaptureStatus {
+  armed: boolean
+  armedByEnv: boolean
+  dir: string
+  active: { game: 'cs2' | 'deadlock'; matchStartedAt: number; bytesWritten: number; updates: number } | null
+  last: {
+    game: 'cs2' | 'deadlock'
+    matchStartedAt: number
+    endedAt: number | null
+    stopReason: string | null
+    bytesWritten: number
+    files: string[]
+    updates: number
+    deadlock?: { consoleLogHint: string | null; metadataSaved: boolean }
+  } | null
+  cs2NeedsRestart?: boolean
+}
+
 export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock' | 'lol'
 
 export interface ClipCaptureSettings {
@@ -845,6 +864,12 @@ declare global {
         getActivityLog: () => Promise<{ time: number; message: string; game?: string }[]>
         /** Activity log + live DNS probes for Riot PD / UpForge API (support paste). */
         getSupportBundle: () => Promise<string>
+        /** Diagnostics: raw CS2 GSI / Deadlock data for the next match (local files only). */
+        gameDataCapture: {
+          status: () => Promise<GameDataCaptureStatus | null>
+          set: (on: boolean) => Promise<GameDataCaptureStatus | null>
+          openFolder: () => Promise<{ ok: boolean; error?: string }>
+        }
         showClips: () => Promise<{ ok: boolean }>
         focusAndNavigate: (
           target: string | { path: string; query?: Record<string, string> },

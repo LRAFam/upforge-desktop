@@ -8,6 +8,7 @@ import path from 'path'
 import log from 'electron-log'
 import { getCandidateCS2CsgoDirs } from './cs2-demo-finder'
 import { Cs2GsiTracker, type Cs2GsiPayload } from './cs2-gsi-timeline'
+import { getGameDataCapture } from './game-data-capture'
 
 /** Live CS2 events for the current capture (kills / deaths / rounds) — see cs2-gsi-timeline.ts. */
 export const cs2GsiTracker = new Cs2GsiTracker()
@@ -40,6 +41,8 @@ export function startSteamGsiServer(): void {
     let body = ''
     req.on('data', (chunk) => { body += String(chunk) })
     req.on('end', () => {
+      // Diagnostics capture (off by default) — raw body, before parsing.
+      try { getGameDataCapture()?.ingestGsi(body) } catch { /* never block detection */ }
       try {
         const payload = JSON.parse(body) as SteamGsiPayload
         latestPayload = payload
@@ -53,6 +56,9 @@ export function startSteamGsiServer(): void {
       res.end()
     })
   })
+
+  // Put the normal cfg back once a diagnostics capture finishes or is switched off.
+  getGameDataCapture()?.onDisarmed(() => { void installSteamGsiConfig('cs2') })
 
   server.listen(STEAM_GSI_PORT, '127.0.0.1', () => {
     serverListening = true
@@ -139,7 +145,15 @@ export function isGsiMatchEnded(payload: SteamGsiPayload | null = latestPayload)
   return activity === 'menu'
 }
 
-function gsiCfgContents(): string {
+/** Every CS2 GSI component — only requested while a diagnostics capture is armed. */
+export const FULL_GSI_COMPONENTS = [
+  'provider', 'map', 'round', 'player_id', 'player_state', 'player_weapons', 'player_match_stats',
+  'player_position', 'allplayers_id', 'allplayers_state', 'allplayers_match_stats', 'allplayers_weapons',
+  'allplayers_position', 'bomb', 'grenades', 'phase_countdowns', 'map_round_wins',
+] as const
+
+/** Normal cfg — keep byte-identical, or every user's CS2 would be asked to restart. */
+function normalGsiCfgContents(): string {
   return `"UpForge"
 {
     "uri" "http://127.0.0.1:${STEAM_GSI_PORT}"
@@ -156,6 +170,24 @@ function gsiCfgContents(): string {
         "player_id"     "1"
         "player_state"  "1"
         "player_match_stats" "1"
+    }
+}
+`
+}
+
+export function gsiCfgContents(full = false): string {
+  if (!full) return normalGsiCfgContents()
+  const data = FULL_GSI_COMPONENTS.map((c) => `        "${c}" "1"`).join('\n')
+  return `"UpForge"
+{
+    "uri" "http://127.0.0.1:${STEAM_GSI_PORT}"
+    "timeout" "5.0"
+    "buffer"  "0.0"
+    "throttle" "0.1"
+    "heartbeat" "5.0"
+    "data"
+    {
+${data}
     }
 }
 `
@@ -195,7 +227,7 @@ export async function installSteamGsiConfig(
   }
 
   try {
-    const contents = gsiCfgContents()
+    const contents = gsiCfgContents(game === 'cs2' && (getGameDataCapture()?.wantsFullGsi() ?? false))
     let needsRestart = false
     const written: string[] = []
 

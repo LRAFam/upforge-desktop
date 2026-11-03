@@ -3,6 +3,7 @@ import { DemoFile } from 'demofile'
 import log from 'electron-log'
 import { buildCs2TimelineFromDemo } from './cs2-demo-parser'
 import { parseCs2DemoInWorker } from './cs2-demo-parse-client'
+import { getGameDataCapture } from './game-data-capture'
 import { cachedCs2DemoSource, type Cs2DemoSource } from './cs2-demo-source'
 import type { KillEvent, MatchData, RoundSummary } from './riot-types'
 import { emptyMatchData, gameTimeToVideoOffsetMs } from './recording-sync'
@@ -45,7 +46,12 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
   if (opts.game === 'cs2') {
     // demoparser2 is synchronous native code that reads the whole demo per call: run it in a worker
     // so the main process (and every window) stays responsive while a demo parses.
+    const parseStartedAt = Date.now()
     const parsed = await parseCs2DemoInWorker(opts.demoPath)
+    // Diagnostics capture (no-op unless a CS2 capture just ended): real demo size + parse time.
+    let demoBytes: number | null = null
+    try { demoBytes = fs.statSync(opts.demoPath).size } catch { /* gone */ }
+    getGameDataCapture()?.noteAfterMatch('cs2', 'cs2-demo-parse', { status: parsed.status, durationMs: Date.now() - parseStartedAt, demoBytes })
     let source: Cs2DemoSource | undefined
     if (parsed.status === 'ok') {
       source = cachedCs2DemoSource(parsed.bundle)

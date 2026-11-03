@@ -90,6 +90,12 @@ const api = {
     getStatus: () => ipcRenderer.invoke('app:get-status'),
     getActivityLog: () => ipcRenderer.invoke('app:get-activity-log'),
     getSupportBundle: () => ipcRenderer.invoke('app:get-support-bundle') as Promise<string>,
+    /** Diagnostics: raw CS2 GSI / Deadlock data for the next match (local files only). */
+    gameDataCapture: {
+      status: () => ipcRenderer.invoke('diagnostics:game-capture-status'),
+      set: (on: boolean) => ipcRenderer.invoke('diagnostics:game-capture-set', on),
+      openFolder: () => ipcRenderer.invoke('diagnostics:game-capture-open-folder') as Promise<{ ok: boolean; error?: string }>,
+    },
     showClips: () => ipcRenderer.invoke('app:show-clips'),
     focusAndNavigate: (target: string | { path: string; query?: Record<string, string> }) =>
       ipcRenderer.invoke('app:focus-navigate', target),
