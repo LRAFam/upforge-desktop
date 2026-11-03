@@ -75,6 +75,28 @@ describe('deadlockReportView', () => {
     ])
     expect(JSON.stringify(v)).not.toMatch(/last.?hit/i)
   })
+
+  it('carries the stats-based UpForge score and its breakdown (with the data credit)', () => {
+    const v = deadlockReportView({
+      ...res,
+      upforge_score: 612,
+      upforge_score_breakdown: {
+        version: 1, score: 612, game: 'deadlock', tier: 'emissary', credit: 'Data from deadlock-api.com',
+        baseline: { source: 'tier', tier: 'emissary', samples: 1706, group: 'emissary:13' },
+        inputs: [{ key: 'souls_per_min', label: 'Souls / min', value: 1240, percentile: 50, weight: 0.3 }],
+      },
+    })
+    expect(v.upforgeScore).toBe(612)
+    expect(v.upforgeScoreBreakdown?.credit).toBe('Data from deadlock-api.com')
+    expect(v.upforgeScoreBreakdown?.baseline.samples).toBe(1706)
+  })
+
+  it('has no score when the API sends none (never a guess)', () => {
+    const v = deadlockReportView({ ...res, upforge_score: null, upforge_score_breakdown: { baseline: {}, inputs: [] } })
+    expect(v.upforgeScore).toBeNull()
+    expect(v.upforgeScoreBreakdown).toBeNull()
+    expect(deadlockReportView(res).upforgeScore).toBeNull()
+  })
 })
 
 describe('cs2ReportView', () => {

@@ -6,6 +6,7 @@
 import type { FactRow, MatchReportView, NextStep } from './match-report'
 import { buildCs2MatchView, type Cs2StatsV1 } from '../components/v3/matchpage/cs2/cs2-match-view'
 import { deadlockBandArt, deadlockItemBuild, type DeadlockHeroArt } from './deadlock-item-build'
+import { sanitizeUpforgeScore, sanitizeUpforgeScoreBreakdown } from './upforge-score-breakdown'
 
 export type ReportGame = 'valorant' | 'lol' | 'deadlock' | 'cs2'
 
@@ -133,11 +134,16 @@ export interface DeadlockReportResponse {
   /** API 2 Nov 2026+: band art and the item build (top-level, not in facts). */
   hero_art?: DeadlockHeroArt | null
   item_build?: unknown
+  /** API 3 Nov 2026+: stats-based UpForge score vs same-rank, same-hero ranked players (deadlock-api.com data). */
+  upforge_score?: number | null
+  upforge_score_breakdown?: unknown
 }
 
 export function deadlockReportView(res: DeadlockReportResponse): MatchReportView {
   const v = baseView('deadlock', res.match_id)
   const f = res.facts ?? {}
+  v.upforgeScore = sanitizeUpforgeScore(res.upforge_score)
+  v.upforgeScoreBreakdown = v.upforgeScore == null ? null : sanitizeUpforgeScoreBreakdown(res.upforge_score_breakdown)
   v.bandArt = deadlockBandArt(res.hero_art)
   // Older API builds don't send `item_build` at all: leave it undefined so no item section shows.
   if ('item_build' in res) v.itemBuild = deadlockItemBuild(res.item_build)

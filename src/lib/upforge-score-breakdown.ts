@@ -27,6 +27,8 @@ export interface UpforgeScoreBreakdown {
   tier?: string | null
   baseline: UpforgeScoreBaseline
   inputs: UpforgeScoreInput[]
+  /** Data source credit to show with the score, e.g. "Data from deadlock-api.com" (Deadlock). */
+  credit?: string
 }
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
@@ -59,6 +61,7 @@ export function sanitizeUpforgeScoreBreakdown(raw: unknown): UpforgeScoreBreakdo
     ...(isNum(r.version) ? { version: r.version } : {}),
     ...(isNum(r.score) ? { score: r.score } : {}),
     ...(typeof r.game === 'string' ? { game: r.game } : {}),
+    ...(typeof r.credit === 'string' && r.credit.trim() && r.credit.length <= 80 ? { credit: r.credit.trim() } : {}),
     tier: typeof r.tier === 'string' ? r.tier : null,
     baseline: {
       source: typeof b.source === 'string' ? b.source : 'prior',
