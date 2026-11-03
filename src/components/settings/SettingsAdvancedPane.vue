@@ -6,6 +6,7 @@ import SettingsRow from './SettingsRow.vue'
 import SettingsToggle from './SettingsToggle.vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsStatusStrip from './SettingsStatusStrip.vue'
+import GameDataCaptureSection from './GameDataCaptureSection.vue'
 import type { StatusItem } from './SettingsStatusStrip.vue'
 import { uiV3 } from '../../lib/ui-v3'
 
@@ -189,6 +190,8 @@ function previewOnboarding(): void {
       </SettingsRow>
       <p v-if="copyLogState === 'failed'" class="uf-t4" role="status">Couldn't copy the log. Try again, or use Get help below.</p>
     </SettingsSection>
+
+    <GameDataCaptureSection />
 
     <SettingsSection id="developer" title="Developer" hint="Diagnostics panel and asset previews" :highlight-id="highlightSection">
       <SettingsRow label="Developer panel" hint="Riot / League LCU / OBS / analysis pipeline diagnostics. Also available from the sidebar when you are admin.">
@@ -410,6 +413,8 @@ function previewOnboarding(): void {
         />
       </div>
     </SettingsSection>
+
+    <GameDataCaptureSection />
 
     <SettingsSection
       id="developer"
