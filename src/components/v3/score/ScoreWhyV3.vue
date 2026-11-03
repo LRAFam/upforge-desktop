@@ -21,7 +21,7 @@ const baseline = computed(() => baselineLine(props.breakdown.baseline))
       {{ open ? 'Hide' : `Why ${score}?` }}
     </button>
     <div v-show="open" :id="id" class="sw3-body">
-      <p class="uf-t4 sw3-p">{{ baseline }}. 500 is an average game for that group.</p>
+      <p class="uf-t4 sw3-p">{{ baseline }}. 500 is an average game for that group.<template v-if="breakdown.credit"> {{ breakdown.credit }}.</template></p>
       <div v-for="r in rows" :key="r.key" class="sw3-row">
         <span class="uf-t3">{{ r.text }}</span>
         <span class="sw3-bar" aria-hidden="true"><span class="sw3-fill" :style="{ width: `${r.percentile}%` }" /></span>
