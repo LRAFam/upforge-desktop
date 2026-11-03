@@ -284,7 +284,7 @@ export interface AppSettings {
   /** Rolling RPG-style skill scores (desktop, updated after each analysis) */
   skillProfile?: import('./lib/skill-profile').SkillProfileSnapshot | null
   skillProfilePrevious?: import('./lib/skill-profile').SkillProfileSnapshot | null
-  lastInsight?: { text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null
+  lastInsight?: { text: string; score: number; agent: string | null; analysisId: number | null; date: string; /** Missing on entries saved before 3.2.4 (all Valorant). */ game?: string } | null
 }
 
 export interface PendingRecording {
@@ -418,6 +418,8 @@ export interface RecordingTimeline {
   deaths: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number; killerPuuid?: string; victimPuuid?: string }>
   roundSummaries: Array<{ roundNumber: number; winningTeam: string | null; spikePlanted: boolean; spikeDefused: boolean }>
   finalStats: { kills: number; deaths: number; assists: number; won?: boolean } | null
+  /** CS2: kills/deaths/rounds are from live GSI (no demo yet) — approximate times, no victims. */
+  cs2LiveOnly?: boolean
   teamSnapshot: Array<{
     summonerName: string
     agent: string | null

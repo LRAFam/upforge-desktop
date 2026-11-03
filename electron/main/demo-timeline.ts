@@ -2,6 +2,8 @@ import fs from 'fs'
 import { DemoFile } from 'demofile'
 import log from 'electron-log'
 import { buildCs2TimelineFromDemo } from './cs2-demo-parser'
+import { parseCs2DemoInWorker } from './cs2-demo-parse-client'
+import { cachedCs2DemoSource, type Cs2DemoSource } from './cs2-demo-source'
 import type { KillEvent, MatchData, RoundSummary } from './riot-types'
 import { emptyMatchData, gameTimeToVideoOffsetMs } from './recording-sync'
 import { cs2WorldToNorm, getCs2MapTransform, normalizeCs2MapKey } from './spatial/cs2-transforms'
@@ -41,7 +43,20 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
   }
 
   if (opts.game === 'cs2') {
-    const timeline = buildCs2TimelineFromDemo(opts)
+    // demoparser2 is synchronous native code that reads the whole demo per call: run it in a worker
+    // so the main process (and every window) stays responsive while a demo parses.
+    const parsed = await parseCs2DemoInWorker(opts.demoPath)
+    let source: Cs2DemoSource | undefined
+    if (parsed.status === 'ok') {
+      source = cachedCs2DemoSource(parsed.bundle)
+    } else if (parsed.status === 'failed') {
+      log.warn('[DemoTimeline] CS2 demo parse worker failed:', parsed.error)
+      return null
+    } else {
+      // No worker could be started at all (e.g. tests): parse on this thread as before.
+      log.warn('[DemoTimeline] CS2 demo parse worker unavailable — parsing on main thread:', parsed.error)
+    }
+    const timeline = buildCs2TimelineFromDemo(opts, source)
     if (timeline) {
       const { recomputeTimelineVideoOffsets } = await import('./riot-local-api')
       recomputeTimelineVideoOffsets(timeline)

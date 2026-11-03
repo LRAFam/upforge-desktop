@@ -9,7 +9,12 @@ on:
       - 'v*'
 
 jobs:
+  # Packaged Windows app must start the CS2 demo worker before any installer is built.
+  packaged-selftest:
+    uses: ./.github/workflows/packaged-selftest.yml
+
   build-win:
+    needs: packaged-selftest
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -184,6 +189,7 @@ jobs:
           retention-days: 30
 
   build-mac:
+    needs: packaged-selftest
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4

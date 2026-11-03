@@ -34,6 +34,8 @@ const props = defineProps<{
   range: RangeValue
   ranges: Array<{ label: string; value: RangeValue }>
   gameCount: number
+  /** Analysed fun-mode matches (Wingman, Deathmatch, Swiftplay…) in the range, left out of these stats. */
+  excludedFunModeCount?: number
   /** Newest analysed match of any date (for an honest empty line). */
   lastAnalysedAt?: string | null
   isValorant: boolean
@@ -133,7 +135,11 @@ const stats = computed(() => [
   { value: props.avgHs != null ? `${props.avgHs}%` : '—', caption: 'Headshots', sub: delta(props.deltas.hs, '%') },
 ])
 // The focus history is Valorant's; League counts only its own analysed matches.
-const countLine = computed(() => progressCountLine(focusData.value ? checkedGames.value.length : null, props.gameCount, demoGame.value ?? 'valorant'))
+const countLine = computed(() => {
+  const base = progressCountLine(focusData.value ? checkedGames.value.length : null, props.gameCount, demoGame.value ?? 'valorant')
+  const n = props.excludedFunModeCount ?? 0
+  return n > 0 ? `${base} · ${n} fun-mode ${n === 1 ? 'match' : 'matches'} not counted` : base
+})
 const analysedEmpty = computed(() => analysedEmptyLine(props.lastAnalysedAt ?? null))
 const form = computed(() => [...props.recentForm].reverse().filter(r => r !== '-').map(r => ({ won: r === 'W' })))
 const hasRank = computed(() => props.rankHistory.filter(h => Number.isFinite(h.elo) && h.elo > 0).length >= 2)

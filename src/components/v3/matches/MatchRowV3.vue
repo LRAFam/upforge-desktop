@@ -19,6 +19,7 @@ import { matchRowSummary, storageLine } from './match-row'
 import { formatMatchDate, matchMapArt, matchMapLabel } from './match-meta'
 import { matchScore, scoreToneColor } from '../../../lib/upforge-score'
 import { cs2StatItems } from '../../../lib/cs2-analyses'
+import { modeQueueLabel } from '../../../lib/game-queue'
 import type { AnalysisItem } from '../../../env.d.ts'
 
 /**
@@ -48,6 +49,8 @@ const rowStatsTitle = computed(() => (props.analysis ? cs2StatItems(props.analys
 const mapLabel = computed(() => matchMapLabel(props.rec.game, props.rec.map))
 const mapArt = computed(() => matchMapArt(props.rec.game, props.rec.map))
 const dateText = computed(() => formatMatchDate(props.playedAt || props.rec.recordedAt))
+/** "Wingman · 2v2" / "Premier · Ranked": fun modes are kept out of Progress, so the row says which is which. */
+const modeText = computed(() => modeQueueLabel(props.rec.game, props.rec.gameMode || props.analysis?.game_mode))
 const resultColor = computed(() => summary.value.result === 'win' ? 'var(--uf-win)' : summary.value.result === 'loss' ? 'var(--uf-loss)' : 'var(--uf-bone)')
 const logo = computed(() => gameLogo(props.rec.game))
 const isDeadlock = computed(() => props.rec.game === 'deadlock')
@@ -90,7 +93,7 @@ async function startReview() {
       <img v-if="recordingPlayerImage(rec)" :src="recordingPlayerImage(rec)" :alt="playerLabel" class="uf-agent">
       <div class="uf-who-text">
         <span class="uf-t3 uf-trunc">{{ mapLabel || recordingGameTitle(rec) }}</span>
-        <span class="uf-t4 uf-trunc">{{ playerLabel }} · {{ dateText }}<span v-if="isAlt" class="uf-alt" title="Played on an alt account: coached, not counted for your focus"> · ALT</span></span>
+        <span class="uf-t4 uf-trunc">{{ [playerLabel, dateText, modeText].filter(Boolean).join(' · ') }}<span v-if="isAlt" class="uf-alt" title="Played on an alt account: coached, not counted for your focus"> · ALT</span></span>
       </div>
     </div>
     <div class="uf-result">

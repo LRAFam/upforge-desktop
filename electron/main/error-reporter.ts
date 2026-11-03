@@ -27,6 +27,59 @@ export function initErrorReporter(authManager: AuthManager): void {
   _authManager = authManager
 }
 
+function reportingDisabled(): boolean {
+  // Packaged self-tests (CI) must never post to the production API.
+  return process.env['UPFORGE_SELFTEST'] === '1'
+}
+
+async function postReport(body: Record<string, unknown>): Promise<void> {
+  if (reportingDisabled()) return
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 5000)
+    const response = await fetch(`${API_URL}/api/errors`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(ERROR_KEY ? { 'X-Error-Key': ERROR_KEY } : {}),
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    clearTimeout(timeout)
+    if (!response.ok) {
+      log.warn(
+        `[ErrorReporter] API rejected report (${response.status}) — ` +
+        `${ERROR_KEY ? 'check ERROR_REPORTING_KEY' : 'VITE_ERROR_REPORTING_KEY missing at build time'}`,
+      )
+    }
+  } catch (err) {
+    log.debug('[ErrorReporter] Failed to POST error report:', err)
+  }
+}
+
+/**
+ * Low-volume diagnostics (e.g. `[MainLag]`). Unlike reportError it sends no user id/email/name
+ * and skips session dedupe: callers rate-limit (see diagnostic-reporter.ts).
+ */
+export async function reportDiagnostic(payload: {
+  message: string
+  component: string
+  extra: Record<string, unknown>
+}): Promise<void> {
+  await postReport({
+    platform: 'desktop',
+    message: redactSensitiveString(payload.message).slice(0, 1000),
+    component: payload.component.slice(0, 255),
+    app_version: APP_VERSION,
+    extra: {
+      ...(redactSensitiveValue(payload.extra) as Record<string, unknown>),
+      electron: process.versions.electron,
+    },
+  })
+}
+
 export async function reportError(payload: {
   message: string
   stack?: string
@@ -59,29 +112,7 @@ export async function reportError(payload: {
     },
   }
 
-  try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 5000)
-    const response = await fetch(`${API_URL}/api/errors`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        ...(ERROR_KEY ? { 'X-Error-Key': ERROR_KEY } : {}),
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    })
-    clearTimeout(timeout)
-    if (!response.ok) {
-      log.warn(
-        `[ErrorReporter] API rejected report (${response.status}) — ` +
-        `${ERROR_KEY ? 'check ERROR_REPORTING_KEY' : 'VITE_ERROR_REPORTING_KEY missing at build time'}`,
-      )
-    }
-  } catch (err) {
-    log.debug('[ErrorReporter] Failed to POST error report:', err)
-  }
+  await postReport(body)
 }
 
 export function setupMainProcessErrorHandlers(authManager: AuthManager): void {

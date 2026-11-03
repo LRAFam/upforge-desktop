@@ -134,7 +134,15 @@ export function normalizeCs2GameMode(raw: string | null | undefined): string | n
     wingman: 'WINGMAN',
     casual: 'CASUAL',
     deathmatch: 'DEATHMATCH',
+    // GSI map.mode strings (Valve GSI / CS:GO game-mode aliases): Wingman reports scrimcomp2v2.
     scrimcomp2v2: 'WINGMAN',
+    gungameprogressive: 'ARMS_RACE',
+    armsrace: 'ARMS_RACE',
+    gungametrbomb: 'DEMOLITION',
+    retakes: 'RETAKES',
+    skirmish: 'SKIRMISH',
+    custom: 'CUSTOM',
+    training: 'TRAINING',
   }
   return map[key] ?? key.toUpperCase()
 }

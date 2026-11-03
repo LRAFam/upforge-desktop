@@ -73,3 +73,19 @@ describe('safe automatic demo selection', () => {
     expect(pickValveMatchForSession([match({})], NaN, 'de_dust2')).toBeNull()
   })
 })
+
+describe('pickValveMatchForSession — undecoded map ids (new Wingman maps)', () => {
+  const start = 1_700_000_000_000
+  const m = (over: Partial<ValveMatchSummary>): ValveMatchSummary => ({ matchId: '1', matchTimeSec: start / 1000, mapName: 'de_dust2', demoUrl: 'http://x/a.dem.bz2', fileName: 'a', ...over })
+  it('uses a single in-window match whose map id we cannot decode', () => {
+    const only = m({ mapName: 'Unknown' })
+    expect(pickValveMatchForSession([only], start, 'de_nuke')).toBe(only)
+  })
+  it('still refuses when two matches are in the window', () => {
+    expect(pickValveMatchForSession([m({ mapName: 'Unknown' }), m({ mapName: 'Unknown', matchTimeSec: start / 1000 + 60 })], start, 'de_nuke')).toBeNull()
+  })
+  it('prefers an exact map over an unknown one', () => {
+    const exact = m({ mapName: 'de_nuke', matchId: 'exact' })
+    expect(pickValveMatchForSession([m({ mapName: 'Unknown', matchTimeSec: start / 1000 + 60 }), exact], start, 'de_nuke')).toBe(exact)
+  })
+})

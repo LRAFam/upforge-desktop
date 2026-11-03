@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Cs2DemoRetrieval, cs2DemoRetrievalStatus } from './cs2-demo-retrieval'
+import { CS2_DEMO_NEEDS_MANUAL_MESSAGE, Cs2DemoRetrieval, cs2DemoRetrievalStatus, cs2DemoRetryDecision } from './cs2-demo-retrieval'
 import { CS2_DEMO_SYNC_MAX_MS } from './match-data-quality'
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1_000_000) })
@@ -124,5 +124,63 @@ describe('CS2 demo retrieval', () => {
     worker.start('deleted')
     await vi.advanceTimersByTimeAsync(0)
     expect(deps.retrieve).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('CS2 demo retrieval — Steam answers (3 Nov Wingman log)', () => {
+  const failWith = (deps: ReturnType<typeof setup>['deps'], code: string, message = 'x') => {
+    deps.retrieve.mockImplementation(async () => {
+      cs2DemoRetrievalStatus.set('rec', { state: 'waiting_match_data', message, code: code as never })
+      return false
+    })
+  }
+
+  it('stops after a few spaced lookups when Steam does not list the match, and asks for a manual attach', async () => {
+    const { worker, deps } = setup()
+    failWith(deps, 'no_match', 'Steam has not returned this match')
+    worker.start('rec')
+    await vi.advanceTimersByTimeAsync(0)
+    // The old loop ran every ~7 s: 60 s must not trigger another boiler lookup.
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(deps.retrieve).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(2 * 60_000 + 5 * 60_000 + 10 * 60_000)
+    expect(deps.retrieve).toHaveBeenCalledTimes(4)
+    const status = cs2DemoRetrievalStatus.get('rec')
+    expect(status?.needsManual).toBe(true)
+    expect(status?.message).toBe(CS2_DEMO_NEEDS_MANUAL_MESSAGE)
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+    expect(deps.retrieve).toHaveBeenCalledTimes(4)
+  })
+
+  it('only notifies the renderer when the visible status changes', async () => {
+    const { worker, deps } = setup()
+    failWith(deps, 'no_match', 'Steam has not returned this match')
+    worker.start('rec')
+    await vi.advanceTimersByTimeAsync(2 * 60_000 + 5 * 60_000 + 10 * 60_000 + 1)
+    // first failure + final "needs manual" — not one reload per retry
+    expect(deps.changed).toHaveBeenCalledTimes(2)
+  })
+
+  it('waits for CS2 to close without spending the retry budget', async () => {
+    const { worker, deps } = setup()
+    failWith(deps, 'cs2_running', 'Close CS2')
+    worker.start('rec')
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(59_000)
+    expect(deps.retrieve).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(2 * 60 * 60_000)
+    expect(deps.retrieve.mock.calls.length).toBeLessThanOrEqual(122)
+    expect(cs2DemoRetrievalStatus.get('rec')?.needsManual).toBeUndefined()
+    deps.retrieve.mockResolvedValue(true)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(deps.ready).toHaveBeenCalledWith('rec')
+  })
+
+  it('backs off other GC failures from 1 to 5 minutes', () => {
+    expect(cs2DemoRetryDecision('gc_failed', 1, 0)).toEqual({ delayMs: 60_000, countsTowardBudget: true })
+    expect(cs2DemoRetryDecision('gc_failed', 3, 0)).toEqual({ delayMs: 240_000, countsTowardBudget: true })
+    expect(cs2DemoRetryDecision('gc_failed', 9, 0)).toEqual({ delayMs: 300_000, countsTowardBudget: true })
+    expect(cs2DemoRetryDecision('no_match', 4, 0)).toEqual({ stop: true })
+    expect(cs2DemoRetryDecision('unsupported', 1, 0)).toEqual({ stop: true })
   })
 })

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { plural } from '../../lib/plural'
+import { countsTowardProgress } from '../../lib/game-queue'
 /**
  * UI v3 Home (Coach) — board 4. Reading order: last match score → the coach's sentence →
  * one red action → recent form → focus → evidence. Real data only; honest empty states.
@@ -11,6 +12,7 @@ import HomePregameV3 from '../../components/v3/home/HomePregameV3.vue'
 import { recordingNeedsUserAction } from '../../lib/recording-library'
 import { formatMapLabel, getAgentImage, getMapImage } from '../../lib/valorant'
 import { decidedStats, type FocusUpdate } from '../../lib/focus'
+import { useGameScopedFocus } from '../../components/v3/home/use-game-focus'
 import UfHeroBand from '../../components/v3/UfHeroBand.vue'
 import UfButton from '../../components/v3/UfButton.vue'
 import UfStatRow from '../../components/v3/UfStatRow.vue'
@@ -46,12 +48,13 @@ import CoachInvitePromptV3 from '../../components/v3/roster-flow/CoachInviteProm
 
 const d = useDashboard()
 const router = useRouter()
-const focusLatest = ref<FocusUpdate | null>(null)
+// Focus note for the selected game only: cleared on game switch (no Valorant note on CS2).
+const focus = useGameScopedFocus<FocusUpdate>(d.primaryGame)
+const focusLatest = focus.latest
 /** The focus panel has answered at least once (cache or network). Until then the coach line waits. */
-const focusAnswered = ref(false)
+const focusAnswered = focus.answered
 function onFocusLatest(latest: FocusUpdate | null) {
-  focusLatest.value = latest
-  focusAnswered.value = true
+  focus.set(latest)
 }
 /** One row per real match (re-analyses of the same Riot match collapse to the newest). */
 const matches = computed(() => dedupeByMatch(d.dashboardAnalyses.value))
@@ -155,7 +158,8 @@ const devToolsShown = computed(() => import.meta.env.DEV && d.isAdmin.value)
 const needsAction = computed(() => d.pendingRecordings.value.filter(recordingNeedsUserAction).length)
 
 // Recent form: the last 5 real matches (deduped, this game only), newest first.
-const formMatches = computed(() => matches.value.slice(0, 5))
+// Recent form + its averages: ranked/main modes only (Wingman, Deathmatch, Swiftplay… left out — game-queue.ts).
+const formMatches = computed(() => matches.value.filter(a => countsTowardProgress(d.primaryGame.value, a.game_mode)).slice(0, 5))
 const formSquares = computed(() => formMatches.value.map(a => ({
   key: a.id,
   cls: a.won === true ? 'is-w' : a.won === false ? 'is-l' : '',
