@@ -384,6 +384,7 @@ import { isDeadlockReviewJobId } from './recordings-store'
 import { SourceReplayUploader } from './source-replay-uploader'
 import { findLatestReplay } from './source-replay-finder'
 import { isTrustedRendererUrl } from './renderer-trust'
+import { initValorantContentFallback } from './valorant-content-fallback'
 // Keep sandbox sessions separate from the normal desktop account and recordings.
 if (!app.isPackaged && process.env.UPFORGE_SANDBOX_USER_DATA) {
   const api = new URL(getApiBaseUrl())
@@ -6783,6 +6784,7 @@ async function startApp(): Promise<void> {
   })
 
   backgroundWork.configure(() => matchPriorityDeps().isRecording())
+  initValorantContentFallback(app.getPath('userData'))
   uploadManager = new UploadManager(authManager)
   settingsManager = new SettingsManager()
   overstepBridge = setupOverstepIntegration(obsRecorder,

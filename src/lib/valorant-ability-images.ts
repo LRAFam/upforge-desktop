@@ -163,6 +163,12 @@ const AGENT_SLOT_ABILITY: Record<string, Partial<Record<AbilitySlotKey, string>>
     ability2: 'Refract',
     ultimate: 'Convergent Paths',
   },
+  hush: {
+    grenade: 'Flow',
+    ability1: 'Flashbulb',
+    ability2: 'Displacement',
+    ultimate: 'Suspension',
+  },
 }
 
 /** Fandom CDN URLs (valorant.fandom.com Category:Ability_Images) */

@@ -1,6 +1,6 @@
 import type { PendingRecording } from '../env.d.ts'
 import { cs2MapDisplayName, getCs2RadarUrl, isCs2Map } from './cs2-maps'
-import { getAgentColor, getAgentImage, getMapImage, formatMapLabel } from './valorant'
+import { getAgentColor, getAgentImage, getMapImage, formatMapLabel, normalizeAgentName } from './valorant'
 import { getChampionImage, getMapImage as getLolMapImage, resolveLolMapLabel } from './lol'
 import { recordingGameLabel } from './games'
 
@@ -20,6 +20,12 @@ export function recordingMapImage(rec: Pick<PendingRecording, 'game' | 'map'>): 
 export function resolveRecordingAgent(
   rec: Pick<PendingRecording, 'game' | 'agent' | 'timeline'>,
 ): string | null {
+  const raw = rawRecordingAgent(rec)
+  // Valorant agents newer than the build that recorded the match were stored as raw uuids.
+  return rec.game === 'valorant' || rec.game === 'unknown' ? normalizeAgentName(raw) : raw
+}
+
+function rawRecordingAgent(rec: Pick<PendingRecording, 'game' | 'agent' | 'timeline'>): string | null {
   const top = rec.agent?.trim()
   if (top) return top
   const fromTimeline = rec.timeline?.agent?.trim()

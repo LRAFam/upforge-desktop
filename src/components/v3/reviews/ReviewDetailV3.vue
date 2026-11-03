@@ -21,6 +21,7 @@ import { recordingRowStats } from '../../../lib/dashboard-match-row'
 import { pendingMatchActionLabel, pendingMatchLifecycleState, pendingMatchStatusLabel } from '../../../lib/match-lifecycle'
 import { ARCHIVE_DATES_KEY, pendingDot, resultTone, resultWord, reviewPlayedAt, scoreLine, statItems } from './reviews-v3'
 import { formatMatchDate, matchMapLabel } from '../matches/match-meta'
+import { normalizeAgentName } from '../../../lib/valorant'
 import { mapDisplayName, modeDisplayName } from '../games/display-names'
 import { averageMatchScore, matchScore } from '../../../lib/upforge-score'
 import ScoreWhyV3 from '../score/ScoreWhyV3.vue'
@@ -117,7 +118,7 @@ const heroMeta = computed(() => {
     return [a.map ? mapDisplayName('cs2', a.map) : 'Unknown map', a.agent, modeDisplayName('cs2', a.game_mode),
       formatMatchDate(reviewPlayedAt(a, archiveDates?.value))].filter(Boolean).join(' · ')
   }
-  const parts = [a.map ? matchMapLabel(null, a.map) : 'Unknown map', a.agent || 'Unknown agent']
+  const parts = [a.map ? matchMapLabel(null, a.map) : 'Unknown map', normalizeAgentName(a.agent) || 'Unknown agent']
   if (a.agent) parts.push(getAgentRole(a.agent))
   if (isDisplayableGameMode(a.game_mode)) parts.push(formatGameMode(a.game_mode))
   parts.push(formatMatchDate(reviewPlayedAt(a, archiveDates?.value)))
