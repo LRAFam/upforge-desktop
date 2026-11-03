@@ -56,6 +56,7 @@ export function cs2DemoRetryDecision(
       return { delayMs: CS2_WAIT_FOR_CLIENT_MS, countsTowardBudget: false }
     case 'unsupported':
     case 'no_cs2_dir':
+    case 'not_listed':
       return { stop: true }
     case 'gc_failed':
     case 'download_failed':
@@ -155,7 +156,7 @@ export class Cs2DemoRetrieval {
         ? { delayMs: cs2DemoSyncPollIntervalMs(eligibleElapsedMs, true), countsTowardBudget: true }
         : cs2DemoRetryDecision(code, sameCodeAttempts, eligibleElapsedMs)
       if ('stop' in decision) {
-        stopForManual(code === 'no_match'
+        stopForManual(code === 'no_match' || code === 'not_listed'
           ? CS2_DEMO_NEEDS_MANUAL_MESSAGE
           : cs2DemoRetrievalStatus.get(id)?.message ?? CS2_DEMO_NEEDS_MANUAL_MESSAGE)
         return

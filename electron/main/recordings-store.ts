@@ -677,6 +677,10 @@ export class RecordingsStore {
   updateTimeline(id: string, timeline: MatchData): boolean {
     const rec = this.recordings.find(r => r.id === id)
     if (!rec) return false
+    // The GSI live record exists only from the match itself; a demo timeline replacing it must not
+    // erase it (3 Nov: the Dust2 demo sync dropped cs2Live, so demo→video sync had nothing to use).
+    const previousLive = rec.timeline?.cs2Live
+    if (previousLive && !timeline.cs2Live && timeline.game === 'cs2') timeline.cs2Live = previousLive
     rec.timeline = timeline
     // Late MatchDetails enrich fills timeline.agent/map first — keep card fields in sync.
     const agent = timeline.agent?.trim()

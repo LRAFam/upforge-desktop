@@ -2407,6 +2407,9 @@ function gameTimeToEventVideoOffsetMs(timeline: MatchData, gameTimeMs: number): 
       syncOffset: effectiveVideoSyncOffsetMs(timeline),
     })
   }
+  if (timeline.game === 'cs2' && timeline.cs2DemoVideoShiftMs != null) {
+    return Math.max(0, gameTimeMs + timeline.cs2DemoVideoShiftMs + effectiveVideoSyncOffsetMs(timeline))
+  }
   return Math.max(0, gameTimeToVideoOffsetMs(gameTimeMs, timeline) + effectiveVideoSyncOffsetMs(timeline))
 }
 

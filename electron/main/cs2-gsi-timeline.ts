@@ -50,6 +50,11 @@ export interface Cs2LiveRound {
 export interface Cs2LiveSummary {
   source: 'gsi'
   events: Cs2LiveEvent[]
+  /**
+   * When GSI saw each round end (round.phase → "over"), as positions in the recording. Anchors demo
+   * time to the video (cs2-demo-video-sync). Missing on recordings made before 3.2.7.
+   */
+  roundEnds?: Array<{ round: number; videoOffsetMs: number }>
   rounds: Cs2LiveRound[]
   /** Your final K/D/A from GSI match_stats, when GSI sent it. */
   stats: { kills: number; deaths: number; assists: number } | null
@@ -65,6 +70,8 @@ function side(team: string | undefined): 'CT' | 'T' | null {
 export class Cs2GsiTracker {
   private recordingStartMs: number | null = null
   private events: Cs2LiveEvent[] = []
+  private roundEnds: Array<{ round: number; videoOffsetMs: number }> = []
+  private lastRoundPhase: string | null = null
   private sideByRound = new Map<number, 'CT' | 'T'>()
   private lastStats: { kills: number; deaths: number; assists: number } | null = null
   private lastRound = 0
@@ -80,6 +87,8 @@ export class Cs2GsiTracker {
   start(recordingStartMs: number | null): void {
     this.recordingStartMs = recordingStartMs
     this.events = []
+    this.roundEnds = []
+    this.lastRoundPhase = null
     this.sideByRound.clear()
     this.lastStats = null
     this.lastRound = 0
@@ -114,6 +123,14 @@ export class Cs2GsiTracker {
     const player = payload.player
     const local = !!player?.steamid && player.steamid === payload.provider?.steamid
     const offset = Math.max(0, nowMs - this.recordingStartMs)
+    const roundPhase = (payload.round?.phase ?? '').toLowerCase()
+    if (roundPhase) {
+      // The first payload of a capture may already be "over"; only a seen transition is timed.
+      if (roundPhase === 'over' && this.lastRoundPhase != null && this.lastRoundPhase !== 'over') {
+        this.roundEnds.push({ round, videoOffsetMs: offset })
+      }
+      this.lastRoundPhase = roundPhase
+    }
     if (!local) {
       // Spectating someone else mid-round means you died (GSI stops describing you).
       if (this.lastLocalAlive && (payload.round?.phase ?? '').toLowerCase() === 'live') this.logDeath(round, offset)
@@ -169,6 +186,7 @@ export class Cs2GsiTracker {
     return {
       source: 'gsi',
       events: [...this.events],
+      roundEnds: [...this.roundEnds],
       rounds,
       stats: this.lastStats ? { ...this.lastStats } : null,
       allyScore,

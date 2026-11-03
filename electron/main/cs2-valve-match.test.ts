@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   cs2MapNameFromGameType,
   pickValveMatchForSession,
+  valveListHasMovedPast,
   type ValveMatchSummary,
 } from './cs2-valve-match'
 
@@ -87,5 +88,19 @@ describe('pickValveMatchForSession — undecoded map ids (new Wingman maps)', ()
   it('prefers an exact map over an unknown one', () => {
     const exact = m({ mapName: 'de_nuke', matchId: 'exact' })
     expect(pickValveMatchForSession([m({ mapName: 'Unknown', matchTimeSec: start / 1000 + 60 }), exact], start, 'de_nuke')).toBe(exact)
+  })
+})
+
+describe('valveListHasMovedPast (3 Nov log: old Nuke sessions re-asked Steam after Dust2 was listed)', () => {
+  const session = 1_700_000_000_000
+  it('is true once a match after the session window is listed', () => {
+    // [+136m de_dust2, -22m de_nuke, -210m de_nuke]
+    const list = [136, -22, -210].map((m) => match({ matchTimeSec: session / 1000 + m * 60 }))
+    expect(valveListHasMovedPast(list, session)).toBe(true)
+  })
+  it('is false while only earlier or in-window matches are listed', () => {
+    const list = [5, -22, -210].map((m) => match({ matchTimeSec: session / 1000 + m * 60 }))
+    expect(valveListHasMovedPast(list, session)).toBe(false)
+    expect(valveListHasMovedPast([], session)).toBe(false)
   })
 })

@@ -24,6 +24,7 @@ import type { ClipCaptureSettings } from './settings-manager'
 import { pickDeathClips } from './death-clips'
 import { OBJECTIVE_CLIP_AFTER_MS, OBJECTIVE_CLIP_BEFORE_MS, objectiveClipTitle, pickObjectiveClips } from './objective-clips'
 import { buildClipKills } from './kill-clip-grouping'
+import { combinedKillClipWindow } from './clip-timing'
 import { buildClipEventsFromKills } from './live-kill-stamps'
 import type { ClipRecord } from './clip-store'
 import { formatLolClipsSkippedActivity } from './lol-enrich-activity'
@@ -376,10 +377,7 @@ export class ClipPipeline {
         if (validKills.length === 0) continue
         const first = validKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
         const last  = validKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
-        const preBuffer  = trigger === 'ace' ? 10_000 : 8_000
-        const postBuffer = trigger === 'ace' ? 20_000 : 18_000
-        const startMs   = Math.max(0, first.videoOffsetMs! - preBuffer)
-        const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + postBuffer, 120_000)
+        const { startMs, durationMs } = combinedKillClipWindow(validKills.map(k => k.videoOffsetMs!), trigger)!
         try {
           const rec = clipStore.add({
             path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId, game,
@@ -576,10 +574,7 @@ export class ClipPipeline {
       if (validKills.length === 0) continue
       const first = validKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
       const last  = validKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
-      const preBuffer  = trigger === 'ace' ? 10_000 : 8_000
-      const postBuffer = trigger === 'ace' ? 20_000 : 18_000
-      const startMs    = Math.max(0, first.videoOffsetMs! - preBuffer)
-      const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + postBuffer, 120_000)
+      const { startMs, durationMs } = combinedKillClipWindow(validKills.map(k => k.videoOffsetMs!), trigger)!
       try {
         const rec = clipStore.add({
           path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId, game,

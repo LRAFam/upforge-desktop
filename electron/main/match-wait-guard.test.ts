@@ -97,6 +97,8 @@ describe('format helpers', () => {
   it('formats cancel activity for the feed', () => {
     expect(formatMatchWaitCancelActivity('Shipping.exe gone and Riot confirmed left match'))
       .toBe('Match cancelled — Riot confirmed left match')
+    expect(formatMatchWaitCancelActivity('CS2 process closed before a live match'))
+      .toBe('CS2 closed — stopped waiting for a match')
   })
 
   it('formats wait milestones', () => {

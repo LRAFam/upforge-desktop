@@ -152,6 +152,17 @@ describe('CS2 demo retrieval — Steam answers (3 Nov Wingman log)', () => {
     expect(deps.retrieve).toHaveBeenCalledTimes(4)
   })
 
+  it('stops after one lookup when Steam already lists later matches (demo will never come)', async () => {
+    const { worker, deps } = setup()
+    failWith(deps, 'not_listed', 'Steam has not returned this match')
+    worker.start('rec')
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+    expect(deps.retrieve).toHaveBeenCalledTimes(1)
+    expect(cs2DemoRetrievalStatus.get('rec')?.needsManual).toBe(true)
+    expect(cs2DemoRetrievalStatus.get('rec')?.message).toBe(CS2_DEMO_NEEDS_MANUAL_MESSAGE)
+  })
+
   it('only notifies the renderer when the visible status changes', async () => {
     const { worker, deps } = setup()
     failWith(deps, 'no_match', 'Steam has not returned this match')

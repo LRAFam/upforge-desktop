@@ -64,6 +64,8 @@ export async function attachDemoFileToRecording(opts: {
     matchStartTime: inferredMatchStart,
     recordingStartTime: recordingStartMs,
     localPlayerName: opts.localPlayerName ?? null,
+    // GSI live events anchor demo time to the video (warmup skews matchStartTime).
+    cs2Live: rec.game === 'cs2' ? rec.timeline?.cs2Live ?? null : null,
   })
 
   if (!timeline || !hasRichMatchData(timeline)) {
