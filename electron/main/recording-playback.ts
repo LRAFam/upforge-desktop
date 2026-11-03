@@ -75,7 +75,11 @@ export async function fetchJobPlaybackUrl(
   }
 }
 
-/** Prefer cloud HTTPS playback; only use local path when Chromium can play it. */
+/**
+ * Playback source for an analysed match. A browser-playable file on this PC wins (self-coaching keeps
+ * working after the cloud copy is removed under cloud retention, and costs no download); then cloud
+ * HTTPS playback; a raw OBS `.mkv` on this PC is only the last resort (Chromium often can't play it).
+ */
 export async function resolveCloudFirstPlaybackUrl(opts: {
   auth: AuthManager
   jobId?: string | null
@@ -86,7 +90,10 @@ export async function resolveCloudFirstPlaybackUrl(opts: {
 }): Promise<{ url: string | null; archiveId: string | null }> {
   const { auth, jobId, analysisId, archiveId, inlineRecordingUrl, localPath } = opts
   let url: string | null = null
-  let resolvedArchiveId = typeof archiveId === 'string' && archiveId ? archiveId : null
+  const resolvedArchiveId = typeof archiveId === 'string' && archiveId ? archiveId : null
+
+  const local = localPath ? resolveLocalRecordingFile(localPath) : null
+  if (local && isLikelyBrowserPlayableLocal(local)) return { url: local, archiveId: resolvedArchiveId }
 
   url = parseHttpsUrl(inlineRecordingUrl)
   if (!url && analysisId != null) {
@@ -98,8 +105,8 @@ export async function resolveCloudFirstPlaybackUrl(opts: {
   if (!url && jobId) {
     url = await fetchJobPlaybackUrl(auth, jobId)
   }
-  if (!url && localPath) {
-    url = resolveLocalRecordingFile(localPath)
+  if (!url && local) {
+    url = local
   }
 
   return { url, archiveId: resolvedArchiveId }

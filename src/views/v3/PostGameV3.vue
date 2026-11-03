@@ -48,6 +48,8 @@ const props = defineProps<{
   reviewRound?: number | null
   /** Riot match id with a free data report (Valorant); shows "Open report". */
   reportMatchId?: string | null
+  /** Cloud retention: how long this match's video stays in the cloud (null = kept, or nothing to say). */
+  cloudLine?: string | null
 }>()
 
 defineEmits<{
@@ -62,6 +64,7 @@ defineEmits<{
   sendToCoach: []
   reviewRound: []
   openReport: []
+  keepCloud: []
 }>()
 
 const portrait = computed(() => agentPortraitUrl(props.agentArt))
@@ -142,6 +145,7 @@ const clipsLine = computed(() => {
           <button v-if="reportMatchId" type="button" class="uf-link pg3-send" @click="$emit('openReport')">Open match report →</button>
         </div>
         <p v-if="clipsLine" class="uf-t4 uf-rise uf-d2s">{{ clipsLine }}</p>
+        <p v-if="cloudLine" class="uf-t4 uf-rise uf-d2s">{{ cloudLine }} <button type="button" class="uf-link" @click="$emit('keepCloud')">Keep it in the cloud</button></p>
         <div v-if="focusStrip" class="pg3-focus uf-rise uf-d2s" :title="focusStrip.line">
           <span class="uf-label">Focus</span>
           <span class="uf-t4 pg3-focus-label">{{ focusStrip.label }}</span>

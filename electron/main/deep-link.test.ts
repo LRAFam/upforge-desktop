@@ -112,3 +112,21 @@ describe('PendingDeepLink', () => {
     expect(p.take(true)).toBeNull()
   })
 })
+
+describe('parseUpforgeDeepLink · cloud storage', () => {
+  it('accepts upforge://cloud-storage (notification and email links)', () => {
+    expect(parseUpforgeDeepLink('upforge://cloud-storage')).toEqual({ kind: 'open-cloud-storage' })
+    expect(parseUpforgeDeepLink('upforge://cloud-storage/')).toEqual({ kind: 'open-cloud-storage' })
+    expect(parseUpforgeDeepLink('UPFORGE://Cloud-Storage')).toEqual({ kind: 'open-cloud-storage' })
+  })
+  it('rejects paths, parameters and lookalike hosts', () => {
+    for (const bad of [
+      'upforge://cloud-storage/delete',
+      'upforge://cloud-storage?next=https://evil.example',
+      'upforge://cloud-storage#x',
+      'upforge://cloud-storage.evil',
+      'upforge://cloudstorage',
+      'upforge://user@cloud-storage',
+    ]) expect(parseUpforgeDeepLink(bad), bad).toBeNull()
+  })
+})

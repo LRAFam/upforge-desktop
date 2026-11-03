@@ -65,3 +65,26 @@ export function storageSummary(opts: { count: number; noun: [string, string]; lo
   else if (opts.cloudUsed) parts.push(`${opts.cloudUsed}${opts.cloudCapacity ? ` of ${opts.cloudCapacity}` : ''} cloud storage used`)
   return parts.join(' · ')
 }
+
+/**
+ * The row's one cloud line (status column): a countdown that opens "Keep it in the cloud",
+ * "Save to cloud" for a match only on this PC, or "Full video no longer stored". null = nothing to add.
+ * `line` comes from `retentionLine(parseRetention(rec.cloudFile?.retention))`.
+ */
+export type RowCloudAction =
+  | { kind: 'keep'; text: string; warn: boolean; detail: string | null }
+  | { kind: 'save'; text: string }
+  | { kind: 'removed'; text: string }
+export function rowCloudAction(
+  rec: Pick<PendingRecording, 'hasLocalFile' | 'archiveId' | 'cloudUploaded' | 'pipelineStatus'> & { cloudOnly?: boolean },
+  line: import('../../../lib/cloud-retention').RetentionLine | null,
+): RowCloudAction | null {
+  // A keep time (no removal date yet) is said softly, with the action in the same line.
+  if (line?.keepTime) return { kind: 'keep', text: `${line.text} · Keep it in the cloud`, warn: false, detail: line.detail }
+  if (line?.countdown) return { kind: 'keep', text: line.text, warn: line.tone === 'warn', detail: line.detail }
+  // Removed with a copy on this PC: the PC copy still plays, so the row stays quiet.
+  if (line?.removed) return rec.hasLocalFile ? null : { kind: 'removed', text: line.text }
+  const inCloud = !!rec.archiveId || !!rec.cloudUploaded || !!rec.cloudOnly
+  if (rec.hasLocalFile && !inCloud && !rec.pipelineStatus) return { kind: 'save', text: 'Save to cloud' }
+  return null
+}

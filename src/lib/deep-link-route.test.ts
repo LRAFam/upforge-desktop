@@ -32,3 +32,11 @@ describe('deepLinkRoute · analysis results', () => {
     ]) expect(deepLinkRoute(bad, true)).toBeNull()
   })
 })
+
+describe('deepLinkRoute · cloud storage', () => {
+  it('opens the Cloud storage page in both designs', () => {
+    for (const ui of [true, false]) {
+      expect(deepLinkRoute({ kind: 'open-cloud-storage' }, ui)).toEqual({ type: 'route', location: { path: '/cloud-storage', query: {} } })
+    }
+  })
+})

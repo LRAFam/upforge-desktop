@@ -24,6 +24,7 @@ import {
   type DeadlockLogSessionSnapshot,
 } from './deadlock-live-timeline'
 import type { MatchData } from './riot-types'
+import { getGameDataCapture } from './game-data-capture'
 
 type DeadlockPhase = 'idle' | 'waiting' | 'in_match' | 'post_match'
 
@@ -90,6 +91,7 @@ function markMatchStarted(matchId: number): void {
   phase = 'in_match'
   lastActivityAt = Date.now()
   log.info('[DeadlockMatch] Live — match_id=', matchId)
+  void getGameDataCapture()?.deadlockMatchStarted(matchId)
 }
 
 function markMatchEnded(): void {
@@ -97,10 +99,13 @@ function markMatchEnded(): void {
   phase = 'post_match'
   lastActivityAt = Date.now()
   log.info('[DeadlockMatch] Ended — match_id=', activeMatchId)
+  getGameDataCapture()?.deadlockSignal('match-ended', { matchId: activeMatchId, reason: 'steam-cache-or-replay' })
+  getGameDataCapture()?.deadlockMatchEnded()
 }
 
 function applyCacheSalts(salts: DeadlockMatchSalts): void {
   lastActivityAt = Date.now()
+  getGameDataCapture()?.deadlockSignal('steam-cache-salts', salts)
   const prev = saltsByMatch.get(salts.matchId) ?? null
   const merged = mergeSalts(prev, salts)
   saltsByMatch.set(salts.matchId, merged)
@@ -152,6 +157,7 @@ function pollPartialReplays(dirs: string[]): void {
   }
 
   if (!newest) return
+  getGameDataCapture()?.deadlockSignal('replay-file', newest)
 
   if (lowerEndsWith(newest.path, '.dem') && !lowerEndsWith(newest.path, '.partial')) {
     sawPartialLive = true
@@ -255,6 +261,7 @@ export function nextDeadlockCacheScanAt(previous: number, scanStartedAt: number)
 }
 
 export function stopDeadlockLogWatcher(): void {
+  getGameDataCapture()?.deadlockMatchEnded('game-closed')
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null

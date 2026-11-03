@@ -13,6 +13,8 @@ const validId = (id: unknown): id is number => typeof id === 'number' && Number.
 export function deepLinkRoute(action: unknown, uiV3: boolean): DeepLinkTarget | null {
   const a = action as { kind?: unknown; coachId?: unknown; game?: unknown; analysisId?: unknown } | null | undefined
   if (!a) return null
+  // Cloud retention warnings (notification / email): the Cloud storage page exists in both designs.
+  if (a.kind === 'open-cloud-storage') return { type: 'route', location: { path: '/cloud-storage', query: {} } }
   if (a.kind === 'open-analysis') {
     if (typeof a.game !== 'string' || !GAMES.includes(a.game) || !validId(a.analysisId)) return null
     // In-app in both designs: the website is never the default for a result.

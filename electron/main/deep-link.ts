@@ -10,6 +10,9 @@
  *   upforge://analysis/<game>/<id>        game: valorant | cs2 | deadlock | lol · id: 1–10 digits, no leading 0
  *                                         (mirrors upforge.gg/<game>/results/<id>)
  *
+ * Accepted (cloud retention warnings in notifications and emails → the Cloud storage page):
+ *   upforge://cloud-storage
+ *
  * Never navigates to, opens or forwards the raw URL. The action is held in the main process until a
  * signed-in renderer takes it (so a link clicked before sign-in still lands after signing in).
  */
@@ -26,6 +29,7 @@ export const PENDING_TTL_MS = 30 * 60 * 1000
 export type DeepLinkAction =
   | { kind: 'roster-join'; coachId: number }
   | { kind: 'open-analysis'; game: DeepLinkGame; analysisId: number }
+  | { kind: 'open-cloud-storage' }
 
 function coachIdFrom(value: string | null | undefined): number | null {
   if (!value || !COACH_ID.test(value)) return null
@@ -67,6 +71,10 @@ export function parseUpforgeDeepLink(raw: unknown): DeepLinkAction | null {
     if (!m || url.search) return null
     const coachId = coachIdFrom(m[1])
     return coachId == null ? null : { kind: 'roster-join', coachId }
+  }
+
+  if (host === 'cloud-storage') {
+    return path === '' && !url.search ? { kind: 'open-cloud-storage' } : null
   }
 
   if (host === 'analysis') {

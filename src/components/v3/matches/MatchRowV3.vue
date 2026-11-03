@@ -15,7 +15,9 @@ import UfButton from '../UfButton.vue'
 import { deadlockRecordingHero, loadDeadlockHeroesOnce } from '../../../lib/deadlock-hero-names'
 import { deadlockReviewState } from './deadlock-review-row'
 import { gameLogo } from './game-logo'
-import { matchRowSummary, storageLine } from './match-row'
+import { matchRowSummary, rowCloudAction, storageLine } from './match-row'
+import { parseRetention, retentionLine } from '../../../lib/cloud-retention'
+import { useCloudRetention } from '../../../composables/useCloudRetention'
 import { formatMatchDate, matchMapArt, matchMapLabel } from './match-meta'
 import { matchScore, scoreToneColor } from '../../../lib/upforge-score'
 import { cs2StatItems } from '../../../lib/cs2-analyses'
@@ -56,6 +58,30 @@ const logo = computed(() => gameLogo(props.rec.game))
 const isDeadlock = computed(() => props.rec.game === 'deadlock')
 const playerLabel = computed(() => isDeadlock.value ? deadlockRecordingHero(props.rec.agent) : recordingPlayerLabel(props.rec))
 onMounted(() => { if (isDeadlock.value) void loadDeadlockHeroesOnce() })
+
+// Cloud retention: countdown → keep options; only on this PC → Save to cloud (respects a full quota).
+const cloudAction = computed(() => props.selecting ? null : rowCloudAction(props.rec, retentionLine(parseRetention(props.rec.cloudFile?.retention))))
+const { savesPausedMessage, refresh: refreshRetention } = useCloudRetention()
+const saveOpen = ref(false)
+const saving = ref(false)
+const saveError = ref<string | null>(null)
+function keepInCloud() { router.push({ path: '/cloud-storage', query: { keep: '1' } }).catch(() => {}) }
+async function saveToCloud() {
+  saveError.value = null
+  // Full quota: say why first (analysis still works), never start an upload the API will refuse.
+  if (savesPausedMessage.value) { saveOpen.value = true; return }
+  saving.value = true
+  try {
+    const res = await window.api.recordings.saveToCloud(props.rec.id)
+    if (!res.ok) { saveError.value = res.error; saveOpen.value = true }
+    void refreshRetention(true)
+  } catch {
+    saveError.value = 'Could not save to cloud. Check your connection and try again.'
+    saveOpen.value = true
+  } finally {
+    saving.value = false
+  }
+}
 
 // Deadlock "Review replay": a deliberate, confirmed action (it uses 1 analysis).
 const review = computed(() => deadlockReviewState(props.rec))
@@ -111,6 +137,9 @@ async function startReview() {
     <div class="uf-status">
       <span class="uf-t4 uf-trunc" :style="{ color: unavailable ? 'var(--uf-loss)' : 'var(--uf-muted)' }" :title="statusText">{{ statusText }}</span>
       <span v-if="hint" class="uf-t4 uf-trunc" style="color: var(--uf-gold)" :title="hint">{{ hint }}</span>
+      <button v-else-if="cloudAction?.kind === 'keep'" type="button" class="uf-link uf-t4 uf-trunc uf-cloud" :class="{ 'is-warn': cloudAction.warn }" :title="cloudAction.detail ?? 'Keep it in the cloud or download a copy'" @click.stop="keepInCloud">{{ cloudAction.text }}</button>
+      <button v-else-if="cloudAction?.kind === 'save'" type="button" class="uf-link uf-t4 uf-trunc uf-cloud" :disabled="saving || busy" @click.stop="saveToCloud">{{ saving ? 'Saving to cloud…' : cloudAction.text }}</button>
+      <span v-else-if="cloudAction?.kind === 'removed'" class="uf-t4 uf-trunc" style="color: var(--uf-faint)">{{ cloudAction.text }}</span>
     </div>
     <div v-if="!selecting" class="uf-actions" @click.stop>
       <button v-if="!rec.cloudOnly && recordingNeedsAttention(rec)" type="button" class="uf-link" :disabled="busy" @click="emit('continue')">Continue →</button>
@@ -126,6 +155,14 @@ async function startReview() {
       </button>
       <span v-else class="uf-del-slot" aria-hidden="true" />
     </div>
+    <UfDialog :open="saveOpen" :title="savesPausedMessage && !saveError ? 'Your cloud space is full' : 'Could not save to cloud'" kicker="Cloud storage" :width="440" @close="saveOpen = false">
+      <p class="uf-t2" style="margin: 0">{{ saveError || savesPausedMessage }}</p>
+      <p class="uf-t4" style="margin: 0">This match stays on this PC and keeps working for review.</p>
+      <template #actions>
+        <UfButton variant="secondary" @click="saveOpen = false">Close</UfButton>
+        <UfButton variant="primary" @click="saveOpen = false; keepInCloud()">Add space</UfButton>
+      </template>
+    </UfDialog>
     <UfDialog :open="confirmOpen" title="Review this replay?" kicker="Deadlock" :width="440" @close="confirmOpen = false">
       <p class="uf-t2" style="margin: 0">UpForge reads this match's replay and adds your kills and deaths to the recording, with coaching on your souls, items and fights.</p>
       <p class="uf-t4" style="margin: 0">This uses 1 analysis from your plan.</p>
@@ -162,6 +199,8 @@ async function startReview() {
 .uf-num { font-variant-numeric: tabular-nums; }
 .uf-trunc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .uf-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 14px; min-width: 0; }
+.uf-cloud { align-self: flex-start; max-width: 100%; text-align: left; color: var(--uf-muted); }
+.uf-cloud.is-warn { color: var(--uf-gold); }
 .uf-del-slot { width: 36px; height: 36px; flex: none; }
 .uf-open { height: 36px; }
 .uf-open:disabled { opacity: 0.4; cursor: not-allowed; }

@@ -38,6 +38,8 @@
       :send-coach-name="sendCoachName"
       :review-round="gameInfo.game === 'valorant' ? reviewRoundShown : null"
       :report-match-id="gameInfo.game === 'valorant' && matchId && matchId !== 'preview-match-id' ? matchId : null"
+      :cloud-line="state === 'ready' && result?.analysis_id ? postGameCloud : null"
+      @keep-cloud="handoffToMain({ path: '/cloud-storage', query: { keep: '1' } })"
       @primary="handleCompactPrimary"
       @secondary="viewFullAnalysis"
       @send-to-coach="sendToCoach"
@@ -938,6 +940,8 @@ import { matchScore } from '../lib/upforge-score'
 import { refreshStudentHub } from '../components/v3/roster-flow/useStudentHub'
 import { sendStateFor } from '../components/v3/roster-flow/roster-flow'
 import { uiV3 } from '../lib/ui-v3'
+import { useCloudRetention } from '../composables/useCloudRetention'
+import { postGameCloudLine } from '../lib/cloud-retention'
 import {
   pickWebNextStep,
   tierDisplayLabel,
@@ -946,6 +950,9 @@ import {
 
 type State = 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending' | 'archived'
 const compactPostGameUi = true
+// Cloud retention (v3 post-game): how long the uploaded video stays in the cloud.
+const { summary: cloudRetentionSummary } = useCloudRetention()
+const postGameCloud = computed(() => postGameCloudLine(cloudRetentionSummary.value))
 
 const COACHING_TIPS = [
   'Players who review their gameplay weekly improve 2x faster than those who don\'t.',

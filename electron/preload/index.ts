@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 const api = {
   storageAddon: { request: (request: import('../../src/lib/storage-addon').StorageAddonRequest) => ipcRenderer.invoke('storage-addon:request', request) },
   cloudClip: { review: (id: number, analyse = false) => ipcRenderer.invoke('cloud-clip:review', id, analyse) },
-  cloudStorage: { download: (file: { kind: 'clip' | 'recording'; id: string }) => ipcRenderer.invoke('cloud-storage:download', file), playback: (file: { kind: 'clip' | 'recording'; id: string }) => ipcRenderer.invoke('cloud-storage:playback', file), list: (query: import('../../src/lib/cloud-storage').CloudQuery) => ipcRenderer.invoke('cloud-storage:list', query) },
+  cloudStorage: { download: (file: { kind: 'clip' | 'recording' | 'analysis_video'; id: string }) => ipcRenderer.invoke('cloud-storage:download', file), playback: (file: { kind: 'clip' | 'recording' | 'analysis_video'; id: string }) => ipcRenderer.invoke('cloud-storage:playback', file), retention: () => ipcRenderer.invoke('cloud-storage:retention'), list: (query: import('../../src/lib/cloud-storage').CloudQuery) => ipcRenderer.invoke('cloud-storage:list', query) },
   workspaceCoach: {
     history: (id: number) => ipcRenderer.invoke('workspace-coach:history', id),
     ask: (id: number, body: import('../../src/lib/workspace-coach').CoachQuestion) => ipcRenderer.invoke('workspace-coach:ask', id, body),
@@ -90,6 +90,12 @@ const api = {
     getStatus: () => ipcRenderer.invoke('app:get-status'),
     getActivityLog: () => ipcRenderer.invoke('app:get-activity-log'),
     getSupportBundle: () => ipcRenderer.invoke('app:get-support-bundle') as Promise<string>,
+    /** Diagnostics: raw CS2 GSI / Deadlock data for the next match (local files only). */
+    gameDataCapture: {
+      status: () => ipcRenderer.invoke('diagnostics:game-capture-status'),
+      set: (on: boolean) => ipcRenderer.invoke('diagnostics:game-capture-set', on),
+      openFolder: () => ipcRenderer.invoke('diagnostics:game-capture-open-folder') as Promise<{ ok: boolean; error?: string }>,
+    },
     showClips: () => ipcRenderer.invoke('app:show-clips'),
     focusAndNavigate: (target: string | { path: string; query?: Record<string, string> }) =>
       ipcRenderer.invoke('app:focus-navigate', target),

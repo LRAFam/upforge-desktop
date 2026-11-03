@@ -491,7 +491,7 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
     const cloud = await archiveReview(id)
     return cloud.ok ? cloud.timeline : null
   })
-  async function archiveReview(archiveId: string, analyse = false): Promise<{ ok: true; timeline: Awaited<ReturnType<typeof reviewTimeline>> & { archiveAnalysisState: string; archiveAnalysisReady: boolean; archiveAnalysisMessage: string; matchDataAvailable: boolean } } | { ok: false; error: string }> {
+  async function archiveReview(archiveId: string, analyse = false): Promise<{ ok: true; timeline: Awaited<ReturnType<typeof reviewTimeline>> & { archiveAnalysisState: string; archiveAnalysisReady: boolean; archiveAnalysisMessage: string; matchDataAvailable: boolean; cloudRetention?: unknown } } | { ok: false; error: string }> {
     if (typeof archiveId !== 'string' || !/^[0-9a-f-]{36}$/i.test(archiveId) || typeof analyse !== 'boolean') return { ok: false, error: 'Choose a valid cloud recording.' }
     const token = authManager.getToken(), owner = authManager.getUser()?.id
     if (!token || !owner) return { ok: false, error: 'Sign in to review cloud recordings.' }
@@ -520,7 +520,9 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
       }
       const timeline = await reviewTimeline(recording)
       if (!currentAccount()) return { ok: false, error: 'Your account changed. Reopen the recording.' }
-      return { ok: true, timeline: { ...timeline, archiveAnalysisState: archive.analysis_state, archiveAnalysisReady: readiness.ready, archiveAnalysisMessage: readiness.message, matchDataAvailable: archive.has_match_data } }
+      // Cloud retention of the archive's full video (absent on older APIs).
+      const cloudRetention = (response.data.archive as { retention?: unknown } | undefined)?.retention ?? null
+      return { ok: true, timeline: { ...timeline, cloudRetention, archiveAnalysisState: archive.analysis_state, archiveAnalysisReady: readiness.ready, archiveAnalysisMessage: readiness.message, matchDataAvailable: archive.has_match_data } }
     } catch (error) {
       const response = (error as { response?: { status?: number; data?: { message?: string } } }).response
       return { ok: false, error: response?.status === 410 ? 'This cloud recording has expired.' : response?.status === 404 ? 'This cloud recording is unavailable.' : response?.data?.message ?? 'Cloud review could not be loaded. Please retry.' }

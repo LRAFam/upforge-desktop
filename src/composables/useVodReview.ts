@@ -109,6 +109,8 @@ export interface RecordingTimeline {
   archiveAnalysisReady?: boolean
   archiveAnalysisMessage?: string
   matchDataAvailable?: boolean
+  /** Cloud retention of the full video (raw API object; parse with `parseRetention`). Absent on older APIs. */
+  cloudRetention?: unknown
   /** CS2: kills/deaths/rounds came from live GSI (no demo yet). */
   cs2LiveOnly?: boolean
   id: string

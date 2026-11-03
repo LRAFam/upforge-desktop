@@ -7,7 +7,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { uiV3 } from '../../../lib/ui-v3'
 import { useRoute, useRouter } from 'vue-router'
 import type { PendingRecording } from '../../../env.d.ts'
-import { mergeFootage, footageUnavailable, type LibraryRecording } from '../../../lib/footage-library'
+import { mergeFootage, footageSource, footageUnavailable, type LibraryRecording } from '../../../lib/footage-library'
 import { validCloudPage, type CloudFile } from '../../../lib/cloud-storage'
 import { openAnalysisVodReview } from '../../../lib/open-vod-review'
 import { prefetchAnalysis, prefetchArchive } from '../../../composables/vod/match-prefetch'
@@ -184,6 +184,7 @@ export function useFootageLibrary(options: FootageLibraryOptions = {}) {
   /** UI v3: hover / focus on a row warms the match page (read-only GETs). */
   function prefetchRow(rec: LibraryRecording) {
     if (!uiV3.value || footageUnavailable(rec)) return
+    if (footageSource(rec) === 'none' && rec.analysisId != null) { prefetchAnalysis(rec.analysisId); return }
     if (rec.cloudOnly || (!rec.hasLocalFile && rec.archiveId)) { prefetchArchive(rec.archiveId); return }
     if (rec.analysisId != null) prefetchAnalysis(rec.analysisId)
   }
@@ -196,6 +197,12 @@ export function useFootageLibrary(options: FootageLibraryOptions = {}) {
 
   async function openBest(rec: LibraryRecording) {
     if (footageUnavailable(rec)) { message.value = footageUnavailable(rec); return }
+    // Cloud full video removed and nothing on this PC: open the analysed match (notes, clips, stats) without video.
+    if (footageSource(rec) === 'none' && rec.archiveId && rec.analysisId != null) {
+      const query = { timelineId: String(rec.analysisId) }
+      rememberRow(rec, query)
+      await router.push({ path: '/vod-review', query }); return
+    }
     if (rec.cloudOnly || (!rec.hasLocalFile && rec.archiveId)) {
       rememberRow(rec, { archiveId: rec.archiveId! })
       if (uiV3.value) prefetchArchive(rec.archiveId)

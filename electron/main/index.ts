@@ -361,6 +361,12 @@ import { setupCoachFlowDemoHandlers } from './ipc/coach-flow-demo-ipc'
 import { setupCoachFlowLiveHandlers, startLiveCoachFlow } from './ipc/coach-flow-live-ipc'
 import { prepareMatchDataForUpload } from './match-data-payload'
 import { registerEnemyHabitsIpc } from './ipc/enemy-habits-ipc'
+import { getGameDataCapture } from './game-data-capture'
+import { setupGameDataCaptureHandlers } from './ipc/game-data-capture-ipc'
+
+function fileSizeOrNull(p: string): number | null {
+  try { return fs.statSync(p).size } catch { return null }
+}
 import { pregameKey, pregameQuery, sanitizePregameContext } from './pregame-view'
 import { DEEP_LINK_SCHEME, PendingDeepLink, findDeepLinkInArgv } from './deep-link'
 import { downloadDeadlockValveReplay } from './deadlock-valve-replay'
@@ -2478,12 +2484,17 @@ async function retrieveReplayTimelineForRecording(
     && !shouldDeferHeavyBackgroundWork(matchPriorityDeps())
   ) {
     try {
+      const valveLookupStartedAt = Date.now()
       const valve = await downloadCs2ValveDemoForSession({
         matchSessionStartMs: matchStartMs,
         gsiMap: replayCtx.gsiMap,
         customReplayDir: replayCtx.customReplayDir,
         onProgress: onDownloadProgress,
       })
+      // Diagnostics capture (no-op unless a CS2 capture just ended): when did the demo become available?
+      getGameDataCapture()?.noteAfterMatch('cs2', 'cs2-valve-demo', valve.ok
+        ? { ok: true, durationMs: Date.now() - valveLookupStartedAt, matchTimeSec: valve.match.matchTimeSec, demoBytes: fileSizeOrNull(valve.demoPath) }
+        : { ok: false, code: valve.code ?? null, durationMs: Date.now() - valveLookupStartedAt })
       if (valve.ok) {
         if (!valid()) return false
         setStatus('syncing', 'Reading demo match stats.')
@@ -2511,6 +2522,9 @@ async function retrieveReplayTimelineForRecording(
     if (salts?.replaySalt != null) {
       try {
         const valve = await downloadDeadlockValveReplay(salts, replayCtx.customReplayDir, onDownloadProgress)
+        getGameDataCapture()?.noteAfterMatch('deadlock', 'deadlock-replay-download', valve.ok
+          ? { ok: true, demoBytes: fileSizeOrNull(valve.demoPath) }
+          : { ok: false, code: valve.code ?? null })
         if (valve.ok) {
           log.info('[Replay] Deadlock Valve replay downloaded:', valve.demoPath)
           parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
@@ -4109,7 +4123,13 @@ function setupGameDetection(): void {
     if (game === 'deadlock') {
       const lobbyMatchId = getDeadlockLobbyMatchId()
       if (lobbyMatchId) {
-        void resolveDeadlockRecordingHero(lobbyMatchId, { fetchMatch: (id) => authManager.fetchDeadlockMatch(id) })
+        void resolveDeadlockRecordingHero(lobbyMatchId, {
+          fetchMatch: async (id) => {
+            const res = await authManager.fetchDeadlockMatch(id)
+            getGameDataCapture()?.saveDeadlockMetadata(id, res)
+            return res
+          },
+        })
           .then((player) => {
             const label = recordingHeroLabel(player, null)
             if (label && captureStore.setDeadlockHero(String(lobbyMatchId), label)) notifyRecordingsUpdated()
@@ -5429,6 +5449,7 @@ function setupGameDetection(): void {
             ? isDeadlockMatchEnded()
             : isGsiMatchEnded()
           if (!ended) return
+          if (game === 'deadlock') getGameDataCapture()?.deadlockMatchEnded()
           await finishActiveMatch(game, 'gsi')
         })()
       }, 2000)
@@ -7305,6 +7326,8 @@ async function startApp(): Promise<void> {
       activityLog: activityLog.slice(),
     }
   })
+
+  setupGameDataCaptureHandlers(ipcMain)
 
   ipcMain.handle('app:get-support-bundle', async () => {
     const riotDiag = riotLocalApi.getDiagnostics()

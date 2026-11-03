@@ -66,3 +66,11 @@ describe('inboxAge', () => {
     expect(inboxAge('nope', now)).toBe('')
   })
 })
+
+describe('inboxTarget · cloud retention', () => {
+  it('opens Cloud storage for expiring-video warnings', () => {
+    expect(inboxTarget({ type: 'cloud_video_expiring', data: { kind: 'recording', id: 'a', expires_at: '2026-11-20T03:00:00Z', deep_link: 'upforge://cloud-storage' } }))
+      .toEqual({ kind: 'app', path: '/cloud-storage' })
+    expect(inboxTarget({ type: 'cloud_video_expiring', data: {} })).toEqual({ kind: 'app', path: '/cloud-storage' })
+  })
+})

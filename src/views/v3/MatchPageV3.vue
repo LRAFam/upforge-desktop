@@ -17,6 +17,7 @@ import VodComparisonAccess from '../../components/vod-review/VodComparisonAccess
 import VodReviewComparison from '../../components/vod-review/VodReviewComparison.vue'
 import VodReviewShortcuts from '../../components/vod-review/VodReviewShortcuts.vue'
 import CloudVodActions from '../../components/vod-review/CloudVodActions.vue'
+import CloudRetentionBarV3 from '../../components/v3/matchpage/CloudRetentionBarV3.vue'
 import TrimRangeModal from '../../components/shared/TrimRangeModal.vue'
 import SendToCoachV3 from '../../components/v3/roster-flow/SendToCoachV3.vue'
 import CoachNotesV3 from '../../components/v3/coach-notes/CoachNotesV3.vue'
@@ -134,6 +135,8 @@ const coachMatchLabel = computed(() => {
       <ReplayViewerV3 />
     </div>
     <CloudVodActions v-if="route.query.archiveId && !timelineLoading && !timelineError" v-show="!comparisonActive && !accessOpen" />
+    <!-- Cloud retention: countdown (keep / download) or "Full video no longer stored"; silent when playing from this PC. -->
+    <CloudRetentionBarV3 v-if="!timelineLoading && !timelineError" v-show="!comparisonActive && !accessOpen" />
     <VodReviewStates v-if="timelineError && !timelineLoading" />
     <VodReviewBody v-else-if="!timelineLoading" v-show="!comparisonActive && !accessOpen" v-model:rounds-width="roundsWidth" v-model:details-width="detailsWidth" :workspace="workspace" class="uf-reveal" />
 

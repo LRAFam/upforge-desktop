@@ -6,7 +6,7 @@ import upforgeLogo from '../assets/upforge-logo.webp'
 import StorageAddonPicker from '../components/shared/StorageAddonPicker.vue'
 import type { StorageAddonSnapshot } from '../lib/storage-addon'
 import { useAccountUsage } from '../composables/useAccountUsage'
-import { cloudGames, type CloudGame, cloudBytes, cloudRetention, cloudFileTitle, validCloudPage, type CloudFile, type CloudKind, type CloudSort, type CloudPage } from '../lib/cloud-storage'
+import { cloudGames, type CloudGame, cloudBytes, cloudKindLabel, cloudRetention, cloudFileTitle, validCloudPage, type CloudFile, type CloudKind, type CloudSort, type CloudPage } from '../lib/cloud-storage'
 import type { PendingRecording, ClipRecord } from '../env.d.ts'
 import { uiV3 } from '../lib/ui-v3'
 import UfButton from '../components/v3/UfButton.vue'
@@ -16,13 +16,32 @@ import UfTabs from '../components/v3/UfTabs.vue'
 import UfDialog from '../components/v3/UfDialog.vue'
 import { capacityFacts, capacitySentence, libraryCountLabel } from '../components/v3/matches/cloud-storage-v3'
 import { formatMatchDate, matchMapArt, matchMapLabel } from '../components/v3/matches/match-meta'
+import { useCloudRetention } from '../composables/useCloudRetention'
+import { parseRetention, retentionLine } from '../lib/cloud-retention'
 const router = useRouter()
+// Cloud retention (v3): plan keep time, saves paused when full, per-video countdowns. Null on older APIs.
+const { summary: retentionSummary, keepTime, savesPausedMessage, expiringLine, refresh: refreshRetention } = useCloudRetention()
+const fileRetention = (file: CloudFile) => parseRetention(file.retention)
+const fileRetentionLine = (file: CloudFile) => retentionLine(fileRetention(file), retentionNow.value)
+const isRemoved = (file: CloudFile) => fileRetention(file)?.state === 'removed'
+/** "Keep it in the cloud": the storage pack picker (and plans) on this page. */
+const pickerAnchor = ref<HTMLElement | null>(null)
+function showKeepOptions() { pickerAnchor.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }); pickerAnchor.value?.querySelector<HTMLElement>('input, button')?.focus({ preventScroll: true }) }
+const rowMessage = ref('')
+async function downloadRow(file: CloudFile) {
+  rowMessage.value = 'Preparing download…'
+  try {
+    const result = await window.api.cloudStorage.download({ kind: file.kind, id: file.id })
+    rowMessage.value = result.ok ? 'Download requested. Choose where to save it in the save window.' : result.error
+  } catch { rowMessage.value = 'Could not start the download. Please retry.' }
+}
 const pendingRemoval = ref<CloudFile | null>(null)
 const addon = ref<StorageAddonSnapshot | null>(null), addonVersion = ref(0), keepError = ref(''), keeping = ref('')
 async function keep(file: CloudFile, action: 'keep' | 'remove' = 'keep') {
+  if (file.kind === 'analysis_video') return
   keeping.value = `${file.kind}:${file.id}`; keepError.value = ''
   try {
-    const result = await window.api.storageAddon.request({ action, kind: file.kind, id: file.id })
+    const result = await window.api.storageAddon.request({ action, kind: file.kind as 'clip' | 'recording', id: file.id })
     if (!result.ok) keepError.value = result.error
     else { pendingRemoval.value = null; addonVersion.value++; refresh() }
   } catch { keepError.value = 'Could not update this cloud file. Please retry.' }
@@ -31,7 +50,7 @@ async function keep(file: CloudFile, action: 'keep' | 'remove' = 'keep') {
 const { usage, error: usageError, load: loadUsage } = useAccountUsage()
 const game = ref<CloudGame>('all')
 const gameLabel = computed(() => cloudGames.find(item => item.value === game.value)!.label)
-const routeKind = useRoute().query.kind
+const routeKind = useRoute().query.kind, keepQuery = useRoute().query.keep
 const kind = ref<CloudKind>(routeKind === 'recording' || routeKind === 'clip' ? routeKind : 'all'), sort = ref<CloudSort>('newest'), page = ref(1)
 const library = ref<CloudPage | null>(null), error = ref(''), loading = ref(false)
 const recordings = ref<PendingRecording[]>([]), clips = ref<ClipRecord[]>([]), queueError = ref('')
@@ -40,7 +59,10 @@ let updateTimer: ReturnType<typeof setTimeout> | undefined
 const filters: { value: CloudKind; label: string }[] = [{ value: 'all', label: 'All files' }, { value: 'recording', label: 'Recordings' }, { value: 'clip', label: 'Clips' }]
 const failedAgents = ref<Set<string>>(new Set())
 const retentionNow = ref(Date.now())
-const attentionCount = computed(() => library.value?.items.filter(file => ['expired', 'soon'].includes(cloudRetention(file.expires_at, retentionNow.value).state)).length ?? 0)
+const attentionCount = computed(() => library.value?.items.filter(file => {
+  const line = retentionLine(parseRetention(file.retention), retentionNow.value)
+  return line ? line.removed || line.tone === 'warn' : ['expired', 'soon'].includes(cloudRetention(file.expires_at, retentionNow.value).state)
+}).length ?? 0)
 const failedMapImages = ref<Set<string>>(new Set())
 function hideMapImage(map: string) { failedMapImages.value = new Set([...failedMapImages.value, map]) }
 const full = computed(() => usage.value?.cloud_storage?.remaining_bytes === 0)
@@ -80,7 +102,7 @@ async function loadQueue() {
   } catch { if (request === queueGeneration) { recordings.value = []; clips.value = []; queueError.value = 'Upload activity could not be loaded.' } }
 }
 function focusRefresh() { if (!loading.value && Date.now() - lastLoaded > 30000) { void load(); void loadQueue() } }
-function refresh() { void load(); void loadUsage(); void loadQueue() }
+function refresh() { void load(); void loadUsage(); void loadQueue(); void refreshRetention(true) }
 function resetAccount() { pendingRemoval.value = null; addon.value = null; keepError.value = ''; closePlayback(); clearTimeout(updateTimer); generation++; queueGeneration++; library.value = null; recordings.value = []; clips.value = []; loading.value = false; error.value = 'Sign in again to view cloud storage.' }
 /** Row art and title: the map (as on Matches), never a raw key like "de_vertigo". */
 const fileArt = (file: CloudFile) => (file.map ? matchMapArt(file.game, file.map) : '')
@@ -108,7 +130,11 @@ function openLocalCopy() {
 let playbackRequest = 0
 function closePlayback() { playerDialog.value?.close(); downloadMessage.value = ''; playbackRequest++; selectedFile.value = null; playbackUrl.value = ''; playbackError.value = ''; playbackLoading.value = false }
 async function openFile(file: CloudFile) {
-  if (file.kind === 'recording' && ['archived'].includes(file.status) && retention(file.expires_at).state !== 'expired') {
+  // Removed full video: the match (notes, clips, stats) still opens from its analysis.
+  if (isRemoved(file) && file.kind !== 'clip' && typeof file.analysis_id === 'number' && file.analysis_id > 0) {
+    await router.push({ path: '/vod-review', query: { timelineId: String(file.analysis_id) } }); return
+  }
+  if (file.kind === 'recording' && !isRemoved(file) && ['archived'].includes(file.status) && retention(file.expires_at).state !== 'expired') {
     await router.push({ path: '/vod-review', query: { archiveId: file.id } }); return
   }
   if (file.kind === 'clip' && retention(file.expires_at).state !== 'expired') {
@@ -120,7 +146,12 @@ async function openFile(file: CloudFile) {
   await nextTick()
   if (request !== playbackRequest) return
   if (!playerDialog.value?.open) playerDialog.value?.showModal()
-  if (retention(file.expires_at).state === 'expired') {
+  if (isRemoved(file)) {
+    playbackLoading.value = false
+    playbackError.value = 'Full video no longer stored. Your notes and clips are still here, and a copy on this PC still plays.'
+    return
+  }
+  if (!fileRetention(file) && retention(file.expires_at).state === 'expired') {
     playbackLoading.value = false
     playbackError.value = 'Cloud retention has ended. Use your local copy if available. Buying more storage cannot restore expired footage.'
     return
@@ -151,7 +182,11 @@ cleanups.push(...['recordings:updated', 'clips:updated', 'clips:new'].map(event 
   clearTimeout(updateTimer)
   updateTimer = setTimeout(() => { void load() }, 750)
 })))
-onMounted(() => { void load(); void loadQueue(); window.addEventListener('focus', focusRefresh) })
+onMounted(() => {
+  void load(); void loadQueue(); window.addEventListener('focus', focusRefresh)
+  // "Keep it in the cloud" from Matches / the match page / post-game lands on the storage options.
+  if (uiV3.value && keepQuery === '1') void nextTick(() => setTimeout(showKeepOptions, 300))
+})
 onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++; queueGeneration++; cleanups.forEach(fn => fn()); window.removeEventListener('focus', focusRefresh) })
 </script>
 
@@ -185,6 +220,8 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
           <div class="uf-cs-bar-fill uf-fill" :class="{ full: usage.cloud_storage.remaining_bytes === 0 }" :style="{ width: `${Math.min(100, (usage.cloud_storage.used_bytes + usage.cloud_storage.reserved_bytes) / Math.max(usage.cloud_storage.capacity_bytes, 1) * 100)}%` }" />
         </div>
         <p v-if="capacityFacts(usage.cloud_storage).length" class="uf-t4 uf-cs-facts"><span v-for="fact in capacityFacts(usage.cloud_storage)" :key="fact">{{ fact }}</span></p>
+        <p v-if="keepTime" class="uf-t3">{{ keepTime }}</p>
+        <p v-if="savesPausedMessage" class="uf-t4 uf-cs-warn" role="status">{{ savesPausedMessage }} <button type="button" class="uf-link" @click="showKeepOptions">Add space</button></p>
         <p v-if="usage.cloud_storage.unknown_size_files" class="uf-t4 uf-cs-warn">Checking sizes for {{ usage.cloud_storage.unknown_size_files }} existing files. Uploads pause until this is complete.</p>
       </template>
       <p v-else class="uf-t4" role="status">Your storage allowance is being updated. Refresh to check again.</p>
@@ -207,6 +244,7 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
           <button type="button" class="uf-link" :disabled="!!keeping" @click="pendingRemoval=null">Cancel</button>
         </section>
         <p v-if="keepError" class="uf-t4 uf-cs-bad" role="alert">{{ keepError }}</p>
+        <p v-if="rowMessage" class="uf-t4" role="status">{{ rowMessage }}</p>
 
         <section class="uf-cs-sec" :class="{ 'uf-refreshing': loading && !!library }" aria-label="Cloud files" :aria-busy="loading">
           <div class="uf-cs-lib-head">
@@ -220,7 +258,8 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
             <label class="uf-cs-select"><span class="uf-label">Sort</span><select v-model="sort" class="uf-select is-inline is-compact"><option value="newest">Newest first</option><option value="largest">Largest first</option><option value="expiry">Expiring first</option></select></label>
           </div>
           <div v-if="attentionCount" class="uf-cs-notice">
-            <div class="uf-cs-row-text"><span class="uf-t3">{{ attentionCount }} {{ attentionCount === 1 ? 'file needs' : 'files need' }} a retention check</span><span class="uf-t4">On this page: expiring within 7 days or past the retention date. Open a file to check playback. Files past their retention date may be removed; your notes stay saved.</span></div>
+            <div v-if="retentionSummary" class="uf-cs-row-text"><span class="uf-t3">{{ expiringLine || `${attentionCount} ${attentionCount === 1 ? 'video needs' : 'videos need'} a look` }}</span><span class="uf-t4">Keep them in the cloud with a plan or storage pack, or download a copy. Only the full video is removed; notes, clips and stats stay.</span></div>
+            <div v-else class="uf-cs-row-text"><span class="uf-t3">{{ attentionCount }} {{ attentionCount === 1 ? 'file needs' : 'files need' }} a retention check</span><span class="uf-t4">On this page: expiring within 7 days or past the retention date. Open a file to check playback. Files past their retention date may be removed; your notes stay saved.</span></div>
             <button v-if="sort !== 'expiry'" type="button" class="uf-link" @click="sort = 'expiry'">Sort by expiry</button>
           </div>
 
@@ -238,24 +277,30 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
               <p class="uf-t4" style="margin: 0">Upload from Clips or Footage to keep your gameplay available on other devices.</p>
               <UfButton @click="router.push(kind === 'clip' ? '/clips' : '/recordings')">Open {{ kind === 'clip' ? 'Clips' : 'Footage' }}</UfButton>
             </div>
-            <div v-for="file in library.items" :key="`${file.kind}:${file.id}`" class="uf-cs-file" :class="{ ended: retention(file.expires_at).state === 'expired' }">
+            <div v-for="file in library.items" :key="`${file.kind}:${file.id}`" class="uf-cs-file" :class="{ ended: fileRetention(file) ? isRemoved(file) : retention(file.expires_at).state === 'expired' }">
               <!-- Map art, same as the Matches rows (no cropped agent face). -->
               <div class="uf-cs-thumb" aria-hidden="true">
                 <img v-if="fileArt(file) && !failedMapImages.has(fileArt(file))" class="uf-cs-map" :src="fileArt(file)" alt="" loading="lazy" @error="hideMapImage(fileArt(file))" />
-                <span v-else class="uf-label">{{ file.kind === 'clip' ? 'Clip' : 'Rec' }}</span>
+                <span v-else class="uf-label">{{ file.kind === 'clip' ? 'Clip' : file.kind === 'analysis_video' ? 'Video' : 'Rec' }}</span>
               </div>
               <div class="uf-cs-row-text" style="flex: 1">
                 <button type="button" class="uf-cs-open uf-t3" :disabled="file.status === 'uploading'" @click="openFile(file)">{{ fileTitle(file) }}</button>
-                <span class="uf-t4">{{ cloudGames.find(item => item.value === file.game)?.label || 'Game not recorded' }} · {{ file.kind === 'clip' ? 'Clip' : 'Recording' }}<span v-if="file.agent"> · {{ file.agent }}</span> · {{ formatMatchDate(Date.parse(file.created_at)) }}<span v-if="file.status === 'uploading'"> · Uploading</span><span v-if="file.status === 'failed'" class="uf-cs-bad"> · Upload failed</span></span>
+                <span class="uf-t4">{{ cloudGames.find(item => item.value === file.game)?.label || 'Game not recorded' }} · {{ cloudKindLabel(file.kind) }}<span v-if="file.agent"> · {{ file.agent }}</span> · {{ formatMatchDate(Date.parse(file.created_at)) }}<span v-if="file.status === 'uploading'"> · Uploading</span><span v-if="file.status === 'failed'" class="uf-cs-bad"> · Upload failed</span></span>
               </div>
               <div class="uf-cs-size">
                 <span class="uf-t3 uf-num" :title="file.bytes === null ? 'This older file has no verified size yet. Its size has not been counted as zero.' : undefined">{{ cloudBytes(file.bytes) }}</span>
-                <span class="uf-t4 uf-cs-ret" :class="retention(file.expires_at).state" :title="file.expires_at ? `Retention date: ${date(file.expires_at)}` : undefined">{{ file.paid_storage && addon?.usage.active ? 'Kept in paid storage' : retention(file.expires_at).label }}</span>
+                <span v-if="fileRetentionLine(file)" class="uf-t4 uf-cs-ret" :class="`is-${fileRetentionLine(file)!.tone}`" :title="fileRetentionLine(file)!.detail ?? (file.expires_at ? `Removal date: ${date(file.expires_at)}` : undefined)">{{ fileRetentionLine(file)!.text }}</span>
+                <span v-else-if="!fileRetention(file)" class="uf-t4 uf-cs-ret" :class="retention(file.expires_at).state" :title="file.expires_at ? `Retention date: ${date(file.expires_at)}` : undefined">{{ file.paid_storage && addon?.usage.active ? 'Kept in paid storage' : retention(file.expires_at).label }}</span>
+                <span v-if="fileRetentionLine(file)?.countdown && fileRetentionLine(file)!.detail" class="uf-t4 uf-cs-ret-detail">{{ fileRetentionLine(file)!.detail }}</span>
               </div>
               <div class="uf-cs-acts">
-                <button type="button" class="uf-link" :disabled="file.status === 'uploading'" @click="openFile(file)">{{ file.status === 'uploading' ? 'Uploading…' : retention(file.expires_at).state === 'expired' ? 'Recovery options' : 'Open file' }}</button>
-                <button v-if="addon?.usage.active && !file.paid_storage && ['stored','archived'].includes(file.status) && retention(file.expires_at).state !== 'expired'" type="button" class="uf-link" :disabled="!!keeping" @click="keep(file)">{{ keeping === `${file.kind}:${file.id}` ? 'Moving…' : 'Keep in paid storage' }}</button>
-                <button v-if="file.paid_storage || usage?.cloud_storage" type="button" class="uf-link" :disabled="!!keeping" @click="pendingRemoval=file">Remove cloud copy</button>
+                <button type="button" class="uf-link" :disabled="file.status === 'uploading'" @click="openFile(file)">{{ file.status === 'uploading' ? 'Uploading…' : isRemoved(file) ? (file.analysis_id ? 'Open notes' : 'Details') : !fileRetention(file) && retention(file.expires_at).state === 'expired' ? 'Recovery options' : 'Open file' }}</button>
+                <template v-if="fileRetentionLine(file)?.countdown">
+                  <button type="button" class="uf-link" @click="showKeepOptions">Keep it in the cloud</button>
+                  <button type="button" class="uf-link" @click="downloadRow(file)">Download</button>
+                </template>
+                <button v-if="!fileRetention(file) && addon?.usage.active && !file.paid_storage && ['stored','archived'].includes(file.status) && retention(file.expires_at).state !== 'expired'" type="button" class="uf-link" :disabled="!!keeping" @click="keep(file)">{{ keeping === `${file.kind}:${file.id}` ? 'Moving…' : 'Keep in paid storage' }}</button>
+                <button v-if="file.kind !== 'analysis_video' && !isRemoved(file) && (file.paid_storage || usage?.cloud_storage)" type="button" class="uf-link" :disabled="!!keeping" @click="pendingRemoval=file">Remove cloud copy</button>
               </div>
             </div>
             <footer v-if="library.total" class="uf-cs-pages">
@@ -267,11 +312,12 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
       </div>
 
       <aside class="uf-cs-side">
-        <StorageAddonPicker :key="addonVersion" @changed="refresh" @loaded="addon=$event" />
+        <div ref="pickerAnchor"><StorageAddonPicker :key="addonVersion" :retention-started="!!retentionSummary?.started" @changed="refresh" @loaded="addon=$event" /></div>
         <section class="uf-cs-sec">
           <span class="uf-label">Your plan</span>
-          <p class="uf-t3" style="margin: 0">{{ full ? 'Your cloud space is full' : 'Keep more of your gameplay' }}</p>
-          <p class="uf-t4" style="margin: 0">{{ full ? 'Your upload allowance is full. Existing files keep their current retention dates. Compare plans for more upload capacity.' : 'Review your plan for more cloud capacity and recording retention.' }}</p>
+          <p class="uf-t3" style="margin: 0">{{ full || savesPausedMessage ? 'Your cloud space is full' : 'Keep more of your gameplay' }}</p>
+          <p v-if="retentionSummary" class="uf-t4" style="margin: 0">{{ savesPausedMessage ?? (retentionSummary.kept_while_subscribed ? "Your videos are kept in the cloud while you're subscribed." : 'Plus and Pro keep every video in the cloud while you\'re subscribed, with more space.') }}</p>
+          <p v-else class="uf-t4" style="margin: 0">{{ full ? 'Your upload allowance is full. Existing files keep their current retention dates. Compare plans for more upload capacity.' : 'Review your plan for more cloud capacity and recording retention.' }}</p>
           <UfButton @click="plans">Compare plans</UfButton>
           <p v-if="planError" class="uf-t4 uf-cs-bad" role="alert" style="margin: 0">{{ planError }}</p>
         </section>
@@ -284,7 +330,11 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
         <section class="uf-cs-sec">
           <span class="uf-label">How storage works</span>
           <p class="uf-t4" style="margin: 0">One shared GB allowance for cloud clips and recordings across all games. Local files do not count. Cloud storage is used until files are removed; it does not reset each month.</p>
-          <p class="uf-t4" style="margin: 0">Files past their retention date may be removed during cleanup. Your saved notes and comparisons stay in your notebook even when footage is unavailable.</p>
+          <template v-if="retentionSummary?.started">
+            <p class="uf-t4" style="margin: 0">Free keeps each full video for 14 days. A paid plan or a storage pack keeps them while you're subscribed. If it ends, you have {{ retentionSummary.grace_days ?? 30 }} days before free rules apply. You get a warning 7 days and 1 day before anything is removed.</p>
+            <p class="uf-t4" style="margin: 0">Only the full video is removed. Clips, notes, stats and analysis stay, and a copy on this PC still plays. Analysis always works, even when your space is full.</p>
+          </template>
+          <p v-else class="uf-t4" style="margin: 0">Files past their retention date may be removed during cleanup. Your saved notes and comparisons stay in your notebook even when footage is unavailable.</p>
         </section>
       </aside>
     </div>
@@ -418,6 +468,9 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
 .uf-cs-size { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; min-width: 140px; }
 .uf-cs-ret.soon { color: var(--uf-gold); }
 .uf-cs-ret.expired { color: var(--uf-loss); }
+.uf-cs-ret.is-warn { color: var(--uf-gold); }
+.uf-cs-ret.is-gone { color: var(--uf-muted); }
+.uf-cs-ret-detail { max-width: 220px; text-align: right; }
 .uf-cs-acts { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: none; min-width: 140px; }
 .uf-cs-pages { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; }
 .uf-cs-video { display: block; width: 100%; max-height: 64vh; background: #000; }
