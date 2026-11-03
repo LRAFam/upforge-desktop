@@ -5,7 +5,8 @@
 import fs from 'fs'
 import { extractCs2MatchStats } from './cs2-match-stats'
 import log from 'electron-log'
-import { parseEvent, parseHeader, parsePlayerInfo } from '@laihoe/demoparser2'
+import { parseHeader } from '@laihoe/demoparser2'
+import { nativeCs2DemoSource, type Cs2DemoSource } from './cs2-demo-source'
 import type { DemoTimelineOptions } from './demo-timeline'
 import { inferLocalPlayerFromDemoKills, type RoundKillMeta } from './demo-local-player'
 import { cs2AlignedGameTimeMs, emptyMatchData, gameTimeToVideoOffsetMs, tickToMsFromTick } from './recording-sync'
@@ -94,13 +95,13 @@ function tickToMs(tick: number, tickRate: number): number {
 }
 
 function safeParseEvent(
-  demoPath: string,
+  source: Cs2DemoSource,
   eventName: string,
   extraFields: string[] = [],
   playerExtra: string[] = [],
 ): JsonRow[] {
   try {
-    return asRows(parseEvent(demoPath, eventName, extraFields, playerExtra))
+    return asRows(source.event(eventName, extraFields, playerExtra))
   } catch {
     return []
   }
@@ -169,33 +170,38 @@ export function peekCs2DemoHeader(demoPath: string): DemoHeaderPeek | null {
   }
 }
 
-export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData | null {
+/**
+ * Build the CS2 timeline from demo data. `source` defaults to direct native calls (main thread);
+ * demo-timeline.ts passes the cached worker bundle so the native parse runs off the main thread.
+ */
+export function buildCs2TimelineFromDemo(
+  opts: DemoTimelineOptions,
+  source: Cs2DemoSource = nativeCs2DemoSource(opts.demoPath),
+): MatchData | null {
   if (!fs.existsSync(opts.demoPath)) {
     log.warn('[CS2DemoParser] Demo not found:', opts.demoPath)
     return null
   }
 
   try {
-    const header = parseHeader(opts.demoPath) as JsonRow
+    const header = source.header() as JsonRow
     const tickRate = resolveTickRate(header)
-    const deaths = safeParseEvent(
-      opts.demoPath,
+    const deaths = safeParseEvent(source,
       'player_death',
       ['user_X', 'user_Y'],
       ['total_rounds_played'],
     )
-    const roundEnds = safeParseEvent(
-      opts.demoPath,
+    const roundEnds = safeParseEvent(source,
       'round_end',
       ['reason', 'round_win_reason'],
       ['total_rounds_played'],
     )
-    const roundStarts = safeParseEvent(opts.demoPath, 'round_start', [], ['total_rounds_played'])
-    const roundFreezeEnds = safeParseEvent(opts.demoPath, 'round_freeze_end', [], ['total_rounds_played'])
-    const bombPlants = safeParseEvent(opts.demoPath, 'bomb_planted', [], ['total_rounds_played'])
-    const bombDefuses = safeParseEvent(opts.demoPath, 'bomb_defused', [], ['total_rounds_played'])
-    const bombExplodes = safeParseEvent(opts.demoPath, 'bomb_exploded', [], ['total_rounds_played'])
-    const players = asRows(parsePlayerInfo(opts.demoPath))
+    const roundStarts = safeParseEvent(source, 'round_start', [], ['total_rounds_played'])
+    const roundFreezeEnds = safeParseEvent(source, 'round_freeze_end', [], ['total_rounds_played'])
+    const bombPlants = safeParseEvent(source, 'bomb_planted', [], ['total_rounds_played'])
+    const bombDefuses = safeParseEvent(source, 'bomb_defused', [], ['total_rounds_played'])
+    const bombExplodes = safeParseEvent(source, 'bomb_exploded', [], ['total_rounds_played'])
+    const players = asRows(source.playerInfo())
 
     if (!deaths.length && !roundEnds.length) {
       log.warn('[CS2DemoParser] No player_death or round_end events — wrong file or unsupported demo')
@@ -565,7 +571,7 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
       rememberParsedCs2SteamId(localSteamId, localMatchedBy, sameName <= 1)
     }
     if (localSteamId) {
-      timeline.match_stats = extractCs2MatchStats(opts.demoPath, localSteamId, tickRate)
+      timeline.match_stats = extractCs2MatchStats(opts.demoPath, localSteamId, tickRate, source)
       const measured = timeline.match_stats?.player_stats
       if (timeline.finalStats && measured) {
         // Keep the desktop scoreboard and uploaded statistics on the same live-round contract.

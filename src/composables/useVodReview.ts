@@ -8,6 +8,7 @@ import { PlaybackActivityMeter } from '../lib/playback-activity'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject, provide, type InjectionKey } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getWeaponImage, getAgentImage, getAbilityIcon, getMapImage, getAgentColor, formatGameMode, normalizeGameModeId } from '../lib/valorant'
+import { modeQueueLabel } from '../lib/game-queue'
 import { getChampionImage, getMapImage as getLolMapImage } from '../lib/lol'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { buildTacticalIntelBrief, parseCoachingEvidence } from '../lib/coaching-brief'
@@ -110,6 +111,8 @@ export interface RecordingTimeline {
   matchDataAvailable?: boolean
   /** Cloud retention of the full video (raw API object; parse with `parseRetention`). Absent on older APIs. */
   cloudRetention?: unknown
+  /** CS2: kills/deaths/rounds came from live GSI (no demo yet). */
+  cs2LiveOnly?: boolean
   id: string
   jobId?: string | null
   analysisId?: number | null
@@ -557,7 +560,9 @@ function createVodReview() {
     const mode = normalizeGameModeId(timeline.value?.gameMode)
     // League CLASSIC includes ranked and normal games; it does not establish the queue.
     if (timeline.value?.game === 'lol' && mode?.toUpperCase() === 'CLASSIC') return "Summoner's Rift"
-    return mode ? formatGameMode(mode) : ''
+    if (!mode) return ''
+    // CS2 / Valorant: "Wingman · 2v2", "Premier · Ranked" (game-queue.ts).
+    return modeQueueLabel(timeline.value?.game, mode) || formatGameMode(mode)
   })
   
   const mapPosterUrl = computed(() => {

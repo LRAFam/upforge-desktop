@@ -15,6 +15,8 @@ const props = defineProps<{
   map: string | null
   recordedAt: number
   recordingId: string | null
+  /** CS2 events on the video bar came from live GSI (no demo yet). */
+  liveOnly?: boolean
 }>()
 
 const router = useRouter()
@@ -48,6 +50,7 @@ function openSettings() {
     </div>
     <div class="dp3-body">
       <p class="uf-t2">You can watch your recording now. Attach the matching demo to enable AI coaching. {{ demoSyncExplainer(game) }}</p>
+      <p v-if="liveOnly" class="uf-t4">Your kills, deaths and round results on the video bar come from live game data, so times can be about a second off. The demo adds who you fought, weapons and exact timing.</p>
       <DemoAttachGuide :game="game" default-open />
       <div class="dp3-why">
         <span class="uf-label">Why attach</span>

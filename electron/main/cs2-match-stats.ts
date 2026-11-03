@@ -1,5 +1,11 @@
 /** Deterministic CS2 statistics. Never derive measured stats from coaching prose. */
-import { parseEvent, parseTicks } from '@laihoe/demoparser2'
+import {
+  CS2_STATS_EVENT_FIELDS,
+  CS2_STATS_TICK_PROPS,
+  cs2StatsSnapshotTicks,
+  nativeCs2DemoSource,
+  type Cs2DemoSource,
+} from './cs2-demo-source'
 import log from 'electron-log'
 
 type Row = Record<string, unknown>
@@ -341,14 +347,14 @@ export function extractCs2MatchStats(
   path: string,
   steamId: string,
   tickRate: number,
+  source: Cs2DemoSource = nativeCs2DemoSource(path),
 ): Cs2MatchStats | null {
   const read = (event: string): Row[] | null => {
     try {
-      const rows = parseEvent(
-        path,
+      const rows = source.event(
         event,
-        ['team_num'],
-        ['total_rounds_played', 'is_warmup_period'],
+        [...CS2_STATS_EVENT_FIELDS.playerExtra],
+        [...CS2_STATS_EVENT_FIELDS.otherExtra],
       )
       return Array.isArray(rows) ? rows : null
     } catch (error) {
@@ -360,22 +366,13 @@ export function extractCs2MatchStats(
     ends = read('round_end'),
     deaths = read('player_death')
   if (!starts || !ends || !deaths) return null
-  const ticks = [
-    ...new Set(
-      [...starts, ...ends]
-        .map((r) => num(r, 'tick'))
-        .filter((n): n is number => n !== null),
-    ),
-  ]
+  const ticks = cs2StatsSnapshotTicks(starts, ends)
   if (!ticks.length) return null
   let snapshots: Row[]
   try {
-    snapshots = parseTicks(
-      path,
-      ['team_num', 'is_alive', 'health', 'current_equip_value'],
-      ticks,
-    )
-    if (!Array.isArray(snapshots)) return null
+    const rows = source.ticks(CS2_STATS_TICK_PROPS, ticks)
+    if (!Array.isArray(rows)) return null
+    snapshots = rows
   } catch (error) {
     log.warn('[CS2Stats] Round snapshots unavailable', String(error))
     return null

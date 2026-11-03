@@ -13,7 +13,7 @@ describe('startMainLoopLagMonitor', () => {
     expect(warn).not.toHaveBeenCalled()
     clock += 1000 + 5000 // the tick ran 5 s late
     await vi.advanceTimersByTimeAsync(1000)
-    expect(warn).toHaveBeenCalledWith('[MainLag] main process was blocked for ~5000 ms')
+    expect(warn).toHaveBeenCalledWith('[MainLag] main process was blocked for ~5000 ms', 5000)
     stop()
   })
 })
@@ -26,7 +26,7 @@ describe('createCallRateLogger', () => {
     for (let i = 0; i < 40; i++) hit()
     clock = 60_000
     hit()
-    expect(warn).toHaveBeenCalledWith('[MainLag] recordings:get called 40 times in 60 s')
+    expect(warn).toHaveBeenCalledWith('[MainLag] recordings:get called 40 times in 60 s', { callCount: 40, windowS: 60 })
     clock = 120_000
     hit()
     expect(warn).toHaveBeenCalledTimes(1)

@@ -9,6 +9,7 @@
  */
 
 import { BrowserWindow, dialog, type IpcMain } from 'electron'
+import { cs2LiveRoundSummariesForVod } from '../cs2-gsi-timeline'
 import fs from 'fs'
 import log from 'electron-log'
 import type { AuthManager } from '../auth-manager'
@@ -468,8 +469,11 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
       recordedAt: recording.recordedAt,
       kills: timelineKillsForVod(tl),
       deaths: timelineDeathsForVod(tl),
-      roundSummaries: tl?.roundSummaries ?? [],
-      finalStats: tl?.finalStats ?? null,
+      // CS2 without a demo: round results + your K/D/A seen live via GSI (cs2-gsi-timeline.ts).
+      roundSummaries: tl?.roundSummaries?.length ? tl.roundSummaries : cs2LiveRoundSummariesForVod(tl?.cs2Live),
+      finalStats: tl?.finalStats ?? (tl?.cs2Live?.stats ? { ...tl.cs2Live.stats } : null),
+      /** Events above came from live GSI, not a demo: keep the attach-demo panel up. */
+      cs2LiveOnly: recording.game === 'cs2' && !!tl?.cs2Live && !tl.killEvents?.length && !tl.playerKills?.length,
       teamSnapshot: tl?.teamSnapshot ?? [],
       spikePlants: tl?.spikePlants ?? [],
       spikeDefuses: tl?.spikeDefuses ?? [],

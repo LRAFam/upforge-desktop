@@ -11,7 +11,7 @@ export interface LagMonitorOptions {
 }
 
 export function startMainLoopLagMonitor(
-  warn: (message: string) => void,
+  warn: (message: string, lagMs: number) => void,
   opts: LagMonitorOptions = {},
 ): () => void {
   const intervalMs = opts.intervalMs ?? 1000
@@ -22,7 +22,7 @@ export function startMainLoopLagMonitor(
     const t = now()
     const lag = t - expected
     expected = t + intervalMs
-    if (lag >= warnMs) warn(`[MainLag] main process was blocked for ~${Math.round(lag)} ms`)
+    if (lag >= warnMs) warn(`[MainLag] main process was blocked for ~${Math.round(lag)} ms`, Math.round(lag))
   }, intervalMs)
   timer.unref?.()
   return () => clearInterval(timer)
@@ -31,7 +31,7 @@ export function startMainLoopLagMonitor(
 /** Counts calls and logs a summary when a window of `windowMs` saw at least `threshold` calls. */
 export function createCallRateLogger(
   label: string,
-  warn: (message: string) => void,
+  warn: (message: string, burst: { callCount: number; windowS: number }) => void,
   opts: { windowMs?: number; threshold?: number; now?: () => number } = {},
 ): () => void {
   const windowMs = opts.windowMs ?? 60_000
@@ -42,7 +42,10 @@ export function createCallRateLogger(
   return () => {
     const t = now()
     if (t - windowStart >= windowMs) {
-      if (count >= threshold) warn(`[MainLag] ${label} called ${count} times in ${Math.round((t - windowStart) / 1000)} s`)
+      if (count >= threshold) {
+        const windowS = Math.round((t - windowStart) / 1000)
+        warn(`[MainLag] ${label} called ${count} times in ${windowS} s`, { callCount: count, windowS })
+      }
       windowStart = t
       count = 0
     }

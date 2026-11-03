@@ -101,7 +101,13 @@ function normalizeMapName(map: string | null | undefined): string | null {
   return trimmed.startsWith('de_') || trimmed.startsWith('cs_') ? trimmed : `de_${trimmed}`
 }
 
-/** Pick the GC match that best fits a recorded session (time + optional map). */
+const SESSION_WINDOW_SEC = 15 * 60
+
+/**
+ * Pick the GC match that best fits a recorded session (time + optional map).
+ * A GC entry whose map id we cannot decode ('Unknown', e.g. a new Wingman map) is only used when it
+ * is the single match in the time window and no entry matches the map exactly.
+ */
 export function pickValveMatchForSession(
   matches: ValveMatchSummary[],
   matchSessionStartMs: number,
@@ -112,10 +118,30 @@ export function pickValveMatchForSession(
   const wantedMap = normalizeMapName(gsiMap)
   // Automatic attachment is conservative. Late capture or ambiguous matches
   // require the existing manual picker instead of borrowing another game's stats.
-  const candidates = matches.filter((m) =>
+  const inWindow = matches.filter((m) =>
     Number.isFinite(m.matchTimeSec)
-    && Math.abs(m.matchTimeSec - sessionStartSec) <= 15 * 60
-    && (!wantedMap || normalizeMapName(m.mapName) === wantedMap),
+    && Math.abs(m.matchTimeSec - sessionStartSec) <= SESSION_WINDOW_SEC,
   )
-  return candidates.length === 1 ? candidates[0] : null
+  if (!wantedMap) return inWindow.length === 1 ? inWindow[0] : null
+  const exact = inWindow.filter((m) => normalizeMapName(m.mapName) === wantedMap)
+  if (exact.length) return exact.length === 1 ? exact[0] : null
+  return inWindow.length === 1 && isUnknownMap(inWindow[0].mapName) ? inWindow[0] : null
+}
+
+function isUnknownMap(map: string | null | undefined): boolean {
+  return !map || map.trim().toLowerCase() === 'unknown'
+}
+
+/** Log-safe summary of why no match was picked: minutes from session start + decoded map. */
+export function describeValveCandidates(
+  matches: ValveMatchSummary[],
+  matchSessionStartMs: number,
+  gsiMap: string | null | undefined,
+): string {
+  const startSec = Math.floor(matchSessionStartMs / 1000)
+  const rows = matches.slice(0, 8).map((m) => {
+    const mins = Math.round((m.matchTimeSec - startSec) / 60)
+    return `${mins >= 0 ? '+' : ''}${mins}m ${m.mapName}`
+  })
+  return `gsiMap=${gsiMap ?? 'none'} listed=${matches.length} [${rows.join(', ')}]`
 }

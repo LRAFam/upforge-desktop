@@ -306,6 +306,8 @@ export interface SessionState {
 export interface MatchData {
   /** Measured CS2 demo statistics; null fields mean unavailable, never inferred. */
   match_stats?: import('./cs2-match-stats').Cs2MatchStats | null
+  /** CS2 kills / deaths / rounds seen live via GSI (no demo). Never counts as rich match data. */
+  cs2Live?: import('./cs2-gsi-timeline').Cs2LiveSummary | null
   lolLocalReview?: LolLocalReview | null
   /** League client identity captured with this recording, independent of linked accounts. */
   lolAccount?: import('./lol-account-identity').LolAccountIdentity | null

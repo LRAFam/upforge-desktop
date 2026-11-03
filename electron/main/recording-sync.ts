@@ -1,4 +1,5 @@
 import type { KillEvent, MatchData } from './riot-types'
+import { cs2LiveDeathsForVod, cs2LiveKillsForVod } from './cs2-gsi-timeline'
 
 /**
  * Map in-game time (ms from match/demo start) to offset in the local recording file.
@@ -68,7 +69,7 @@ export function resolveMatchSessionStartMs(
   return recordedAt - 45 * 60 * 1000
 }
 
-type VodKillSource = Pick<MatchData, 'game' | 'playerKills' | 'playerDeaths' | 'killEvents'>
+type VodKillSource = Pick<MatchData, 'game' | 'playerKills' | 'playerDeaths' | 'killEvents' | 'cs2Live'>
 
 /** Kills for the VOD round log — falls back to all demo kills when local player wasn't matched. */
 export function timelineKillsForVod(timeline: VodKillSource | null | undefined): KillEvent[] {
@@ -78,6 +79,7 @@ export function timelineKillsForVod(timeline: VodKillSource | null | undefined):
   // the player's own kills are tagged "You" so the viewer can classify them.
   if (game === 'lol') return timeline.killEvents ?? timeline.playerKills ?? []
   if (timeline.playerKills?.length) return timeline.playerKills
+  if (game === 'cs2' && !timeline.killEvents?.length) return cs2LiveKillsForVod(timeline.cs2Live)
   if (game === 'cs2' || game === 'deadlock') {
     return timeline.killEvents ?? []
   }
@@ -94,6 +96,7 @@ export function timelineDeathsForVod(timeline: VodKillSource | null | undefined)
       : (timeline.killEvents ?? []).filter((k) => k.victimName === 'You')
   }
   if (timeline.playerDeaths?.length) return timeline.playerDeaths
+  if (game === 'cs2' && !timeline.killEvents?.length) return cs2LiveDeathsForVod(timeline.cs2Live)
   if (game === 'cs2' || game === 'deadlock') {
     return (timeline.killEvents ?? []).filter((k) => k.victimName === 'You')
   }

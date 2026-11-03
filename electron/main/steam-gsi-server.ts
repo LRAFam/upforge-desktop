@@ -7,6 +7,10 @@ import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
 import { getCandidateCS2CsgoDirs } from './cs2-demo-finder'
+import { Cs2GsiTracker, type Cs2GsiPayload } from './cs2-gsi-timeline'
+
+/** Live CS2 events for the current capture (kills / deaths / rounds) — see cs2-gsi-timeline.ts. */
+export const cs2GsiTracker = new Cs2GsiTracker()
 
 export const STEAM_GSI_PORT = 3001
 const GSI_CFG_NAME = 'gamestate_integration_upforge.cfg'
@@ -41,6 +45,7 @@ export function startSteamGsiServer(): void {
         latestPayload = payload
         latestAt = Date.now()
         if (isGsiMatchLive(payload)) sawLiveMatch = true
+        cs2GsiTracker.ingest(payload as Cs2GsiPayload, latestAt)
       } catch {
         /* ignore malformed payloads */
       }
@@ -147,7 +152,10 @@ function gsiCfgContents(): string {
         "provider"      "1"
         "map"           "1"
         "round"         "1"
+        "map_round_wins" "1"
         "player_id"     "1"
+        "player_state"  "1"
+        "player_match_stats" "1"
     }
 }
 `

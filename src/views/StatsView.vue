@@ -7,6 +7,7 @@
     :refresh-failed="refreshFailed"
     :ranges="ranges"
     :game-count="filteredAnalyses.length"
+    :excluded-fun-mode-count="excludedFunModeCount"
     :last-analysed-at="lastAnalysedAt"
     :is-valorant="primaryGame === 'valorant'"
     :rank-history="rankHistory"
@@ -299,6 +300,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import ProgressV3 from './v3/ProgressV3.vue'
 import { uiV3 } from '../lib/ui-v3'
 import { averageMatchScore, matchScore } from '../lib/upforge-score'
+import { countsTowardProgress } from '../lib/game-queue'
 import { readCache, writeCache } from '../lib/stale-cache'
 import { useRouter } from 'vue-router'
 import type { AnalysisItem } from '../env.d.ts'
@@ -332,12 +334,17 @@ const ranges: { label: string; value: RangeValue }[] = [
 
 const activeRangeLabel = computed(() => ranges.find(r => r.value === range.value)?.label ?? '30D')
 
-const filteredAnalyses = computed(() => {
+const analysesInRange = computed(() => {
   if (range.value === 'all') return allAnalyses.value
   const days = range.value === '7d' ? 7 : range.value === '30d' ? 30 : 90
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
   return allAnalyses.value.filter(a => new Date(a.created_at).getTime() >= cutoff)
 })
+
+// Fun modes (Wingman, Deathmatch, Swiftplay, Unrated…) play differently: keep them out of win rate,
+// score and the tables, and say how many were left out (game-queue.ts).
+const filteredAnalyses = computed(() => analysesInRange.value.filter(a => countsTowardProgress(primaryGame.value, a.game_mode)))
+const excludedFunModeCount = computed(() => analysesInRange.value.length - filteredAnalyses.value.length)
 
 // ── Stat cards ────────────────────────────────────────────────────────────────
 
