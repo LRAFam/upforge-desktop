@@ -3,6 +3,7 @@ import path from 'path'
 import { app } from 'electron'
 import { localMediaRoot, userDataRoot } from './user-data-paths'
 import { recordingPathVariants } from './vod-compressor'
+import { inMemoryCataloguePaths } from './recordings-store-files'
 
 /** A file catalogued by another account (or pending a claim) is never an orphan. */
 export function registeredLocalRecordingPaths(): Set<string> {
@@ -23,6 +24,10 @@ export function registeredLocalRecordingPaths(): Set<string> {
       if (!entry.path) continue
       for (const variant of recordingPathVariants(entry.path)) paths.add(path.normalize(variant))
     }
+  }
+  // Rows not written yet (catalogue writes are debounced) are still registered.
+  for (const p of inMemoryCataloguePaths(app.getPath('userData'))) {
+    for (const variant of recordingPathVariants(p)) paths.add(path.normalize(variant))
   }
   return paths
 }

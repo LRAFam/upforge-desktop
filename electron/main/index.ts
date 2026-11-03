@@ -228,6 +228,7 @@ import { extractSpatialFromAnalysisPayload } from '../../src/lib/analysis-enrich
 import { desktopVodResultsUrl, isPrimaryGame } from '../../src/lib/games'
 import { analysisScoreText, coachingReadyBody } from '../../src/lib/analysis-ready-copy'
 import { RecordingsStore, riotAccountRole, type ClipOnlyReason, type PendingRecording } from './recordings-store'
+import { flushAllCataloguesSync, rowTimelineSummary } from './recordings-store-files'
 import { ProductionVodFixtureLibrary } from './production-vod-fixture'
 import {
   buildOrphanValorantTimeline,
@@ -331,6 +332,7 @@ import {
   isGsiPortBlocked,
   isGsiMatchLive,
   isGsiMatchEnded,
+  gsiMatchEndReason,
   hasEverReceivedGsi,
   getLatestGsiMap,
   getLatestGsiPayload,
@@ -3397,6 +3399,8 @@ function setupGameDetection(): void {
   function beginMatchFlow(): { isStale: () => boolean } {
     pendingRecordingStart?.controller.abort()
     pendingRecordingStart = null
+    // A new flow owns match end; never leave a superseded flow's GSI end-poller running.
+    if (gsiPollTimer) { clearInterval(gsiPollTimer); gsiPollTimer = null }
     matchFlowGeneration++
     const generation = matchFlowGeneration
     matchHandled = false
@@ -3650,7 +3654,9 @@ function setupGameDetection(): void {
     if (rearmWatchInFlight === game) return
     rearmWatchInFlight = game
 
-    gameDetector.resetActiveGame(game)
+    // Keep the game active while re-arming: a null active game made the detector's next poll emit
+    // its own game-started, so two match flows ran at once (3.2.5 CS2 "app"/"cs2" start/stop loop).
+    gameDetector.reviveActiveGame(game)
 
     try {
       const REWATCH_MS = 15 * 60 * 1000
@@ -3681,8 +3687,7 @@ function setupGameDetection(): void {
 
         console.log(`[GameDetector] ${game} running — watching for next match`)
         logActivity(`${gameLabel(game)} detected — waiting for a live match to start recording`, game)
-        gameDetector.resetActiveGame(game)
-        gameDetector.emit('game-started', game)
+        gameDetector.rearmWatch(game)
         return
       }
     } finally {
@@ -5442,17 +5447,27 @@ function setupGameDetection(): void {
         if (!isStale()) return finishActiveMatch(game, 'live-client')
       }
     } else if (usesDemoReplay(game)) {
-      gsiPollTimer = setInterval(() => {
+      // Exactly one end-poller: a leaked interval from a superseded flow used to stop the NEXT
+      // recording within a second of it starting ("Match ended (gsi) — … (unknown duration)").
+      if (gsiPollTimer) clearInterval(gsiPollTimer)
+      const timer: ReturnType<typeof setInterval> = setInterval(() => {
         void (async () => {
+          if (isStale()) {
+            clearInterval(timer)
+            if (gsiPollTimer === timer) gsiPollTimer = null
+            return
+          }
           if (matchHandled || (!obsRecorder.isRecording() && pendingRecordingStart?.game !== game)) return
           const ended = game === 'deadlock'
             ? isDeadlockMatchEnded()
             : isGsiMatchEnded()
           if (!ended) return
           if (game === 'deadlock') getGameDataCapture()?.deadlockMatchEnded()
-          await finishActiveMatch(game, 'gsi')
+          // CS2: say why (gameover / left-server / map-changed) so a split match is traceable in main.log.
+          await finishActiveMatch(game, game === 'cs2' ? `gsi:${gsiMatchEndReason() ?? 'ended'}` : 'gsi')
         })()
       }, 2000)
+      gsiPollTimer = timer
     }
 
     const gameProcessStillRunning = game === 'valorant'
@@ -7853,6 +7868,8 @@ async function startApp(): Promise<void> {
 
   ipcMain.handle('recordings:get', async () => {
     countRecordingsGet()
+    // Timelines load in the background at start-up; wait so readiness never reads files synchronously.
+    await recordingsStore.timelinesReady()
     const userId = getActiveUserId()
     if (userId != null && recordingsStore) {
       recordingsStore.healMissingPaths([
@@ -7878,8 +7895,10 @@ async function startApp(): Promise<void> {
     // this handler again; starting a new loop per call fed back into a storm after matches.
     recordingsProbeSweep.request(needsProbe)
 
+    // List rows carry a small timeline summary only — full data: recordings:get-timeline.
     return pending.map((rec) => ({
       ...withAnalysisReadiness(rec),
+      timeline: rowTimelineSummary(rec),
       hasLocalFile: Boolean(rec.path && fs.existsSync(rec.path)),
       cloudUploaded: Boolean(rec.jobId || rec.analysisId || rec.archiveId),
     }))
@@ -7887,6 +7906,7 @@ async function startApp(): Promise<void> {
 
   ipcMain.handle('recordings:list-all', async (_e, opts?: { allAccounts?: boolean }) => {
     countRecordingsListAll()
+    await recordingsStore.timelinesReady()
     // The earlier dashboard scan may have run before OBS finished writing the file.
     // Re-scan when the user opens the library so interrupted finalisation self-heals.
     scanForOrphanedRecordings(true)
@@ -7909,6 +7929,7 @@ async function startApp(): Promise<void> {
     // browsing, not the actionable dashboard queue, so never block on ffmpeg.
     return all.map((rec) => ({
       ...withAnalysisReadiness(rec),
+      timeline: rowTimelineSummary(rec),
       hasLocalFile: Boolean(rec.path && fs.existsSync(rec.path)),
       cloudUploaded: Boolean(rec.jobId || rec.analysisId || rec.archiveId),
       ...(opts?.allAccounts === true ? { riotAccountRole: riotAccountRole(rec, linkedAccounts, linkedLolAccounts) } : {}),
@@ -8387,6 +8408,8 @@ app.on('child-process-gone', (_event, details) => {
 })
 
 app.on('before-quit', () => {
+  // Recordings catalogue writes are async + debounced; put the last change on disk before exit.
+  flushAllCataloguesSync()
   replayScope++
   cs2DemoRetrieval.clear()
   void overstepBridge?.disable()

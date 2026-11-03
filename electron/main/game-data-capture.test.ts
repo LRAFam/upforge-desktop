@@ -49,7 +49,7 @@ describe('GameDataCapture — CS2', () => {
     expect(c.wantsFullGsi()).toBe(false)
   })
 
-  it('writes every body of one match as JSON lines, then turns itself off and writes a summary', () => {
+  it('writes every body of one match as JSON lines, then turns itself off and writes a summary', async () => {
     const c = new GameDataCapture({ dir, env: {}, now })
     const disarmed = vi.fn()
     c.onDisarmed(disarmed)
@@ -69,6 +69,7 @@ describe('GameDataCapture — CS2', () => {
     c.ingestGsi('not json')
     clock = 4_000
     c.ingestGsi(body('menu')) // left the server → match over
+    await c.flushed() // lines are appended asynchronously in batches
 
     const lines = readLines('gsi-2000.jsonl')
     expect(lines).toHaveLength(5)
@@ -95,7 +96,7 @@ describe('GameDataCapture — CS2', () => {
     expect(s.components['(unparsed)'].count).toBe(1)
   })
 
-  it('captures only one match', () => {
+  it('captures only one match', async () => {
     const c = new GameDataCapture({ dir, env: {}, now })
     c.setArmed(true)
     c.ingestGsi(body('live'))
@@ -103,10 +104,11 @@ describe('GameDataCapture — CS2', () => {
     clock = 9_000
     c.ingestGsi(body('live'))
     c.ingestGsi(body('menu'))
+    await c.flushed()
     expect(fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'))).toEqual(['gsi-1000.jsonl'])
   })
 
-  it('keeps the gameover scoreboard for the grace period, then stops', () => {
+  it('keeps the gameover scoreboard for the grace period, then stops', async () => {
     vi.useFakeTimers()
     const c = new GameDataCapture({ dir, env: {}, now })
     c.setArmed(true)
@@ -117,12 +119,15 @@ describe('GameDataCapture — CS2', () => {
     expect(c.getStatus().active).toBeNull()
     expect(c.getStatus().last?.stopReason).toBe('match-ended')
     expect(c.isArmed()).toBe(false)
+    vi.useRealTimers()
+    await c.flushed()
   })
 
-  it('stops at the size guard and turns itself off', () => {
+  it('stops at the size guard and turns itself off', async () => {
     const c = new GameDataCapture({ dir, env: {}, now, maxBytes: 600 })
     c.setArmed(true)
     for (let i = 0; i < 20; i++) c.ingestGsi(body('live', { pad: 'x'.repeat(50) }))
+    await c.flushed()
     const size = fs.statSync(path.join(dir, 'gsi-1000.jsonl')).size
     expect(size).toBeLessThanOrEqual(600)
     expect(size).toBeGreaterThan(0)
@@ -130,21 +135,23 @@ describe('GameDataCapture — CS2', () => {
     expect(c.isArmed()).toBe(false)
   })
 
-  it('can be armed by UPFORGE_CAPTURE_GAME_DATA=1 and still turns off after one match', () => {
+  it('can be armed by UPFORGE_CAPTURE_GAME_DATA=1 and still turns off after one match', async () => {
     const c = new GameDataCapture({ dir, env: { UPFORGE_CAPTURE_GAME_DATA: '1' }, now })
     expect(c.getStatus()).toMatchObject({ armed: true, armedByEnv: true })
     c.ingestGsi(body('live'))
     c.ingestGsi(body('menu'))
     expect(c.isArmed()).toBe(false)
+    await c.flushed()
   })
 
-  it('switching off mid-match closes the capture', () => {
+  it('switching off mid-match closes the capture', async () => {
     const c = new GameDataCapture({ dir, env: {}, now })
     c.setArmed(true)
     c.ingestGsi(body('live'))
     c.setArmed(false)
     expect(c.getStatus().last?.stopReason).toBe('switched-off')
     expect(c.wantsFullGsi()).toBe(false)
+    await c.flushed()
   })
 })
 
@@ -161,6 +168,7 @@ describe('GameDataCapture — Deadlock', () => {
     c.deadlockSignal('steam-cache-salts', { matchId: 42, metadataSalt: 1 })
     clock = 5_000
     c.deadlockMatchEnded()
+    await c.flushed()
 
     expect(c.isArmed()).toBe(false)
     const copied = fs.readFileSync(path.join(out, 'deadlock-console-1000.log'), 'utf-8')
@@ -185,7 +193,8 @@ describe('GameDataCapture — Deadlock', () => {
     c.setArmed(true)
     await c.deadlockMatchStarted(1)
     c.deadlockMatchEnded()
-    expect(c.getStatus().last?.deadlock?.consoleLogHint).toMatch(/-condebug/)
+    // The status is filled in after the batched (async) summary write, so wait for it.
+    await vi.waitFor(() => expect(c.getStatus().last?.deadlock?.consoleLogHint).toMatch(/-condebug/))
   })
 
   it('ignores CS2 bodies while a Deadlock capture is running', async () => {
@@ -230,7 +239,7 @@ describe('GameDataCapture — research answers (§5)', () => {
     expect(a[4]).toMatchObject({ bodiesWithPhaseCountdowns: 1, phases: ['live'] })
     expect(a[5]).toMatchObject({ whileAlive: { bodies: 2, allplayers: 0 }, whileDeadOrSpectating: { allplayers: 1 } })
     expect(a[6]).toMatchObject({ spectatingBodies: 1, providerSteamIdStable: true, ownDeaths: 1, deathsFollowedBySwitch: 1, switchDelaysMs: [2_800] })
-    expect(a[7]).toMatchObject({ throttleSeconds: 0.1, posts: 5, maxGapMs: 2_800, gapsOver2sWhileRoundLive: 1 })
+    expect(a[7]).toMatchObject({ throttleSeconds: 0.2, posts: 5, maxGapMs: 2_800, gapsOver2sWhileRoundLive: 1 })
     expect(a[8]).toMatchObject({ killsSeen: 1, killsWithHeadshotDelta: 1, killsWithActiveWeapon: 1 })
     expect((a[9].killWallClock as Array<Record<string, unknown>>)[0]).toMatchObject({ receivedAt: 1_100, round: 3, activeWeapon: 'weapon_ak47', roundKillHsDelta: 1 })
     expect(a[10]).toMatchObject({ firstMatchWithDemoUrlMsAfterEnd: null })
