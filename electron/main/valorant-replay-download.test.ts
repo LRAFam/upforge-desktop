@@ -8,6 +8,7 @@ import {
   clearReplayBaseCache,
   configRegion,
   decodeBody,
+  sha256Yielding,
   downloadReplay,
   saveReplay,
   sharedConfigUrl,
@@ -98,12 +99,19 @@ describe('downloadReplay', () => {
 })
 
 describe('reply decoding', () => {
-  it('unzips gzip, deflate and brotli bodies', () => {
+  it('unzips gzip, deflate and brotli bodies', async () => {
     const json = Buffer.from('{"GameVersion":"x","Checksum":"y"}')
-    expect(decodeBody(zlib.gzipSync(json), 'gzip')).toEqual(json)
-    expect(decodeBody(zlib.deflateSync(json), 'deflate')).toEqual(json)
-    expect(decodeBody(zlib.brotliCompressSync(json), 'br')).toEqual(json)
-    expect(decodeBody(json, undefined)).toEqual(json)
+    expect(await decodeBody(zlib.gzipSync(json), 'gzip')).toEqual(json)
+    expect(await decodeBody(zlib.deflateSync(json), 'deflate')).toEqual(json)
+    expect(await decodeBody(zlib.brotliCompressSync(json), 'br')).toEqual(json)
+    expect(await decodeBody(json, undefined)).toEqual(json)
+  })
+
+  it('hashes in slices and gets the same SHA-256 as one pass', async () => {
+    const big = crypto.randomBytes(3 * 1024 * 1024 + 17)
+    const once = crypto.createHash('sha256').update(big).digest('hex')
+    expect(await sha256Yielding(big, 1024 * 1024)).toBe(once)
+    expect(await sha256Yielding(Buffer.alloc(0))).toBe(crypto.createHash('sha256').digest('hex'))
   })
 
   it('reads a summary that starts with a byte order mark', async () => {

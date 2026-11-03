@@ -16,6 +16,7 @@ import fs from 'fs'
 import https from 'https'
 import path from 'path'
 import zlib from 'zlib'
+import { promisify } from 'util'
 import { riotPdShard } from './riot-pd-shard'
 
 export const CLIENT_PLATFORM =
@@ -125,7 +126,7 @@ export async function downloadReplay(matchId: string, auth: ReplayAuth, get: Htt
     const replayRes = await get(`${prefix}replay`, headers)
     if (replayRes.status === 404) return { ok: false, error: 'no_replay' }
     if (replayRes.status !== 200) return { ok: false, error: `replay_http_${replayRes.status}` }
-    const hash = crypto.createHash('sha256').update(replayRes.body).digest('hex')
+    const hash = await sha256Yielding(replayRes.body)
     if (hash !== summary.Checksum.trim().toLowerCase()) return { ok: false, error: 'checksum_mismatch' }
     return { ok: true, bytes: replayRes.body, gameVersion: String(summary.GameVersion ?? ''), checksum: hash }
   } catch (err) {
@@ -144,13 +145,30 @@ export function saveReplay(dir: string, matchId: string, bytes: Buffer): string 
   return target
 }
 
-/** Undo gzip / deflate / brotli compression (Node's https, unlike fetch, leaves the body compressed). */
-export function decodeBody(body: Buffer, encoding: string | undefined): Buffer {
+const gunzip = promisify(zlib.gunzip)
+const inflate = promisify(zlib.inflate)
+const brotli = promisify(zlib.brotliDecompress)
+
+/**
+ * Undo gzip / deflate / brotli compression (Node's https, unlike fetch, leaves the body compressed).
+ * Async so a 100+ MB replay is decompressed off the main thread and the app stays responsive.
+ */
+export async function decodeBody(body: Buffer, encoding: string | undefined): Promise<Buffer> {
   const enc = (encoding || '').trim().toLowerCase()
-  if (enc === 'gzip' || enc === 'x-gzip') return zlib.gunzipSync(body)
-  if (enc === 'deflate') return zlib.inflateSync(body)
-  if (enc === 'br') return zlib.brotliDecompressSync(body)
+  if (enc === 'gzip' || enc === 'x-gzip') return gunzip(body)
+  if (enc === 'deflate') return inflate(body)
+  if (enc === 'br') return brotli(body)
   return body
+}
+
+/** SHA-256 in 4 MB slices, yielding between slices so hashing a large replay never freezes the app. */
+export async function sha256Yielding(body: Buffer, slice = 4 * 1024 * 1024): Promise<string> {
+  const hash = crypto.createHash('sha256')
+  for (let i = 0; i < body.length; i += slice) {
+    hash.update(body.subarray(i, i + slice))
+    if (i + slice < body.length) await new Promise<void>((r) => setImmediate(r))
+  }
+  return hash.digest('hex')
 }
 
 export function httpsGet(url: string, headers: Record<string, string>, redirects = 3): Promise<HttpResult> {
@@ -176,12 +194,8 @@ export function httpsGet(url: string, headers: Record<string, string>, redirects
         chunks.push(c)
       })
       res.on('end', () => {
-        try {
-          const body = decodeBody(Buffer.concat(chunks), res.headers['content-encoding'])
-          resolve({ status, body, contentType: res.headers['content-type'] })
-        } catch (err) {
-          reject(err)
-        }
+        decodeBody(Buffer.concat(chunks), res.headers['content-encoding'])
+          .then((body) => resolve({ status, body, contentType: res.headers['content-type'] }), reject)
       })
       res.on('error', reject)
     })
