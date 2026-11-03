@@ -22,6 +22,7 @@ import { recordingGameTitle } from '../../lib/recording-display'
 import { formatRecordingBytes } from '../../lib/recording-library'
 import { cloudBytes } from '../../lib/cloud-storage'
 import { useAccountUsage } from '../../composables/useAccountUsage'
+import { useCloudRetention } from '../../composables/useCloudRetention'
 import { groupByMatchDate, matchDateMs } from '../../components/v3/matches/match-meta'
 import { storageSummary } from '../../components/v3/matches/match-row'
 import { ARCHIVE_DATES_KEY } from '../../components/v3/reviews/reviews-v3'
@@ -47,6 +48,11 @@ const {
   message, busyId, obsConnected, recordingsBytes, selecting, selectedIds, pendingDelete,
 } = lib
 const { usage } = useAccountUsage()
+// Cloud retention warning (one quiet line): saves paused when full, else videos leaving the cloud soon.
+const { savesPausedMessage, expiringLine } = useCloudRetention()
+const cloudNotice = computed(() => savesPausedMessage.value
+  ? { text: savesPausedMessage.value, action: 'Add space' }
+  : expiringLine.value ? { text: expiringLine.value, action: 'Keep them in the cloud' } : null)
 
 // Scores for analysed rows whose own timeline has none: the server's analysis of the same match, joined by id.
 const analysisById = ref(new Map<number, AnalysisItem>())
@@ -133,6 +139,7 @@ const countLine = computed(() => {
       <div class="uf-body">
         <p v-if="cloudError" role="alert" class="uf-t4 uf-msg">{{ cloudError }} <button type="button" class="uf-link" @click="lib.loadCloud()">Retry cloud footage</button></p>
         <p v-if="message" class="uf-t4 uf-msg" role="status">{{ message }}</p>
+        <p v-if="cloudNotice && !loading" class="uf-t4 uf-msg" role="status">{{ cloudNotice.text }} <button type="button" class="uf-link" @click="router.push({ path: '/cloud-storage', query: { keep: '1' } })">{{ cloudNotice.action }}</button></p>
 
         <div v-if="loading || (cloudLoading && !filtered.length)" class="uf-skel-rows" role="status" aria-label="Loading matches">
           <div v-for="i in 6" :key="i" class="uf-skel-row">

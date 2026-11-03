@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 const api = {
   storageAddon: { request: (request: import('../../src/lib/storage-addon').StorageAddonRequest) => ipcRenderer.invoke('storage-addon:request', request) },
   cloudClip: { review: (id: number, analyse = false) => ipcRenderer.invoke('cloud-clip:review', id, analyse) },
-  cloudStorage: { download: (file: { kind: 'clip' | 'recording'; id: string }) => ipcRenderer.invoke('cloud-storage:download', file), playback: (file: { kind: 'clip' | 'recording'; id: string }) => ipcRenderer.invoke('cloud-storage:playback', file), list: (query: import('../../src/lib/cloud-storage').CloudQuery) => ipcRenderer.invoke('cloud-storage:list', query) },
+  cloudStorage: { download: (file: { kind: 'clip' | 'recording' | 'analysis_video'; id: string }) => ipcRenderer.invoke('cloud-storage:download', file), playback: (file: { kind: 'clip' | 'recording' | 'analysis_video'; id: string }) => ipcRenderer.invoke('cloud-storage:playback', file), retention: () => ipcRenderer.invoke('cloud-storage:retention'), list: (query: import('../../src/lib/cloud-storage').CloudQuery) => ipcRenderer.invoke('cloud-storage:list', query) },
   workspaceCoach: {
     history: (id: number) => ipcRenderer.invoke('workspace-coach:history', id),
     ask: (id: number, body: import('../../src/lib/workspace-coach').CoachQuestion) => ipcRenderer.invoke('workspace-coach:ask', id, body),

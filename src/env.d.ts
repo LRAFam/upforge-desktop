@@ -406,6 +406,8 @@ export interface RecordingTimeline {
   localFileMissing?: boolean
   /** True when a playable local file exists on disk. */
   hasLocalFile?: boolean
+  /** Cloud retention of the full video (raw API object; parse with `parseRetention`). Absent on older APIs. */
+  cloudRetention?: unknown
   /** True when the VOD was uploaded for analysis or saved to cloud. */
   uploadedToCloud?: boolean
   cloudUploaded?: boolean
@@ -746,7 +748,7 @@ declare global {
       personalReview: { get: (source: import('./lib/personal-review').PersonalReviewSource) => Promise<import('./lib/review-notebook').NotebookResult<unknown>>; save: (document: import('./lib/personal-review').PersonalReview) => Promise<import('./lib/review-notebook').NotebookResult<unknown>> }
       storageAddon: { request: (request: import('./lib/storage-addon').StorageAddonRequest) => Promise<{ ok: true; data: import('./lib/storage-addon').StorageAddonSnapshot | null } | { ok: false; error: string; unavailable?: boolean }> }
       cloudClip: { review: (id: number, analyse?: boolean) => Promise<{ ok: true; data: import('./lib/cloud-clip-review').CloudClipReview } | { ok: false; error: string; needsUpgrade?: boolean }> }
-      cloudStorage: { download: (file: { kind: 'clip' | 'recording'; id: string }) => Promise<{ ok: true } | { ok: false; error: string }>; playback: (file: { kind: 'clip' | 'recording'; id: string }) => Promise<{ ok: true; url: string } | { ok: false; error: string }>; list: (query: import('./lib/cloud-storage').CloudQuery) => Promise<{ ok: true; data: unknown } | { ok: false; error: string }> }
+      cloudStorage: { download: (file: { kind: 'clip' | 'recording' | 'analysis_video'; id: string }) => Promise<{ ok: true } | { ok: false; error: string; removed?: boolean }>; playback: (file: { kind: 'clip' | 'recording' | 'analysis_video'; id: string }) => Promise<{ ok: true; url: string } | { ok: false; error: string; removed?: boolean }>; retention: () => Promise<{ ok: true; data: import('./lib/cloud-retention').RetentionSummary } | { ok: false; error: string; unavailable?: boolean }>; list: (query: import('./lib/cloud-storage').CloudQuery) => Promise<{ ok: true; data: unknown } | { ok: false; error: string }> }
       accountUsage: { get: () => Promise<{ ok: true; data: unknown } | { ok: false; error: string }>; buyReports: () => Promise<import('./lib/review-notebook').NotebookResult<{ checkout_url: string }>> }
       roundReview: {
         allowance: () => Promise<{ ok: true; allowance: import('./lib/round-review').RoundReviewAllowance } | { ok: false; error: string; status?: number }>
@@ -1784,7 +1786,7 @@ declare global {
         analyzeMatch: (matchId: string) => Promise<{ ok: boolean; analysis_id?: number; error?: string }>
       }
       deepLink: {
-        takePending: () => Promise<{ kind: 'roster-join'; coachId: number } | { kind: 'open-analysis'; game: 'valorant' | 'cs2' | 'deadlock' | 'lol'; analysisId: number } | null>
+        takePending: () => Promise<{ kind: 'roster-join'; coachId: number } | { kind: 'open-analysis'; game: 'valorant' | 'cs2' | 'deadlock' | 'lol'; analysisId: number } | { kind: 'open-cloud-storage' } | null>
       }
       forgeRank: {
         prestige: () => Promise<{ success: boolean; forge_rank?: ForgeRankInfo; message?: string }>

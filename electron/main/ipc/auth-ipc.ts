@@ -374,6 +374,8 @@ export function setupAuthHandlers(
           ? analysis.duel_moments
           : (Array.isArray(md.duelMoments) ? md.duelMoments : []),
         videoSyncOffsetMs: effectiveVideoSyncOffsetMs(timelineForSync),
+        // Cloud retention of this match's full video (API `cloud_video`; absent on older APIs).
+        cloudRetention: analysis.cloud_video ?? null,
       }
     } catch {
       return null

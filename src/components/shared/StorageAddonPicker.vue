@@ -4,6 +4,8 @@ import { cloudBytes } from '../../lib/cloud-storage'
 import { uiV3 } from '../../lib/ui-v3'
 import { storagePaymentConfirmed, type StorageAddonSnapshot, type StorageAddonRequest } from '../../lib/storage-addon'
 const emit = defineEmits<{ changed: []; loaded: [StorageAddonSnapshot] }>()
+// Cloud retention rules (once live, told by the page): a pack keeps every full video while subscribed.
+defineProps<{ retentionStarted?: boolean }>()
 const snapshot = ref<StorageAddonSnapshot | null>(null), error = ref(''), notice = ref(''), busy = ref(false)
 const unavailable = ref(false), loading = ref(false)
 const retryRequest = ref<StorageAddonRequest | null>(null)
@@ -111,7 +113,8 @@ onBeforeUnmount(() => { generation++; stopChecking(); cleanups.forEach(fn => fn(
       <label class="uf-label" for="storage-addon-size">Extra capacity</label>
       <input id="storage-addon-size" v-model.number="step" class="uf-sp-range" type="range" min="0" :max="snapshot.packs.length-1" step="1" :disabled="busy || pendingGb !== null" :aria-valuetext="`${selected.gb} GB, ${price} per month`" />
       <div class="uf-sp-stops"><button v-for="(pack,index) in snapshot.packs" :key="pack.gb" type="button" :disabled="busy || pendingGb !== null" :aria-pressed="index===step" :class="{ 'is-on': index===step }" @click="step=index">{{ pack.gb }} GB</button></div>
-      <p class="uf-t4">New uploads use paid space when your plan allowance is full. Use Keep in paid storage for footage you want to retain longer. Files in paid storage stay while you keep paying. After paid access ends, you have {{ snapshot.grace_days }} days to download them before removal.</p>
+      <p v-if="retentionStarted" class="uf-t4">A storage pack keeps every full video in the cloud while you're subscribed. If it ends, you have {{ snapshot.grace_days }} days before free rules apply (each video kept 14 days). Clips, notes and stats are never removed.</p>
+      <p v-else class="uf-t4">New uploads use paid space when your plan allowance is full. Use Keep in paid storage for footage you want to retain longer. Files in paid storage stay while you keep paying. After paid access ends, you have {{ snapshot.grace_days }} days to download them before removal.</p>
       <button type="button" class="uf-btn-primary uf-sp-buy" :disabled="busy || pendingGb !== null || !selected.available || (usage?.capacity_bytes === selected.gb * 1e9 && hasSubscription)" @click="act({action:hasSubscription ? 'change' : 'checkout',gb:selected.gb})"><span>{{ busy ? 'Please wait…' : hasSubscription ? 'Review capacity change' : `Continue · ${price}/month` }}</span></button>
       <p class="uf-t4">{{ selected.available ? 'Review the total and any prorated charge in Stripe before confirming. GB means 1 billion bytes.' : 'Purchases are not available yet. Your current allowance is unchanged.' }}</p>
       <div v-if="hasSubscription" class="uf-sp-manage">

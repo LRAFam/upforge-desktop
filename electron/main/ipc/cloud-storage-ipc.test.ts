@@ -35,7 +35,7 @@ it('opens only authenticated cloud IDs, rejects unsafe URLs and explains expired
   get.mockResolvedValue({ data: { video_url: 'file:///private/file' } })
   expect(await handlers['cloud-storage:playback']({}, file)).toMatchObject({ ok: false })
   get.mockRejectedValue({ response: { status: 410 } })
-  expect(await handlers['cloud-storage:playback']({}, { kind: 'recording', id: '12345678-1234-1234-1234-123456789abc' })).toMatchObject({ ok: false, error: expect.stringContaining('Upgrading does not restore') })
+  expect(await handlers['cloud-storage:playback']({}, { kind: 'recording', id: '12345678-1234-1234-1234-123456789abc' })).toMatchObject({ ok: false, removed: true, error: expect.stringContaining('Full video no longer stored') })
   get.mockImplementation(async () => { owner = 2; return { data: { video_url: 'https://media.example/private.mp4' } } })
   const result = await handlers['cloud-storage:playback']({}, file)
   expect(result.ok).toBe(false)
@@ -100,4 +100,31 @@ it('validates the confirmed allowance without opening another checkout', async (
   expect(post).toHaveBeenCalledWith('/api/account/storage-addon/sync', {})
   post.mockResolvedValue({ data: { success: true } })
   expect(await handlers['storage-addon:request']({}, { action: 'sync' })).toMatchObject({ ok: false })
+})
+
+it('downloads analysis videos by job id and says when the full video was removed', async () => {
+  const handlers: Record<string, (...args: any[]) => Promise<any>> = {}
+  const get = vi.fn().mockResolvedValue({ data: { job_id: 77, download_url: 'https://media.example/analysis.mp4' } })
+  setupCloudStorageHandlers({ handle: (name: string, fn: typeof handlers[string]) => { handlers[name] = fn } } as unknown as IpcMain, { getToken: () => 'token', getUser: () => ({ id: 1 }), getApi: () => ({ get }) } as unknown as AuthManager)
+  expect(await handlers['cloud-storage:playback']({}, { kind: 'analysis_video', id: '../77' })).toMatchObject({ ok: false })
+  expect(get).not.toHaveBeenCalled()
+  expect(await handlers['cloud-storage:playback']({}, { kind: 'analysis_video', id: '77' })).toEqual({ ok: true, url: 'https://media.example/analysis.mp4' })
+  expect(get).toHaveBeenCalledWith('/api/account/cloud-videos/analysis/77')
+  get.mockResolvedValue({ data: { job_id: 77, download_url: null } })
+  expect(await handlers['cloud-storage:playback']({}, { kind: 'analysis_video', id: '77' })).toMatchObject({ ok: false, removed: true })
+  get.mockRejectedValue({ response: { status: 410, data: { error: 'video_removed' } } })
+  expect(await handlers['cloud-storage:playback']({}, { kind: 'analysis_video', id: '77' })).toMatchObject({ ok: false, removed: true, error: expect.stringContaining('Full video no longer stored') })
+})
+
+it('reads the cloud retention summary and reports an older API as unavailable', async () => {
+  const handlers: Record<string, (...args: any[]) => Promise<any>> = {}
+  let owner: number | null = null
+  const get = vi.fn().mockResolvedValue({ data: { started: true, tier: 'free', keep_days: 14, expiring_soon: [] } })
+  setupCloudStorageHandlers({ handle: (name: string, fn: typeof handlers[string]) => { handlers[name] = fn } } as unknown as IpcMain, { getToken: () => owner ? 't' : null, getUser: () => owner ? { id: owner } : null, getApi: () => ({ get }) } as unknown as AuthManager)
+  expect(await handlers['cloud-storage:retention']({})).toMatchObject({ ok: false }); expect(get).not.toHaveBeenCalled()
+  owner = 1
+  expect(await handlers['cloud-storage:retention']({})).toMatchObject({ ok: true, data: { started: true, keep_days: 14 } })
+  expect(get).toHaveBeenCalledWith('/api/account/cloud-retention')
+  get.mockRejectedValue({ response: { status: 404 } })
+  expect(await handlers['cloud-storage:retention']({})).toMatchObject({ ok: false, unavailable: true })
 })

@@ -2,21 +2,28 @@ import { cloudClipReview } from '../../../src/lib/cloud-clip-review'
 import { shell, type IpcMain } from 'electron'
 import { validStorageRequest, validStorageSnapshot, type StorageAddonRequest } from '../../../src/lib/storage-addon'
 import type { AuthManager } from '../auth-manager'
-import { cloudGames, type CloudQuery } from '../../../src/lib/cloud-storage'
+import { cloudGames, validCloudFileId, type CloudQuery } from '../../../src/lib/cloud-storage'
+import { parseRetentionSummary } from '../../../src/lib/cloud-retention'
+
+/** Contract copy for a removed full video (HTTP 410 `video_removed`). */
+const VIDEO_REMOVED = 'Full video no longer stored. Your notes and clips are still here, and a copy on this PC still plays.'
 export function setupCloudStorageHandlers(ipc: IpcMain, auth: AuthManager, removed?: (file: { kind: string; id: string }) => void) {
   async function playback(file: { kind: string; id: string }) {
-    if (!file || typeof file.id !== 'string' || !(file.kind === 'clip' ? /^[1-9]\d*$/.test(file.id) : file.kind === 'recording' && /^[0-9a-f-]{36}$/i.test(file.id))) return { ok: false, error: 'Choose a valid cloud file.' }
+    if (!file || !validCloudFileId(file.kind, file.id)) return { ok: false, error: 'Choose a valid cloud file.' }
     const token = auth.getToken(), owner = auth.getUser()?.id
     if (!token || !owner) return { ok: false, error: 'Sign in to watch cloud files.' }
     try {
-      const response = await auth.getApi().get(file.kind === 'clip' ? `/api/clips/${file.id}/video` : `/api/recordings/archive/${file.id}/playback`)
+      const response = await auth.getApi().get(file.kind === 'clip' ? `/api/clips/${file.id}/video`
+        : file.kind === 'analysis_video' ? `/api/account/cloud-videos/analysis/${file.id}`
+          : `/api/recordings/archive/${file.id}/playback`)
       if (auth.getToken() !== token || auth.getUser()?.id !== owner) return { ok: false, error: 'Your account changed. Reopen the file.' }
-      const url = file.kind === 'clip' ? response.data.video_url : response.data.playback_url
+      const url = file.kind === 'clip' ? response.data.video_url : file.kind === 'analysis_video' ? response.data.download_url : response.data.playback_url
+      if (file.kind === 'analysis_video' && url === null) return { ok: false, removed: true, error: VIDEO_REMOVED }
       if (typeof url !== 'string' || new URL(url).protocol !== 'https:') throw new Error('Invalid playback URL')
       return { ok: true, url }
     } catch (error) {
       const status = (error as { response?: { status?: number } }).response?.status
-      return { ok: false, error: status === 410 ? 'Cloud retention has ended for this recording. Use your local copy if you still have it. Upgrading does not restore expired footage.' : status === 404 ? 'This cloud file is no longer available.' : 'Could not reach this cloud file. Please retry.' }
+      return { ok: false, removed: status === 410, error: status === 410 ? VIDEO_REMOVED : status === 404 ? 'This cloud file is no longer available.' : 'Could not reach this cloud file. Please retry.' }
     }
   }
   ipc.handle('cloud-storage:playback', async (_event, file) => playback(file))
@@ -66,6 +73,20 @@ export function setupCloudStorageHandlers(ipc: IpcMain, auth: AuthManager, remov
       const response = (error as { response?: { status?: number; data?: { message?: string } } }).response
       console.warn('[CloudClipReview]', response ? `HTTP ${response.status}` : error instanceof Error ? error.message : 'Unknown failure')
       return { ok: false, needsUpgrade: response?.status === 402, error: response?.status === 402 ? response.data?.message || 'Your clip coaching allowance is exhausted.' : response?.status === 410 ? 'This cloud clip is no longer available.' : 'Clip review could not be loaded. Please retry.' }
+    }
+  })
+  // GET /account/cloud-retention: plan keep time, quota and the videos leaving the cloud soon.
+  ipc.handle('cloud-storage:retention', async () => {
+    const token = auth.getToken(), owner = auth.getUser()?.id
+    if (!token || !owner) return { ok: false, error: 'Sign in to view cloud storage.' }
+    try {
+      const response = await auth.getApi().get('/api/account/cloud-retention')
+      if (auth.getToken() !== token || auth.getUser()?.id !== owner) return { ok: false, error: 'Your account changed. Reload cloud storage.' }
+      return { ok: true, data: parseRetentionSummary(response.data) }
+    } catch (error) {
+      const status = (error as { response?: { status?: number } }).response?.status
+      // 404 = an API release before cloud retention: screens show what they showed before.
+      return { ok: false, unavailable: status === 404, error: 'Cloud retention is unavailable. Please try again later.' }
     }
   })
   ipc.handle('cloud-storage:list', async (_event, query: CloudQuery) => {

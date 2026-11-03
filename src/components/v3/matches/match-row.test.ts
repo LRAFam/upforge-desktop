@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchRowSummary, relativeTime, storageSummary } from './match-row'
+import { matchRowSummary, relativeTime, rowCloudAction, storageSummary } from './match-row'
 
 describe('matchRowSummary', () => {
   it('uses the final score and stats when present', () => {
@@ -46,5 +46,28 @@ describe('storageSummary', () => {
     expect(storageSummary({ count: 30, noun: ['recording', 'recordings'], localBytes: null, cloudUsed: '36.10 GB' })).toBe('30 recordings · 36.10 GB cloud storage used')
     expect(storageSummary({ count: 1, noun: ['clip', 'clips'], localBytes: '1.2 GB', cloudUsed: '2.0 GB', cloudCapacity: '50.00 GB' })).toBe('1 clip · 1.2 GB on this PC · 2.0 GB of 50.00 GB cloud storage used')
     expect(storageSummary({ count: 0, noun: ['clip', 'clips'], full: true, cloudUsed: '50 GB' })).toBe('0 clips · cloud storage full')
+  })
+})
+
+describe('rowCloudAction', () => {
+  const line = (over: Partial<import('../../../lib/cloud-retention').RetentionLine>) => ({ text: 'Removed from cloud in 3 days', detail: null, tone: 'warn' as const, countdown: true, keepTime: false, removed: false, ...over })
+  it('a countdown opens keep options', () => {
+    expect(rowCloudAction({ archiveId: 'a', hasLocalFile: false }, line({}))).toEqual({ kind: 'keep', text: 'Removed from cloud in 3 days', warn: true, detail: null })
+  })
+  it('offers Save to cloud only for idle matches that are only on this PC', () => {
+    expect(rowCloudAction({ hasLocalFile: true }, null)).toEqual({ kind: 'save', text: 'Save to cloud' })
+    expect(rowCloudAction({ hasLocalFile: true, archiveId: 'a' }, null)).toBeNull()
+    expect(rowCloudAction({ hasLocalFile: true, cloudUploaded: true }, null)).toBeNull()
+    expect(rowCloudAction({ hasLocalFile: true, pipelineStatus: 'uploading' }, null)).toBeNull()
+    expect(rowCloudAction({ hasLocalFile: false }, null)).toBeNull()
+  })
+  it('removed: says so unless the PC copy still plays', () => {
+    const removed = line({ text: 'Full video no longer stored', countdown: false, removed: true, tone: 'gone' })
+    expect(rowCloudAction({ archiveId: 'a', hasLocalFile: false }, removed)).toEqual({ kind: 'removed', text: 'Full video no longer stored' })
+    expect(rowCloudAction({ archiveId: 'a', hasLocalFile: true }, removed)).toBeNull()
+  })
+  it('a keep time (no date) is soft and carries the keep action', () => {
+    expect(rowCloudAction({ archiveId: 'a', hasLocalFile: false }, line({ text: 'Kept for 14 days on Free', tone: 'quiet', keepTime: true })))
+      .toEqual({ kind: 'keep', text: 'Kept for 14 days on Free · Keep it in the cloud', warn: false, detail: null })
   })
 })

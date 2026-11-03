@@ -108,6 +108,8 @@ export interface RecordingTimeline {
   archiveAnalysisReady?: boolean
   archiveAnalysisMessage?: string
   matchDataAvailable?: boolean
+  /** Cloud retention of the full video (raw API object; parse with `parseRetention`). Absent on older APIs. */
+  cloudRetention?: unknown
   id: string
   jobId?: string | null
   analysisId?: number | null

@@ -96,6 +96,8 @@ export function inboxTarget(item: Pick<InboxItem, 'type' | 'data'>): InboxTarget
         : { kind: 'app', path: '/recordings' }
   }
   if (t === 'analysis_failed') return { kind: 'app', path: '/recordings' }
+  // Cloud retention warnings (7 days / 1 day before a full video leaves the cloud).
+  if (t === 'cloud_video_expiring' || d.deep_link === 'upforge://cloud-storage') return { kind: 'app', path: '/cloud-storage' }
   if (t === 'review_requested') {
     const reviewId = idOf(d.review_id)
     return { kind: 'web', path: reviewId ? `/coach-dashboard/reviews/feed?review=${reviewId}` : '/coach-dashboard/reviews/feed' }
