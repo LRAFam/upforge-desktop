@@ -3,10 +3,20 @@
  * demofile is CS:GO-only and does not decode CS2 game events reliably.
  */
 import fs from 'fs'
-import { extractCs2MatchStats } from './cs2-match-stats'
+import { calculateCs2MatchStats, readCs2StatsInput } from './cs2-match-stats'
+import { buildCs2RoundFacts, flashHitsFromSamples, humanizeCs2Place, type Cs2FlashHit, type Cs2RoundFactsResult } from './cs2-round-facts'
 import log from 'electron-log'
 import { parseHeader } from '@laihoe/demoparser2'
-import { nativeCs2DemoSource, type Cs2DemoSource } from './cs2-demo-source'
+import {
+  CS2_DEATH_TICK_PROPS,
+  CS2_FLASH_TICK_PROPS,
+  CS2_STATS_EVENT_FIELDS,
+  CS2_TIMELINE_DEATH_FIELDS,
+  cs2DeathTicks,
+  cs2FlashSampleTicks,
+  nativeCs2DemoSource,
+  type Cs2DemoSource,
+} from './cs2-demo-source'
 import type { DemoTimelineOptions } from './demo-timeline'
 import { inferLocalPlayerFromDemoKills, type RoundKillMeta } from './demo-local-player'
 import { estimateCs2DemoVideoShift } from './cs2-demo-video-sync'
@@ -89,6 +99,36 @@ function steamIdKey(raw: unknown): string | null {
   if (raw == null) return null
   const text = String(raw).trim()
   return text && text !== '0' ? text : null
+}
+
+/** Bombsite letter from the event's site label or the planter's Valve place name ("BombsiteB"). */
+function plantSiteLetter(row: JsonRow): 'A' | 'B' | null {
+  for (const key of ['site', 'bombsite', 'user_last_place_name']) {
+    const v = row[key]
+    if (typeof v !== 'string') continue
+    const t = v.trim().toUpperCase().replace(/^BOMBSITE[\s_]*/, '')
+    if (t === 'A' || t === 'B') return t
+  }
+  return null
+}
+
+function safeTicks(source: Cs2DemoSource, props: string[], ticks: number[]): JsonRow[] | null {
+  if (!ticks.length) return []
+  try {
+    const rows = source.ticks(props, ticks)
+    return Array.isArray(rows) ? rows as JsonRow[] : null
+  } catch {
+    return null
+  }
+}
+
+function safeEventOrNull(source: Cs2DemoSource, eventName: string, playerExtra: string[], otherExtra: string[]): JsonRow[] | null {
+  try {
+    const rows = source.event(eventName, playerExtra, otherExtra)
+    return Array.isArray(rows) ? rows as JsonRow[] : null
+  } catch {
+    return null
+  }
 }
 
 function tickToMs(tick: number, tickRate: number): number {
@@ -187,19 +227,20 @@ export function buildCs2TimelineFromDemo(
   try {
     const header = source.header() as JsonRow
     const tickRate = resolveTickRate(header)
+    // Warmup kills are not match kills (pro / CSTV demos record warmup as "round 0").
     const deaths = safeParseEvent(source,
       'player_death',
-      ['user_X', 'user_Y'],
-      ['total_rounds_played'],
-    )
+      [...CS2_TIMELINE_DEATH_FIELDS.playerExtra],
+      [...CS2_TIMELINE_DEATH_FIELDS.otherExtra],
+    ).filter((row) => row.is_warmup_period !== true)
     const roundEnds = safeParseEvent(source,
       'round_end',
       ['reason', 'round_win_reason'],
-      ['total_rounds_played'],
-    )
+      ['total_rounds_played', 'is_warmup_period'],
+    ).filter((row) => row.is_warmup_period !== true)
     const roundStarts = safeParseEvent(source, 'round_start', [], ['total_rounds_played'])
     const roundFreezeEnds = safeParseEvent(source, 'round_freeze_end', [], ['total_rounds_played'])
-    const bombPlants = safeParseEvent(source, 'bomb_planted', [], ['total_rounds_played'])
+    const bombPlants = safeParseEvent(source, 'bomb_planted', ['last_place_name'], ['total_rounds_played'])
     const bombDefuses = safeParseEvent(source, 'bomb_defused', [], ['total_rounds_played'])
     const bombExplodes = safeParseEvent(source, 'bomb_exploded', [], ['total_rounds_played'])
     const players = asRows(source.playerInfo())
@@ -283,6 +324,8 @@ export function buildCs2TimelineFromDemo(
 
     const roundKills: RoundKillMeta[] = []
     const killEvents: KillEvent[] = []
+    /** The player_death row behind each kill event (round facts are keyed by row). */
+    const eventRows = new Map<KillEvent, JsonRow>()
     const playerKills: KillEvent[] = []
     const playerDeaths: KillEvent[] = []
     const firstBloods: FirstBloodEvent[] = []
@@ -373,20 +416,26 @@ export function buildCs2TimelineFromDemo(
         if (posX != null && posY != null && getCs2MapTransform(mapName)) {
           const norm = cs2WorldToNorm(mapName, posX, posY)
           if (norm) {
-            const { callout, site } = resolveCs2Callout(mapName, norm)
+            const zone = resolveCs2Callout(mapName, norm)
+            // Valve's place name where the victim fell (same callout the AI's demo build uses); map zone as fallback.
+            const callout = humanizeCs2Place(death.user_last_place_name) ?? zone.callout
+            const site = zone.site
+            const killerCallout = humanizeCs2Place(death.attacker_last_place_name)
+            const distance = rowNumber(death, 'distance')
+            // isolated / alliesNearby are set from measured positions for the player's deaths only.
             ev.spatial = {
               norm,
               callout,
               site,
-              killerDistance: null,
-              isolated: false,
-              alliesNearby: 0,
+              killerDistance: distance != null ? Math.round(distance * 10) / 10 : null,
+              ...(killerCallout ? { killerCallout } : {}),
             }
           }
         }
       }
 
       killEvents.push(ev)
+      eventRows.set(ev, death)
       if (isLocalKill) playerKills.push(ev)
       if (isLocalDeath) playerDeaths.push(ev)
 
@@ -450,7 +499,7 @@ export function buildCs2TimelineFromDemo(
       const tick = rowNumber(row, 'tick') ?? 0
       const gameTimeMs = alignedGameTimeForTick(tick, demoAnchorTick, tickRate)
       const round = Math.max(0, rowNumber(row, 'total_rounds_played') ?? 0)
-      const site = rowString(row, 'site', 'bombsite') ?? 'A'
+      const site = plantSiteLetter(row) ?? 'Unknown'
       const planter = rowString(row, 'user_name', 'player_name') ?? 'Unknown'
       return {
         EventID: spikeEventId++,
@@ -523,7 +572,10 @@ export function buildCs2TimelineFromDemo(
         endTime: roundEndTimes.get(r) ?? 0,
         playerStats: null,
         spikePlanted: spikePlants.some((p) => p.round === r),
-        spikeSite: spikePlants.find((p) => p.round === r)?.site ?? null,
+        spikeSite: (() => {
+          const site = spikePlants.find((p) => p.round === r)?.site
+          return site === 'A' || site === 'B' ? site : null
+        })(),
         spikePlanter: spikePlants.find((p) => p.round === r)?.planter ?? null,
         spikeDefused: spikeDefuses.some((d) => d.round === r),
         spikeDefuser: spikeDefuses.find((d) => d.round === r)?.defuser ?? null,
@@ -572,7 +624,22 @@ export function buildCs2TimelineFromDemo(
       rememberParsedCs2SteamId(localSteamId, localMatchedBy, sameName <= 1)
     }
     if (localSteamId) {
-      timeline.match_stats = extractCs2MatchStats(opts.demoPath, localSteamId, tickRate, source)
+      const statsInput = readCs2StatsInput(localSteamId, tickRate, source)
+      timeline.match_stats = statsInput ? calculateCs2MatchStats(statsInput) : null
+      if (statsInput) {
+        const facts = applyCs2RoundFacts({
+          source, localSteamId, tickRate, statsInput, deaths, bombPlants,
+          killEvents: [...playerKills, ...playerDeaths], eventRows, roundSummaries,
+        })
+        if (facts.playerFlashes) timeline.playerFlashes = facts.playerFlashes
+        // Many demos have no player_blind rows: count flashes from flash_duration around each
+        // detonation instead of reporting a false 0 (same post-step as the AI service).
+        const utility = timeline.match_stats?.utility_stats
+        if (utility && (!statsInput.blinds || statsInput.blinds.length === 0)) {
+          utility.enemies_flashed = facts.flashCounts?.enemies ?? null
+          utility.teammates_flashed = facts.flashCounts?.teammates ?? null
+        }
+      }
       const measured = timeline.match_stats?.player_stats
       if (timeline.finalStats && measured) {
         // Keep the desktop scoreboard and uploaded statistics on the same live-round contract.
@@ -637,4 +704,68 @@ export function buildCs2TimelineFromDemo(
     log.warn('[CS2DemoParser] Parse failed:', (err as Error).message)
     return null
   }
+}
+
+/**
+ * Add the measured per-round facts (cs2-round-facts.ts) to the player's kill/death events and the
+ * round summaries. Reads stay inside the worker plan (cs2-demo-source.ts collectCs2DemoBundle).
+ */
+function applyCs2RoundFacts(args: {
+  source: Cs2DemoSource
+  localSteamId: string
+  tickRate: number
+  statsInput: { starts: JsonRow[]; ends: JsonRow[]; snapshots: JsonRow[] }
+  deaths: JsonRow[]
+  bombPlants: JsonRow[]
+  killEvents: KillEvent[]
+  eventRows: Map<KillEvent, JsonRow>
+  roundSummaries: RoundSummary[]
+}): Cs2RoundFactsResult {
+  const { source, localSteamId, tickRate, statsInput } = args
+  const { playerExtra, otherExtra } = CS2_STATS_EVENT_FIELDS
+  const grenades = safeEventOrNull(source, 'grenade_thrown', [...playerExtra], [...otherExtra])
+  const detonations = safeEventOrNull(source, 'flashbang_detonate', [...playerExtra], [...otherExtra])
+  let flashHits: Cs2FlashHit[] | null = null
+  if (detonations) {
+    const samples = safeTicks(source, CS2_FLASH_TICK_PROPS, cs2FlashSampleTicks(detonations))
+    flashHits = samples ? flashHitsFromSamples(detonations, samples) : null
+  }
+  const facts = buildCs2RoundFacts({
+    steamId: localSteamId,
+    tickRate,
+    starts: statsInput.starts,
+    ends: statsInput.ends,
+    deaths: args.deaths,
+    snapshots: statsInput.snapshots,
+    plants: args.bombPlants,
+    grenades,
+    flashHits,
+    deathPositions: safeTicks(source, CS2_DEATH_TICK_PROPS, cs2DeathTicks(args.deaths)),
+  })
+
+  for (const ev of args.killEvents) {
+    const row = args.eventRows.get(ev)
+    const fact = row ? facts.events.get(row) : undefined
+    if (!fact) continue
+    const { alliesAlive, alliesNearby, ...eventFacts } = fact
+    Object.assign(ev, eventFacts)
+    if (ev.spatial && ev.victimName === 'You') {
+      if (typeof fact.traded === 'boolean') ev.spatial.traded = fact.traded
+      if (alliesAlive != null) ev.spatial.alliesAlive = alliesAlive
+      if (alliesNearby != null) {
+        ev.spatial.alliesNearby = alliesNearby
+        ev.spatial.isolated = alliesNearby === 0
+      }
+    }
+  }
+
+  facts.rounds.forEach((roundFacts, index) => {
+    const summary = args.roundSummaries[index]
+    if (!summary) return
+    const { sideTeam, winnerTeam, ...rest } = roundFacts
+    Object.assign(summary, rest)
+    // Sides swap at half time: judge the winner against this round's side, not the final team.
+    if (sideTeam && winnerTeam) summary.winningTeam = winnerTeam === sideTeam ? 'ALLY' : 'ENEMY'
+  })
+  return facts
 }

@@ -362,6 +362,7 @@ import { FaceitLinkStore, registerCs2FaceitMatchIpc } from './cs2-faceit-match'
 import { setupCoachFlowDemoHandlers } from './ipc/coach-flow-demo-ipc'
 import { setupCoachFlowLiveHandlers, startLiveCoachFlow } from './ipc/coach-flow-live-ipc'
 import { prepareMatchDataForUpload } from './match-data-payload'
+import { cs2StartingReportMatches } from './cs2-starting-report'
 import { registerEnemyHabitsIpc } from './ipc/enemy-habits-ipc'
 import { getGameDataCapture } from './game-data-capture'
 import { setupGameDataCaptureHandlers } from './ipc/game-data-capture-ipc'
@@ -7706,17 +7707,8 @@ async function startApp(): Promise<void> {
     let body: Record<string, unknown> = {}
     if (game === 'cs2') {
       // CS2: only matches whose demo was parsed on this PC (newest first, max 10).
-      const matches = recordingsStore.getAll()
-        .filter(rec => rec.game === 'cs2')
-        .map(rec => ({ rec, stats: (rec.timeline as unknown as { match_stats?: { player_stats?: unknown } } | null | undefined)?.match_stats }))
-        .filter(({ stats }) => !!stats && typeof stats === 'object' && !!stats.player_stats)
-        .slice(0, 10)
-        .map(({ rec, stats }) => ({
-          match_key: String(rec.matchId ?? rec.id).slice(0, 80),
-          map: rec.map ?? null,
-          won: (() => { const w = (rec.timeline as unknown as { finalStats?: { won?: unknown } } | null)?.finalStats?.won; return typeof w === 'boolean' ? w : null })(),
-          match_stats: { player_stats: (stats as { player_stats: unknown }).player_stats },
-        }))
+      // Full match_stats + game_mode per match; known unranked modes (Wingman, Casual…) are left out.
+      const matches = cs2StartingReportMatches(recordingsStore.getAll())
       if (matches.length < 3) return { ok: true, report: { success: true, game, status: 'insufficient', matches_available: matches.length, report: null } }
       body = { matches }
     }

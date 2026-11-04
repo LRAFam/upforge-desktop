@@ -101,6 +101,12 @@ export function applyDemoSpatialEnrichment(match: MatchData): void {
       weapon: ev.weapon,
       isolated: ev.spatial.isolated,
       killerDistance: ev.spatial.killerDistance,
+      // Deaths: measured trade (CS2: 5 s window, cs2-round-facts.ts) and teammates alive / nearby.
+      ...(type === 'death' ? {
+        traded: ev.spatial.traded ?? ev.traded,
+        alliesAlive: ev.spatial.alliesAlive,
+        alliesNearby: ev.spatial.alliesNearby,
+      } : {}),
     })
   }
 

@@ -300,6 +300,7 @@ export function prepareMatchDataForUpload(
     roundSummaries: timeline.roundSummaries,
     finalStats,
     match_stats: timeline.match_stats,
+    playerFlashes: timeline.playerFlashes,
     lolLocalReview: timeline.lolLocalReview,
     ...(timeline.game === 'lol' ? {
       lolAccount: timeline.lolAccount,

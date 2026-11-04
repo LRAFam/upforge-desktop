@@ -34,16 +34,24 @@ export function ticksKey(props: string[], ticks: number[]): string {
 }
 
 const TIMELINE_ROUND = ['total_rounds_played']
+const LIVE_ROUND = ['total_rounds_played', 'is_warmup_period']
 const STATS_TEAM = ['team_num']
-const STATS_ROUND = ['total_rounds_played', 'is_warmup_period']
+const STATS_ROUND = LIVE_ROUND
+
+/**
+ * player_death for the timeline. demoparser2 prefixes player props (X → user_X / attacker_X) and
+ * returns the event's own fields (distance, thrusmoke, attackerblind, assistedflash…) by default.
+ */
+export const CS2_TIMELINE_DEATH_FIELDS = { playerExtra: ['X', 'Y', 'team_num', 'last_place_name'], otherExtra: LIVE_ROUND } as const
 
 /** parseEvent calls made by buildCs2TimelineFromDemo. */
 export const CS2_TIMELINE_EVENTS: ReadonlyArray<[string, string[], string[]]> = [
-  ['player_death', ['user_X', 'user_Y'], TIMELINE_ROUND],
-  ['round_end', ['reason', 'round_win_reason'], TIMELINE_ROUND],
+  ['player_death', [...CS2_TIMELINE_DEATH_FIELDS.playerExtra], [...CS2_TIMELINE_DEATH_FIELDS.otherExtra]],
+  ['round_end', ['reason', 'round_win_reason'], LIVE_ROUND],
   ['round_start', [], TIMELINE_ROUND],
   ['round_freeze_end', [], TIMELINE_ROUND],
-  ['bomb_planted', [], TIMELINE_ROUND],
+  // Valve's place name for the planter ("BombsiteA") names the site; the event's `site` is an entity id.
+  ['bomb_planted', ['last_place_name'], TIMELINE_ROUND],
   ['bomb_defused', [], TIMELINE_ROUND],
   ['bomb_exploded', [], TIMELINE_ROUND],
 ]
@@ -55,7 +63,37 @@ export const CS2_STATS_EVENTS = [
   'round_freeze_end', 'round_end', 'player_death', 'player_hurt', 'weapon_fire', 'player_blind',
 ] as const
 
-export const CS2_STATS_TICK_PROPS = ['team_num', 'is_alive', 'health', 'current_equip_value']
+export const CS2_STATS_TICK_PROPS = ['team_num', 'is_alive', 'health', 'current_equip_value', 'balance']
+
+/** Extra parseEvent calls for the per-round facts (read with the stats fields). */
+export const CS2_FACT_EVENTS = ['grenade_thrown', 'flashbang_detonate'] as const
+
+/** flash_duration either side of each flashbang detonation: who it blinded (many demos have no player_blind). */
+export const CS2_FLASH_TICK_PROPS = ['flash_duration']
+/** Everyone's position at each live death tick: teammates near the player when they died. */
+export const CS2_DEATH_TICK_PROPS = ['X', 'Y', 'team_num', 'is_alive']
+
+const finiteTick = (r: Row): number | null =>
+  typeof r.tick === 'number' && Number.isFinite(r.tick) ? r.tick : null
+
+/** Ticks one before and one after every flashbang detonation. */
+export function cs2FlashSampleTicks(detonations: Row[]): number[] {
+  const out = new Set<number>()
+  for (const d of detonations) {
+    const t = finiteTick(d)
+    if (t == null) continue
+    out.add(Math.trunc(t) - 1)
+    out.add(Math.trunc(t) + 1)
+  }
+  return [...out].filter(t => t >= 0).sort((a, b) => a - b)
+}
+
+/** Ticks of every non-warmup player_death. */
+export function cs2DeathTicks(deaths: Row[]): number[] {
+  return [...new Set(
+    deaths.filter(d => d.is_warmup_period !== true).map(finiteTick).filter((t): t is number => t != null),
+  )].sort((a, b) => a - b)
+}
 
 /** Ticks extractCs2MatchStats snapshots: every round_freeze_end + round_end tick, deduplicated. */
 export function cs2StatsSnapshotTicks(starts: Row[], ends: Row[]): number[] {
@@ -105,11 +143,26 @@ export function collectCs2DemoBundle(source: Cs2DemoSource): Cs2DemoBundle {
     const { playerExtra, otherExtra } = CS2_STATS_EVENT_FIELDS
     statsRows[name] = run(eventKey(name, [...playerExtra], [...otherExtra]), () => source.event(name, [...playerExtra], [...otherExtra]))
   }
+  for (const name of CS2_FACT_EVENTS) {
+    const { playerExtra, otherExtra } = CS2_STATS_EVENT_FIELDS
+    statsRows[name] = run(eventKey(name, [...playerExtra], [...otherExtra]), () => source.event(name, [...playerExtra], [...otherExtra]))
+  }
   const starts = statsRows.round_freeze_end
   const ends = statsRows.round_end
   if (Array.isArray(starts) && Array.isArray(ends)) {
     const ticks = cs2StatsSnapshotTicks(starts as Row[], ends as Row[])
     if (ticks.length) run(ticksKey(CS2_STATS_TICK_PROPS, ticks), () => source.ticks(CS2_STATS_TICK_PROPS, ticks))
+  }
+  const detonations = statsRows.flashbang_detonate
+  if (Array.isArray(detonations)) {
+    const ticks = cs2FlashSampleTicks(detonations as Row[])
+    if (ticks.length) run(ticksKey(CS2_FLASH_TICK_PROPS, ticks), () => source.ticks(CS2_FLASH_TICK_PROPS, ticks))
+  }
+  const deathFields = CS2_TIMELINE_DEATH_FIELDS
+  const deaths = bundle[eventKey('player_death', [...deathFields.playerExtra], [...deathFields.otherExtra])]
+  if (deaths?.ok && Array.isArray(deaths.value)) {
+    const ticks = cs2DeathTicks(deaths.value as Row[])
+    if (ticks.length) run(ticksKey(CS2_DEATH_TICK_PROPS, ticks), () => source.ticks(CS2_DEATH_TICK_PROPS, ticks))
   }
   return bundle
 }

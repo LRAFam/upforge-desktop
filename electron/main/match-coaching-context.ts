@@ -117,5 +117,13 @@ export function roundSummaryForClip(
     playerGotFirstBlood: rs.playerGotFirstBlood,
     playerWasFirstBlood: rs.playerWasFirstBlood,
     playerAbilities: rs.playerAbilities,
+    // CS2 demo round facts (absent for other games / unmeasured).
+    side: rs.side,
+    pistolRound: rs.pistolRound,
+    equipment: rs.equipment,
+    money: rs.money,
+    lastAliveVs: rs.lastAliveVs,
+    lastAliveAfterPlant: rs.lastAliveAfterPlant,
+    openingUtility: rs.openingUtility,
   }
 }

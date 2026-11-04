@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyGameNotes, cs2NotesFacts, cs2ReportView, deadlockReportView, lolReportView, ordinal } from './match-report-games'
+import { applyGameNotes, CS2_ROUND_DATA_MAX_BYTES, cs2NotesFacts, cs2ReportView, deadlockReportView, lolReportView, ordinal } from './match-report-games'
 
 describe('lolReportView', () => {
   const res = {
@@ -173,5 +173,43 @@ describe('cs2NotesFacts', () => {
     expect(cs2NotesFacts({ id: 'r', map: 'de_mirage', match_stats: null })).toBeNull()
     const f = cs2NotesFacts({ id: 'r', map: 'de_mirage', finalStats: { won: false }, match_stats: { player_stats: { kills: 14 } } as never })
     expect(f).toEqual({ map: 'de_mirage', won: false, match_stats: { player_stats: { kills: 14 } } })
+  })
+})
+
+describe('cs2NotesFacts round_data', () => {
+  const t = {
+    id: 'r', map: 'de_dust2', gameMode: 'PREMIER', finalStats: { won: true },
+    match_stats: { player_stats: { kills: 3 } } as never,
+    roundSummaries: [{
+      roundNumber: 0, winningTeam: 'ALLY', ceremony: 'elimination', endTime: 99, playerStats: null, side: 'CT', pistolRound: true,
+      spikePlanted: false, spikeSite: null, spikeDefused: false, equipment: { you: 900, team: 4600, enemy: 3650 },
+      money: { you: 100, team: 700, enemy: 950 }, playerGold: null,
+    }],
+    playerKills: [{ round: 0, alive: '5v5', roundTime: 12.3, distance: 8.1, weapon: 'usp_silencer', killerName: 'You', victimName: 'Bob', videoOffsetMs: 5, spatial: { callout: 'A site', norm: { x: 1, y: 1 } } }],
+    playerDeaths: [{ round: 0, alive: '3v5', afterPlant: true, blind: { seconds: 0 }, traded: false, weapon: 'glock', killerName: 'Bob', spatial: { callout: 'Unknown' } }],
+    firstBloods: [{ round: 0, killerName: 'Bob', victimName: 'Ann' }, { round: 1, killerName: 'You', victimName: 'Bob' }],
+    playerFlashes: { thrown: 4, enemies: 2, teammates: 0, min_seconds: 1 },
+  }
+
+  it('sends game_mode and the round facts, slimmed to the contract keys', () => {
+    expect(cs2NotesFacts(t)).toEqual({
+      map: 'de_dust2', won: true, match_stats: { player_stats: { kills: 3 } }, game_mode: 'premier',
+      round_data: {
+        roundSummaries: [{
+          roundNumber: 0, winningTeam: 'ALLY', side: 'CT', pistolRound: true,
+          equipment: { you: 900, team: 4600, enemy: 3650 }, money: { you: 100, team: 700, enemy: 950 },
+        }],
+        playerKills: [{ round: 0, alive: '5v5', roundTime: 12.3, distance: 8.1, weapon: 'usp_silencer', callout: 'A site' }],
+        playerDeaths: [{ round: 0, alive: '3v5', afterPlant: true, blind: { seconds: 0 }, traded: false, weapon: 'glock' }],
+        firstBloods: [{ round: 1, killerName: 'You' }],
+        playerFlashes: { thrown: 4, enemies: 2, teammates: 0, min_seconds: 1 },
+      },
+    })
+  })
+
+  it('drops round_data that would be too big rather than truncating it', () => {
+    const big = { ...t, playerDeaths: Array.from({ length: 400 }, (_, i) => ({ round: i, alive: '5v5', weapon: 'ak47', roundTime: 10.5, distance: 12.3 })) }
+    expect(JSON.stringify(big.playerDeaths).length).toBeGreaterThan(CS2_ROUND_DATA_MAX_BYTES)
+    expect(cs2NotesFacts(big)).not.toHaveProperty('round_data')
   })
 })
