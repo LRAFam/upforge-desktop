@@ -54,4 +54,21 @@ describe('CS2 GSI live timeline', () => {
     expect(timelineKillsForVod(tl)).toHaveLength(2)
     expect(timelineDeathsForVod(tl)).toHaveLength(0)
   })
+
+  it('times each round end it sees happen (anchors demo time to the video)', () => {
+    const t = new Cs2GsiTracker()
+    t.start(1_000)
+    t.ingest(p(0, {}, 'over'), 1_500) // capture began during round-over: not timed
+    t.ingest(p(0, {}, 'freezetime'), 2_000)
+    t.ingest(p(0, {}, 'live'), 20_000)
+    t.ingest(p(0, {}, 'over'), 101_000)
+    t.ingest(p(0, {}, 'over'), 102_000)
+    t.ingest(p(1, {}, 'freezetime'), 108_000)
+    t.ingest(p(1, {}, 'live'), 123_000)
+    t.ingest(p(1, {}, 'over', { phase: 'gameover' }), 206_000)
+    expect(t.summary()!.roundEnds).toEqual([
+      { round: 0, videoOffsetMs: 100_000 },
+      { round: 1, videoOffsetMs: 205_000 },
+    ])
+  })
 })

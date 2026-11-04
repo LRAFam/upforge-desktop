@@ -17,6 +17,7 @@ import { getCs2ValveDemoDownloadDir } from './cs2-demo-dirs'
 import {
   describeValveCandidates,
   pickValveMatchForSession,
+  valveListHasMovedPast,
   valveMatchFromProtobuf,
   type ValveMatchSummary,
 } from './cs2-valve-match'
@@ -49,6 +50,8 @@ export type ValveDemoFailureCode =
   | 'cs2_running'
   | 'gc_failed'
   | 'no_match'
+  /** Steam lists later matches but not this one — it never will. No automatic retry. */
+  | 'not_listed'
   | 'download_failed'
 
 export type ValveDemoDownloadResult =
@@ -263,7 +266,8 @@ export async function downloadCs2ValveDemoForSession(opts: {
   if (!match) {
     // Evidence for the next log: how far each listed match is from this session (no ids, no names).
     log.info('[CS2ValveDemo] No single match for session', describeValveCandidates(matches, opts.matchSessionStartMs, opts.gsiMap))
-    return { ok: false, error: CS2_DEMO_NO_MATCH_MESSAGE, code: 'no_match' }
+    const code = valveListHasMovedPast(matches, opts.matchSessionStartMs) ? 'not_listed' : 'no_match'
+    return { ok: false, error: CS2_DEMO_NO_MATCH_MESSAGE, code }
   }
 
   const demoPath = path.join(downloadDir, `${match.fileName}.dem`)

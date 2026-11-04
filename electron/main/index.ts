@@ -2504,7 +2504,7 @@ async function retrieveReplayTimelineForRecording(
         parsed = {
           demoPath: valve.demoPath,
           // Keep the mode GSI saw at match start (the demo header does not say Wingman vs Competitive).
-          timeline: await buildTimelineFromDemo({ ...replayCtx, demoPath: valve.demoPath, map: replayCtx.gsiMap, gameMode: rec.gameMode || null }),
+          timeline: await buildTimelineFromDemo({ ...replayCtx, demoPath: valve.demoPath, map: replayCtx.gsiMap, gameMode: rec.gameMode || null, cs2Live: rec.timeline?.cs2Live ?? null }),
         }
       } else {
         setStatus('waiting_match_data', valve.error, valve.code ?? 'gc_failed')
@@ -3083,7 +3083,8 @@ function resumeStuckMatchStatsEnrichment(): void {
     if (rec.analysed) continue
     if (rec.matchStatsSyncPaused) continue
     if (rec.game === 'cs2') {
-      cs2DemoRetrieval.start(rec.id)
+      // Already gave up this session (Steam will not list it): wait for a manual attach / Scan.
+      if (!cs2DemoRetrievalStatus.get(rec.id)?.needsManual) cs2DemoRetrieval.start(rec.id)
       continue
     }
     if (rec.game !== 'valorant' && rec.game !== 'lol') continue

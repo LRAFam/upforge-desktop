@@ -128,6 +128,17 @@ export function pickValveMatchForSession(
   return inWindow.length === 1 && isUnknownMap(inWindow[0].mapName) ? inWindow[0] : null
 }
 
+/**
+ * Steam already lists a match that started after this session's window. GOTV lists matches in the
+ * order they finish, so this session's demo is never coming (Wingman/Casual, or a recording split
+ * from another match): stop automatic lookups instead of re-asking Steam every session.
+ */
+export function valveListHasMovedPast(matches: ValveMatchSummary[], matchSessionStartMs: number): boolean {
+  if (!Number.isFinite(matchSessionStartMs) || matchSessionStartMs <= 0) return false
+  const sessionStartSec = Math.floor(matchSessionStartMs / 1000)
+  return matches.some((m) => Number.isFinite(m.matchTimeSec) && m.matchTimeSec - sessionStartSec > SESSION_WINDOW_SEC)
+}
+
 function isUnknownMap(map: string | null | undefined): boolean {
   return !map || map.trim().toLowerCase() === 'unknown'
 }

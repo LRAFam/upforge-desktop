@@ -23,6 +23,8 @@ export interface DemoTimelineOptions {
   localPlayerName?: string | null
   /** Skip spatial enrichment (faster demo preview). */
   skipSpatial?: boolean
+  /** CS2: what GSI saw live for this recording — anchors demo time to the video. */
+  cs2Live?: import('./cs2-gsi-timeline').Cs2LiveSummary | null
 }
 
 interface RoundKillMeta {

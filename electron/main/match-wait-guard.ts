@@ -116,6 +116,9 @@ export function shouldCancelGenericProcessMiss(
 
 /** User-facing activity line for match-wait cancel. */
 export function formatMatchWaitCancelActivity(reason: string): string {
+  // Closing the game from the menus after a match is normal — nothing was cancelled (3 Nov log).
+  const closed = /^(.+?) process closed before a live match$/i.exec(reason.trim())
+  if (closed) return `${closed[1]} closed — stopped waiting for a match`
   const short = reason
     .replace(/^Shipping\.exe gone and /i, '')
     .replace(/\s+/g, ' ')

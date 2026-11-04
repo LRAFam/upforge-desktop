@@ -9,6 +9,7 @@ import { parseHeader } from '@laihoe/demoparser2'
 import { nativeCs2DemoSource, type Cs2DemoSource } from './cs2-demo-source'
 import type { DemoTimelineOptions } from './demo-timeline'
 import { inferLocalPlayerFromDemoKills, type RoundKillMeta } from './demo-local-player'
+import { estimateCs2DemoVideoShift } from './cs2-demo-video-sync'
 import { cs2AlignedGameTimeMs, emptyMatchData, gameTimeToVideoOffsetMs, tickToMsFromTick } from './recording-sync'
 import { cs2WorldToNorm, getCs2MapTransform, normalizeCs2MapKey } from './spatial/cs2-transforms'
 import { applyDemoSpatialEnrichment, resolveCs2Callout } from './spatial/demo-enrich'
@@ -612,6 +613,20 @@ export function buildCs2TimelineFromDemo(
       `[CS2DemoParser] Parsed demo — map=${timeline.map} rounds=${roundSummaries.length} ` +
       `kills=${playerKills.length}/${playerDeaths.length} events=${killEvents.length} local=${localName ?? 'unknown'}`,
     )
+
+    if (opts.cs2Live) {
+      // Keep the live record and measure where demo time zero sits in the video (warmup made the
+      // match-start estimate 15–40 s early). recomputeTimelineVideoOffsets applies the shift.
+      timeline.cs2Live = opts.cs2Live
+      const sync = estimateCs2DemoVideoShift(timeline, opts.cs2Live)
+      if (sync) {
+        timeline.cs2DemoVideoShiftMs = sync.shiftMs
+        const estimate = -Math.max(0, opts.recordingStartTime - (opts.matchStartTime ?? opts.recordingStartTime))
+        log.info(`[CS2DemoSync] demo→video shift ${sync.shiftMs} ms from ${sync.pairs}/${sync.livePoints} GSI points (match-start estimate ${estimate} ms, diff ${sync.shiftMs - estimate} ms)`)
+      } else {
+        log.info(`[CS2DemoSync] GSI points did not agree (${opts.cs2Live.events.length} events, ${opts.cs2Live.roundEnds?.length ?? 0} round ends) — keeping match-start estimate`)
+      }
+    }
 
     if (!opts.skipSpatial) {
       applyDemoSpatialEnrichment(timeline)

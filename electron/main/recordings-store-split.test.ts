@@ -200,3 +200,26 @@ describe('recordings list payload', () => {
     expect(listRow.timeline).not.toHaveProperty('matchDetails')
   })
 })
+
+describe('CS2 GSI live record (cs2Live) is never lost', () => {
+  const live = { source: 'gsi', events: [{ type: 'kill', round: 0, videoOffsetMs: 40_000 }], roundEnds: [{ round: 0, videoOffsetMs: 120_000 }], rounds: [], stats: null, allyScore: 8, enemyScore: 13 }
+  const cs2Row = (timeline: Record<string, unknown>): NewRecording =>
+    ({ path: media('cs2.mp4'), riotName: 'P', riotTag: '', game: 'cs2', map: 'de_dust2', agent: null, gameMode: 'COMPETITIVE', timeline } as unknown as NewRecording)
+
+  it('survives the split migration (kept in the timeline file, only dropped from the index)', async () => {
+    fs.mkdirSync(root(), { recursive: true })
+    fs.writeFileSync(indexPath(), JSON.stringify([{ ...cs2Row({ game: 'cs2', killEvents: [], cs2Live: live }), id: 'cs2-1', recordedAt: 1, analysed: false }]))
+    await openStore().flush()
+    const file = JSON.parse(fs.readFileSync(path.join(root(), TIMELINES_DIR, 'cs2-1.json'), 'utf-8'))
+    expect(file.cs2Live).toEqual(live)
+    expect(openStore().getById('cs2-1')?.timeline?.cs2Live).toEqual(live)
+  })
+
+  it('survives a demo timeline replacing the live-only one (demo sync / late extract)', async () => {
+    const store = openStore()
+    const rec = store.add(cs2Row({ game: 'cs2', killEvents: [], cs2Live: live }))
+    store.updateTimeline(rec.id, { game: 'cs2', killEvents: [{ EventID: 1 }], playerKills: [] } as never)
+    await store.flush()
+    expect(openStore().getById(rec.id)?.timeline?.cs2Live).toEqual(live)
+  })
+})

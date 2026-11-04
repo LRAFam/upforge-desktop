@@ -356,6 +356,12 @@ export interface MatchData {
    * zero). When set it replaces the loading-time estimate; manual sync nudges still apply on top.
    */
   roundTimerOffsetMs?: number
+  /**
+   * CS2: measured position in the recording of demo time zero (the first round_start), from GSI
+   * live events (cs2-demo-video-sync). When set it replaces the match-start estimate, which is
+   * taken during warmup; manual sync nudges still apply on top.
+   */
+  cs2DemoVideoShiftMs?: number
 
   // Round score progression from presence polling
   roundScores: RoundScore[]
