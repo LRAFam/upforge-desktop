@@ -7,6 +7,7 @@ import {
   type Cs2DemoSource,
 } from './cs2-demo-source'
 import log from 'electron-log'
+import { CS2_TRADE_AFTER_DEATH_MS } from './spatial/trade-flags'
 
 type Row = Record<string, unknown>
 type Metrics = Record<string, number | null>
@@ -179,7 +180,7 @@ export function calculateCs2MatchStats(
     )
       savedKnown = false
     else savedEquipment.push(survived ? carried! : 0)
-    // A trade means a teammate kills our killer within five seconds in the same round.
+    // A trade means a teammate kills our killer within five seconds (CS2_TRADE_AFTER_DEATH_MS) in the same round.
     const traded = ownDeaths.some((d) =>
       events.some(
         (e) =>
@@ -187,7 +188,7 @@ export function calculateCs2MatchStats(
           e.attacker_steamid !== steamId &&
           e.attacker_team_num === side &&
           num(e, 'tick')! > num(d, 'tick')! &&
-          num(e, 'tick')! - num(d, 'tick')! <= 5 * tickRate,
+          num(e, 'tick')! - num(d, 'tick')! <= (CS2_TRADE_AFTER_DEATH_MS / 1000) * tickRate,
       ),
     )
     if (ownKills.length || ownAssists.length || survived || traded) kast++
@@ -343,12 +344,12 @@ export function calculateCs2MatchStats(
   }
 }
 
-export function extractCs2MatchStats(
-  path: string,
+/** Every demo read the stats need. null when a required read fails (stats stay unmeasured). */
+export function readCs2StatsInput(
   steamId: string,
   tickRate: number,
-  source: Cs2DemoSource = nativeCs2DemoSource(path),
-): Cs2MatchStats | null {
+  source: Cs2DemoSource,
+): Cs2StatsInput | null {
   const read = (event: string): Row[] | null => {
     try {
       const rows = source.event(
@@ -377,7 +378,7 @@ export function extractCs2MatchStats(
     log.warn('[CS2Stats] Round snapshots unavailable', String(error))
     return null
   }
-  return calculateCs2MatchStats({
+  return {
     steamId,
     tickRate,
     starts,
@@ -387,5 +388,15 @@ export function extractCs2MatchStats(
     hurts: read('player_hurt'),
     fires: read('weapon_fire'),
     blinds: read('player_blind'),
-  })
+  }
+}
+
+export function extractCs2MatchStats(
+  path: string,
+  steamId: string,
+  tickRate: number,
+  source: Cs2DemoSource = nativeCs2DemoSource(path),
+): Cs2MatchStats | null {
+  const input = readCs2StatsInput(steamId, tickRate, source)
+  return input ? calculateCs2MatchStats(input) : null
 }

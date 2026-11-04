@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CS2_TRADE_AFTER_DEATH_MS,
   TRADE_AFTER_DEATH_MS,
+  tradeWindowMs,
   countAlliesAliveAtDeath,
   deathWasTraded,
   farFromTeam,
@@ -100,5 +102,23 @@ describe('trade flags', () => {
     expect(tradesMeasurable(ownOnly, 'player', allies)).toBe(false)
     expect(tradesMeasurable([...ownOnly, { killerPuuid: 'ally1', victimPuuid: 'enemy1' }], 'player', allies)).toBe(true)
     expect(tradesMeasurable([{ killerPuuid: 'ally1', victimPuuid: 'enemy1' }], 'player', new Set(['player']))).toBe(false)
+  })
+})
+
+describe('trade window per game', () => {
+  const allies = new Set(['player', 'ally1'])
+  const death = { victimPuuid: 'player', killerPuuid: 'enemy1', videoOffsetMs: 10_000, round: 2 }
+  const lateTrade = [{ killerPuuid: 'ally1', victimPuuid: 'enemy1', videoOffsetMs: 14_500, round: 2 }]
+
+  it('keeps Valorant at 3 s and uses 5 s for CS2', () => {
+    expect(TRADE_AFTER_DEATH_MS).toBe(3000)
+    expect(CS2_TRADE_AFTER_DEATH_MS).toBe(5000)
+    expect(tradeWindowMs('valorant')).toBe(3000)
+    expect(tradeWindowMs('cs2')).toBe(5000)
+  })
+
+  it('judges a 4.5 s trade by the game window', () => {
+    expect(deathWasTraded(death, lateTrade, allies)).toBe(false)
+    expect(deathWasTraded(death, lateTrade, allies, 2500, tradeWindowMs('cs2'))).toBe(true)
   })
 })

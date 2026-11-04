@@ -3,7 +3,14 @@
  * isolated (elsewhere) = alliesNearby === 0 (spacing only).
  * untraded / farFromTeam require a living teammate who could partner up.
  */
+/** Valorant trade window. */
 export const TRADE_AFTER_DEATH_MS = 3000
+/** CS2 trade window: one window everywhere for CS2 (KAST, round facts, spatial events). */
+export const CS2_TRADE_AFTER_DEATH_MS = 5000
+
+export function tradeWindowMs(game: string | null | undefined): number {
+  return game === 'cs2' ? CS2_TRADE_AFTER_DEATH_MS : TRADE_AFTER_DEATH_MS
+}
 
 export type TradeFlagSpatial = {
   alliesNearby?: number
@@ -59,7 +66,7 @@ export function countAlliesAliveAtDeath(
 }
 
 /**
- * True when an ally kills the player's killer within TRADE_AFTER_DEATH_MS (same round),
+ * True when an ally kills the player's killer within `windowMs` (same round; Valorant 3 s by default),
  * or kills any enemy who dies within trade radius of the death location (proximity fallback).
  */
 export function deathWasTraded(
@@ -67,6 +74,7 @@ export function deathWasTraded(
   subsequentKills: TradeTimelineEvent[],
   allyPuids: Set<string>,
   tradeRadiusWorld: number = 2500,
+  windowMs: number = TRADE_AFTER_DEATH_MS,
 ): boolean {
   const t0 = death.videoOffsetMs
   if (t0 == null || death.round == null) return false
@@ -76,7 +84,7 @@ export function deathWasTraded(
   for (const k of subsequentKills) {
     if (k.round !== death.round || k.videoOffsetMs == null) continue
     const dt = k.videoOffsetMs - t0
-    if (dt <= 0 || dt > TRADE_AFTER_DEATH_MS) continue
+    if (dt <= 0 || dt > windowMs) continue
     const kKiller = k.killerPuuid?.toLowerCase()
     if (!kKiller || !allyPuids.has(kKiller)) continue
     if (killer && k.victimPuuid?.toLowerCase() === killer) return true

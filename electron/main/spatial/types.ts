@@ -58,11 +58,12 @@ export interface KillSpatial {
   callout: string
   site: string | null
   killerDistance: number | null
-  isolated: boolean
-  alliesNearby: number
+  /** Undefined when not measured (e.g. CS2 kill events, or no positions at the death tick). */
+  isolated?: boolean
+  alliesNearby?: number
   /** Living teammates (excl. self) just before this death. */
   alliesAlive?: number
-  /** Ally traded this death within TRADE_AFTER_DEATH_MS. */
+  /** Ally traded this death within the game's trade window (trade-flags.ts tradeWindowMs). */
   traded?: boolean
   /** Riot world coords of victim at death (for proximity trade fallback). */
   victimWorld?: { x: number; y: number }

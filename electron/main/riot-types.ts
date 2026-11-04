@@ -46,6 +46,20 @@ export interface KillEvent extends GameEvent {
   victimUserId?: number
   /** Minimap position + callout (from Riot victimLocation + zone pack). */
   spatial?: import('./spatial/types').KillSpatial
+  /** CS2 demo facts for the local player's kills/deaths (cs2-round-facts.ts). Absent = unmeasured. */
+  alive?: string
+  afterPlant?: true
+  /** Seconds since that round's freeze end. */
+  roundTime?: number
+  /** player_death.distance (metres). */
+  distance?: number
+  thruSmoke?: true
+  attackerBlind?: true
+  assistedFlash?: true
+  /** Deaths only: flash left on the player at death ({seconds: 0} = measured, not blind). */
+  blind?: import('./cs2-round-facts').Cs2BlindFact
+  /** Deaths only: a teammate killed the killer within the game's trade window (CS2 5 s). */
+  traded?: boolean
 }
 
 /** Per-round plant coords kept in uploaded match_data (survives matchDetails strip). */
@@ -200,6 +214,17 @@ export interface RoundSummary {
   playerArmor: string | null
   /** Total damage dealt by the player this round (from Riot roundResults.playerStats.damage) */
   playerDamageDealt: number | null
+  /** CS2 demo facts (cs2-round-facts.ts). Absent = unmeasured. */
+  side?: 'CT' | 'T'
+  pistolRound?: true
+  /** current_equip_value at freeze end: the player's, team sum, enemy sum. */
+  equipment?: { you: number; team: number; enemy: number }
+  /** balance (money not spent) at freeze end. */
+  money?: { you: number; team: number; enemy: number }
+  lastAliveVs?: number
+  lastAliveAfterPlant?: true
+  /** Team grenades thrown in the 5 s before an opening duel the player was in. */
+  openingUtility?: Record<string, number>
 }
 
 /** Per-player stats snapshot for the full team — captured at match end */
@@ -306,6 +331,8 @@ export interface SessionState {
 export interface MatchData {
   /** Measured CS2 demo statistics; null fields mean unavailable, never inferred. */
   match_stats?: import('./cs2-match-stats').Cs2MatchStats | null
+  /** CS2: the player's flashes from flash_duration samples (cs2-round-facts.ts). */
+  playerFlashes?: import('./cs2-round-facts').Cs2PlayerFlashes
   /** CS2 kills / deaths / rounds seen live via GSI (no demo). Never counts as rich match data. */
   cs2Live?: import('./cs2-gsi-timeline').Cs2LiveSummary | null
   lolLocalReview?: LolLocalReview | null

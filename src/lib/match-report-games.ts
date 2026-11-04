@@ -191,11 +191,21 @@ export function deadlockReportView(res: DeadlockReportResponse): MatchReportView
 
 // ---------------------------------------------------------------- CS2
 
+type LooseRow = Record<string, unknown>
+
 export interface Cs2ReportTimeline {
   id: string
   map?: string | null
+  /** Desktop mode id (COMPETITIVE, PREMIER, WINGMAN…). */
+  gameMode?: string | null
   match_stats?: Cs2StatsV1 | null
   finalStats?: { won?: boolean | null } | null
+  /** Parsed-demo round facts (electron/main/cs2-round-facts.ts); older timelines lack the new keys. */
+  roundSummaries?: LooseRow[] | null
+  playerKills?: LooseRow[] | null
+  playerDeaths?: LooseRow[] | null
+  firstBloods?: LooseRow[] | null
+  playerFlashes?: LooseRow | null
 }
 
 /** null when the demo hasn't been parsed yet (the page shows "needs the demo"). */
@@ -269,8 +279,79 @@ export function applyGameNotes(view: MatchReportView, res: GameNotesResult | nul
   }
 }
 
+export interface Cs2RoundData {
+  roundSummaries: LooseRow[]
+  playerKills: LooseRow[]
+  playerDeaths: LooseRow[]
+  firstBloods: LooseRow[]
+  /** {thrown, enemies, teammates, min_seconds, enemy_seconds_avg?} when flashes were measured. */
+  playerFlashes?: LooseRow
+}
+
+export interface Cs2NotesFacts {
+  map: string | null
+  won: boolean | null
+  match_stats: Cs2StatsV1
+  game_mode?: string
+  round_data?: Cs2RoundData
+}
+
+/** Contract §1 keys only (CS2 wave 1); everything else on the timeline stays on this PC. */
+const CS2_ROUND_KEYS = ['roundNumber', 'winningTeam', 'side', 'pistolRound', 'spikePlanted', 'spikeSite', 'spikeDefused',
+  'equipment', 'money', 'lastAliveVs', 'lastAliveAfterPlant', 'openingUtility'] as const
+const CS2_EVENT_KEYS = ['round', 'alive', 'afterPlant', 'roundTime', 'distance', 'thruSmoke', 'attackerBlind', 'assistedFlash',
+  'firstShot', 'blind', 'traded', 'weapon'] as const
+/** Flags that only mean something when true (false = not sent, as the AI service's demo build). */
+const TRUE_ONLY = new Set(['pistolRound', 'spikePlanted', 'spikeDefused', 'lastAliveAfterPlant', 'afterPlant', 'thruSmoke', 'attackerBlind', 'assistedFlash'])
+export const CS2_ROUND_DATA_MAX_BYTES = 30_000
+
+function pickKeys(row: LooseRow, keys: readonly string[]): LooseRow {
+  const out: LooseRow = {}
+  for (const key of keys) {
+    const v = row[key]
+    if (v === undefined || v === null) continue
+    if (TRUE_ONLY.has(key) && v !== true) continue
+    out[key] = v
+  }
+  return out
+}
+
+function slimCs2Event(row: LooseRow): LooseRow {
+  const out = pickKeys(row, CS2_EVENT_KEYS)
+  const callout = (row.spatial as LooseRow | undefined)?.callout
+  if (typeof callout === 'string' && callout.trim() && callout !== 'Unknown') out.callout = callout
+  return out
+}
+
+/** The parsed-demo round facts (contract §2 `round_data`), slimmed; null when there are none or they are too big. */
+export function cs2RoundData(t: Cs2ReportTimeline): Cs2RoundData | null {
+  const rows = (v: LooseRow[] | null | undefined) => (Array.isArray(v) ? v.filter(r => r && typeof r === 'object') : [])
+  const data: Cs2RoundData = {
+    roundSummaries: rows(t.roundSummaries).map(r => pickKeys(r, CS2_ROUND_KEYS)),
+    playerKills: rows(t.playerKills).map(slimCs2Event),
+    playerDeaths: rows(t.playerDeaths).map(slimCs2Event),
+    firstBloods: rows(t.firstBloods).flatMap((r): LooseRow[] => {
+      if (typeof r.round !== 'number') return []
+      if (r.killerName === 'You') return [{ round: r.round, killerName: 'You' }]
+      if (r.victimName === 'You') return [{ round: r.round, victimName: 'You' }]
+      return []
+    }),
+  }
+  const flashes = t.playerFlashes
+  if (flashes && typeof flashes === 'object') {
+    data.playerFlashes = pickKeys(flashes, ['thrown', 'enemies', 'teammates', 'min_seconds', 'enemy_seconds_avg'])
+  }
+  if (!data.roundSummaries.length && !data.playerKills.length && !data.playerDeaths.length) return null
+  return JSON.stringify(data).length <= CS2_ROUND_DATA_MAX_BYTES ? data : null
+}
+
 /** The CS2 facts the API checks notes against (from the parsed demo only). */
-export function cs2NotesFacts(t: Cs2ReportTimeline): { map: string | null; won: boolean | null; match_stats: Cs2StatsV1 } | null {
+export function cs2NotesFacts(t: Cs2ReportTimeline): Cs2NotesFacts | null {
   if (!t.match_stats?.player_stats) return null
-  return { map: t.map ?? null, won: t.finalStats?.won ?? null, match_stats: t.match_stats }
+  const facts: Cs2NotesFacts = { map: t.map ?? null, won: t.finalStats?.won ?? null, match_stats: t.match_stats }
+  const mode = t.gameMode?.trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (mode) facts.game_mode = mode
+  const roundData = cs2RoundData(t)
+  if (roundData) facts.round_data = roundData
+  return facts
 }
