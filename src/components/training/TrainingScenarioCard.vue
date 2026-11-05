@@ -7,6 +7,8 @@ defineProps<{
   scenario: TrainerScenarioKey
   label: string
   description: string
+  /** Beta drill: shows a small Beta badge. */
+  beta?: boolean
   difficulty: TrainerDifficulty
   durationSeconds: number
   personalBest: number | null
@@ -40,7 +42,7 @@ const emit = defineEmits<{ play: [] }>()
     <div class="flex w-full items-start gap-4">
       <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03]" :class="accent.color"><TrainingIcon :name="scenario" class="h-6 w-6" /></div>
       <div class="min-w-0 flex-1">
-        <h3 class="text-base font-semibold text-white">{{ label }}</h3>
+        <h3 class="flex items-center gap-2 text-base font-semibold text-white">{{ label }}<span v-if="beta" class="rounded-md border border-amber-500/30 bg-amber-500/[0.08] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-300">Beta</span></h3>
         <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-400">
           <span class="capitalize">{{ difficulty }}</span>
           <span aria-hidden="true">·</span>

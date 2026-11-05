@@ -2,7 +2,9 @@
  * Pure helpers for the UI v3 Practice screen (no Vue, no IPC) so they can be unit-tested.
  * All numbers come from the training API via TrainingHubView; nothing here invents data.
  */
-import type { TrainerScenarioKey } from '../../../lib/trainer-scenarios'
+import { isBetaScenario, type TrainerScenarioKey } from '../../../lib/trainer-scenarios'
+import { coachingStatLine, isMatchStatsDrill, type CoachingDrillSourceFields, type CoachingStatLine } from '../../../lib/coaching-drill-stat'
+import { isCurrentScoringRun } from '../../../lib/training-result-metrics'
 
 export type PracticeTab = 'train' | 'analytics' | 'leaderboards' | 'loadouts'
 export type PracticeCategory = 'all' | 'aim' | 'reaction' | 'precision' | 'duel'
@@ -79,16 +81,16 @@ export function sessionMinutes(steps: SessionStepLike[]): number | null {
 
 // ── Scoring update ────────────────────────────────────────────────────────────
 /**
- * Desktop 2.12.12 (24 Sep 2026) started sending `metadata.scoring_version = 2`, and the API
- * (TrainingComparison::VERSION, commit 2122149) counts only those runs for personal bests,
- * benchmarks and leaderboards. Older runs stay in history but have no best. Say so instead of "Not played".
+ * Trainer 1.11 (Nov 2026) sends `metadata.scoring_version = 3` (scoring fixed; tracking drills score time on
+ * target). Personal bests, comparisons and leaderboards only count runs of CURRENT_SCORING_VERSION; v2 and
+ * older runs stay in history but have no best. Say so instead of "Not played".
  */
-export const SCORING_UPDATE_LABEL = '24 Sep 2026'
+export const SCORING_UPDATE_LABEL = 'Nov 2026'
 
 interface RunLike { scenario: string; score: number; metadata?: Record<string, unknown> }
 
 export function isOldScoringRun(run: RunLike): boolean {
-  return run.metadata?.scoring_version !== 2
+  return !isCurrentScoringRun(run)
 }
 
 /** Best score per drill among runs from before the scoring update (they don't count as personal bests). */
@@ -120,7 +122,7 @@ export function noBestCaption(oldBest: number | null | undefined): string {
 }
 
 // ── Drills from your matches (coaching drills from /api/drills) ───────────────
-export interface CoachingDrillLike {
+export interface CoachingDrillLike extends CoachingDrillSourceFields {
   id: number
   category: string
   title: string
@@ -145,6 +147,13 @@ export interface MatchDrillRow {
   trainerScenario: string | null
   steps: string | null
   goal: string | null
+  /** From repeated match-stat problems (`source: 'match_stats'`), not a VOD. */
+  fromMatches: boolean
+  /** Coach's reason quoting the player's numbers (match-stats drills only). */
+  why: string | null
+  /** "HS 16% → target 19% · now 17%" (match-stats drills only). */
+  stat: CoachingStatLine | null
+  beta: boolean
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -184,14 +193,30 @@ export function matchDrillRows(
       trainerScenario,
       steps: d.instructions?.trim() || null,
       goal: d.success_metric?.trim() || null,
+      ...coachingDrillExtras(d, trainerScenario),
     }
   })
 }
 
+/** Match-stats label, why line, stat line and Beta tag for a coaching drill (VOD drills get none but Beta). */
+export function coachingDrillExtras(
+  d: CoachingDrillSourceFields,
+  scenario: string | null | undefined,
+): Pick<MatchDrillRow, 'fromMatches' | 'why' | 'stat' | 'beta'> {
+  const fromMatches = isMatchStatsDrill(d)
+  return {
+    fromMatches,
+    why: fromMatches ? d.why?.trim() || null : null,
+    stat: fromMatches ? coachingStatLine(d.stat) : null,
+    beta: d.beta === true || isBetaScenario(scenario),
+  }
+}
+
 /**
  * One rule for every game (cross-game pass 2026-11-02). The drill library, daily challenge and quick play are
- * general aim practice for every game. The focus, "Drills from your matches", the focus reason on the guided
- * session and the calibration tool come from Valorant analyses, so only Valorant shows them.
+ * general aim practice for every game. The focus, the focus reason on the guided session and the calibration
+ * tool come from Valorant analyses, so only Valorant shows them. "Drills from your matches" are coach-assigned
+ * for the player's game, so they always show (Nov 2026).
  * The note is the one honest line a non-Valorant player sees. Sensitivity: the trainer converts CS2 and
  * Deadlock (0.022°/count, upforge-trainer MouseSensitivity.gd); League has no aim sensitivity.
  */
@@ -207,12 +232,12 @@ export function practiceGameScope(game: string | null | undefined): PracticeGame
     case undefined:
       return { matchCoaching: true, note: null }
     case 'cs2':
-      return { matchCoaching: false, note: 'These are general aim drills. Set the trainer to CS2 sensitivity in Settings › Trainer so they feel like your game. Drills picked from your matches are Valorant-only for now.' }
+      return { matchCoaching: false, note: 'These are general aim drills. Set the trainer to CS2 sensitivity in Settings › Trainer so they feel like your game. Drills the coach adds from your match stats are Valorant-only for now.' }
     case 'deadlock':
-      return { matchCoaching: false, note: 'These are general aim drills. Set the trainer to Deadlock sensitivity in Settings › Trainer so they feel like your game. Drills picked from your matches are Valorant-only for now.' }
+      return { matchCoaching: false, note: 'These are general aim drills. Set the trainer to Deadlock sensitivity in Settings › Trainer so they feel like your game. Drills the coach adds from your match stats are Valorant-only for now.' }
     case 'lol':
       return { matchCoaching: false, note: 'These are aim drills for shooters, so they won’t help much in League. League drills come with Riot stats coaching, on the match page of a recorded game.' }
     default:
-      return { matchCoaching: false, note: 'These are general aim drills. Drills picked from your matches are Valorant-only for now.' }
+      return { matchCoaching: false, note: 'These are general aim drills. Drills the coach adds from your match stats are Valorant-only for now.' }
   }
 }

@@ -50,15 +50,17 @@ describe('scoring update', () => {
   const runs = [
     { scenario: 'flick', score: 48, metadata: { difficulty: 'medium' } },
     { scenario: 'flick', score: 53 },
-    { scenario: 'duel', score: 41, metadata: { scoring_version: 2, difficulty: 'medium' } },
+    { scenario: 'duel', score: 41, metadata: { scoring_version: 3, difficulty: 'medium' } },
   ]
   it('keeps old-scoring bests apart from current runs', () => {
     expect(oldScoringBests(runs)).toEqual({ flick: 53 })
+    // v2 runs are legacy relative to scoring v3
+    expect(oldScoringBests([...runs, { scenario: 'duel', score: 70, metadata: { scoring_version: 2, difficulty: 'medium' } }])).toEqual({ flick: 53, duel: 70 })
     expect(oldScoringBests(null)).toEqual({})
   })
   it('explains why old runs have no personal best', () => {
-    expect(oldScoringNote(runs, 3)).toBe('Your 2 runs from before 24 Sep 2026 used the old scoring, so they don’t count towards personal bests. They stay in your history.')
-    expect(oldScoringNote(runs, 80)).toMatch(/^Runs from before 24 Sep 2026/)
+    expect(oldScoringNote(runs, 3)).toBe('Your 2 runs from before Nov 2026 used the old scoring, so they don’t count towards personal bests. They stay in your history.')
+    expect(oldScoringNote(runs, 80)).toMatch(/^Runs from before Nov 2026/)
     expect(oldScoringNote([runs[2]], 1)).toBeNull()
   })
   it('captions a drill with no current best', () => {
@@ -78,9 +80,26 @@ describe('drills from your matches', () => {
       { id: 4, category: 'utility_usage', title: 'Empress Timing', instructions: 'x', success_metric: null, practice_mode: 'custom_game', trainer_scenario: null, godot_config: { scenario: 'flick' } },
     ], label, 4)
     expect(rows[3]).toMatchObject({ meta: 'Utility · Custom game', trainerScenario: null })
-    expect(rows[0]).toEqual({ id: 1, title: 'Empress Timing — Pre-Execute Only Custom Practice', meta: 'Utility · Custom game', trainerScenario: null, steps: 'Load Haven.', goal: 'Never early.' })
+    expect(rows[0]).toEqual({ id: 1, title: 'Empress Timing — Pre-Execute Only Custom Practice', meta: 'Utility · Custom game', trainerScenario: null, steps: 'Load Haven.', goal: 'Never early.', fromMatches: false, why: null, stat: null, beta: false })
     expect(rows[1]).toMatchObject({ title: 'Flick Warm-up', meta: 'Mechanics · Trainer: Flick', trainerScenario: 'flick' })
     expect(rows[2]).toMatchObject({ meta: 'Agent play · Deathmatch', trainerScenario: null })
+  })
+  it('adds the label, why and stat line for match-stats drills (VOD drills unchanged)', () => {
+    const [stats, vod] = matchDrillRows([
+      {
+        id: 9, category: 'mechanics', title: 'Head-level flicks', instructions: null, success_metric: null, practice_mode: null,
+        trainer_scenario: 'flick', source: 'match_stats', beta: true,
+        why: ' Your headshots were 16% of 230 hits that landed across your last 5 ranked matches. ',
+        stat: { label: 'HS', better: 'higher', baseline_pct: 16, current_pct: null, target_pct: 19, matches: 5 },
+      },
+      { id: 10, category: 'mechanics', title: 'Flick', instructions: null, success_metric: null, practice_mode: null, trainer_scenario: 'flick', source: 'vod', why: 'ignored', stat: null },
+    ], label)
+    expect(stats).toMatchObject({
+      fromMatches: true, beta: true, trainerScenario: 'flick',
+      why: 'Your headshots were 16% of 230 hits that landed across your last 5 ranked matches.',
+      stat: { text: 'HS 16% → target 19%', trend: null },
+    })
+    expect(vod).toMatchObject({ fromMatches: false, why: null, stat: null, beta: false })
   })
   it('limits to three rows and keeps untagged titles', () => {
     expect(matchDrillRows(Array.from({ length: 5 }, (_, i) => ({ id: i, category: 'x', title: 'T', instructions: null, success_metric: null, practice_mode: null })), label)).toHaveLength(3)

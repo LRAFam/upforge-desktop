@@ -48,6 +48,28 @@ export type SaveToCloudResult =
       failureCode?: string
     }
 
+/** Launch that a trainer result / session-ended belongs to (sent by main as the 2nd arg of `trainer:session-result`). */
+export interface TrainerLaunchInfo {
+  launchId: number
+  scenario: string
+  duration_seconds: number
+  difficulty: 'easy' | 'medium' | 'hard' | 'pro'
+  user_drill_id?: number
+  context?: { weakness?: string; score?: number; user_rank?: string }
+}
+
+export type TrainerEndReason =
+  | 'completed' | 'user_exit' | 'unknown_scenario' | 'invalid_config' | 'error' | 'crashed' | 'launch_failed'
+
+/** `trainer:session-ended` payload: exactly one per launch. */
+export interface TrainerSessionEnded {
+  launchId: number
+  reason: TrainerEndReason
+  scenario: string | null
+  message?: string
+  exitCode?: number | null
+}
+
 export interface TrainerLeaderboardEntry {
   rank: number
   user_id: number
@@ -105,6 +127,7 @@ export interface CoachingDrill {
   id: number
   category: string
   title: string
+  description?: string | null
   instructions: string | null
   success_metric: string | null
   practice_mode: string | null
@@ -114,11 +137,18 @@ export interface CoachingDrill {
   baseline_score: number
   target_score: number
   status: string
+  attempt_count?: number
   godot_config?: {
     scenario?: string
     difficulty?: string
     duration_seconds?: number
   } | null
+  /** 'vod' or 'match_stats' (coach drills from repeated match-stat problems). Absent on older APIs. */
+  source?: import('./lib/coaching-drill-stat').CoachingDrillSource | null
+  /** Coach's reason, quoting the player's own numbers (match_stats drills). */
+  why?: string | null
+  stat?: import('./lib/coaching-drill-stat').CoachingDrillStat | null
+  beta?: boolean
 }
 
 /** Settings › Advanced diagnostics capture (electron/main/game-data-capture.ts). */
@@ -280,6 +310,7 @@ export interface AppSettings {
     pollingRate: 125 | 250 | 500 | 1000 | 2000 | 4000
     movementSpeed: number
     trainerVolume: number
+    scopedMultiplier: number
   }
   /** Crosshair appearance for the aim trainer */
   crosshairSettings: {
@@ -1681,11 +1712,16 @@ declare global {
         saveReplayClip: () => Promise<{ path: string | null }>
       }
       trainer: {
-        launch: (config: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
+        /** Resolves after the trainer connected and got the config. `{ ok: false }` = it did not start (show `error`). */
+        launch: (config: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; launchId?: number }>
         kill: () => Promise<{ ok: boolean }>
+        /** Last launched drill, kept after it ends (survives a view remount). */
+        getLastLaunch: () => Promise<TrainerLaunchInfo | null>
         getHistory: (comparison?: import('./lib/training-result-metrics').TrainingComparisonRequest) => Promise<TrainingHistory | null>
         getPlan: () => Promise<SharedTrainingPlan | null>
         getCoachingDrills: () => Promise<CoachingDrill[]>
+        /** POST /api/drills/{id}/dismiss ("Not now"). */
+        dismissCoachingDrill: (id: number) => Promise<{ ok: true } | { ok: false; error: string }>
         getCorrelation: () => Promise<string[]>
         getBenchmark: () => Promise<TrainingBenchmark | null>
         getAiCoaching: () => Promise<{

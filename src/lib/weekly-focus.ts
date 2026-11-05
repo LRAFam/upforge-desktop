@@ -6,6 +6,7 @@ import {
   type SkillProfileSnapshot,
 } from './skill-profile'
 import { pickTrainingScenario, trainingScenarioLabel } from './training-drills'
+import { isNonTrainerCategory } from './trainer-scenarios'
 import { scoreGrade } from './analysis-scoring'
 
 export interface PlaystyleFocusArea {
@@ -16,7 +17,8 @@ export interface PlaystyleFocusArea {
 
 export interface WeeklyFocusPlan {
   goal: string
-  drill: { label: string; scenario: string }
+  /** `scenario` is null when the focus is not an aim-trainer skill (utility / economy / comms): practise it in game. */
+  drill: { label: string; scenario: string | null }
   metric: { label: string; hint: string }
   recurrence?: string
   grade?: string | null
@@ -54,8 +56,8 @@ export function buildWeeklyFocusPlan(opts: {
 }): WeeklyFocusPlan | null {
   const profile = opts.skillProfile
   const topIssue = topIssueFromProfile(profile)
-  const playstyleText = opts.playstyleFocus?.find((f) => f.severity !== 'low')?.text
-    ?? opts.playstyleFocus?.[0]?.text
+  const playstyleArea = opts.playstyleFocus?.find((f) => f.severity !== 'low') ?? opts.playstyleFocus?.[0]
+  const playstyleText = playstyleArea?.text
 
   let goal =
     playstyleText
@@ -70,7 +72,13 @@ export function buildWeeklyFocusPlan(opts: {
 
   if (!goal) return null
 
-  const scenario = pickTrainingScenario(goal, topIssue?.tag, playstyleText)
+  // A utility / economy / comms / agent-pool / team-comp focus has no aim-trainer drill
+  // (the playstyle API uses its own names: "utility", "agent_pool", "team_comp").
+  const goalFromPlaystyle = !!playstyleText && goal === playstyleText
+  const nonTrainer = goalFromPlaystyle
+    && (isNonTrainerCategory(playstyleArea?.category)
+      || ['utility', 'agent_pool', 'team_comp'].includes(playstyleArea?.category ?? ''))
+  const scenario = nonTrainer ? null : pickTrainingScenario(goal, topIssue?.tag, playstyleText)
   const scores = buildSkillScores(profile, { rankName: opts.rankName })
   const weakest = [...scores].sort((a, b) => a.score - b.score)[0]
   const metricBase = METRIC_BY_SKILL[weakest?.id ?? 'crosshair']
@@ -87,7 +95,7 @@ export function buildWeeklyFocusPlan(opts: {
 
   return {
     goal,
-    drill: { label: trainingScenarioLabel(scenario), scenario },
+    drill: scenario ? { label: trainingScenarioLabel(scenario), scenario } : { label: 'Practise in game', scenario: null },
     metric: { label: metricBase.label, hint: metricHint },
     recurrence,
     grade: opts.avgSessionScore != null ? scoreGrade(opts.avgSessionScore) : null,

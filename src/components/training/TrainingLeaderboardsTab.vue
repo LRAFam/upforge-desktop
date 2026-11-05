@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from 'vue'
-import { TRAINER_SCENARIOS, type TrainerScenarioKey } from '../../lib/trainer-scenarios'
+import { trainerScenariosForGame, type TrainerScenarioKey } from '../../lib/trainer-scenarios'
+import { usePrimaryGame } from '../../composables/usePrimaryGame'
 import { TRAINING_ARTWORK } from '../../lib/training-icons'
 import type { ProfileData, TrainerLeaderboardEntry } from '../../env.d.ts'
 import { playerIdentity, type PlayerIdentity } from '../../lib/player-identity'
@@ -11,12 +12,15 @@ import UfTabs from '../v3/UfTabs.vue'
 import UfSkeleton from '../v3/UfSkeleton.vue'
 import EmptyArt from '../v3/empty/EmptyArt.vue'
 import { isBest, leaderboardYouRow, type LeaderboardYouRow } from '../v3/practice/practice-session-v3'
-import { trainingTimestamp } from '../../lib/training-result-metrics'
+import { CURRENT_SCORING_VERSION, trainingTimestamp } from '../../lib/training-result-metrics'
 import '../v3/practice/practice-v3.css'
 
 const PERIOD_TABS = [{ key: 'week', label: 'This week' }, { key: 'month', label: 'This month' }, { key: 'all', label: 'All time' }]
 
 const activeScenario = ref<TrainerScenarioKey>('flick')
+// Valorant-only drills are left out of the picker for other primary games.
+const { primaryGame } = usePrimaryGame()
+const pickerScenarios = computed(() => trainerScenariosForGame(primaryGame.value))
 const activePeriod = ref<'week' | 'month' | 'all'>('week')
 const difficulty = ref('medium')
 const durationSeconds = ref(60)
@@ -44,7 +48,7 @@ async function loadYou(rows: TrainerLeaderboardEntry[]): Promise<LeaderboardYouR
   try {
     const h = await window.api.trainer.getHistory({
       scenario: activeScenario.value, difficulty: difficulty.value, duration_seconds: durationSeconds.value,
-      scoring_version: 2, before: new Date().toISOString(),
+      scoring_version: CURRENT_SCORING_VERSION, before: new Date().toISOString(),
     })
     if (!h) return null
     return leaderboardYouRow(rows, h.sessions, activePeriod.value, Date.now(), 50, trainingTimestamp)
@@ -79,7 +83,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
     <div class="uf-lb-filters uf-rise">
       <label class="uf-lb-field"><span class="uf-t4">Drill</span>
         <select v-model="activeScenario" class="uf-pselect uf-lb-select">
-          <option v-for="s in TRAINER_SCENARIOS" :key="s.key" :value="s.key">{{ s.label }}</option>
+          <option v-for="s in pickerScenarios" :key="s.key" :value="s.key">{{ s.label }}</option>
         </select>
       </label>
       <label class="uf-lb-field"><span class="uf-t4">Difficulty</span>
@@ -135,7 +139,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
         v-model="activeScenario"
         class="rounded-lg border border-white/[0.10] bg-black/30 px-3 py-2 text-[12px] font-semibold text-white"
       >
-        <option v-for="s in TRAINER_SCENARIOS" :key="s.key" :value="s.key">{{ s.label }}</option>
+        <option v-for="s in pickerScenarios" :key="s.key" :value="s.key">{{ s.label }}</option>
       </select>
       <select v-model="difficulty" aria-label="Difficulty" class="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-white">
         <option v-for="d in ['easy', 'medium', 'hard', 'pro']" :key="d" :value="d">{{ d }}</option>

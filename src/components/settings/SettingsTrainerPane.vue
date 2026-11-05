@@ -87,6 +87,10 @@ const HOTKEY_ROWS = [
         <input :value="settings.trainerMouse.trainerVolume ?? 80" type="range" min="0" max="100" step="5" aria-label="Trainer volume" class="uf-range" @input="settings.trainerMouse.trainerVolume = Number(($event.target as HTMLInputElement).value); debouncedSave()">
         <p class="uf-t4">Hit and miss sounds in the aim trainer.</p>
       </div>
+      <label class="uf-field"><span class="uf-t3">Scoped sensitivity multiplier</span>
+        <input v-model.number="settings.trainerMouse.scopedMultiplier" type="number" min="0.1" max="3" step="0.01" class="uf-input" @change="debouncedSave">
+        <span class="uf-t4">Match your in-game Scoped Sensitivity Multiplier</span>
+      </label>
     </SettingsSection>
 
     <SettingsSection title="Crosshair" hint="Preview and edit your trainer crosshair">
@@ -245,6 +249,18 @@ const HOTKEY_ROWS = [
           @input="debouncedSave"
         />
         <p class="mt-1 text-xs text-gray-600">Hit and miss sounds in the aim trainer.</p>
+      </div>
+
+      <div>
+        <label for="trainer-scoped-multiplier" class="mb-2 block text-xs text-gray-400">Scoped sensitivity multiplier</label>
+        <input
+          id="trainer-scoped-multiplier"
+          v-model.number="settings.trainerMouse.scopedMultiplier"
+          type="number" min="0.1" max="3" step="0.01"
+          class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none"
+          @change="debouncedSave"
+        />
+        <p class="mt-1 text-xs text-gray-600">Match your in-game Scoped Sensitivity Multiplier</p>
       </div>
     </SettingsSection>
 

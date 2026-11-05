@@ -132,12 +132,10 @@ const weekCount = computed(() => analysedThisWeek(d.dashboardAnalyses.value))
 const drillBusy = ref(false)
 async function runWeeklyDrill() {
   const plan = d.weeklyFocus.value
-  if (!plan || drillBusy.value) return
+  if (!plan?.drill.scenario || drillBusy.value) return
   drillBusy.value = true
   try {
-    await window.api.trainer.launch({ scenario: plan.drill.scenario, difficulty: 'medium', duration: 60 })
-  } catch {
-    await d.router.push('/training')
+    await d.launchDashboardDrill(plan.drill.scenario)
   } finally {
     drillBusy.value = false
   }
@@ -361,7 +359,7 @@ async function runPrimary() {
           <p v-if="d.trainerLastSession.value" class="uf-t4">Last drill: {{ d.trainerLastSession.value.scenario }} · {{ d.trainerLastSession.value.score }}</p>
           <p v-else-if="!d.weeklyFocus.value" class="uf-t4" style="color: var(--uf-muted)">A few minutes of aim drills before you queue.</p>
           <span class="home3-links">
-            <button v-if="d.weeklyFocus.value" type="button" class="uf-link" :disabled="drillBusy" @click="runWeeklyDrill">Run it →</button>
+            <button v-if="d.weeklyFocus.value?.drill.scenario" type="button" class="uf-link" :disabled="drillBusy" @click="runWeeklyDrill">Run it →</button>
             <button type="button" class="uf-link" @click="d.router.push('/training')">Open practice →</button>
           </span>
         </section>

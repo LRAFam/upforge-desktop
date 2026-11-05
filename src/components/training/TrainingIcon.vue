@@ -20,7 +20,7 @@ const paths: Record<string, string> = {
   head_height: 'M2 9h5 M17 9h5 M15 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0 M6 21v-3a6 6 0 0 1 12 0v3',
   strafe_aim: 'M2 18h20 M2 18l3-3 M2 18l3 3 M22 18l-3-3 M22 18l-3 3 M12 3v8 M8 7h8',
 }
-const aliases: Record<string, string> = {train:'aim',microadjust:'precision',microflick:'flick'}
+const aliases: Record<string, string> = {train:'aim',microadjust:'precision',microflick:'flick',hold_angle:'head_height',jiggle_peek:'angle_clearing',trade_window:'duel',clear_site:'angle_clearing',flash_swing:'duel',operator_hold:'duel',defuse_decision:'angle_clearing',retake_crossfire:'duel'}
 </script>
 <template>
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0">

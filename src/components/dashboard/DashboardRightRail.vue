@@ -20,6 +20,7 @@ const {
   playerCardUrl,
   quotaPercent,
   router,
+  launchDashboardDrill,
 } = useDashboard()
 
 const sidebarPaths = new Set(WEB_SIDEBAR_LINKS.map(l => l.path))
@@ -63,16 +64,10 @@ const avgHs = computed(() => {
 
 async function runDrill() {
   const plan = weeklyFocus.value
-  if (!plan || launchBusy.value) return
+  if (!plan?.drill.scenario || launchBusy.value) return
   launchBusy.value = true
   try {
-    await window.api.trainer.launch({
-      scenario: plan.drill.scenario,
-      difficulty: 'medium',
-      duration: 60,
-    })
-  } catch {
-    router.push('/training')
+    await launchDashboardDrill(plan.drill.scenario)
   } finally {
     launchBusy.value = false
   }
@@ -174,6 +169,7 @@ async function runDrill() {
           <div class="flex-1 min-w-0">
             <p class="text-[13px] font-semibold text-gray-200">{{ weeklyFocus.drill.label }}</p>
             <button
+              v-if="weeklyFocus.drill.scenario"
               type="button"
               class="text-[12px] font-bold text-red-400 mt-1 disabled:opacity-50"
               :disabled="launchBusy"

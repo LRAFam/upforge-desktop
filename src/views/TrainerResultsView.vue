@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { priorTrainingSessions, reactionMetricScore, isTrackingScenario, trainingComparisonRequest } from '../lib/training-result-metrics'
+import { priorTrainingSessions, reactionMetricScore, isTrackingScenario, trainingComparisonRequest, resultCountCells, reactionMetricLabel, isTimeToHitMetric, accuracyMetricLabel, drillDetailCells } from '../lib/training-result-metrics'
+import { TRAINER_SCENARIOS, isBetaScenario, trainerScenarioDef, type TrainerUiGroup } from '../lib/trainer-scenarios'
+import { asSessionEnded, launchConfigFromInfo, launchTrainer, sessionEndedMessage } from '../lib/trainer-launch'
 import upforgeLogo from '../assets/upforge-logo.webp'
 import TrainingIcon from '../components/training/TrainingIcon.vue'
 import { useRouter } from 'vue-router'
@@ -10,7 +12,7 @@ import { uiV3 } from '../lib/ui-v3'
 import { scenarioIconUrl } from '../lib/training-icons'
 import UfButton from '../components/v3/UfButton.vue'
 import UfIcon from '../components/v3/UfIcon.vue'
-import { deltaTone, hitsLabel, isBest, pct, signed, toneColor } from '../components/v3/practice/practice-session-v3'
+import { deltaTone, isBest, pct, signed, toneColor } from '../components/v3/practice/practice-session-v3'
 
 const router = useRouter()
 const store = useTrainerResultStore()
@@ -27,20 +29,25 @@ const launched = ref(false)
 const heatmapCanvas = ref<HTMLCanvasElement | null>(null)
 
 let removeListener: (() => void) | null = null
+let removeEndedListener: (() => void) | null = null
 
 // ── Scenario metadata ─────────────────────────────────────────────────────────
-const SCENARIO_META: Record<string, { label: string; color: string; accent: string }> = {
-  angle_clearing: { label: 'Angle Clearing', color: 'text-teal-400', accent: '#2dd4bf' },
-  distance_switching: { label: 'Distance Switching', color: 'text-teal-400', accent: '#2dd4bf' },
-  head_height: { label: 'Head Height Corridor', color: 'text-teal-400', accent: '#2dd4bf' },
-  flick:       { label: 'Flick',        color: 'text-red-400',    accent: '#f87171' },
-  tracking:    { label: 'Tracking',     color: 'text-sky-400',    accent: '#38bdf8' },
-  microadjust: { label: 'Micro-Adjust', color: 'text-amber-400',  accent: '#fbbf24' },
-  switching:   { label: 'Switch',       color: 'text-violet-400', accent: '#a78bfa' },
-  duel:        { label: '3D Duel',      color: 'text-emerald-400',accent: '#34d399' },
+// Labels from the canonical registry (src/lib/trainer-scenarios.ts); colour by drill group.
+const GROUP_STYLE: Record<TrainerUiGroup, { color: string; accent: string }> = {
+  aim:       { color: 'text-red-400',     accent: '#f87171' },
+  reaction:  { color: 'text-sky-400',     accent: '#38bdf8' },
+  precision: { color: 'text-amber-400',   accent: '#fbbf24' },
+  duel:      { color: 'text-emerald-400', accent: '#34d399' },
 }
+const SCENARIO_META: Record<string, { label: string; color: string; accent: string }> = Object.fromEntries(
+  TRAINER_SCENARIOS.map(s => [s.key, { label: s.label, ...GROUP_STYLE[s.uiGroup] }]),
+)
 
-const SCENARIO_ROTATION = ['flick', 'tracking', 'microadjust', 'switching']
+/** "Continue your rotation": every drill, alternating groups so the next one trains something different. */
+const SCENARIO_ROTATION = [
+  'flick', 'tracking', 'microadjust', 'switching', 'gridshot', 'strafe_track', 'microflick',
+  'strafe_aim', 'sixshot', 'head_height', 'angle_clearing', 'distance_switching', 'duel',
+]
 
 // ── Computed ─────────────────────────────────────────────────────────────────
 const result = computed(() => store.result!)
@@ -77,8 +84,20 @@ function scoreAccent(s: number) {
 
 const reactionScore = reactionMetricScore
 const tracking = computed(() => isTrackingScenario(result.value.scenario))
-const hasReaction = computed(() => !tracking.value && result.value.targets_hit > 0)
+const timeToHit = computed(() => isTimeToHitMetric(result.value.scenario))
+// Jiggle Peek / Trade Window send exposure / trade time in avg_reaction_ms, measured even with no hits.
+const hasReaction = computed(() => !tracking.value && (timeToHit.value ? result.value.targets_hit > 0 : result.value.avg_reaction_ms > 0))
+const reactionLabel = computed(() => reactionMetricLabel(result.value.scenario))
+const reactionTitle = computed(() => timeToHit.value
+  ? 'Average time to a successful hit. The bar uses a fixed 150–400ms reference, not a player percentile.'
+  : `Average ${reactionLabel.value.toLowerCase()} in ms. Lower is better. The bar uses a fixed 150–400ms reference.`)
+const accuracyLabel = computed(() => accuracyMetricLabel(result.value.scenario))
+const detailCells = computed(() => drillDetailCells(result.value))
+const isBeta = computed(() => isBetaScenario(result.value.scenario))
 const hasConsistency = computed(() => !tracking.value && result.value.targets_hit >= 2)
+const countCells = computed(() => resultCountCells(result.value))
+const scenarioTip = computed(() => trainerScenarioDef(result.value.scenario)?.tip ?? 'Pre-aim corners before committing — don\'t wide-peek.')
+const trainerNotice = ref<string | null>(null)
 const priorSessions = computed(() => priorTrainingSessions(
   history.value?.by_scenario?.[result.value.scenario]?.sessions ?? [], result.value,
 ))
@@ -175,7 +194,9 @@ const coachingInsight = computed(() => {
     lines.push('Excellent accuracy. Consider increasing difficulty or target speed to push your ceiling further.')
   }
 
-  if (hasReaction.value && rxn > 700) {
+  if (!timeToHit.value) {
+    // Exposure / trade time: the reaction-time advice below does not apply.
+  } else if (hasReaction.value && rxn > 700) {
     lines.push('High reaction time detected. Ensure you click promptly and aren\'t over-tracking. If this is a flick drill, check your sensitivity — too low causes slow swings.')
   } else if (hasReaction.value && rxn > 350) {
     lines.push('Reaction time has room to improve. Stay mentally engaged between targets — anticipate the next appearance zone rather than waiting for it.')
@@ -261,32 +282,36 @@ function drawHeatmap() {
 // ── Play Again ────────────────────────────────────────────────────────────────
 async function playAgain() {
   if (launching.value || !store.launchConfig) return
-  launching.value = true
-  launched.value = false
-  try {
-    // Deep-clone to strip Vue reactive Proxy before IPC structured-clone serialisation
-    const config = JSON.parse(JSON.stringify(store.launchConfig)) as Record<string, unknown>
-    const res = await window.api.trainer.launch(config)
-    if (res.ok) launched.value = true
-  } finally {
-    launching.value = false
-  }
+  await launchFromResults(store.launchConfig)
 }
 
 async function tryRecommended() {
   if (launching.value) return
   const rec = recommended.value
-  const difficulty = (store.launchConfig?.difficulty as string) ?? 'medium'
+  await launchFromResults({
+    scenario: rec.scenario,
+    duration_seconds: store.launchConfig?.duration_seconds ?? 60,
+    difficulty: store.launchConfig?.difficulty ?? 'medium',
+    context: { weakness: rec.scenario, score: 0 },
+    // A different drill is free play: it does not count towards the original assigned drill.
+    ...(rec.scenario === store.launchConfig?.scenario && store.launchConfig?.user_drill_id
+      ? { user_drill_id: store.launchConfig.user_drill_id } : {}),
+  })
+}
+
+/** Every launch from this screen updates launchConfig, so the next result and "Play again" match it. */
+async function launchFromResults(req: Parameters<typeof launchTrainer>[0]) {
   launching.value = true
   launched.value = false
+  trainerNotice.value = null
   try {
-    const res = await window.api.trainer.launch({
-      scenario: rec.scenario,
-      duration_seconds: store.launchConfig?.duration_seconds ?? 60,
-      difficulty,
-      context: { weakness: rec.scenario, score: 0 },
-    })
-    if (res.ok) launched.value = true
+    const res = await launchTrainer(req)
+    if (res.ok) {
+      launched.value = true
+      store.setLaunchConfig(res.config)
+    } else {
+      trainerNotice.value = res.error ?? null
+    }
   } finally {
     launching.value = false
   }
@@ -325,17 +350,26 @@ onMounted(async () => {
   drawHeatmap()
 
   // Listen for results from Play Again (since TrainingHubView is unmounted)
-  removeListener = window.api.on('trainer:session-result', async (raw: unknown) => {
+  removeListener = window.api.on('trainer:session-result', async (raw: unknown, launch?: unknown) => {
     const r = raw as typeof store.result
     if (!r) return
-    store.setResult(r, store.launchConfig, null)
+    store.setResult(r, launchConfigFromInfo(launch) ?? store.launchConfig, null)
     launched.value = false
+    trainerNotice.value = null
     await loadComparison()
     drawHeatmap()
+  })
+
+  removeEndedListener = window.api.on('trainer:session-ended', (raw: unknown) => {
+    const ended = asSessionEnded(raw)
+    if (!ended || ended.reason === 'completed' || launching.value) return
+    launched.value = false
+    trainerNotice.value = sessionEndedMessage(ended)
   })
 })
 
 onUnmounted(() => {
+  removeEndedListener?.()
   removeListener?.()
 })
 </script>
@@ -366,7 +400,7 @@ onUnmounted(() => {
         <div class="uf-tr-score uf-rise">
           <span class="uf-tr-kicker">
             <img :src="scenarioIconUrl(result.scenario)" alt="" class="uf-tr-icon">
-            <span class="uf-t3">{{ scenarioMeta.label }}</span>
+            <span class="uf-t3">{{ scenarioMeta.label }}<span v-if="isBeta" class="uf-picker-tag" style="color: var(--uf-gold)">Beta</span></span>
             <span class="uf-t4">{{ formatDate(result.completed_at) }}<span v-if="store.launchConfig" style="text-transform: capitalize"> · {{ store.launchConfig.difficulty }} · {{ store.launchConfig.duration_seconds }}s</span></span>
           </span>
           <span class="uf-d1">{{ result.score * 10 }}</span>
@@ -386,18 +420,19 @@ onUnmounted(() => {
             <UfButton variant="link" @click="backToHub">Back to training</UfButton>
           </div>
           <p v-if="launched" class="uf-t4" style="margin: 0; color: var(--uf-win)">Trainer launched. Finish the drill to see your results here.</p>
+          <p v-if="trainerNotice" class="uf-t4" role="status" style="margin: 0">{{ trainerNotice }}</p>
         </div>
       </section>
 
       <!-- Numbers inline -->
       <dl class="uf-tr-stats uf-rise uf-d2s">
         <div>
-          <dt class="uf-t4">{{ tracking ? 'Time on target' : 'Accuracy' }}</dt>
+          <dt class="uf-t4">{{ accuracyLabel }}</dt>
           <dd class="uf-d4">{{ result.accuracy_pct.toFixed(1) }}%</dd>
           <span class="uf-tr-bar-in"><span class="uf-fill" :style="{ width: pct(result.accuracy_pct) + '%' }" /></span>
         </div>
-        <div title="Average time to a successful hit. The bar uses a fixed 150–400ms reference, not a player percentile.">
-          <dt class="uf-t4">Time to hit</dt>
+        <div :title="reactionTitle">
+          <dt class="uf-t4">{{ reactionLabel }}</dt>
           <dd class="uf-d4" :style="hasReaction ? undefined : 'color: var(--uf-faint)'">{{ hasReaction ? `${result.avg_reaction_ms}ms` : 'Not measured' }}</dd>
           <span class="uf-tr-bar-in"><span class="uf-fill" :style="{ width: (hasReaction ? pct(reactionScore(result.avg_reaction_ms)) : 0) + '%' }" /></span>
         </div>
@@ -406,17 +441,13 @@ onUnmounted(() => {
           <dd class="uf-d4" :style="hasConsistency ? undefined : 'color: var(--uf-faint)'">{{ hasConsistency ? result.consistency_score : 'Not measured' }}</dd>
           <span class="uf-tr-bar-in"><span class="uf-fill" :style="{ width: (hasConsistency ? pct(result.consistency_score) : 0) + '%' }" /></span>
         </div>
-        <div>
-          <dt class="uf-t4">{{ tracking ? 'Tracking samples' : 'Targets' }}</dt>
-          <dd class="uf-d4">{{ hitsLabel(result.targets_hit, result.targets_missed) }}</dd>
+        <div v-for="cell in countCells" :key="cell.label">
+          <dt class="uf-t4">{{ cell.label }}</dt>
+          <dd class="uf-d4">{{ cell.value }}</dd>
         </div>
-        <div>
-          <dt class="uf-t4">{{ tracking ? 'On-target time' : 'Hits per minute' }}</dt>
-          <dd class="uf-d4">{{ tracking ? (typeof result.metadata?.on_target_seconds === 'number' ? `${result.metadata.on_target_seconds.toFixed(1)}s` : 'Not recorded') : (result.duration_seconds > 0 ? Math.round((result.targets_hit / result.duration_seconds) * 60) : 0) }}</dd>
-        </div>
-        <div>
-          <dt class="uf-t4">{{ tracking ? 'Off-target time' : 'Miss rate' }}</dt>
-          <dd class="uf-d4">{{ tracking ? (100 - result.accuracy_pct).toFixed(1) : result.targets_hit + result.targets_missed > 0 ? Math.round((result.targets_missed / (result.targets_hit + result.targets_missed)) * 100) : 0 }}%</dd>
+        <div v-for="cell in detailCells" :key="`d-${cell.label}`">
+          <dt class="uf-t4">{{ cell.label }}</dt>
+          <dd class="uf-d4">{{ cell.value }}</dd>
         </div>
       </dl>
 
@@ -439,7 +470,7 @@ onUnmounted(() => {
             </svg>
           </section>
 
-          <section v-if="['head_height', 'angle_clearing', 'distance_switching'].includes(result.scenario)" class="uf-tr-block uf-rise uf-d3s">
+          <section v-if="['head_height', 'angle_clearing', 'distance_switching', 'clear_site'].includes(result.scenario)" class="uf-tr-block uf-rise uf-d3s">
             <span class="uf-label">Crosshair placement</span>
             <span class="uf-t4">Average vertical correction when the head first became visible</span>
             <span class="uf-d3">{{ typeof result.metadata?.mean_vertical_error_deg === 'number' ? `${result.metadata.mean_vertical_error_deg.toFixed(2)}°` : 'No visible targets measured' }}</span>
@@ -478,13 +509,7 @@ onUnmounted(() => {
           <section class="uf-tr-block">
             <span class="uf-label">Tip</span>
             <span class="uf-t4">
-              {{
-                result.scenario === 'flick' ? 'Keep your arm loose — flicks are shoulder, not wrist.' :
-                result.scenario === 'tracking' ? 'Match the target speed — don\'t overshoot then correct.' :
-                result.scenario === 'microadjust' ? 'Slow your mouse — this is fingertip control.' :
-                result.scenario === 'switching' ? 'Move your eyes before your mouse — predict, don\'t react.' :
-                'Pre-aim corners before committing — don\'t wide-peek.'
-              }}
+              {{ scenarioTip }}
             </span>
           </section>
         </aside>
@@ -507,7 +532,7 @@ onUnmounted(() => {
         <div class="flex min-w-0 items-center gap-3">
           <div class="results-scenario-icon"><TrainingIcon :name="result.scenario" class="h-6 w-6" /></div>
           <div class="min-w-0">
-            <h1 class="text-xl font-semibold tracking-tight text-white">{{ scenarioMeta.label }}</h1>
+            <h1 class="flex items-center gap-2 text-xl font-semibold tracking-tight text-white">{{ scenarioMeta.label }}<span v-if="isBeta" class="rounded-md border border-amber-500/30 bg-amber-500/[0.08] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-300">Beta</span></h1>
             <p class="mt-1 text-xs text-white/50">Session complete · {{ formatDate(result.completed_at) }}<span v-if="store.launchConfig" class="capitalize"> · {{ store.launchConfig.difficulty }} · {{ store.launchConfig.duration_seconds }}s</span></p>
           </div>
         </div>
@@ -548,23 +573,13 @@ onUnmounted(() => {
             <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">Duration</div>
             <div class="text-sm font-semibold text-white/80">{{ result.duration_seconds }}s</div>
           </div>
-          <div>
-            <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">{{ tracking ? 'Tracking samples' : 'Targets' }}</div>
-            <div class="text-sm font-semibold text-white/80">{{ result.targets_hit }}/{{ result.targets_hit + result.targets_missed }}</div>
+          <div v-for="cell in countCells" :key="cell.label">
+            <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">{{ cell.label }}</div>
+            <div class="text-sm font-semibold text-white/80">{{ cell.value }}</div>
           </div>
-          <div>
-            <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">{{ tracking ? 'On-target time' : 'Hits/min' }}</div>
-            <div class="text-sm font-semibold text-white/80">
-              {{ tracking ? (typeof result.metadata?.on_target_seconds === 'number' ? `${result.metadata.on_target_seconds.toFixed(1)}s` : 'Not recorded') : (result.duration_seconds > 0 ? Math.round((result.targets_hit / result.duration_seconds) * 60) : 0) }}
-            </div>
-          </div>
-          <div>
-            <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">{{ tracking ? 'Off-target time' : 'Miss rate' }}</div>
-            <div class="text-sm font-semibold text-white/80">
-              {{ tracking ? (100 - result.accuracy_pct).toFixed(1) : result.targets_hit + result.targets_missed > 0
-                  ? Math.round((result.targets_missed / (result.targets_hit + result.targets_missed)) * 100)
-                  : 0 }}%
-            </div>
+          <div v-for="cell in detailCells" :key="`d-${cell.label}`">
+            <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">{{ cell.label }}</div>
+            <div class="text-sm font-semibold text-white/80">{{ cell.value }}</div>
           </div>
         </div>
 
@@ -650,7 +665,7 @@ onUnmounted(() => {
           </svg>
         </div>
 
-        <div v-if="['head_height', 'angle_clearing', 'distance_switching'].includes(result.scenario)" class="border border-white/10 rounded-lg p-4 space-y-2 text-sm">
+        <div v-if="['head_height', 'angle_clearing', 'distance_switching', 'clear_site'].includes(result.scenario)" class="border border-white/10 rounded-lg p-4 space-y-2 text-sm">
           <p class="font-semibold text-white">Crosshair placement</p>
           <p class="text-white/60">Average vertical correction when the head first became visible:</p>
           <p class="text-lg tabular-nums text-teal-400">
@@ -666,7 +681,7 @@ onUnmounted(() => {
             <!-- Accuracy -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-medium text-white/60">{{ tracking ? 'Time on target' : 'Accuracy' }}</span>
+                <span class="text-xs font-medium text-white/60">{{ accuracyLabel }}</span>
                 <span :class="['text-xs font-bold tabular-nums', scoreColor(result.accuracy_pct)]">
                   {{ result.accuracy_pct.toFixed(1) }}%
                 </span>
@@ -681,7 +696,7 @@ onUnmounted(() => {
             <!-- Reaction -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-medium text-white/60" title="Average time to a successful hit. The bar uses a fixed 150–400ms reference, not a player percentile.">Time to hit</span>
+                <span class="text-xs font-medium text-white/60" :title="reactionTitle">{{ reactionLabel }}</span>
                 <span :class="['text-xs font-bold tabular-nums', scoreColor(reactionScore(result.avg_reaction_ms))]">
                   {{ hasReaction ? `${result.avg_reaction_ms}ms` : 'Not measured' }}
                 </span>
@@ -782,18 +797,15 @@ onUnmounted(() => {
           <div class="text-xs text-green-400 font-semibold">Trainer launched!</div>
           <div class="text-[10px] text-green-400/60 mt-0.5">Complete the drill to see your results here.</div>
         </div>
+        <div v-if="trainerNotice" class="bg-white/[0.04] border border-white/[0.10] rounded-lg p-3 text-center text-[11px] text-white/70" role="status">
+          {{ trainerNotice }}
+        </div>
 
         <!-- Tip -->
         <div class="mt-auto pt-2 border-t border-white/[0.07]">
           <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-1.5">Tip</div>
           <p class="text-[10px] leading-relaxed text-white/50 italic">
-            {{
-              result.scenario === 'flick' ? 'Keep your arm loose — flicks are shoulder, not wrist.' :
-              result.scenario === 'tracking' ? 'Match the target speed — don\'t overshoot then correct.' :
-              result.scenario === 'microadjust' ? 'Slow your mouse — this is fingertip control.' :
-              result.scenario === 'switching' ? 'Move your eyes before your mouse — predict, don\'t react.' :
-              'Pre-aim corners before committing — don\'t wide-peek.'
-            }}
+            {{ scenarioTip }}
           </p>
         </div>
 
