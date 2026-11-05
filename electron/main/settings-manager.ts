@@ -2,6 +2,7 @@ import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { recordingDirectoryProblem } from './recording-save-safety'
+import { DEFAULT_CROSSHAIR_SETTINGS, DEFAULT_TRAINER_MOUSE, normalizeCrosshairSettings, normalizeTrainerMouse } from './trainer-settings'
 import {
   migrateOnboardingFlags,
   withOnboardingComplete,
@@ -173,6 +174,7 @@ export interface AppSettings {
     pollingRate: 125 | 250 | 500 | 1000 | 2000 | 4000
     movementSpeed: number   // m/s — how fast the player moves in trainer scenarios
     trainerVolume: number   // 0–100 — hit/miss sound volume
+    scopedMultiplier: number // 0.1–3.0 — in-game Scoped Sensitivity Multiplier (Operator Hold)
   }
   /** Crosshair appearance for the aim trainer */
   crosshairSettings: {
@@ -257,34 +259,8 @@ const DEFAULTS: AppSettings = {
   obsPassword: '',
   obsReplayBufferSeconds: 30,
   obsPreserveActiveScene: false,
-  trainerMouse: {
-    dpi: 800,
-    game: 'valorant',
-    sensitivity: 0.5,
-    fov: 103,
-    rawInput: true,
-    pollingRate: 1000,
-    movementSpeed: 6.75,
-    trainerVolume: 80,
-  },
-  crosshairSettings: {
-    colorIndex: 1,        // Valorant green default
-    customColor: '00FF6B',
-    dotShow: true,
-    dotRadius: 1.5,
-    dotOpacity: 1.0,
-    innerShow: true,
-    innerThickness: 2,
-    innerLength: 10,
-    innerOffset: 4,
-    innerOpacity: 1.0,
-    outerShow: false,
-    outerThickness: 2,
-    outerLength: 5,
-    outerOffset: 10,
-    outerOpacity: 1.0,
-    shadowShow: true,
-  },
+  trainerMouse: { ...DEFAULT_TRAINER_MOUSE },
+  crosshairSettings: { ...DEFAULT_CROSSHAIR_SETTINGS },
   autoOpenBrowser: false,
   trainingConsent: false,
 }
@@ -338,6 +314,8 @@ export class SettingsManager {
       const merged = { ...DEFAULTS, ...parsed, obsEnabled: true }
       // Nested object — deep-merge so partial/legacy saves keep sensible defaults.
       merged.clipCapture = { ...DEFAULT_CLIP_CAPTURE, ...(parsed.clipCapture ?? {}) }
+      merged.trainerMouse = normalizeTrainerMouse(parsed.trainerMouse)
+      merged.crosshairSettings = normalizeCrosshairSettings(parsed.crosshairSettings)
       merged.recordedModesByGame = migrateRecordedModesByGame(
         Array.isArray(parsed.recordedModes) ? parsed.recordedModes : merged.recordedModes,
         parsed.recordedModesByGame,
@@ -378,10 +356,19 @@ export class SettingsManager {
     const allowCreator = opts?.allowCreator ?? true
     const normalizedPartial = withOnboardingComplete(partial)
     const prevByGame = this.settings.recordedModesByGame
+    const prevTrainerMouse = this.settings.trainerMouse
+    const prevCrosshair = this.settings.crosshairSettings
     this.settings = {
       ...this.settings,
       ...normalizedPartial,
       ...applyRecordingPresetFields({ ...this.settings, ...normalizedPartial }, allowCreator),
+    }
+    // Trainer mouse / crosshair: a partial save keeps the other fields (and defaults for missing ones).
+    if (normalizedPartial.trainerMouse) {
+      this.settings.trainerMouse = normalizeTrainerMouse({ ...prevTrainerMouse, ...normalizedPartial.trainerMouse })
+    }
+    if (normalizedPartial.crosshairSettings) {
+      this.settings.crosshairSettings = normalizeCrosshairSettings({ ...prevCrosshair, ...normalizedPartial.crosshairSettings })
     }
     // Deep-merge per-game modes when a partial map is saved.
     if (normalizedPartial.recordedModesByGame) {

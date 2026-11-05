@@ -515,6 +515,7 @@ function createSettings() {
       pollingRate: 1000,
       movementSpeed: 6.75,
       trainerVolume: 80,
+      scopedMultiplier: 1.0,
     },
     autoOpenBrowser: false,
     trainingConsent: false,

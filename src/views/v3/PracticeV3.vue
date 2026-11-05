@@ -33,6 +33,8 @@ export interface PracticeDrillCard {
   scenario: string
   label: string
   description: string
+  /** Beta drill: launchable by hand, shows a Beta tag. */
+  beta?: boolean
   difficulty: string
   durationSeconds: number
   personalBest: number | null
@@ -210,7 +212,7 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
                 <tr v-for="d in drills" :key="d.scenario" :class="{ 'is-running': runningScenario === d.scenario }">
                   <td class="uf-lib-icon"><img :src="scenarioIconUrl(d.scenario)" alt=""></td>
                   <td class="uf-lib-name">
-                    <span class="uf-t3">{{ d.label }}</span>
+                    <span class="uf-t3">{{ d.label }}<span v-if="d.beta" class="uf-picker-tag" style="color: var(--uf-gold)">Beta</span></span>
                     <span class="uf-t4">{{ drillMeta(d) }}</span>
                   </td>
                   <td class="uf-t4 uf-lib-what">{{ d.description }}</td>

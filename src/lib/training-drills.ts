@@ -51,6 +51,17 @@ export const SCENARIO_LABELS: Record<string, string> = {
   switching: 'Target Switching',
   strafe_aim: 'Strafe Aim',
   duel: '3D Duel',
+  head_height: 'Head Height Corridor',
+  angle_clearing: 'Angle Clearing',
+  distance_switching: 'Distance Switching',
+  hold_angle: 'Hold the Angle',
+  jiggle_peek: 'Jiggle Peek',
+  trade_window: 'Trade Window',
+  clear_site: 'Clear the Site',
+  flash_swing: 'Flash & Swing',
+  operator_hold: 'Operator Hold',
+  defuse_decision: 'Defuse Decision',
+  retake_crossfire: 'Retake Crossfire',
 }
 
 export function pickTrainingScenario(...texts: (string | null | undefined)[]): TrainerScenarioKey {
@@ -58,6 +69,7 @@ export function pickTrainingScenario(...texts: (string | null | undefined)[]): T
   for (const [keyword, scenario] of Object.entries(WEAKNESS_TO_SCENARIO)) {
     if (blob.includes(keyword)) return scenario
   }
+  // Only aim categories have a default; utility / economy / comms text never maps to a drill here.
   for (const [category, scenario] of Object.entries(CATEGORY_TO_TRAINER_SCENARIO)) {
     if (blob.includes(category.replace('_', ' '))) return scenario
   }

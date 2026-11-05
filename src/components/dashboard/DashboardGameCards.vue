@@ -31,6 +31,7 @@ const {
   pendingRecordings,
   openAnalysisRow,
   openRecordingReview,
+  launchDashboardDrill,
 } = useDashboard()
 
 const launchBusy = ref(false)
@@ -252,19 +253,13 @@ async function primaryAction(game: PrimaryGame, e: Event) {
   await setPrimaryGame(game)
   if (game === 'valorant') {
     const plan = weeklyFocus.value
-    if (!plan) {
+    if (!plan?.drill.scenario) {
       router.push('/training')
       return
     }
     launchBusy.value = true
     try {
-      await window.api.trainer.launch({
-        scenario: plan.drill.scenario,
-        difficulty: 'medium',
-        duration: 60,
-      })
-    } catch {
-      router.push('/training')
+      await launchDashboardDrill(plan.drill.scenario)
     } finally {
       launchBusy.value = false
     }

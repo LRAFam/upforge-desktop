@@ -83,7 +83,7 @@
                   {{ trainerResult.avg_reaction_ms.toFixed(0) }}ms react
                 </span>
                 <span class="text-[10px] text-gray-600">
-                  {{ trainerResult.targets_hit }}H / {{ trainerResult.targets_missed }}M
+                  {{ isTrackingScenario(trainerResult.scenario) ? `${resultHitsCell({ ...trainerResult, duration_seconds: trainerResult.duration_seconds ?? 0 }).value} on target` : `${trainerResult.targets_hit}H / ${trainerResult.targets_missed}M` }}
                 </span>
               </div>
             </div>
@@ -340,6 +340,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { isTrackingScenario, resultHitsCell } from '../lib/training-result-metrics'
 
 const TOAST_DURATION = 3000
 const CHEATSHEET_DURATION = 7000
@@ -354,6 +355,8 @@ interface TrainerResult {
   consistency_score: number
   targets_hit: number
   targets_missed: number
+  duration_seconds?: number
+  metadata?: Record<string, unknown>
 }
 const trainerResult = ref<TrainerResult | null>(null)
 const trainerActive = ref<{ scenario: string; difficulty: string; duration_seconds: number } | null>(null)
@@ -603,6 +606,11 @@ onMounted(async () => {
       trainerResult.value = payload as TrainerResult
       if (trainerResultTimer) clearTimeout(trainerResultTimer)
       trainerResultTimer = setTimeout(dismissTrainerResult, TRAINER_RESULT_DURATION)
+    })
+  )
+  removeListeners.push(
+    window.api.on('overlay:trainer-ended', () => {
+      trainerActive.value = null
     })
   )
   removeListeners.push(

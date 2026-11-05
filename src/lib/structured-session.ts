@@ -114,9 +114,12 @@ export interface CoachingDrillLike {
   godot_config?: { scenario?: string; difficulty?: string; duration_seconds?: number } | null
 }
 
-export function coachingDrillToSessionDrill(drill: CoachingDrillLike): SessionDrill {
+/** Null for drills the aim trainer cannot train (utility / economy / comms): they never join a trainer session. */
+export function coachingDrillToSessionDrill(drill: CoachingDrillLike): SessionDrill | null {
+  const scenario = resolveTrainerScenario(drill)
+  if (!scenario) return null
   return {
-    scenario: resolveTrainerScenario(drill),
+    scenario,
     difficulty: resolveTrainerDifficulty(drill),
     duration_seconds: resolveTrainerDuration(drill),
     weakness: drill.category,

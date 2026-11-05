@@ -51,6 +51,7 @@ import {
 import { POST_MATCH_COPY } from '../lib/post-match-copy'
 import { filterAnalysesForPrimaryGame } from '../lib/analysis-display'
 import { openAnalysisInApp } from '../lib/open-analysis-in-app'
+import { asSessionEnded, DEFAULT_TRAINER_DURATION, launchTrainer, sessionEndedMessage, TRAINER_LAUNCH_FAILED_MESSAGE } from '../lib/trainer-launch'
 
 export interface LolRecentMatch {
   match_id: string
@@ -1356,13 +1357,14 @@ function createDashboard(opts: DashboardOptions = {}) {
     }
   }
 
+  // Checked in order, so placement keywords win over the generic "aim".
+  // Spray/recoil, rotations and retakes have no trainer drill yet.
   const WEAKNESS_TO_SCENARIO_DASH: Record<string, string> = {
+    crosshair: 'head_height', placement: 'head_height', 'head height': 'head_height',
+    switching: 'switching',
     flick: 'flick', 'one tap': 'flick', reflex: 'flick', headshot: 'flick',
     accuracy: 'flick', 'first shot': 'flick', aim: 'flick', click: 'flick',
-    track: 'tracking', moving: 'tracking', movement: 'tracking', smooth: 'tracking',
-    spray: 'microadjust', recoil: 'microadjust', control: 'microadjust',
-    crosshair: 'switching', placement: 'switching', switching: 'switching',
-    rotate: 'switching', retake: 'switching',
+    track: 'strafe_track', moving: 'strafe_track', movement: 'strafe_track', smooth: 'strafe_track',
   }
 
   async function trainLastInsight() {
@@ -1370,16 +1372,32 @@ function createDashboard(opts: DashboardOptions = {}) {
     lastInsightTraining.value = true
     try {
       const text = lastInsight.value.text.toLowerCase()
-      let scenario = 'flick'
-      for (const [keyword, s] of Object.entries(WEAKNESS_TO_SCENARIO_DASH)) {
-        if (text.includes(keyword)) { scenario = s; break }
+      const match = Object.entries(WEAKNESS_TO_SCENARIO_DASH).find(([keyword]) => text.includes(keyword))
+      if (!match) {
+        // Not an aim problem: let the player pick from the training hub instead of guessing Flick.
+        await router.push('/training')
+        return
       }
-      await window.api.trainer.launch({ scenario, difficulty: 'medium', duration: 60 })
-    } catch (e) {
-      console.error('[Dashboard] Trainer launch failed:', e)
+      await launchDashboardDrill(match[1])
     } finally {
       lastInsightTraining.value = false
     }
+  }
+
+  function showActivityToast(message: string) {
+    activityToast.value = message
+    if (activityToastTimer) clearTimeout(activityToastTimer)
+    activityToastTimer = setTimeout(() => { activityToast.value = null }, 8000)
+  }
+
+  /** Every home/dashboard "run drill" button: medium, 60s, free play (no user drill). Shows why it failed. */
+  async function launchDashboardDrill(scenario: string): Promise<boolean> {
+    const res = await launchTrainer({ scenario, difficulty: 'medium', duration_seconds: DEFAULT_TRAINER_DURATION })
+    if (!res.ok) {
+      console.error('[Dashboard] Trainer launch failed:', res.error)
+      showActivityToast(res.error ?? TRAINER_LAUNCH_FAILED_MESSAGE)
+    }
+    return res.ok
   }
 
   function openBrowser() {
@@ -1728,9 +1746,11 @@ function createDashboard(opts: DashboardOptions = {}) {
     ipcCleanup.push(window.api.on('app:activity-toast', (...args: unknown[]) => {
       const data = args[0] as { message?: string }
       if (!data?.message) return
-      activityToast.value = data.message
-      if (activityToastTimer) clearTimeout(activityToastTimer)
-      activityToastTimer = setTimeout(() => { activityToast.value = null }, 8000)
+      showActivityToast(data.message)
+    }))
+    ipcCleanup.push(window.api.on('trainer:session-ended', (...args: unknown[]) => {
+      const message = sessionEndedMessage(asSessionEnded(args[0]))
+      if (message) showActivityToast(message)
     }))
     // 'dashboard:open-latest-analysis' (the "Coaching ready" notification) is handled app-wide in App.vue,
     // so it opens the in-app result from any screen.
@@ -1880,6 +1900,7 @@ function createDashboard(opts: DashboardOptions = {}) {
     analysisCompleteToast,
     analysisFailure,
     activityToast,
+    launchDashboardDrill,
     backgroundWorkBanner,
     archiveRetentionNudge,
     dismissArchiveRetentionNudge,

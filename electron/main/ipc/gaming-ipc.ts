@@ -14,9 +14,9 @@ import { GameDetector } from '../game-detector'
 import { SettingsManager } from '../settings-manager'
 import { openPathSafe } from '../shell-open'
 import { PerformanceManager } from '../performance-manager'
-import { TrainerBridge, type DrillConfig } from '../trainer-bridge'
+import { TrainerBridge } from '../trainer-bridge'
+import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest } from '../trainer-payload'
 import { sendOverlayData } from '../overlay-window'
-import type { AppSettings } from '../settings-manager'
 import { apiPost } from './api-helpers'
 import { listRecentDemosInDir } from '../demo-finder'
 import { SourceReplayUploader } from '../source-replay-uploader'
@@ -25,78 +25,6 @@ import { ensureDeadlockSteamLaunchOptions } from '../deadlock-steam-setup'
 import { resolveDeadlockReplayDirs } from '../deadlock-paths'
 import { validateReplayUploadPath } from '../replay-upload-path'
 import { isTrustedRendererUrl } from '../renderer-trust'
-
-/** Last launched drill config — used to attach difficulty to session sync payload */
-let lastTrainerLaunch: Pick<DrillConfig, 'scenario' | 'difficulty' | 'duration_seconds'> & { user_drill_id?: number } | null = null
-
-function buildTrainingSessionPayload(result: import('../trainer-bridge').SessionResult): Record<string, unknown> {
-  const {
-    max_streak,
-    min_reaction_ms,
-    max_reaction_ms,
-    targets_per_minute,
-    metadata: scenarioMetadata,
-    ...core
-  } = result
-  const metadata: Record<string, unknown> = { ...scenarioMetadata }
-  if (max_streak != null) metadata.max_streak = max_streak
-  if (min_reaction_ms != null) metadata.min_reaction_ms = min_reaction_ms
-  if (max_reaction_ms != null) metadata.max_reaction_ms = max_reaction_ms
-  if (targets_per_minute != null) metadata.targets_per_minute = targets_per_minute
-  if (metadata.scoring_version == null && lastTrainerLaunch?.difficulty) metadata.difficulty = lastTrainerLaunch.difficulty // Legacy trainer compatibility only; these runs are excluded from current comparisons.
-  if (lastTrainerLaunch?.user_drill_id) metadata.user_drill_id = lastTrainerLaunch.user_drill_id
-
-  return {
-    ...core,
-    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-  }
-}
-
-// ── Crosshair helper ──────────────────────────────────────────────────────────
-
-/** Valorant colour palette — indices match CrosshairConfig.gd VALORANT_COLORS */
-const CROSSHAIR_PALETTE: [number, number, number][] = [
-  [1.0,  1.0,  1.0 ], // 0 white
-  [0.0,  1.0,  0.42], // 1 green
-  [1.0,  0.85, 0.0 ], // 2 yellow
-  [0.0,  0.87, 1.0 ], // 3 cyan
-  [1.0,  0.47, 0.87], // 4 pink
-  [1.0,  0.27, 0.33], // 5 red
-]
-
-/** Convert Electron CrosshairSettings into the Godot dict format. */
-function crosshairSettingsToGodot(
-  cs: AppSettings['crosshairSettings']
-): DrillConfig['crosshair_settings'] {
-  let color: [number, number, number]
-  if (cs.colorIndex >= 0 && cs.colorIndex < CROSSHAIR_PALETTE.length) {
-    color = CROSSHAIR_PALETTE[cs.colorIndex]
-  } else {
-    const hex = cs.customColor.replace('#', '').padEnd(6, '0')
-    color = [
-      parseInt(hex.slice(0, 2), 16) / 255,
-      parseInt(hex.slice(2, 4), 16) / 255,
-      parseInt(hex.slice(4, 6), 16) / 255,
-    ]
-  }
-  return {
-    color,
-    shadow_show:      cs.shadowShow,
-    dot_show:         cs.dotShow,
-    dot_radius:       cs.dotRadius,
-    dot_opacity:      cs.dotOpacity,
-    inner_show:       cs.innerShow,
-    inner_thickness:  cs.innerThickness,
-    inner_length:     cs.innerLength,
-    inner_offset:     cs.innerOffset,
-    inner_opacity:    cs.innerOpacity,
-    outer_show:       cs.outerShow,
-    outer_thickness:  cs.outerThickness,
-    outer_length:     cs.outerLength,
-    outer_offset:     cs.outerOffset,
-    outer_opacity:    cs.outerOpacity,
-  }
-}
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
@@ -149,54 +77,40 @@ export function setupGamingHandlers(
 
   // ── Aim Trainer ───────────────────────────────────────────────────────────
 
-  trainerBridge?.setResultCallback((result) => {
+  trainerBridge?.setResultCallback((result, launch) => {
     sendOverlayData('overlay:trainer-result', result)
     const token = auth.getToken()
     if (token) {
-      const payload = buildTrainingSessionPayload(result)
+      const payload = buildTrainingSessionPayload(result, launch)
       apiPost(apiBase, '/api/training/sessions', JSON.stringify(payload), token)
         .then(() => log.info('[Trainer] Session synced to API'))
         .catch((err) => log.warn('[Trainer] Failed to sync session to API:', (err as Error)?.message))
     }
-    lastTrainerLaunch = null
   })
 
-  ipcMain.handle('trainer:launch', async (_e, config: DrillConfig) => {
+  // A drill that ends without a result must clear the overlay's "in progress" card.
+  trainerBridge?.setEndedCallback((ended) => {
+    if (ended.reason !== 'completed') sendOverlayData('overlay:trainer-ended', ended)
+  })
+
+  ipcMain.handle('trainer:launch', async (_e, config: Record<string, unknown>) => {
     if (!trainerBridge) return { ok: false, error: 'Trainer not available' }
     try {
-      const s = settingsManager.get()
-      const ms = s.trainerMouse
-      const cs = s.crosshairSettings
-      const enrichedConfig: DrillConfig = {
-        ...config,
-        mouse_settings: {
-          dpi: ms.dpi,
-          game: ms.game,
-          sensitivity: ms.sensitivity,
-          fov: ms.fov,
-          movement_speed: ms.movementSpeed ?? 6.75,
-          trainer_volume: (ms.trainerVolume ?? 80) / 100,
-        },
-        crosshair_settings: crosshairSettingsToGodot(cs),
-      }
-      lastTrainerLaunch = {
+      const enrichedConfig = drillConfigFromRequest(config ?? {}, settingsManager.get())
+      await trainerBridge.launch(enrichedConfig)
+      sendOverlayData('overlay:trainer-started', {
         scenario: enrichedConfig.scenario,
         difficulty: enrichedConfig.difficulty,
         duration_seconds: enrichedConfig.duration_seconds,
-        user_drill_id: (config as DrillConfig & { user_drill_id?: number }).user_drill_id,
-      }
-      await trainerBridge.launch(enrichedConfig)
-      sendOverlayData('overlay:trainer-started', {
-        scenario: config.scenario,
-        difficulty: config.difficulty,
-        duration_seconds: config.duration_seconds,
       })
-      return { ok: true }
+      return { ok: true, launchId: trainerBridge.lastLaunch?.launchId }
     } catch (err: any) {
       log.error('[IPC] trainer:launch error:', err)
       return { ok: false, error: err?.message ?? 'Failed to launch trainer' }
     }
   })
+
+  ipcMain.handle('trainer:get-last-launch', () => trainerBridge?.lastLaunch ?? null)
 
   ipcMain.handle('trainer:kill', () => {
     trainerBridge?.kill()
@@ -247,7 +161,7 @@ export function setupGamingHandlers(
     if (!token) return []
     try {
       const res = await auth.getApi().get('/api/training/correlation')
-      return Array.isArray(res.data) ? res.data : []
+      return correlationInsightsFrom(res.data)
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch correlation insights:', err?.message)
       return []

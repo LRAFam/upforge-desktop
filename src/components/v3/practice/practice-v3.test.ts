@@ -50,15 +50,17 @@ describe('scoring update', () => {
   const runs = [
     { scenario: 'flick', score: 48, metadata: { difficulty: 'medium' } },
     { scenario: 'flick', score: 53 },
-    { scenario: 'duel', score: 41, metadata: { scoring_version: 2, difficulty: 'medium' } },
+    { scenario: 'duel', score: 41, metadata: { scoring_version: 3, difficulty: 'medium' } },
   ]
   it('keeps old-scoring bests apart from current runs', () => {
     expect(oldScoringBests(runs)).toEqual({ flick: 53 })
+    // v2 runs are legacy relative to scoring v3
+    expect(oldScoringBests([...runs, { scenario: 'duel', score: 70, metadata: { scoring_version: 2, difficulty: 'medium' } }])).toEqual({ flick: 53, duel: 70 })
     expect(oldScoringBests(null)).toEqual({})
   })
   it('explains why old runs have no personal best', () => {
-    expect(oldScoringNote(runs, 3)).toBe('Your 2 runs from before 24 Sep 2026 used the old scoring, so they don’t count towards personal bests. They stay in your history.')
-    expect(oldScoringNote(runs, 80)).toMatch(/^Runs from before 24 Sep 2026/)
+    expect(oldScoringNote(runs, 3)).toBe('Your 2 runs from before Nov 2026 used the old scoring, so they don’t count towards personal bests. They stay in your history.')
+    expect(oldScoringNote(runs, 80)).toMatch(/^Runs from before Nov 2026/)
     expect(oldScoringNote([runs[2]], 1)).toBeNull()
   })
   it('captions a drill with no current best', () => {

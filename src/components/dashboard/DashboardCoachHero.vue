@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useDashboard } from '../../composables/useDashboard'
 import { getAgentImage } from '../../lib/valorant'
 
-const { weeklyFocus, isValorant, lastInsight, router } = useDashboard()
+const { weeklyFocus, isValorant, lastInsight, router, launchDashboardDrill } = useDashboard()
 const launchBusy = ref(false)
 
 const focusTitle = computed(() => weeklyFocus.value?.metric.label ?? 'Your focus')
@@ -14,16 +14,10 @@ const heroAgentImg = computed(() => getAgentImage(heroAgent.value))
 
 async function runDrill() {
   const plan = weeklyFocus.value
-  if (!plan || launchBusy.value) return
+  if (!plan?.drill.scenario || launchBusy.value) return
   launchBusy.value = true
   try {
-    await window.api.trainer.launch({
-      scenario: plan.drill.scenario,
-      difficulty: 'medium',
-      duration: 60,
-    })
-  } catch {
-    router.push('/training')
+    await launchDashboardDrill(plan.drill.scenario)
   } finally {
     launchBusy.value = false
   }
@@ -74,6 +68,7 @@ async function runDrill() {
 
       <div class="flex flex-wrap items-center gap-2">
         <button
+          v-if="weeklyFocus.drill.scenario"
           type="button"
           class="btn-primary !py-2 !px-4 !text-[11px]"
           :disabled="launchBusy"

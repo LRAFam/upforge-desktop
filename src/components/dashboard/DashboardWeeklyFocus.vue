@@ -2,21 +2,15 @@
 import { ref } from 'vue'
 import { useDashboard } from '../../composables/useDashboard'
 
-const { weeklyFocus, isValorant, router } = useDashboard()
+const { weeklyFocus, isValorant, launchDashboardDrill } = useDashboard()
 const launchBusy = ref(false)
 
 async function startDrill() {
   const plan = weeklyFocus.value
-  if (!plan || launchBusy.value) return
+  if (!plan?.drill.scenario || launchBusy.value) return
   launchBusy.value = true
   try {
-    await window.api.trainer.launch({
-      scenario: plan.drill.scenario,
-      difficulty: 'medium',
-      duration: 60,
-    })
-  } catch {
-    router.push('/training')
+    await launchDashboardDrill(plan.drill.scenario)
   } finally {
     launchBusy.value = false
   }
@@ -61,6 +55,7 @@ async function startDrill() {
       </div>
 
       <button
+        v-if="weeklyFocus.drill.scenario"
         type="button"
         class="w-full py-2 rounded-xl text-[11px] font-bold text-white bg-gradient-to-r from-orange-600 to-red-600 hover:opacity-90 transition-opacity disabled:opacity-50"
         :disabled="launchBusy"

@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { priorTrainingSessions, comparableTrainingRuns, trainingComparisonRequest } from '../lib/training-result-metrics'
+import { priorTrainingSessions, comparableTrainingRuns, trainingComparisonRequest, resultHitsCell, isTrackingScenario } from '../lib/training-result-metrics'
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import type { TrainingHistory, CoachingDrill, TrainingBenchmark, SharedTrainingPlan } from '../env'
 import { ACHIEVEMENTS, useAchievements } from '../composables/useAchievements'
-import { type CrosshairSettings, CROSSHAIR_PALETTE_HEX, resolveColor } from '../lib/crosshair'
+import { asSessionEnded, launchConfigFromInfo, launchTrainer, sessionEndedMessage, trainerLaunchConfig } from '../lib/trainer-launch'
 import {
   type TrainerScenarioKey,
   type TrainerDifficulty,
   RADAR_SCENARIO_KEYS,
+  isBetaScenario,
+  isScenarioForGame,
   resolveTrainerScenario,
   resolveTrainerDifficulty,
   resolveTrainerDuration,
@@ -22,6 +24,7 @@ import {
   type SessionSummary,
 } from '../lib/structured-session'
 import { TRAINER_SCENARIOS } from '../lib/trainer-scenarios'
+import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { scenarioIconUrl, TRAINING_CATEGORY_ICONS, TRAINING_ARTWORK } from '../lib/training-icons'
 import TrainingIcon from '../components/training/TrainingIcon.vue'
 import TrainingGuidedSessionHero from '../components/training/TrainingGuidedSessionHero.vue'
@@ -35,7 +38,7 @@ import { readCache, writeCache } from '../lib/stale-cache'
 import UfButton from '../components/v3/UfButton.vue'
 import UfDialog from '../components/v3/UfDialog.vue'
 import PracticeAnalyticsV3 from '../components/v3/practice/PracticeAnalyticsV3.vue'
-import { deltaTone, hitsLabel, pct, signed, toneColor } from '../components/v3/practice/practice-session-v3'
+import { deltaTone, pct, signed, toneColor } from '../components/v3/practice/practice-session-v3'
 import { matchDrillRows, oldScoringBests, oldScoringNote } from '../components/v3/practice/practice-v3'
 
 const ICON_LOCK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
@@ -96,35 +99,7 @@ const heatmapCanvas = ref<HTMLCanvasElement | null>(null)
 const activeTab = ref<'train' | 'analytics' | 'leaderboards' | 'loadouts'>('train')
 const activeDrillCategory = ref<ScenarioCategory>('all')
 
-// ── Trainer settings (crosshair + mouse) ─────────────────────────────────────
-// Loaded once at mount; used by launchDrill to pass user preferences to Godot.
-let trainerMouseSettings: Record<string, unknown> = {}
-let trainerCrosshairSettings: CrosshairSettings | null = null
-
-/** Convert CrosshairSettings (camelCase + colorIndex) → Godot snake_case dict */
-function buildCrosshairPayload(s: CrosshairSettings): Record<string, unknown> {
-  const hexColor = resolveColor(s)
-  const r = parseInt(hexColor.slice(1, 3), 16) / 255
-  const g = parseInt(hexColor.slice(3, 5), 16) / 255
-  const b = parseInt(hexColor.slice(5, 7), 16) / 255
-  return {
-    color: [r, g, b],
-    shadow_show: s.shadowShow,
-    dot_show: s.dotShow,
-    dot_radius: s.dotRadius,
-    dot_opacity: s.dotOpacity,
-    inner_show: s.innerShow,
-    inner_thickness: s.innerThickness,
-    inner_length: s.innerLength,
-    inner_offset: s.innerOffset,
-    inner_opacity: s.innerOpacity,
-    outer_show: s.outerShow,
-    outer_thickness: s.outerThickness,
-    outer_length: s.outerLength,
-    outer_offset: s.outerOffset,
-    outer_opacity: s.outerOpacity,
-  }
-}
+// Mouse + crosshair settings are added by the main process from saved settings (source of truth).
 
 interface AiCoaching {
   focus_area: string
@@ -343,7 +318,19 @@ const SCENARIO_META: Record<string, {
     band: 'bg-teal-500',
     dot: 'bg-teal-400',
     ring: 'ring-teal-500/30',
-  },
+  },  // Beta drills: text from the registry, duel styling.
+  ...Object.fromEntries(TRAINER_SCENARIOS.filter(def => def.beta).map(def => [def.key, {
+    label: def.label,
+    description: def.description,
+    tip: def.tip,
+    category: def.uiGroup,
+    color: 'text-teal-400',
+    bg: 'bg-teal-500/[0.08]',
+    border: 'border-teal-500/20',
+    band: 'bg-teal-500',
+    dot: 'bg-teal-400',
+    ring: 'ring-teal-500/30',
+  }])),
 }
 
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -381,19 +368,20 @@ const RADAR_COLORS: Record<string, string> = {
   switching: '#a78bfa',
   duel: '#34d399',
 }
-// Map coaching drill → trainable scenario (prefer explicit trainer_scenario from VOD)
-function drillToScenario(drill: CoachingDrill): ScenarioKey {
-  return resolveTrainerScenario(drill)
-}
-
-function drillToAssigned(drill: CoachingDrill): AssignedDrill {
+// Map coaching drill → trainable scenario (prefer explicit trainer_scenario from VOD).
+// Null for utility / economy / comms drills: those are practised in game, never in the trainer.
+function drillToAssigned(drill: CoachingDrill): AssignedDrill | null {
+  const scenario = resolveTrainerScenario(drill)
+  if (!scenario) return null
   return {
-    scenario: drillToScenario(drill),
+    scenario,
     difficulty: resolveTrainerDifficulty(drill),
     duration_seconds: resolveTrainerDuration(drill),
     weakness: drill.category,
     weakness_score: drill.baseline_score,
     reason: drill.title,
+    // Coaching drills from /api/drills are the user's drills: runs count towards them (API metadata.user_drill_id).
+    user_drill_id: drill.id,
   }
 }
 
@@ -514,7 +502,8 @@ const scoringNote = computed(() => oldScoringNote(apiHistory.value?.sessions, ap
 const matchDrills = computed(() => matchDrillRows(coachingDrills.value, k => SCENARIO_META[k as ScenarioKey]?.label))
 function launchMatchDrill(id: number) {
   const d = coachingDrills.value.find(x => x.id === id)
-  if (d) void launchDrill(drillToAssigned(d))
+  const assigned = d ? drillToAssigned(d) : null
+  if (assigned) void launchDrill(assigned)
 }
 // Valorant calibration is an admin measuring tool: only admins get the link.
 const isAdmin = ref(false)
@@ -522,8 +511,14 @@ if (uiV3.value) {
   window.api?.app?.getStatus?.().then(s => { isAdmin.value = !!s?.user?.is_admin }).catch(() => { /* link stays hidden */ })
 }
 
+// Drill pickers follow the primary game (Valorant-only beta drills are hidden for CS2 / Deadlock);
+// results and history still show any drill by key.
+const { primaryGame } = usePrimaryGame()
+const pickerScenarioMeta = computed(() => Object.entries(SCENARIO_META).filter(([key]) => isScenarioForGame(key, primaryGame.value)))
+
 const scenarioCards = computed(() =>
   TRAINER_SCENARIOS
+    .filter(def => isScenarioForGame(def.key, primaryGame.value))
     .filter(def => matchesScenarioCategory(def.key, activeDrillCategory.value))
     .map(def => {
       const scenario = def.key
@@ -609,31 +604,35 @@ function drawHeatmap(result: SessionResult) {
 }
 
 // ── Launch ─────────────────────────────────────────────────────────────────────
+/** Short message when a drill ended without a result (or failed to start). Null = nothing to say. */
+const trainerNotice = ref<string | null>(null)
+/** launchId of the drill this view started, so a stale session-ended from an older launch is ignored. */
+let activeLaunchId: number | null = null
+
+function assignedLaunchRequest(drill: AssignedDrill) {
+  return {
+    scenario: drill.scenario,
+    duration_seconds: drill.duration_seconds,
+    difficulty: drill.difficulty,
+    context: { weakness: drill.weakness, score: drill.weakness_score },
+    user_drill_id: drill.user_drill_id,
+  }
+}
+
 async function launchDrill(drill: AssignedDrill) {
   if (launching.value || drillRunning.value) return
   activeDrill.value = drill
   launching.value = true
+  trainerNotice.value = null
   try {
-    const payload: Record<string, unknown> = {
-      scenario: drill.scenario,
-      duration_seconds: drill.duration_seconds,
-      difficulty: drill.difficulty,
-      context: { weakness: drill.weakness, score: drill.weakness_score },
-    }
-    if (drill.user_drill_id) payload.user_drill_id = drill.user_drill_id
-    if (Object.keys(trainerMouseSettings).length > 0) {
-      payload.mouse_settings = trainerMouseSettings
-    }
-    if (trainerCrosshairSettings) {
-      payload.crosshair_settings = buildCrosshairPayload(trainerCrosshairSettings)
-    }
-    const result = await window.api.trainer.launch(payload)
+    const result = await launchTrainer(assignedLaunchRequest(drill))
     if (result.ok) {
       drillRunning.value = true
+      activeLaunchId = result.launchId ?? null
     } else {
       console.error('[TrainingHub] Launch failed:', result.error)
       activeDrill.value = null
-      window.alert(result.error ?? 'Failed to launch aim trainer. Try restarting UpForge.')
+      trainerNotice.value = result.error ?? null
     }
   } finally {
     launching.value = false
@@ -686,9 +685,10 @@ function applyTrainerData([history, plan, drills, insights, benchmark, coaching]
   if (drillList.length > 0) {
     const sessions = history?.sessions ?? []
     const mapped: AssignedDrill[] = drillList
+      .map((d: CoachingDrill) => drillToAssigned(d))
+      .filter((d): d is AssignedDrill => d !== null)
       .slice(0, 4)
-      .map((d: CoachingDrill) => {
-        const assigned = drillToAssigned(d)
+      .map((assigned) => {
         const progressed = applyProgressionToDrill(assignedToSessionDrill(assigned), sessions)
         return { ...assigned, difficulty: progressed.difficulty }
       })
@@ -704,34 +704,35 @@ earlyTrainerFetch?.catch(() => { /* surfaced where it is awaited */ })
 
 // ── IPC listener ──────────────────────────────────────────────────────────────
 let removeListener: (() => void) | null = null
+let removeEndedListener: (() => void) | null = null
 
 onMounted(async () => {
   await achievements.load()
 
-  // Load trainer settings (crosshair + mouse) so they're available before first launch
-  try {
-    const saved = await window.api.settings.get() as unknown as Record<string, unknown>
-    if (saved?.trainerMouse && typeof saved.trainerMouse === 'object') {
-      trainerMouseSettings = saved.trainerMouse as Record<string, unknown>
-    }
-    if (saved?.crosshairSettings && typeof saved.crosshairSettings === 'object') {
-      trainerCrosshairSettings = saved.crosshairSettings as CrosshairSettings
-    }
-  } catch { /* non-fatal — trainer uses defaults */ }
+  removeEndedListener = window.api.on('trainer:session-ended', (raw: unknown) => {
+    const ended = asSessionEnded(raw)
+    if (!ended || ended.reason === 'completed') return // results are handled below
+    if (launching.value) return // the previous trainer being replaced; launch() reports its own failure
+    if (activeLaunchId !== null && ended.launchId !== activeLaunchId) return // an older launch
+    activeLaunchId = null
+    activeDrill.value = null
+    drillRunning.value = false
+    // A guided session stays on this step (Start now / Cancel); it never advances without a result.
+    clearSessionTimer()
+    trainerNotice.value = sessionEndedMessage(ended)
+  })
 
-  removeListener = window.api.on('trainer:session-result', async (result: unknown) => {
+  removeListener = window.api.on('trainer:session-result', async (result: unknown, launch?: unknown) => {
     const r = result as SessionResult
     lastResult.value = r
     sessionHistory.value.unshift(r)
+    activeLaunchId = null
+    trainerNotice.value = null
 
-    const currentLaunchConfig = activeDrill.value
-      ? {
-          scenario: activeDrill.value.scenario,
-          duration_seconds: activeDrill.value.duration_seconds,
-          difficulty: activeDrill.value.difficulty,
-          context: { weakness: activeDrill.value.weakness, score: activeDrill.value.weakness_score },
-        }
-      : null
+    // Main sends the launch this result belongs to, so a drill started elsewhere (or before this view
+    // mounted) still gets a "Play again" config with its user_drill_id.
+    const currentLaunchConfig = launchConfigFromInfo(launch)
+      ?? (activeDrill.value ? trainerLaunchConfig(assignedLaunchRequest(activeDrill.value)) : null)
 
     if (activeDrill.value) {
       completedDrills.value.add(activeDrill.value.scenario)
@@ -740,7 +741,13 @@ onMounted(async () => {
     activeDrill.value = null
     drillRunning.value = false
 
-    if (structuredSession.value?.active) {
+    const guidedStep = structuredSession.value?.active
+      ? structuredSession.value.plan[structuredSession.value.stepIndex]
+      : undefined
+    if (structuredSession.value?.active && (!guidedStep || guidedStep.scenario !== r.scenario)) {
+      // Not this guided step's drill (e.g. started from another screen): keep it in history only.
+      console.warn('[TrainingHub] Result for', r.scenario, 'does not match guided step', guidedStep?.scenario)
+    } else if (structuredSession.value?.active) {
       structuredSession.value.results.push(r)
       const nextStep = structuredSession.value.stepIndex + 1
       structuredSession.value.stepIndex = nextStep
@@ -784,6 +791,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   removeListener?.()
+  removeEndedListener?.()
   clearSessionTimer()
   stopPBCarousel()
 })
@@ -828,9 +836,10 @@ async function launchFreePlay() {
 }
 
 async function stopDrill() {
-  await window.api.trainer.kill()
+  activeLaunchId = null
   drillRunning.value = false
   activeDrill.value = null
+  await window.api.trainer.kill()
 }
 
 /**
@@ -848,7 +857,8 @@ function sanitizeInstructions(text: string | null): string | null {
 }
 
 async function launchCoachingDrill(drill: CoachingDrill) {
-  await launchDrill({ ...drillToAssigned(drill), user_drill_id: drill.id })
+  const assigned = drillToAssigned(drill)
+  if (assigned) await launchDrill(assigned)
 }
 
 const averageScore = computed(() => {
@@ -974,8 +984,8 @@ async function exportDrillCard() {
     // Stats row
     const stats = [
       { label: 'ACCURACY', value: r.accuracy_pct.toFixed(1) + '%' },
-      { label: 'REACTION', value: Math.round(r.avg_reaction_ms) + 'ms' },
-      { label: 'HITS', value: `${r.targets_hit}/${r.targets_hit + r.targets_missed}` },
+      { label: 'REACTION', value: isTrackingScenario(r.scenario) ? '—' : Math.round(r.avg_reaction_ms) + 'ms' },
+      { label: resultHitsCell(r).label.toUpperCase(), value: resultHitsCell(r).value },
       { label: 'CONSISTENCY', value: r.consistency_score + '%' },
     ]
     const cardW = 190, cardH = 72, cardY = 422, gap = 18
@@ -1351,6 +1361,9 @@ function finishStructuredSession() {
 function cancelStructuredSession() {
   clearSessionTimer()
   structuredSession.value = null
+  activeLaunchId = null
+  drillRunning.value = false
+  activeDrill.value = null
   window.api.trainer.kill()
 }
 
@@ -1412,6 +1425,11 @@ const CATEGORY_ICON: Record<string, string> = {
         <UfButton variant="secondary" icon="close" class="uf-insession-end" @click="stopDrill">Stop</UfButton>
       </div>
 
+      <div v-if="trainerNotice" class="uf-insession uf-rise" role="status">
+        <span class="uf-t3">{{ trainerNotice }}</span>
+        <UfButton variant="link" class="uf-insession-end" @click="trainerNotice = null">Dismiss</UfButton>
+      </div>
+
       <div v-if="structuredSessionWaiting" class="uf-insession uf-rise" role="status">
         <span class="uf-label">Guided session · step {{ structuredSessionStepIndex + 1 }} of {{ structuredSessionPlan.length }}</span>
         <span class="uf-t3">
@@ -1425,7 +1443,7 @@ const CATEGORY_ICON: Record<string, string> = {
             :title="step.phaseLabel"
           />
         </ol>
-        <span class="uf-t4 uf-num">Starts in {{ sessionCountdown }}s</span>
+        <span v-if="sessionCountdown > 0" class="uf-t4 uf-num">Starts in {{ sessionCountdown }}s</span>
         <span class="uf-insession-end">
           <UfButton variant="link" @click="cancelStructuredSession">Cancel</UfButton>
           <UfButton variant="secondary" icon="play" @click="clearSessionTimer(); launchStructuredStep(structuredSessionStepIndex)">Start now</UfButton>
@@ -1456,7 +1474,7 @@ const CATEGORY_ICON: Record<string, string> = {
             <div class="uf-hair-v" />
             <div><dt class="uf-t4">Time to hit</dt><dd class="uf-d4">{{ Math.round(lastResult.avg_reaction_ms) }}ms</dd></div>
             <div class="uf-hair-v" />
-            <div><dt class="uf-t4">Hits</dt><dd class="uf-d4">{{ hitsLabel(lastResult.targets_hit, lastResult.targets_missed) }}</dd></div>
+            <div><dt class="uf-t4">{{ resultHitsCell(lastResult).label }}</dt><dd class="uf-d4">{{ resultHitsCell(lastResult).value }}</dd></div>
           </dl>
         </template>
         <template #actions>
@@ -1543,6 +1561,16 @@ const CATEGORY_ICON: Record<string, string> = {
       </div>
     </Transition>
 
+    <!-- ── TRAINER ENDED WITHOUT A RESULT ─────────────────────────────────── -->
+    <div
+      v-if="trainerNotice"
+      class="flex-shrink-0 mx-3 mt-3 rounded-xl border border-white/[0.10] bg-white/[0.04] px-4 py-2.5 flex items-center justify-between gap-3"
+      role="status"
+    >
+      <span class="text-[12px] text-gray-300">{{ trainerNotice }}</span>
+      <button type="button" class="text-[10px] font-bold text-gray-500 hover:text-gray-300" @click="trainerNotice = null">Dismiss</button>
+    </div>
+
     <!-- ── WARMUP BETWEEN-STEPS BANNER ──────────────────────────────────── -->
     <Transition name="result-in">
       <div
@@ -1558,7 +1586,7 @@ const CATEGORY_ICON: Record<string, string> = {
                 Next: {{ SCENARIO_META[structuredSessionPlan[structuredSessionStepIndex]?.scenario ?? 'flick']?.label }}
                 ({{ structuredSessionPlan[structuredSessionStepIndex]?.phaseLabel }})
               </span>
-              <span class="ml-2 text-[10px] text-gray-500">Auto-starting in {{ sessionCountdown }}s…</span>
+              <span v-if="sessionCountdown > 0" class="ml-2 text-[10px] text-gray-500">Auto-starting in {{ sessionCountdown }}s…</span>
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -1650,8 +1678,8 @@ const CATEGORY_ICON: Record<string, string> = {
                   <div class="text-[8px] text-gray-500 uppercase tracking-wide mt-0.5">React</div>
                 </div>
                 <div class="bg-white/[0.05] rounded-xl px-3 py-2 text-center border border-white/[0.07]">
-                  <div class="text-sm font-black text-white tabular-nums">{{ lastResult.targets_hit }}<span class="text-gray-600 text-[9px] font-normal">/{{ lastResult.targets_hit + lastResult.targets_missed }}</span></div>
-                  <div class="text-[8px] text-gray-500 uppercase tracking-wide mt-0.5">Hits</div>
+                  <div class="text-sm font-black text-white tabular-nums">{{ resultHitsCell(lastResult).value }}</div>
+                  <div class="text-[8px] text-gray-500 uppercase tracking-wide mt-0.5">{{ resultHitsCell(lastResult).label }}</div>
                 </div>
               </div>
             </div>
@@ -1782,11 +1810,11 @@ const CATEGORY_ICON: Record<string, string> = {
       :scoring-note="scoringNote"
       :show-calibration="isAdmin"
       :categories="DRILL_CATEGORY_FILTERS"
-      :drills="scenarioCards.map(c => ({ scenario: c.scenario, label: SCENARIO_META[c.scenario]?.label ?? c.scenario, description: SCENARIO_META[c.scenario]?.description ?? '', difficulty: c.drill.difficulty, durationSeconds: c.drill.duration_seconds, personalBest: c.pb, oldBest: oldBests[c.scenario] ?? null, globalRank: c.rank, completed: c.completed }))"
+      :drills="scenarioCards.map(c => ({ scenario: c.scenario, label: SCENARIO_META[c.scenario]?.label ?? c.scenario, description: SCENARIO_META[c.scenario]?.description ?? '', beta: isBetaScenario(c.scenario), difficulty: c.drill.difficulty, durationSeconds: c.drill.duration_seconds, personalBest: c.pb, oldBest: oldBests[c.scenario] ?? null, globalRank: c.rank, completed: c.completed }))"
       :running-scenario="drillRunning ? activeDrill?.scenario ?? null : null"
       :busy="launching || drillRunning"
       :daily="{ scenarioLabel: SCENARIO_META[dailyChallenge.scenario]?.label ?? dailyChallenge.scenario, target: dailyChallenge.target, completed: dailyChallenge.completed }"
-      :free-play-options="Object.entries(SCENARIO_META).map(([key, meta]) => ({ key, label: meta.label }))"
+      :free-play-options="pickerScenarioMeta.map(([key, meta]) => ({ key, label: meta.label }))"
       :insights="correlationInsights"
       :scenario-label="(k: string) => SCENARIO_META[k]?.label ?? k"
       @start-session="startStructuredSession"
@@ -1924,6 +1952,7 @@ const CATEGORY_ICON: Record<string, string> = {
                   :scenario="card.scenario"
                   :label="SCENARIO_META[card.scenario]?.label ?? card.scenario"
                   :description="SCENARIO_META[card.scenario]?.description ?? ''"
+                  :beta="isBetaScenario(card.scenario)"
                   :difficulty="card.drill.difficulty"
                   :duration-seconds="card.drill.duration_seconds"
                   :personal-best="card.pb"
@@ -1987,7 +2016,7 @@ const CATEGORY_ICON: Record<string, string> = {
               <div class="rounded-xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
                 <label for="free-play-scenario" class="block text-sm font-semibold text-white">Quick play</label>
                 <select id="free-play-scenario" v-model="freePlayScenario" class="w-full rounded-md border border-white/15 bg-[#171719] p-2.5 text-sm text-gray-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-400">
-                  <option v-for="(meta, key) in SCENARIO_META" :key="key" :value="key">{{ meta.label }}</option>
+                  <option v-for="[key, meta] in pickerScenarioMeta" :key="key" :value="key">{{ meta.label }}</option>
                 </select>
                 <button type="button" class="w-full rounded-md border border-white/15 px-3 py-2.5 text-sm font-semibold text-white hover:bg-white/[0.06] disabled:opacity-40" :disabled="launching || drillRunning" @click="launchFreePlay">Launch drill</button>
               </div>

@@ -14,6 +14,14 @@ export type TrainerScenarioKey =
   | 'head_height'
   | 'strafe_aim'
   | 'duel'
+  | 'hold_angle'
+  | 'jiggle_peek'
+  | 'trade_window'
+  | 'clear_site'
+  | 'flash_swing'
+  | 'operator_hold'
+  | 'defuse_decision'
+  | 'retake_crossfire'
 
 export type TrainerDifficulty = 'easy' | 'medium' | 'hard' | 'pro'
 export type TrainerUiGroup = 'aim' | 'reaction' | 'precision' | 'duel'
@@ -26,6 +34,10 @@ export interface TrainerScenarioDef {
   uiGroup: TrainerUiGroup
   radar: boolean
   vodCategories: string[]
+  /** Beta drill: launchable by hand, never auto-picked by coaching or added to the radar. */
+  beta?: boolean
+  /** Primary games this drill is for (omitted = every game). Hidden from drill pickers for other games. */
+  games?: string[]
 }
 
 export const TRAINER_SCENARIOS: TrainerScenarioDef[] = [
@@ -146,45 +158,161 @@ export const TRAINER_SCENARIOS: TrainerScenarioDef[] = [
     radar: true,
     vodCategories: ['mechanics', 'crosshair_placement'],
   },
+  {
+    key: 'hold_angle',
+    label: 'Hold the Angle',
+    description: 'Hold a doorway while an enemy swings at a random moment. Never shoot at nothing.',
+    tip: 'Park your crosshair at head height on the edge and wait for the swing.',
+    uiGroup: 'duel',
+    radar: false,
+    vodCategories: ['crosshair_placement', 'positioning'],
+    beta: true,
+  },
+  {
+    key: 'jiggle_peek',
+    label: 'Jiggle Peek',
+    description: 'Peek just long enough to spot the enemy, then get back to cover.',
+    tip: 'Tap out, see them, and leave before they can react.',
+    uiGroup: 'duel',
+    radar: false,
+    vodCategories: ['positioning'],
+    beta: true,
+  },
+  {
+    key: 'trade_window',
+    label: 'Trade Window',
+    description: 'Your teammate dies on an angle. Swing and trade before the enemy resets.',
+    tip: 'Stay a few metres behind and swing the moment they drop.',
+    uiGroup: 'duel',
+    radar: false,
+    vodCategories: ['positioning'],
+    beta: true,
+  },
+  {
+    key: 'clear_site',
+    label: 'Clear the Site',
+    description: 'Glide through a site and pre-aim each corner before it opens.',
+    tip: 'Crosshair on the next corner at head height before you reach it.',
+    uiGroup: 'duel',
+    radar: false,
+    vodCategories: ['crosshair_placement'],
+    beta: true,
+  },
+  {
+    key: 'flash_swing',
+    label: 'Flash & Swing',
+    description: 'An enemy flash comes over the wall. Turn away in time, then win the swing.',
+    tip: 'Turn your back on the flash before it pops, then snap back to the angle.',
+    uiGroup: 'duel',
+    radar: false,
+    vodCategories: ['crosshair_placement', 'utility_usage'],
+    beta: true,
+    games: ['valorant'],
+  },
+  {
+    key: 'operator_hold',
+    label: 'Operator Hold',
+    description: 'Hold a long angle scoped while enemies wide-swing. Missing costs you the bolt.',
+    tip: 'Stay scoped on the swing line and take the first clean shot.',
+    uiGroup: 'duel',
+    radar: false,
+    vodCategories: ['mechanics', 'positioning'],
+    beta: true,
+    games: ['valorant'],
+  },
+  {
+    key: 'defuse_decision',
+    label: 'Defuse Decision',
+    description: 'The spike is down. Clear the hidden enemy or stick the defuse in time.',
+    tip: 'Bait with a tap or check the angle first; past 3.5 s you keep half.',
+    uiGroup: 'duel',
+    radar: false,
+    vodCategories: ['game_sense'],
+    beta: true,
+    games: ['valorant'],
+  },
+  {
+    key: 'retake_crossfire',
+    label: 'Retake Crossfire',
+    description: 'Two defenders hold the site. Take the fights one at a time.',
+    tip: 'Find the path where only one of them can see you.',
+    uiGroup: 'duel',
+    radar: false,
+    vodCategories: ['positioning', 'game_sense'],
+    beta: true,
+    games: ['valorant'],
+  },
 ]
 
 export const TRAINER_SCENARIO_KEYS = TRAINER_SCENARIOS.map(s => s.key)
 
-export const RADAR_SCENARIO_KEYS = TRAINER_SCENARIOS.filter(s => s.radar).map(s => s.key)
+export const RADAR_SCENARIO_KEYS = TRAINER_SCENARIOS.filter(s => s.radar && !s.beta).map(s => s.key)
+
+export const BETA_SCENARIO_KEYS = TRAINER_SCENARIOS.filter(s => s.beta).map(s => s.key)
+
+export function isBetaScenario(key: string | null | undefined): boolean {
+  return !!key && !!scenarioByKey[key as TrainerScenarioKey]?.beta
+}
+
+/** True when the drill belongs in pickers for this primary game (drills without `games` suit every game). */
+export function isScenarioForGame(key: string, game: string | null | undefined): boolean {
+  const games = scenarioByKey[key as TrainerScenarioKey]?.games
+  return !games || (!!game && games.includes(game))
+}
+
+/** Drill picker list for a primary game. Results/history still look drills up by key regardless of game. */
+export function trainerScenariosForGame(game: string | null | undefined): TrainerScenarioDef[] {
+  return TRAINER_SCENARIOS.filter(def => isScenarioForGame(def.key, game))
+}
 
 const scenarioByKey = Object.fromEntries(TRAINER_SCENARIOS.map(s => [s.key, s])) as Record<
   TrainerScenarioKey,
   TrainerScenarioDef
 >
 
-/** VOD coaching category → default trainer scenario */
+/**
+ * VOD coaching category → default trainer scenario (mirrors upforge-api category_defaults).
+ * Utility, economy and communication have no aim-trainer drill: those drills are practised in game.
+ */
 export const CATEGORY_TO_TRAINER_SCENARIO: Record<string, TrainerScenarioKey> = {
   mechanics: 'flick',
-  crosshair_placement: 'microadjust',
+  crosshair_placement: 'head_height',
   game_sense: 'switching',
-  positioning: 'strafe_aim',
-  utility_usage: 'flick',
-  economy: 'flick',
-  communication: 'flick',
+  positioning: 'duel',
+}
+
+/** Coaching categories the aim trainer cannot train (no trainer launch, no guided-session step). */
+export const NON_TRAINER_CATEGORIES: readonly string[] = ['utility_usage', 'economy', 'communication']
+
+export function isNonTrainerCategory(category: string | null | undefined): boolean {
+  return !!category && NON_TRAINER_CATEGORIES.includes(category)
 }
 
 export function trainerScenarioDef(key: string): TrainerScenarioDef | undefined {
   return scenarioByKey[key as TrainerScenarioKey]
 }
 
+function validScenario(key: string | null | undefined): TrainerScenarioKey | null {
+  return key && key in scenarioByKey ? (key as TrainerScenarioKey) : null
+}
+
+/**
+ * Trainer scenario for a coaching drill, or null when the drill is not an aim-trainer drill.
+ * Order: the coach's `trainer_scenario` → (not for utility/economy/comms) `godot_config.scenario`
+ * → category default → null. Never falls back to Flick.
+ */
 export function resolveTrainerScenario(input: {
   trainer_scenario?: string | null
   godot_config?: { scenario?: string } | null
   category?: string | null
-}): TrainerScenarioKey {
-  const fromField = input.trainer_scenario ?? input.godot_config?.scenario
-  if (fromField && fromField in scenarioByKey) {
-    return fromField as TrainerScenarioKey
-  }
-  if (input.category && CATEGORY_TO_TRAINER_SCENARIO[input.category]) {
-    return CATEGORY_TO_TRAINER_SCENARIO[input.category]
-  }
-  return 'flick'
+}): TrainerScenarioKey | null {
+  const explicit = validScenario(input.trainer_scenario)
+  if (explicit) return explicit
+  // Older API responses filled godot_config.scenario from the category (utility → flick): a guess, not a drill.
+  if (isNonTrainerCategory(input.category)) return null
+  const fromConfig = validScenario(input.godot_config?.scenario)
+  if (fromConfig) return fromConfig
+  return (input.category && CATEGORY_TO_TRAINER_SCENARIO[input.category]) || null
 }
 
 export function resolveTrainerDifficulty(
@@ -209,24 +337,6 @@ export function resolveTrainerDuration(
   return fallback
 }
 
-/** Godot session extras → API metadata payload */
-export function buildSessionMetadata(
-  result: {
-    max_streak?: number
-    min_reaction_ms?: number
-    max_reaction_ms?: number
-    targets_per_minute?: number
-  },
-  launch?: { difficulty?: TrainerDifficulty; user_drill_id?: number } | null,
-): Record<string, unknown> {
-  const meta: Record<string, unknown> = {}
-  if (result.max_streak != null) meta.max_streak = result.max_streak
-  if (result.min_reaction_ms != null) meta.min_reaction_ms = result.min_reaction_ms
-  if (result.max_reaction_ms != null) meta.max_reaction_ms = result.max_reaction_ms
-  if (result.targets_per_minute != null) meta.targets_per_minute = result.targets_per_minute
-  if (launch?.difficulty) meta.difficulty = launch.difficulty
-  if (launch?.user_drill_id) meta.user_drill_id = launch.user_drill_id
-  return meta
-}
+// Session → API metadata lives in the main process (electron/main/trainer-payload.ts buildTrainingSessionPayload).
 
 export const EXTENDED_SCENARIO_KEYS = TRAINER_SCENARIOS.filter(s => !s.radar).map(s => s.key)

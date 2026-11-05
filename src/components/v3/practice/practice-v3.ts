@@ -3,6 +3,7 @@
  * All numbers come from the training API via TrainingHubView; nothing here invents data.
  */
 import type { TrainerScenarioKey } from '../../../lib/trainer-scenarios'
+import { isCurrentScoringRun } from '../../../lib/training-result-metrics'
 
 export type PracticeTab = 'train' | 'analytics' | 'leaderboards' | 'loadouts'
 export type PracticeCategory = 'all' | 'aim' | 'reaction' | 'precision' | 'duel'
@@ -79,16 +80,16 @@ export function sessionMinutes(steps: SessionStepLike[]): number | null {
 
 // ── Scoring update ────────────────────────────────────────────────────────────
 /**
- * Desktop 2.12.12 (24 Sep 2026) started sending `metadata.scoring_version = 2`, and the API
- * (TrainingComparison::VERSION, commit 2122149) counts only those runs for personal bests,
- * benchmarks and leaderboards. Older runs stay in history but have no best. Say so instead of "Not played".
+ * Trainer 1.11 (Nov 2026) sends `metadata.scoring_version = 3` (scoring fixed; tracking drills score time on
+ * target). Personal bests, comparisons and leaderboards only count runs of CURRENT_SCORING_VERSION; v2 and
+ * older runs stay in history but have no best. Say so instead of "Not played".
  */
-export const SCORING_UPDATE_LABEL = '24 Sep 2026'
+export const SCORING_UPDATE_LABEL = 'Nov 2026'
 
 interface RunLike { scenario: string; score: number; metadata?: Record<string, unknown> }
 
 export function isOldScoringRun(run: RunLike): boolean {
-  return run.metadata?.scoring_version !== 2
+  return !isCurrentScoringRun(run)
 }
 
 /** Best score per drill among runs from before the scoring update (they don't count as personal bests). */

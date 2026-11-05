@@ -41,6 +41,14 @@ export const TRAINING_SCENARIO_ICONS: Record<TrainerScenarioKey, string> = {
   head_height: strafeAimIcon,
   strafe_aim: strafeAimIcon,
   duel: duelIcon,
+  hold_angle: duelIcon,
+  jiggle_peek: strafeAimIcon,
+  trade_window: duelIcon,
+  clear_site: strafeAimIcon,
+  flash_swing: duelIcon,
+  operator_hold: duelIcon,
+  defuse_decision: strafeAimIcon,
+  retake_crossfire: duelIcon,
 }
 
 export type TrainingTabKey = 'train' | 'analytics' | 'leaderboards' | 'loadouts'

@@ -20,6 +20,8 @@ export interface LaunchConfig {
   duration_seconds: number
   difficulty: string
   context?: Record<string, unknown>
+  /** Assigned/user drill this run counts towards (never for free play); kept so "Play again" keeps it. */
+  user_drill_id?: number
 }
 
 export const useTrainerResultStore = defineStore('trainerResult', () => {
@@ -35,6 +37,11 @@ export const useTrainerResultStore = defineStore('trainerResult', () => {
     isPB.value = false
   }
 
+  /** Point "Play again" at a drill launched from the results screen (e.g. the recommended one). */
+  function setLaunchConfig(config: LaunchConfig | null) {
+    launchConfig.value = config
+  }
+
   function setPB(value: boolean) {
     isPB.value = value
   }
@@ -46,5 +53,5 @@ export const useTrainerResultStore = defineStore('trainerResult', () => {
     prevBestScore.value = null
   }
 
-  return { result, isPB, launchConfig, prevBestScore, setResult, setPB, clear }
+  return { result, isPB, launchConfig, prevBestScore, setResult, setLaunchConfig, setPB, clear }
 })

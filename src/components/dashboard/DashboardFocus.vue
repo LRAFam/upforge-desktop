@@ -16,23 +16,17 @@ const {
   openEmptyCoachingAction,
   openAnalysis,
   trainLastInsight,
-  router,
+  launchDashboardDrill,
 } = useDashboard()
 
 const launchBusy = ref(false)
 
 async function startWeeklyDrill() {
   const plan = weeklyFocus.value
-  if (!plan || launchBusy.value) return
+  if (!plan?.drill.scenario || launchBusy.value) return
   launchBusy.value = true
   try {
-    await window.api.trainer.launch({
-      scenario: plan.drill.scenario,
-      difficulty: 'medium',
-      duration: 60,
-    })
-  } catch {
-    router.push('/training')
+    await launchDashboardDrill(plan.drill.scenario)
   } finally {
     launchBusy.value = false
   }
@@ -55,6 +49,7 @@ async function startWeeklyDrill() {
         · {{ weeklyFocus.metric.label }}
       </p>
       <button
+        v-if="weeklyFocus.drill.scenario"
         type="button"
         class="w-full py-2 rounded-lg text-[11px] font-bold text-white bg-gradient-to-r from-orange-600 to-red-600 hover:opacity-90 disabled:opacity-50"
         :disabled="launchBusy"
