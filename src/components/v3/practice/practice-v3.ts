@@ -232,12 +232,12 @@ export function practiceGameScope(game: string | null | undefined): PracticeGame
     case undefined:
       return { matchCoaching: true, note: null }
     case 'cs2':
-      return { matchCoaching: false, note: 'These are general aim drills. Set the trainer to CS2 sensitivity in Settings › Trainer so they feel like your game. Drills picked from your matches are Valorant-only for now.' }
+      return { matchCoaching: false, note: 'These are general aim drills. Set the trainer to CS2 sensitivity in Settings › Trainer so they feel like your game. Drills the coach adds from your match stats are Valorant-only for now.' }
     case 'deadlock':
-      return { matchCoaching: false, note: 'These are general aim drills. Set the trainer to Deadlock sensitivity in Settings › Trainer so they feel like your game. Drills picked from your matches are Valorant-only for now.' }
+      return { matchCoaching: false, note: 'These are general aim drills. Set the trainer to Deadlock sensitivity in Settings › Trainer so they feel like your game. Drills the coach adds from your match stats are Valorant-only for now.' }
     case 'lol':
       return { matchCoaching: false, note: 'These are aim drills for shooters, so they won’t help much in League. League drills come with Riot stats coaching, on the match page of a recorded game.' }
     default:
-      return { matchCoaching: false, note: 'These are general aim drills. Drills picked from your matches are Valorant-only for now.' }
+      return { matchCoaching: false, note: 'These are general aim drills. Drills the coach adds from your match stats are Valorant-only for now.' }
   }
 }
