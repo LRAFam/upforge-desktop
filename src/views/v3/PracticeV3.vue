@@ -73,6 +73,7 @@ const emit = defineEmits<{
   'update:freePlayScenario': [scenario: string]
   'start-session': []
   'play-match-drill': [id: number]
+  'dismiss-match-drill': [id: number]
   'play-drill': [scenario: string]
   'play-daily': []
   'launch-free': []
@@ -170,17 +171,27 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
 
       <div class="uf-practice-grid">
         <div class="uf-practice-main">
-          <section v-if="matchDrills.length && matchCoaching" class="uf-rise uf-d2s">
+          <!-- Coach-assigned drills always show: the coach assigned them for the player's game. -->
+          <section v-if="matchDrills.length" class="uf-rise uf-d2s">
             <span class="uf-label">Drills from your matches</span>
             <ul class="uf-reco">
               <li v-for="r in matchDrills" :key="r.id">
                 <div class="uf-reco-row">
                   <img v-if="r.trainerScenario" :src="scenarioIconUrl(r.trainerScenario)" alt="" class="uf-reco-icon">
                   <img v-else :src="TRAINING_ARTWORK.vodRecommend" alt="" class="uf-reco-icon">
-                  <span class="uf-reco-text"><span class="uf-t3">{{ r.title }}</span><span class="uf-t4">{{ r.meta }}</span></span>
+                  <span class="uf-reco-text">
+                    <span v-if="r.fromMatches" class="uf-t4 uf-reco-source">From your matches</span>
+                    <span class="uf-t3">{{ r.title }}<span v-if="r.beta" class="uf-picker-tag" style="color: var(--uf-gold)">Beta</span></span>
+                    <span class="uf-t4">{{ r.meta }}</span>
+                    <span v-if="r.why" class="uf-t4" style="color: var(--uf-bone)">{{ r.why }}</span>
+                    <span v-if="r.stat" class="uf-t4 uf-reco-stat"
+                      :style="r.stat.trend === 'better' ? 'color: var(--uf-win)' : undefined">{{ r.stat.text }}</span>
+                  </span>
                   <UfButton v-if="r.trainerScenario" variant="link" :disabled="busy" @click="emit('play-match-drill', r.id)">Play</UfButton>
                   <UfButton v-else-if="r.steps || r.goal" variant="link" :aria-expanded="openSteps === r.id"
                     @click="openSteps = openSteps === r.id ? null : r.id">{{ openSteps === r.id ? 'Hide steps' : 'Steps' }}</UfButton>
+                  <button type="button" class="uf-link uf-reco-dismiss" :aria-label="`Not now: ${r.title}`"
+                    @click="emit('dismiss-match-drill', r.id)">Not now</button>
                 </div>
                 <div v-if="openSteps === r.id" class="uf-reco-steps">
                   <p v-if="r.steps" class="uf-t4" style="margin: 0; color: var(--uf-bone); line-height: 1.5">{{ r.steps }}</p>
@@ -304,6 +315,9 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
 .uf-reco-icon { width: 40px; height: 40px; flex: none; object-fit: contain; }
 .uf-reco-steps { display: flex; flex-direction: column; gap: 6px; padding: 10px 0 2px 54px; max-width: 760px; }
 .uf-reco-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.uf-reco-source { text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; color: var(--uf-gold); }
+.uf-reco-stat { font-variant-numeric: tabular-nums; }
+.uf-reco-dismiss { color: var(--uf-muted); }
 .uf-library-head { display: flex; align-items: baseline; gap: 12px 24px; margin-bottom: 14px; flex-wrap: wrap; }
 .uf-library-count { margin-left: auto; white-space: nowrap; }
 .uf-library { width: 100%; border-collapse: collapse; }

@@ -18,6 +18,7 @@ import { TrainerBridge } from '../trainer-bridge'
 import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest } from '../trainer-payload'
 import { sendOverlayData } from '../overlay-window'
 import { apiPost } from './api-helpers'
+import { dismissCoachingDrill } from '../coaching-drill-dismiss'
 import { listRecentDemosInDir } from '../demo-finder'
 import { SourceReplayUploader } from '../source-replay-uploader'
 import { getDeadlockDetectionStatus } from '../deadlock-match-watcher'
@@ -154,6 +155,12 @@ export function setupGamingHandlers(
       log.warn('[Trainer] Failed to fetch coaching drills:', err?.message)
       return []
     }
+  })
+
+  ipcMain.handle('trainer:dismiss-coaching-drill', async (_e, id: unknown) => {
+    const result = await dismissCoachingDrill(auth.getApi(), auth.getToken(), id)
+    if (!result.ok) log.warn('[Trainer] Failed to dismiss coaching drill:', id, result.error)
+    return result
   })
 
   ipcMain.handle('trainer:get-correlation', async () => {

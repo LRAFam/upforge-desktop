@@ -127,6 +127,7 @@ export interface CoachingDrill {
   id: number
   category: string
   title: string
+  description?: string | null
   instructions: string | null
   success_metric: string | null
   practice_mode: string | null
@@ -136,11 +137,18 @@ export interface CoachingDrill {
   baseline_score: number
   target_score: number
   status: string
+  attempt_count?: number
   godot_config?: {
     scenario?: string
     difficulty?: string
     duration_seconds?: number
   } | null
+  /** 'vod' or 'match_stats' (coach drills from repeated match-stat problems). Absent on older APIs. */
+  source?: import('./lib/coaching-drill-stat').CoachingDrillSource | null
+  /** Coach's reason, quoting the player's own numbers (match_stats drills). */
+  why?: string | null
+  stat?: import('./lib/coaching-drill-stat').CoachingDrillStat | null
+  beta?: boolean
 }
 
 /** Settings › Advanced diagnostics capture (electron/main/game-data-capture.ts). */
@@ -1712,6 +1720,8 @@ declare global {
         getHistory: (comparison?: import('./lib/training-result-metrics').TrainingComparisonRequest) => Promise<TrainingHistory | null>
         getPlan: () => Promise<SharedTrainingPlan | null>
         getCoachingDrills: () => Promise<CoachingDrill[]>
+        /** POST /api/drills/{id}/dismiss ("Not now"). */
+        dismissCoachingDrill: (id: number) => Promise<{ ok: true } | { ok: false; error: string }>
         getCorrelation: () => Promise<string[]>
         getBenchmark: () => Promise<TrainingBenchmark | null>
         getAiCoaching: () => Promise<{

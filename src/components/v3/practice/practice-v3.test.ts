@@ -80,9 +80,26 @@ describe('drills from your matches', () => {
       { id: 4, category: 'utility_usage', title: 'Empress Timing', instructions: 'x', success_metric: null, practice_mode: 'custom_game', trainer_scenario: null, godot_config: { scenario: 'flick' } },
     ], label, 4)
     expect(rows[3]).toMatchObject({ meta: 'Utility · Custom game', trainerScenario: null })
-    expect(rows[0]).toEqual({ id: 1, title: 'Empress Timing — Pre-Execute Only Custom Practice', meta: 'Utility · Custom game', trainerScenario: null, steps: 'Load Haven.', goal: 'Never early.' })
+    expect(rows[0]).toEqual({ id: 1, title: 'Empress Timing — Pre-Execute Only Custom Practice', meta: 'Utility · Custom game', trainerScenario: null, steps: 'Load Haven.', goal: 'Never early.', fromMatches: false, why: null, stat: null, beta: false })
     expect(rows[1]).toMatchObject({ title: 'Flick Warm-up', meta: 'Mechanics · Trainer: Flick', trainerScenario: 'flick' })
     expect(rows[2]).toMatchObject({ meta: 'Agent play · Deathmatch', trainerScenario: null })
+  })
+  it('adds the label, why and stat line for match-stats drills (VOD drills unchanged)', () => {
+    const [stats, vod] = matchDrillRows([
+      {
+        id: 9, category: 'mechanics', title: 'Head-level flicks', instructions: null, success_metric: null, practice_mode: null,
+        trainer_scenario: 'flick', source: 'match_stats', beta: true,
+        why: ' Your headshots were 16% of 230 hits that landed across your last 5 ranked matches. ',
+        stat: { label: 'HS', better: 'higher', baseline_pct: 16, current_pct: null, target_pct: 19, matches: 5 },
+      },
+      { id: 10, category: 'mechanics', title: 'Flick', instructions: null, success_metric: null, practice_mode: null, trainer_scenario: 'flick', source: 'vod', why: 'ignored', stat: null },
+    ], label)
+    expect(stats).toMatchObject({
+      fromMatches: true, beta: true, trainerScenario: 'flick',
+      why: 'Your headshots were 16% of 230 hits that landed across your last 5 ranked matches.',
+      stat: { text: 'HS 16% → target 19%', trend: null },
+    })
+    expect(vod).toMatchObject({ fromMatches: false, why: null, stat: null, beta: false })
   })
   it('limits to three rows and keeps untagged titles', () => {
     expect(matchDrillRows(Array.from({ length: 5 }, (_, i) => ({ id: i, category: 'x', title: 'T', instructions: null, success_metric: null, practice_mode: null })), label)).toHaveLength(3)

@@ -39,7 +39,7 @@ import UfButton from '../components/v3/UfButton.vue'
 import UfDialog from '../components/v3/UfDialog.vue'
 import PracticeAnalyticsV3 from '../components/v3/practice/PracticeAnalyticsV3.vue'
 import { deltaTone, pct, signed, toneColor } from '../components/v3/practice/practice-session-v3'
-import { matchDrillRows, oldScoringBests, oldScoringNote } from '../components/v3/practice/practice-v3'
+import { coachingDrillExtras, matchDrillRows, oldScoringBests, oldScoringNote } from '../components/v3/practice/practice-v3'
 
 const ICON_LOCK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
 const ICON_TROPHY_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/><path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>`
@@ -71,6 +71,11 @@ interface AssignedDrill {
   weakness_score: number
   reason: string
   user_drill_id?: number
+  /** Coaching drill from repeated match-stat problems: label, why line and stat line in the VOD strip. */
+  from_matches?: boolean
+  why?: string | null
+  stat_line?: string | null
+  beta?: boolean
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -382,7 +387,13 @@ function drillToAssigned(drill: CoachingDrill): AssignedDrill | null {
     reason: drill.title,
     // Coaching drills from /api/drills are the user's drills: runs count towards them (API metadata.user_drill_id).
     user_drill_id: drill.id,
+    ...legacyCoachingExtras(drill, scenario),
   }
+}
+
+function legacyCoachingExtras(drill: CoachingDrill, scenario: string) {
+  const x = coachingDrillExtras(drill, scenario)
+  return { from_matches: x.fromMatches, why: x.why, stat_line: x.stat?.text ?? null, beta: x.beta }
 }
 
 // ── Score helpers ─────────────────────────────────────────────────────────────
@@ -504,6 +515,25 @@ function launchMatchDrill(id: number) {
   const d = coachingDrills.value.find(x => x.id === id)
   const assigned = d ? drillToAssigned(d) : null
   if (assigned) void launchDrill(assigned)
+}
+// "Not now" on a coaching drill: hide it at once, put it back and say so if the API refuses.
+async function dismissCoachingDrill(id: number) {
+  const prevCoaching = coachingDrills.value
+  const prevAssigned = assignedDrills.value
+  if (!prevCoaching.some(d => d.id === id)) return
+  coachingDrills.value = prevCoaching.filter(d => d.id !== id)
+  const remaining = prevAssigned.filter(d => d.user_drill_id !== id)
+  if (remaining.length !== prevAssigned.length) assignedDrills.value = remaining
+  let result: { ok: boolean; error?: string }
+  try {
+    result = await window.api.trainer.dismissCoachingDrill(id)
+  } catch (err) {
+    result = { ok: false, error: (err as Error)?.message }
+  }
+  if (result.ok) return
+  coachingDrills.value = prevCoaching
+  assignedDrills.value = prevAssigned
+  trainerNotice.value = result.error || 'Couldn’t hide that drill. Try again.'
 }
 // Valorant calibration is an admin measuring tool: only admins get the link.
 const isAdmin = ref(false)
@@ -1819,6 +1849,7 @@ const CATEGORY_ICON: Record<string, string> = {
       :scenario-label="(k: string) => SCENARIO_META[k]?.label ?? k"
       @start-session="startStructuredSession"
       @play-match-drill="launchMatchDrill"
+      @dismiss-match-drill="dismissCoachingDrill"
       @play-drill="(k: string) => launchScenarioCard(k as ScenarioKey)"
       @play-daily="launchDrill({ scenario: dailyChallenge.scenario, difficulty: 'medium', duration_seconds: 60, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${dailyChallenge.target}+` })"
       @launch-free="launchFreePlay"
@@ -1922,6 +1953,7 @@ const CATEGORY_ICON: Record<string, string> = {
                 :icon-src="scenarioIconUrl"
                 :disabled="launching || drillRunning"
                 @play="launchVodDrill"
+                @dismiss="(d) => d.user_drill_id && dismissCoachingDrill(d.user_drill_id)"
               />
 
               <div>

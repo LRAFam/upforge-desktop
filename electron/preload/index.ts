@@ -449,6 +449,7 @@ const api = {
     getHistory: (comparison?: import('../../src/lib/training-result-metrics').TrainingComparisonRequest) => ipcRenderer.invoke('trainer:get-history', comparison),
     getPlan: () => ipcRenderer.invoke('trainer:get-plan'),
     getCoachingDrills: () => ipcRenderer.invoke('trainer:get-coaching-drills'),
+    dismissCoachingDrill: (id: number) => ipcRenderer.invoke('trainer:dismiss-coaching-drill', id),
     getCorrelation: () => ipcRenderer.invoke('trainer:get-correlation'),
     getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),
     getAiCoaching: () => ipcRenderer.invoke('trainer:get-ai-coaching'),
