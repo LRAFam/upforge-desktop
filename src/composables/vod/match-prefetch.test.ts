@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createPrefetchCache } from './match-prefetch'
+import { archivePrefetchPaused, createPrefetchCache, noteArchiveRateLimited } from './match-prefetch'
 
 describe('match prefetch cache', () => {
   it('shares one in-flight request between hover and click', async () => {
@@ -48,5 +48,27 @@ describe('match prefetch cache', () => {
     expect(c.size()).toBe(3)
     expect(c.take(1, 10)).toBeUndefined()
     expect(c.take(5, 10)).toBeDefined()
+  })
+})
+
+describe('cloud review prefetch and rate limits', () => {
+  it('drops a resolved failure so clicking loads fresh instead of showing the old error', async () => {
+    const load = vi.fn().mockResolvedValueOnce({ ok: false, error: 'Too many requests.' }).mockResolvedValueOnce({ ok: true })
+    const cache = createPrefetchCache<{ ok: boolean }, string>(load, 90_000, 8, r => !r.ok)
+    await cache.prefetch('a')
+    await Promise.resolve()
+    expect(cache.take('a')).toBeUndefined()
+    await cache.prefetch('a')
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops prefetching cloud reviews for a while after the API says too many requests', () => {
+    const now = 1_000_000
+    expect(archivePrefetchPaused(now)).toBe(false)
+    noteArchiveRateLimited({ ok: false, error: 'Too many requests. Please slow down and try again later.' }, now)
+    expect(archivePrefetchPaused(now + 60_000)).toBe(true)
+    expect(archivePrefetchPaused(now + 11 * 60_000)).toBe(false)
+    noteArchiveRateLimited({ ok: false, error: 'This cloud recording has expired.' }, now)
+    expect(archivePrefetchPaused(now + 11 * 60_000)).toBe(false)
   })
 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** One recording as a hairline row: map art · agent · title · result · status · actions. */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { matchReportPath } from '../../../lib/match-report'
 import type { LibraryRecording } from '../../../lib/footage-library'
@@ -41,6 +41,16 @@ const summary = computed(() => matchRowSummary(props.rec, props.analysis ?? (pro
 const isAlt = computed(() => (props.rec as { riotAccountRole?: string | null }).riotAccountRole === 'alt')
 const unavailable = computed(() => footageUnavailable(props.rec))
 const canOpen = computed(() => !unavailable.value && (canWatchRawRecording(props.rec) || props.rec.analysisId != null))
+// Prefetch only when the pointer rests on a row: sweeping the mouse down the list must not fire a
+// request per row (that spent the player's API allowance and blocked opening reviews).
+const HOVER_PREFETCH_MS = 250
+let hoverTimer: ReturnType<typeof setTimeout> | null = null
+function hoverPrefetch() {
+  if (!canOpen.value || hoverTimer) return
+  hoverTimer = setTimeout(() => { hoverTimer = null; emit('prefetch') }, HOVER_PREFETCH_MS)
+}
+function cancelHoverPrefetch() { if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null } }
+onBeforeUnmount(cancelHoverPrefetch)
 const openAction = computed(() => rowOpenAction(props.rec, { unavailable: !!unavailable.value, timeline: canOpenTimeline(props.rec) }))
 const openLabel = computed(() => unavailable.value || openAction.value.label)
 // Coaching finished but not opened yet: the same list that drives the Matches badge.
@@ -114,7 +124,7 @@ async function startReview() {
 <template>
   <div class="uf-row uf-band" :class="[{ 'is-selected': selected, 'is-selecting': selecting }, `is-${tone}`]"
     @click="selecting && !rec.cloudOnly ? emit('toggle') : undefined"
-    @mouseenter="canOpen && emit('prefetch')" @focusin="canOpen && emit('prefetch')">
+    @mouseenter="hoverPrefetch" @mouseleave="cancelHoverPrefetch" @focusin="canOpen && emit('prefetch')">
     <img v-if="art.backdrop" :src="art.backdrop" alt="" aria-hidden="true" class="uf-band-bg" loading="lazy">
     <span v-if="selecting" class="uf-check" :class="{ 'is-on': selected }" aria-hidden="true">
       <UfIcon v-if="selected" name="check" :size="12" />
