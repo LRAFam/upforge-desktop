@@ -7,7 +7,7 @@ import { plural } from '../../lib/plural'
  */
 import UfTabs from '../../components/v3/UfTabs.vue'
 import { computed, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import UfButton from '../../components/v3/UfButton.vue'
 import { scenarioIconUrl, TRAINING_ARTWORK } from '../../lib/training-icons'
 import {
@@ -16,6 +16,7 @@ import {
   durationLabel,
   noBestCaption,
   practiceGameScope,
+  pickNextDrill,
   practiceStatItems,
   sessionMinutes,
   type MatchDrillRow,
@@ -98,6 +99,18 @@ const matchCoaching = computed(() => scope.value.matchCoaching)
 const showSensLink = computed(() => primaryGame.value === 'cs2' || primaryGame.value === 'deadlock')
 const focusPlan = computed(() => focusDrillPlan(focus.value?.metric, props.drills.map(d => d.scenario)))
 const focusProgress = computed(() => focusBeforeAfter(focus.value))
+// "Do this next": the match report's drill (from "Practise this"), else the top drill from matches.
+const route = useRoute() as ReturnType<typeof useRoute> | undefined
+const router = useRouter() as ReturnType<typeof useRouter> | undefined
+const nextDrill = computed(() => pickNextDrill(route?.query ?? {}, props.matchDrills, props.drills.map(d => d.scenario)))
+const nextDrillLabel = computed(() => props.drills.find(d => d.scenario === nextDrill.value?.scenario)?.label ?? null)
+function playNextDrill() {
+  const n = nextDrill.value
+  if (!n?.scenario) return
+  if (n.matchDrillId != null) emit('play-match-drill', n.matchDrillId)
+  else emit('play-drill', n.scenario)
+}
+function clearReportDrill() { router?.replace({ path: '/training' }).catch(() => {}) }
 const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
   .map(s => props.drills.find(d => d.scenario === s))
   .filter((d): d is PracticeDrillCard => !!d))
@@ -128,7 +141,22 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
       <section class="uf-session uf-rise uf-d1s">
         <img :src="TRAINING_ARTWORK.guidedSessionHero" alt="" class="uf-session-art">
         <div class="uf-session-scrim" />
-        <div v-if="focusPlan && focus && matchCoaching" class="uf-session-body">
+        <div v-if="nextDrill?.source === 'match_report'" class="uf-session-body">
+          <span class="uf-label">Do this next · from your last match</span>
+          <p class="uf-t1" style="margin: 0; max-width: 760px">{{ nextDrill.title }}</p>
+          <p v-if="nextDrill.why" class="uf-t2" style="margin: 0; max-width: 620px">Why: {{ nextDrill.why }}</p>
+          <div class="uf-session-row">
+            <p class="uf-t4" style="margin: 0; max-width: 520px">
+              <template v-if="nextDrillLabel">Warm up with the {{ nextDrillLabel }} drill here, then do this in a custom game before you queue.</template>
+              <template v-else>Do this in a custom game before you queue. One drill, done properly, beats five done once.</template>
+            </p>
+            <div class="uf-session-actions">
+              <UfButton variant="link" @click="clearReportDrill">See all drills</UfButton>
+              <UfButton v-if="nextDrill.scenario" variant="primary" icon="play" :disabled="busy" @click="playNextDrill">Start {{ nextDrillLabel }}</UfButton>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="focusPlan && focus && matchCoaching" class="uf-session-body">
           <span class="uf-label">Today’s session · from your focus</span>
           <p class="uf-t1" style="margin: 0; max-width: 760px">{{ focus.label }}</p>
           <p class="uf-t2" style="margin: 0; max-width: 620px">{{ focusPlan.caption }}</p>
@@ -146,6 +174,20 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
             <div class="uf-session-actions">
               <UfButton v-if="sessionSteps.length" variant="link" :disabled="sessionDisabled" @click="emit('start-session')">Guided session instead</UfButton>
               <UfButton variant="primary" icon="play" :disabled="busy || !focusDrills.length" @click="emit('play-drill', focusDrills[0].scenario)">Start with {{ focusDrills[0]?.label }}</UfButton>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="nextDrill" class="uf-session-body">
+          <span class="uf-label">Do this next · from your matches</span>
+          <p class="uf-t1" style="margin: 0; max-width: 760px">{{ nextDrill.title }}</p>
+          <p v-if="nextDrill.why" class="uf-t2" style="margin: 0; max-width: 620px">{{ nextDrill.why }}</p>
+          <p v-if="nextDrill.steps" class="uf-t4" style="margin: 0; max-width: 620px; color: var(--uf-bone); line-height: 1.5">{{ nextDrill.steps }}</p>
+          <p v-if="nextDrill.goal" class="uf-t4" style="margin: 0">Goal: {{ nextDrill.goal }}</p>
+          <div class="uf-session-row">
+            <span />
+            <div class="uf-session-actions">
+              <UfButton v-if="sessionSteps.length" variant="link" :disabled="sessionDisabled" @click="emit('start-session')">Guided session instead</UfButton>
+              <UfButton v-if="nextDrill.scenario" variant="primary" icon="play" :disabled="busy" @click="playNextDrill">Start {{ nextDrillLabel ?? 'drill' }}</UfButton>
             </div>
           </div>
         </div>

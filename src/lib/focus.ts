@@ -19,6 +19,8 @@ export interface Focus {
   progress: { games_played: number; hits: number; games_required: number; hits_required: number; status: string }
   started_at: string | null
   completed_at: string | null
+  /** 1 for a new habit; 2+ when retrying a habit the player just missed (API ≥ 2026-11-07). */
+  attempt?: number
 }
 
 export interface FocusResponse {
@@ -28,6 +30,8 @@ export interface FocusResponse {
   notes_usage: { used: number; limit: number }
   /** Last locally synced report, restored by the main process for this account. */
   latest?: FocusUpdate | null
+  /** Most recent achieved / missed focus (API ≥ 2026-11-07). */
+  last_completed?: Focus | null
 }
 
 export interface NoteClaim { finding_id: string; text: string; rounds?: number[] }
@@ -87,6 +91,9 @@ export function focusSyncMessage(result: FocusSyncResult | null): string {
   if (result.reason === 'invalid_match') return 'Some matches could not be processed because their match data was incomplete or rejected.'
   if (result.reason === 'riot_client_unavailable' || result.reason === 'fetch_failed') return 'Open Valorant (the Riot Client) so UpForge can read your recent matches.'
   if (result.reason === 'no_recent_matches') return 'No recent Valorant matches were found.'
+  if (result.reason === 'some_matches_failed' && result.uploaded > 0) {
+    return `Checked ${result.uploaded} new match${result.uploaded === 1 ? '' : 'es'}. Riot hasn't released one match yet; it's checked next time.`
+  }
   if (result.reason === 'some_matches_failed' || result.reason === 'match_history_unavailable') return 'Riot match details are not available yet. Please try again shortly.'
   if (!result.ok) return 'Could not check your matches. Please try again.'
   if (result.uploaded === 0) return "You're up to date."
@@ -199,4 +206,92 @@ export function decidedStats(f: MatchRoundFacts | null | undefined): Array<{ val
   ]
   if (others.length) items.push({ value: `${othersWon}/${others.length}`, caption: 'Rounds won when you didn’t', sub: 'Every other round this match' })
   return items
+}
+
+export interface FocusResult {
+  id: number
+  tone: 'achieved' | 'missed'
+  title: string
+  /** What happened, in the player's own numbers. */
+  body: string
+  /** What comes next. */
+  next: string
+}
+
+const ordinal = (n: number) => (['', 'First', 'Second', 'Third', 'Fourth', 'Fifth'][n] ?? `Try ${n}:`)
+
+/**
+ * The moment a focus ends: what the player did and what's next.
+ * Null while the focus is still running, or with no checked games (no invented results).
+ */
+export function focusResult(done: Focus | null | undefined, next: Focus | null | undefined): FocusResult | null {
+  if (!done || (done.progress.status !== 'achieved' && done.progress.status !== 'missed')) return null
+  const values = done.checks.map(c => c.value).filter(v => typeof v === 'number' && Number.isFinite(v))
+  if (!values.length) return null
+  const avg = values.reduce((a, b) => a + b, 0) / values.length
+  const p = done.progress
+  const goal = `${done.better === 'lower' ? 'under' : 'over'} ${pct(done.target)}`
+  const label = done.label.toLowerCase()
+  const moved = `${pct(done.baseline)} → ${pct(avg)} average`
+  const sameNext = !!next && next.id !== done.id && next.metric === done.metric && next.progress.status === 'active'
+  const otherNext = !!next && next.id !== done.id && next.metric !== done.metric && next.progress.status === 'active'
+  const nextTitle = next ? `${next.label} ${next.better === 'lower' ? 'under' : 'over'} ${pct(next.target)}` : ''
+
+  if (p.status === 'achieved') {
+    return {
+      id: done.id,
+      tone: 'achieved',
+      title: `Focus complete: ${label}`,
+      body: `On target in ${p.hits} of ${p.games_played} games (goal ${goal}). ${moved}.`,
+      next: otherNext ? `New focus: ${nextTitle}.` : 'Your next focus comes from your next ranked match — a different habit.',
+    }
+  }
+  const attempt = sameNext ? (next!.attempt ?? 2) : null
+  return {
+    id: done.id,
+    tone: 'missed',
+    title: `Not yet: ${label}`,
+    body: `On target in ${p.hits} of ${p.games_played} games (goal ${goal}). ${moved}.`,
+    next: sameNext
+      ? `This is still costing you rounds, so it stays your focus. ${ordinal(attempt!)} attempt — practise it before you queue.`
+      : otherNext ? `New focus: ${nextTitle}.` : 'Your next focus comes from your next ranked match.',
+  }
+}
+
+// ---- "seen" memory for the focus result (per viewer convenience; safe if storage is unavailable) ----
+const RESULT_SEEN_KEY = 'uf.focusResult.seen'
+const RESULT_MAX_AGE_MS = 3 * 86_400_000
+
+function resultStore(): Storage | null {
+  try { return typeof localStorage === 'undefined' ? null : localStorage } catch { return null }
+}
+
+/** The finished focus to show on Home: newest of the live update and the API's last one, unseen and recent. */
+export function pickFocusResult(
+  candidates: Array<Focus | null | undefined>,
+  seen: ReadonlySet<number>,
+  now = Date.now(),
+): Focus | null {
+  const done = candidates
+    .filter((f): f is Focus => !!f && (f.progress.status === 'achieved' || f.progress.status === 'missed'))
+    .filter(f => !seen.has(f.id))
+    .filter(f => {
+      const at = Date.parse(f.completed_at ?? '')
+      return Number.isNaN(at) || now - at <= RESULT_MAX_AGE_MS
+    })
+    .sort((a, b) => b.id - a.id)
+  return done[0] ?? null
+}
+
+export function readSeenFocusResults(s: Storage | null = resultStore()): Set<number> {
+  try {
+    const arr = JSON.parse(s?.getItem(RESULT_SEEN_KEY) ?? '[]')
+    return new Set(Array.isArray(arr) ? arr.filter((n): n is number => Number.isInteger(n)) : [])
+  } catch { return new Set() }
+}
+
+export function markFocusResultSeen(id: number, s: Storage | null = resultStore()): void {
+  const ids = readSeenFocusResults(s)
+  ids.add(id)
+  try { s?.setItem(RESULT_SEEN_KEY, JSON.stringify([...ids].slice(-50))) } catch { /* ignore */ }
 }

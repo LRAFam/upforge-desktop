@@ -5,7 +5,9 @@
 import cs2CardArt from '../../../assets/games/cs2-card-bg.webp'
 import { mapDisplayName } from '../games/display-names'
 import { getCs2RadarUrl, isCs2Map, normalizeCs2MapKey } from '../../../lib/cs2-maps'
-import { recordingMapImage, recordingMapLabel } from '../../../lib/recording-display'
+import { recordingMapImage, recordingMapLabel, recordingPlayerImage, resolveRecordingAgent } from '../../../lib/recording-display'
+import { championSplashUrl } from '../../../lib/lol'
+import type { PendingRecording } from '../../../env.d.ts'
 
 /** A valid epoch-ms value from a number, an ISO string or nothing. */
 function toMs(value: number | string | null | undefined): number | null {
@@ -117,4 +119,25 @@ export function dedupeAnalysesByMatch<T extends DedupeLike>(list: readonly T[]):
     const key = a.match_id?.trim()
     return !key || best.get(key) === a
   })
+}
+
+/**
+ * Row artwork, like the web companion's Matches band: a wide backdrop that fills the row and,
+ * for Valorant, the agent's full portrait standing in it. League uses the champion splash as the
+ * backdrop (its map art is the same for every game). Other games keep their map art and icon.
+ */
+export function matchRowArt(rec: Pick<PendingRecording, 'game' | 'map' | 'agent' | 'timeline'>): {
+  backdrop: string
+  figure: string
+  icon: string
+} {
+  const agent = resolveRecordingAgent(rec)
+  if (rec.game === 'lol' && agent) {
+    const splash = championSplashUrl(agent)
+    if (splash) return { backdrop: splash, figure: '', icon: recordingPlayerImage(rec) }
+  }
+  const icon = recordingPlayerImage(rec)
+  const valorant = rec.game === 'valorant' || rec.game === 'unknown'
+  const figure = valorant && /\/displayicon\.png$/.test(icon) ? icon.replace(/\/displayicon\.png$/, '/fullportrait.png') : ''
+  return { backdrop: matchMapArt(rec.game, rec.map), figure, icon: figure ? '' : icon }
 }

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { habitDrillRoute, habitLines } from '../analysis/habit-history'
 import { uiV3 } from '../../lib/ui-v3'
 import VodLeagueScoreboard from './VodLeagueScoreboard.vue'
 import LolMatchCoaching from '../v3/games/LolMatchCoaching.vue'
@@ -174,6 +176,11 @@ function showReview() { askOpen.value = false; setSidePanelTab('notes') }
 
 const panelMoments = computed(() => momentsToWatch(hasDuelMoments.value ? duelMoments.value : []))
 const extraCoachNotes = computed(() => pickExtraCoachNotes(supplementalCoachingNotes.value, coachingDetail.value))
+// Habits this match flagged again (counted by the API) and the drill for them.
+const router = useRouter() as ReturnType<typeof useRouter> | undefined
+const habitRows = computed(() => habitLines(coachingDetail.value?.habit_history))
+const habitDrill = computed(() => habitDrillRoute(coachingDetail.value?.habit_history))
+function practiseHabitDrill() { if (habitDrill.value) router?.push(habitDrill.value).catch(() => {}) }
 const moreDetail = computed(() => describeMoreDetail(coachingDetail.value, panelMoments.value.rest.length, extraCoachNotes.value.length))
 const moreDetailCount = computed(() => moreDetail.value.count)
 const moreDetailSummary = computed(() => moreDetail.value.summary)
@@ -1181,6 +1188,14 @@ const noVideoHint = computed((): string => {
             @seek-evidence="seekCoachingEvidence"
             @report-evidence="reportCoachingEvidence"
           />
+          <section v-if="habitRows.length || habitDrill" class="vb3-coach vb3-habits">
+            <span class="uf-label">Your habits in this match</span>
+            <div v-for="h in habitRows" :key="h.id" class="vb3-habit">
+              <span class="uf-t3">{{ h.title }}</span>
+              <span v-if="h.note" class="uf-t4" :class="`vb3-habit--${h.tone}`">{{ h.note }}</span>
+            </div>
+            <button v-if="habitDrill" type="button" class="uf-link vb3-habit-drill" @click="practiseHabitDrill">Practise this: {{ habitDrill.query.drill }} →</button>
+          </section>
           <DuelMomentCards
             v-if="panelMoments.watch.length"
             :moments="panelMoments.watch"
@@ -1475,6 +1490,11 @@ const noVideoHint = computed((): string => {
 .vb3-sidetab:hover { color: var(--uf-bone); }
 .vb3-sidetab--on { color: var(--uf-bone); border-bottom-color: var(--uf-red); }
 .vb3-sidetabs .vb3-ib { align-self: center; }
+.vb3-habit { display: flex; flex-direction: column; gap: 2px; }
+.vb3-habit .uf-t4 { color: var(--uf-muted); line-height: 1.45; }
+.vb3-habit .vb3-habit--habit { color: var(--uf-gold); }
+.vb3-habit .vb3-habit--new { color: var(--uf-bone); }
+.vb3-habit-drill { align-self: flex-start; text-align: left; }
 .vb3-coach { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--uf-line); }
 .vb3-coach p { margin: 0; }
 .vb3-coach-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }

@@ -241,3 +241,66 @@ export function practiceGameScope(game: string | null | undefined): PracticeGame
       return { matchCoaching: false, note: 'These are general aim drills. Drills the coach adds from your match stats are Valorant-only for now.' }
   }
 }
+
+/**
+ * "Do this next" on Practice: one drill, so the player isn't left choosing between six sections.
+ * The drill a match report just recommended (passed in the route) wins; then the player's top drill
+ * from their matches. The focus plan and the guided session are handled by the page before/after this.
+ */
+export interface NextDrill {
+  source: 'match_report' | 'match_drill'
+  title: string
+  why: string | null
+  steps: string | null
+  goal: string | null
+  /** Trainer drill to launch, when there is one. */
+  scenario: string | null
+  matchDrillId: number | null
+}
+
+export interface PracticeRouteDrill { drill?: unknown; why?: unknown; scenario?: unknown }
+
+const routeText = (v: unknown, max: number): string | null => {
+  const s = Array.isArray(v) ? v[0] : v
+  return typeof s === 'string' && s.trim() ? s.trim().slice(0, max) : null
+}
+
+/** Route link from a match report: `/training?drill=…&why=…&scenario=…`. */
+export function practiceRouteFromReport(drill: { text: string; why?: string | null } | null, scenario: string | null): { path: string; query: Record<string, string> } {
+  const query: Record<string, string> = {}
+  if (drill?.text) query.drill = drill.text
+  if (drill?.why) query.why = drill.why
+  if (scenario) query.scenario = scenario
+  return { path: '/training', query }
+}
+
+export function pickNextDrill(
+  route: PracticeRouteDrill,
+  matchDrills: readonly MatchDrillRow[],
+  availableScenarios: readonly string[],
+): NextDrill | null {
+  const text = routeText(route.drill, 400)
+  if (text) {
+    const scenario = routeText(route.scenario, 64)
+    return {
+      source: 'match_report',
+      title: text,
+      why: routeText(route.why, 300),
+      steps: null,
+      goal: null,
+      scenario: scenario && availableScenarios.includes(scenario) ? scenario : null,
+      matchDrillId: null,
+    }
+  }
+  const top = matchDrills[0]
+  if (!top) return null
+  return {
+    source: 'match_drill',
+    title: top.title,
+    why: top.why ?? null,
+    steps: top.steps,
+    goal: top.goal,
+    scenario: top.trainerScenario,
+    matchDrillId: top.id,
+  }
+}

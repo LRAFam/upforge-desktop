@@ -274,7 +274,7 @@ function onRemove(rec: PendingRecording) {
           <span v-if="scoreLine(rec) !== '-'" class="uf-d4 aq3-score" :style="{ color: v3ResultColor(rec) }">{{ scoreLine(rec).replace(' – ', '–') }}</span>
           <span v-else class="aq3-score" />
           <div class="aq3-actions">
-            <UfButton v-if="!rec.clipsOnly" variant="primary" icon="spark" :disabled="preview || !canAnalyseNow(rec)"
+            <UfButton v-if="!rec.clipsOnly" variant="primary" icon="analyse" :disabled="preview || !canAnalyseNow(rec)"
               :title="recIsDeferred(rec) ? analyseDeferredTitle() : recAnalysisReady(rec) ? 'Upload + AI coaching report' : recCanRetryMatchStats(rec) ? 'Fetch Riot match stats again (keep Riot Client open)' : recAnalysisBlockedLabel(rec)"
               @click="onAnalyse(rec)">
               {{ analysingIds.has(rec.id) || recIsSyncingMatchStats(rec) ? 'Working…' : recAnalysisActionLabel(rec) }}

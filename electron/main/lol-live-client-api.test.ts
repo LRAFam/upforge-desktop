@@ -109,6 +109,10 @@ describe('normalizeLolGameMode', () => {
     expect(normalizeLolGameMode('CHERRY')).toBe('ARENA')
   })
 
+  it('maps Swiftplay to CLASSIC (it is a Summoner\'s Rift queue)', () => {
+    expect(normalizeLolGameMode('SWIFTPLAY')).toBe('CLASSIC')
+  })
+
   it('maps KIWI (ARAM variant) to ARAM', () => {
     expect(normalizeLolGameMode('KIWI')).toBe('ARAM')
   })

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: { isPackaged: false, getAppPath: () => process.cwd(), getPath: () => process.cwd() } }))
-import { EMPTY_SYNC_STATE, planUploads, syncMatchReports, type SyncState } from './match-report-sync'
+import { EMPTY_SYNC_STATE, planUploads, shouldRetryFocusSync, syncMatchReports, type SyncState } from './match-report-sync'
 import type { RecentMatchFetchResult } from './recent-match-export'
 import type { Focus, FocusUpdate } from '../../src/lib/focus'
 
@@ -98,6 +98,32 @@ describe('syncMatchReports', () => {
     expect(h.deps.post).not.toHaveBeenCalled()
   })
 
+  it('one match Riot cannot serve yet does not block the others; it is retried next time', async () => {
+    const result: RecentMatchFetchResult = {
+      ok: false,
+      reason: 'some_matches_failed',
+      matches: [
+        { matchId: 'new', gameStartTimeMs: 300, fetchMs: 1, timeline: { id: 'new' } as never },
+        { matchId: 'broken', gameStartTimeMs: 200, fetchMs: 1, timeline: null, error: 'http_404' },
+      ],
+    }
+    const h = harness(result, () => ({ status: 200, data: { success: true, focus, focus_event: 'checked' } }),
+      { synced: [], newestSyncedStartMs: 100 })
+    const res = await syncMatchReports(h.deps)
+    expect(h.posts.map(p => p.match_id)).toEqual(['new'])
+    expect(res).toMatchObject({ uploaded: 1, ok: false, reason: 'some_matches_failed' })
+    expect(h.saved()?.synced).toEqual(['new'])
+  })
+
+  it('uses the finished focus the API reports', async () => {
+    const finished = { ...focus, progress: { ...focus.progress, status: 'achieved' } }
+    const h = harness(fetched([['new', 300]]), () => ({
+      status: 200, data: { success: true, focus: { ...focus, id: 2 }, focus_event: 'achieved', previous_focus: finished },
+    }), { synced: [], newestSyncedStartMs: 100 })
+    const res = await syncMatchReports(h.deps)
+    expect(res.latest?.previous_focus?.progress.status).toBe('achieved')
+  })
+
   it('normalizes the Riot authentication failure for the dashboard', async () => {
     const h = harness({ ok: false, reason: 'riot_auth_missing — open the Riot Client and sign in', matches: [] }, () => ({ status: 200, data: {} }))
     expect(await syncMatchReports(h.deps)).toMatchObject({ ok: false, reason: 'riot_client_unavailable' })
@@ -162,5 +188,22 @@ describe('UpForge score pass-through (audit 2026-11-02)', () => {
     const res = await syncMatchReports(harness(fetched([['new', 300]]), ok).deps)
     expect(res.latest?.upforge_score).toBeNull()
     expect(res.latest?.upforge_score_breakdown).toBeNull()
+  })
+})
+
+describe('shouldRetryFocusSync', () => {
+  const r = (ok: boolean, reason?: string, uploaded = 0) => ({ ok, reason, uploaded, skipped: 0, latest: null })
+  it('retries when the match was not ready or the sync could not run', () => {
+    expect(shouldRetryFocusSync(null)).toBe(true)
+    expect(shouldRetryFocusSync(r(true, undefined, 0))).toBe(true)
+    expect(shouldRetryFocusSync(r(false, 'some_matches_failed', 1))).toBe(true)
+    expect(shouldRetryFocusSync(r(false, 'http_502'))).toBe(true)
+    expect(shouldRetryFocusSync(r(false, 'sync_in_progress'))).toBe(true)
+  })
+  it('stops once the match counted or retrying cannot help', () => {
+    expect(shouldRetryFocusSync(r(true, undefined, 1))).toBe(false)
+    expect(shouldRetryFocusSync(r(false, 'sign_in_required'))).toBe(false)
+    expect(shouldRetryFocusSync(r(false, 'not_your_match'))).toBe(false)
+    expect(shouldRetryFocusSync(r(false, 'riot_client_unavailable'))).toBe(false)
   })
 })

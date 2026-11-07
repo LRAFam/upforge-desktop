@@ -10,6 +10,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UfHeroBand from '../../components/v3/UfHeroBand.vue'
 import UfButton from '../../components/v3/UfButton.vue'
+import { practiceRouteFromReport } from '../../components/v3/practice/practice-v3'
+import { focusMetricScenario } from '../../components/v3/practice/focus-drills'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import { formatMapLabel, getAgentImage, getMapImage } from '../../lib/valorant'
 import { matchReportView, type MatchReportState } from '../../lib/match-report'
@@ -185,7 +187,12 @@ onMounted(() => {
 onBeforeUnmount(() => { stopUpdates?.() })
 watch(matchId, () => { moments.value = []; flowState.value = null; void loadCoachFlow() })
 
-function practise(): void { router.push('/training').catch(() => {}) }
+// Practice opens on this report's drill ("Do this next"), not a generic page.
+function practise(): void {
+  const v = view.value
+  const metric = v?.nextSteps.find(s => s.drillMetric)?.drillMetric ?? null
+  router.push(practiceRouteFromReport(v?.drill ?? null, focusMetricScenario(metric))).catch(() => {})
+}
 function back(): void { if (window.history.length > 1) router.back(); else router.push('/dashboard').catch(() => {}) }
 </script>
 
@@ -232,6 +239,7 @@ function back(): void { if (window.history.length > 1) router.back(); else route
         <section class="mr3-coach">
           <span class="uf-label">{{ view.headlineLabel ?? 'What decided it' }}</span>
           <p v-if="view.headline" class="uf-t1">{{ view.headline }}</p>
+          <p v-if="view.recurrence" class="uf-t4 mr3-recur" :class="`mr3-recur--${view.recurrence.tone}`">{{ view.recurrence.text }}</p>
           <p v-else-if="view.notesCapped" class="uf-t2">Today’s free coach notes are used. The facts below are still yours, and notes come back tomorrow.</p>
           <p v-else class="uf-t2">No coach note for this match. The facts below come straight from your match data.</p>
           <p v-if="view.subline" class="uf-t2">{{ view.subline }}</p>
@@ -301,7 +309,7 @@ function back(): void { if (window.history.length > 1) router.back(); else route
               <p v-if="view.drill" class="uf-t3 mr3-drill">
                 <span class="uf-t4">Drill</span> {{ view.drill.text }}<span v-if="view.drill.why" class="uf-t4"> · {{ view.drill.why }}</span>
               </p>
-              <UfButton v-if="view.nextSteps.some(s => s.drillMetric)" variant="secondary" icon="practice" @click="practise">Practise this</UfButton>
+              <UfButton v-if="view.drill || view.nextSteps.some(s => s.drillMetric)" variant="secondary" icon="practice" @click="practise">Practise this</UfButton>
             </div>
             <div v-if="view.enemyRead" class="mr3-focus">
               <span class="uf-label">How they played</span>
@@ -350,4 +358,7 @@ function back(): void { if (window.history.length > 1) router.back(); else route
 .mr3-empty { display: flex; flex-direction: column; gap: 12px; padding: 64px 40px; max-width: 640px; }
 .mr3-actions { display: flex; gap: 12px; margin-top: 8px; }
 @media (max-width: 900px) { .mr3-cols { grid-template-columns: minmax(0, 1fr); } .mr3-body { padding: 20px; } }
+.mr3-recur { margin: 0; color: var(--uf-muted); }
+.mr3-recur--habit { color: var(--uf-gold); }
+.mr3-recur--new { color: var(--uf-bone); }
 </style>

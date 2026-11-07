@@ -9,5 +9,5 @@ const paths = computed(() => UF_ICONS[props.name])
 <template>
   <!-- eslint-disable-next-line vue/no-v-html -- static, trusted icon paths from uf-icons.ts -->
   <svg aria-hidden="true" :width="size" :height="size" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex: none" v-html="paths" />
+    stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex: none" v-html="paths" />
 </template>

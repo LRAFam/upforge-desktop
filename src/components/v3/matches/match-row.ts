@@ -88,3 +88,19 @@ export function rowCloudAction(
   if (rec.hasLocalFile && !inCloud && !rec.pipelineStatus) return { kind: 'save', text: 'Save to cloud' }
   return null
 }
+
+/**
+ * The row's main button. A match the AI has coached says so ("AI coaching") so players can find
+ * what the coach said; a recording without coaching stays "Review" (timeline) or "Watch" (video only).
+ */
+export function rowOpenAction(rec: { analysisId?: number | null; cloudOnly?: boolean }, opts: { unavailable: boolean; timeline: boolean }): {
+  label: string; icon: 'notes' | 'map' | 'play'; ai: boolean; title: string
+} {
+  if (!opts.unavailable && rec.analysisId != null) {
+    return { label: 'AI coaching', icon: 'notes', ai: true, title: 'Read what the AI coach said about this match' }
+  }
+  const review = opts.unavailable || rec.cloudOnly || opts.timeline
+  return review
+    ? { label: 'Review', icon: 'map', ai: false, title: 'Open the match timeline' }
+    : { label: 'Watch', icon: 'play', ai: false, title: 'Watch the recording' }
+}

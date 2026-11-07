@@ -85,8 +85,13 @@ onMounted(async () => {
   const api = window.api?.app
   try { focus.value = (await api?.getFocus?.())?.focus ?? null } catch { focus.value = null }
   offFocus = api?.onFocusUpdated?.((u: unknown) => {
-    const next = (u as { focus?: Focus | null } | null)?.focus
-    if (next !== undefined) focus.value = next ?? null
+    const up = u as { focus?: Focus | null; focus_event?: string | null; previous_focus?: Focus | null } | null
+    // This match finished a focus: show that result here, not the next focus.
+    if ((up?.focus_event === 'achieved' || up?.focus_event === 'missed') && up.previous_focus) {
+      focus.value = up.previous_focus
+      return
+    }
+    if (up?.focus !== undefined) focus.value = up.focus ?? null
   }) ?? null
 })
 onBeforeUnmount(() => offFocus?.())
@@ -173,7 +178,7 @@ const clipsLine = computed(() => {
       </template>
 
       <div class="pg3-actions uf-rise uf-d3s">
-        <UfButton variant="primary" :icon="ready ? 'spark' : undefined" @click="$emit('primary')">{{ primaryLabel }}</UfButton>
+        <UfButton variant="primary" :icon="ready ? 'notes' : undefined" @click="$emit('primary')">{{ primaryLabel }}</UfButton>
         <UfButton v-if="secondaryLabel" variant="link" @click="$emit('secondary')">{{ secondaryLabel }}</UfButton>
         <button type="button" class="uf-link" @click="$emit('close')">Dismiss</button>
       </div>

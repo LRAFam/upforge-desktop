@@ -1198,7 +1198,7 @@
           <UfButton
             v-if="playingClip.uploadStatus === 'uploaded' && canAnalyseClip(playingClip)"
             variant="primary"
-            icon="spark"
+            icon="analyse"
             :disabled="!!uploadingClipId || !!analysingClipId"
             @click="analyseClip(playingClip)"
           >{{ analysingClipId === playingClip.id ? 'Analysing…' : 'Analyse' }}</UfButton>

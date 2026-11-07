@@ -165,13 +165,15 @@ export interface HomeLiveState {
   uploads: number
   analysisPct: number | null
   analyses: number
+  /** Finished analyses not opened yet (newest's label/map). */
+  ready?: { count: number; label: string; map: string | null } | null
 }
 
 export interface HomeLiveStatus {
-  kind: 'recording' | 'starting' | 'working' | 'waiting'
+  kind: 'recording' | 'starting' | 'working' | 'waiting' | 'ready'
   text: string
-  /** stop = stop the recording; matches = follow progress in Matches; null = nothing to open. */
-  action: 'stop' | 'matches' | null
+  /** stop = stop the recording; matches = follow progress in Matches; review = open the newest ready analysis. */
+  action: 'stop' | 'matches' | 'review' | null
 }
 
 /** One quiet line while something is happening; null when the pipeline is idle. */
@@ -183,6 +185,13 @@ export function liveStatus(s: HomeLiveState): HomeLiveStatus | null {
   else if (s.uploads > 0) parts.push(s.uploads === 1 ? 'Uploading 1 recording' : `Uploading ${s.uploads} recordings`)
   if (s.analyses === 1) parts.push(s.analysisPct != null ? `Coach is analysing · ${Math.round(s.analysisPct)}%` : 'Coach is analysing your match')
   else if (s.analyses > 1) parts.push(`Coach is analysing ${s.analyses} matches`)
+  const ready = s.ready && s.ready.count > 0 ? s.ready : null
+  if (ready) {
+    const head = ready.count > 1
+      ? `${ready.count} coaching reviews ready`
+      : `Coaching ready · ${ready.label}${ready.map ? ` on ${ready.map}` : ''}`
+    return { kind: 'ready', text: [head, ...parts].join(' · '), action: 'review' }
+  }
   if (parts.length) return { kind: 'working', text: parts.join(' · '), action: 'matches' }
   if (s.waitingForMatch) return { kind: 'waiting', text: 'Game open · recording starts when the match loads', action: null }
   return null

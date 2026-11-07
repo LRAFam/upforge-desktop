@@ -25,6 +25,7 @@ import MatchStatsDrawerV3 from '../../components/v3/matchpage/MatchStatsDrawerV3
 import EnemyHabitsV3 from '../../components/v3/matchpage/EnemyHabitsV3.vue'
 import RoundReviewV3 from '../../components/v3/matchpage/RoundReviewV3.vue'
 import ReplayViewerV3 from '../../components/v3/matchpage/ReplayViewerV3.vue'
+import { markAnalysisSeen } from '../../composables/useReadyAnalyses'
 
 defineProps<{
   accessOpen: boolean
@@ -93,6 +94,7 @@ const coachAnalysisId = computed(() => {
   const q = Number(route.query.timelineId)
   return Number.isInteger(q) && q > 0 ? q : null
 })
+watch(coachAnalysisId, id => markAnalysisSeen(id), { immediate: true })
 // Coach notes: the coach opened this match from their review queue.
 const coachReviewId = computed(() => {
   const q = Number(route.query.coachReviewId)

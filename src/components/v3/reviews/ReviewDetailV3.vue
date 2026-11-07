@@ -180,7 +180,7 @@ const trendLast = computed(() => (chartData.value ? matchScore({ overall_score: 
         <span v-if="pendingMessage" class="uf-t4" role="status">{{ pendingMessage }}</span>
       </div>
       <div class="rv3-actions">
-        <UfButton v-if="pendingMatchActionLabel(selectedRecording)" variant="primary" icon="spark" :disabled="pendingBusyId === selectedRecording.id" @click="runPendingPrimaryAction(selectedRecording)">
+        <UfButton v-if="pendingMatchActionLabel(selectedRecording)" variant="primary" icon="analyse" :disabled="pendingBusyId === selectedRecording.id" @click="runPendingPrimaryAction(selectedRecording)">
           {{ pendingBusyId === selectedRecording.id ? 'Working…' : pendingMatchActionLabel(selectedRecording) }}
         </UfButton>
         <UfButton v-if="selectedRecordingCanPlay" icon="play" @click="openPendingFootage(selectedRecording)">Watch footage</UfButton>

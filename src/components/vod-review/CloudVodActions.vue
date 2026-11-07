@@ -37,14 +37,14 @@ onBeforeUnmount(() => { generation++; cleanups.forEach(fn => fn()) })
       <span v-if="active" role="status" class="uf-t4" style="color: var(--uf-bone)"><span class="uf-live cva3-dot" aria-hidden="true" />{{ state === 'queued' ? 'AI analysis queued' : 'AI analysis in progress' }}</span>
       <span v-else-if="state === 'analysed'" class="uf-t4">AI review available in Coaching</span>
       <span style="flex: 1" />
-      <UfButton v-if="!active && state !== 'analysed' && !confirming" variant="secondary" icon="spark" :disabled="busy || !timeline?.archiveAnalysisReady" @click="confirming=true">{{ state === 'failed' ? 'Retry AI analysis' : 'Analyse this VOD' }}</UfButton>
+      <UfButton v-if="!active && state !== 'analysed' && !confirming" variant="secondary" icon="analyse" :disabled="busy || !timeline?.archiveAnalysisReady" @click="confirming=true">{{ state === 'failed' ? 'Retry AI analysis' : 'Analyse this VOD' }}</UfButton>
       <UfButton variant="link" :disabled="busy" @click="update()">{{ busy ? 'Checking…' : 'Check coaching status' }}</UfButton>
     </div>
     <p v-if="!active && state !== 'analysed' && timeline?.archiveAnalysisReady === false" class="uf-t4" style="color: var(--uf-gold)">{{ timeline.archiveAnalysisMessage }}</p>
     <p v-if="timeline?.matchDataAvailable === false" class="uf-t4" style="color: var(--uf-gold)">This archive has no saved match data. Video playback is available; event and spatial views need match data.</p>
     <div v-if="confirming" class="cva3-row">
       <p class="uf-t4" style="color: var(--uf-bone); margin: 0">Use your {{ timeline?.game }} match-analysis allowance? Your plan and available credits are checked before the job starts.</p>
-      <UfButton variant="primary" icon="spark" :disabled="busy" @click="update(true)">Confirm analysis</UfButton>
+      <UfButton variant="primary" icon="analyse" :disabled="busy" @click="update(true)">Confirm analysis</UfButton>
       <UfButton variant="link" @click="confirming=false">Cancel</UfButton>
     </div>
     <p v-if="error" role="alert" class="uf-t4" style="color: var(--uf-loss)">{{ error }}</p>

@@ -10,6 +10,7 @@ import type { Router } from 'vue-router'
 import type { PrimaryGame } from './games'
 import { matchReportPath } from './match-report'
 import { openAnalysisVodReview } from './open-vod-review'
+import { markAnalysisSeen } from '../composables/useReadyAnalyses'
 
 type RouteLocation = { path: string; query: Record<string, string> }
 
@@ -34,6 +35,7 @@ export async function openAnalysisInApp(
   opts?: { source?: string; coachNotes?: boolean },
 ): Promise<InAppDestination | null> {
   if (!validId(analysisId)) return null
+  markAnalysisSeen(analysisId)
   try {
     if (await openAnalysisVodReview(router as Router, analysisId, { source: opts?.source ?? 'desktop_in_app', coachNotes: opts?.coachNotes })) return 'match'
   } catch { /* timeline unavailable: fall through to Coaching reviews */ }

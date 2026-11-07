@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchReportFactRows, matchReportPath, matchReportSupported, matchReportView, type MatchReportResponse } from './match-report'
+import { matchReportFactRows, matchReportPath, matchReportSupported, matchReportView, recurrenceLine, type MatchReportResponse } from './match-report'
 
 const base: MatchReportResponse = {
   match_id: 'm-1',
@@ -108,5 +108,22 @@ describe('matchReportView · UpForge score', () => {
     expect(v.upforgeScore).toBe(655)
     expect(v.upforgeScoreBreakdown?.inputs).toHaveLength(1)
     expect(matchReportView(base).upforgeScore).toBeNull()
+  })
+})
+
+describe('recurrenceLine', () => {
+  const r = (seen: number, of: number, streak = 0) => ({ finding_id: 'opening_deaths', seen, of, streak })
+  it('calls a repeated finding a habit and puts it first', () => {
+    expect(recurrenceLine(r(4, 10, 0))).toEqual({ tone: 'habit', text: 'Also came up in 4 of your last 10 matches. It keeps costing you rounds, so fix this before anything else.' })
+    expect(recurrenceLine(r(3, 5, 3))!.text).toBe('4 matches in a row. This is a habit now, not a one-off, so it\'s the one to fix first.')
+  })
+  it('notes a single repeat and a new finding', () => {
+    expect(recurrenceLine(r(1, 6))).toEqual({ tone: 'again', text: 'Also came up in 1 of your last 6 matches.' })
+    expect(recurrenceLine(r(0, 5))).toEqual({ tone: 'new', text: 'New: not in your last 5 matches.' })
+  })
+  it('says nothing without enough history or data', () => {
+    expect(recurrenceLine(r(0, 2))).toBeNull()
+    expect(recurrenceLine(r(0, 0))).toBeNull()
+    expect(recurrenceLine(null)).toBeNull()
   })
 })

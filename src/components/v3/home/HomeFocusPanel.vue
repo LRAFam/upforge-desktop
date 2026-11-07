@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** Focus column on Home: the one measured habit, its game slots and a manual "check my matches". */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { focusSlots, focusSubline } from '../../../lib/focus'
+import { focusResult, focusSlots, focusSubline, markFocusResultSeen, pickFocusResult, readSeenFocusResults } from '../../../lib/focus'
 import { focusTitleParts } from './home-v3'
 import { createFocusCardState } from '../../../composables/useFocusCard'
 import type { FocusResponse, FocusUpdate } from '../../../lib/focus'
@@ -20,11 +20,25 @@ const focus = computed(() => data.value?.focus ?? null)
 const titleParts = computed(() => (focus.value ? focusTitleParts(focus.value) : null))
 const slots = computed(() => (focus.value ? focusSlots(focus.value) : []))
 const gameIndex = computed(() => Math.min((focus.value?.progress.games_played ?? 0) + 1, focus.value?.progress.games_required ?? 1))
+// The moment a focus ends (achieved / missed): what the player did and what's next. Shown once.
+const seenResults = ref(readSeenFocusResults())
+const liveUpdate = ref<FocusUpdate | null>(null)
+const result = computed(() => {
+  const done = pickFocusResult([liveUpdate.value?.previous_focus, data.value?.last_completed], seenResults.value)
+  return focusResult(done, focus.value)
+})
+function dismissResult() {
+  const r = result.value
+  if (!r) return
+  markFocusResultSeen(r.id)
+  seenResults.value = readSeenFocusResults()
+}
 const kicker = computed(() => {
   const f = focus.value
   if (!f) return 'Your focus'
   if (f.progress.status !== 'active') return `Focus · ${f.progress.status}`
-  return `Focus · game ${gameIndex.value} of ${f.progress.games_required}`
+  const retry = (f.attempt ?? 1) > 1 ? ` · attempt ${f.attempt}` : ''
+  return `Focus${retry} · game ${gameIndex.value} of ${f.progress.games_required}`
 })
 
 // Focus streaks (P6): "3 games in a row on target", plus a badge through the existing achievements.
@@ -54,10 +68,13 @@ async function copyShare() {
 
 let off: (() => void) | null = null
 onMounted(async () => {
-  off = window.api.app.onFocusUpdated(payload => {
+  off = window.api.app.onFocusUpdated(async payload => {
     state.applyUpdate(payload)
+    liveUpdate.value = payload
     emit('latest', payload)
-    void state.load()
+    await state.load()
+    // Keep the next Home visit current (the cache was only written on mount).
+    if (data.value?.success) writeCache('focus', data.value)
   })
   if (data.value) emit('latest', data.value.latest ?? null)
   await state.load()
@@ -72,6 +89,13 @@ onUnmounted(() => {
 
 <template>
   <section class="hf" aria-labelledby="hf-title">
+    <div v-if="result" class="hf-result" :class="`hf-result--${result.tone}`" role="status">
+      <p class="uf-label hf-result-kicker">{{ result.tone === 'achieved' ? 'Focus complete' : 'Focus check' }}</p>
+      <h2 class="uf-t3 hf-result-title">{{ result.title }}</h2>
+      <p class="uf-t4 hf-result-body">{{ result.body }}</p>
+      <p class="uf-t4 hf-result-next">{{ result.next }}</p>
+      <button type="button" class="uf-link" @click="dismissResult">Got it</button>
+    </div>
     <p class="uf-label" :style="{ color: focus ? 'var(--uf-red)' : undefined }">{{ kicker }}</p>
     <template v-if="focus">
       <!-- Type roles: the habit is a sentence (Plex), only the short goal uses the display face. -->
@@ -123,5 +147,12 @@ onUnmounted(() => {
 .hf-slot--miss > span { background: var(--uf-loss); }
 .hf-sub { margin: 0; color: var(--uf-muted); line-height: 1.5; }
 .hf-skel { display: flex; flex-direction: column; gap: 12px; }
+.hf-result { display: flex; flex-direction: column; gap: 6px; padding: 12px 0 14px; border-bottom: 1px solid var(--uf-line); }
+.hf-result > * { margin: 0; }
+.hf-result--achieved .hf-result-kicker { color: var(--uf-win); }
+.hf-result--missed .hf-result-kicker { color: var(--uf-gold); }
+.hf-result-body { color: var(--uf-bone); }
+.hf-result-next { color: var(--uf-muted); line-height: 1.5; }
+.hf-result .uf-link { align-self: flex-start; }
 .hf-sync { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 </style>

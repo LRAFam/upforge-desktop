@@ -551,7 +551,7 @@ function createSettings() {
       { value: 'SHOOTING_RANGE', label: 'The Range', hint: 'Practice range' },
     ],
     lol: [
-      { value: 'CLASSIC', label: "Summoner's Rift", hint: 'Ranked + normals (Live Client cannot split them)' },
+      { value: 'CLASSIC', label: "Summoner's Rift", hint: 'Ranked, normals and Swiftplay' },
       { value: 'ARAM', label: 'ARAM', hint: 'Includes ARAM: Mayhem' },
       { value: 'ARENA', label: 'Arena', hint: '2v2v2v2' },
       { value: 'CUSTOM', label: 'Custom / Practice', hint: 'Custom games and practice tool' },

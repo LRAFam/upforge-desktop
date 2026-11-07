@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   cleanDrillTitle,
+  pickNextDrill,
+  practiceRouteFromReport,
   durationLabel,
   matchDrillRows,
   noBestCaption,
@@ -120,5 +122,28 @@ describe('practiceGameScope', () => {
     expect(practiceGameScope('cs2').note).toContain('CS2 sensitivity')
     expect(practiceGameScope('deadlock').note).toContain('Deadlock sensitivity')
     expect(practiceGameScope('lol').note).toContain('won’t help much in League')
+  })
+})
+
+describe('pickNextDrill', () => {
+  const row = (id: number, scenario: string | null = 'flick') => ({
+    id, title: `Drill ${id}`, meta: '', trainerScenario: scenario, steps: 'Do it', goal: '80%', fromMatches: true, why: 'You die first', stat: null, beta: false,
+  })
+  it('puts the drill the match report recommended first', () => {
+    const d = pickNextDrill({ drill: 'Custom game on Ascent, 10 min: clear one angle.', why: 'Opening deaths', scenario: 'angle_clearing' }, [row(1)], ['angle_clearing'])!
+    expect(d).toMatchObject({ source: 'match_report', title: 'Custom game on Ascent, 10 min: clear one angle.', why: 'Opening deaths', scenario: 'angle_clearing' })
+  })
+  it('drops a route scenario the catalogue does not have', () => {
+    expect(pickNextDrill({ drill: 'x', scenario: 'nope' }, [], ['flick'])!.scenario).toBeNull()
+  })
+  it('otherwise uses the top drill from matches', () => {
+    expect(pickNextDrill({}, [row(7), row(8)], [])).toMatchObject({ source: 'match_drill', matchDrillId: 7, steps: 'Do it', why: 'You die first' })
+  })
+  it('is null with nothing to suggest', () => {
+    expect(pickNextDrill({ drill: '  ' }, [], [])).toBeNull()
+  })
+  it('builds the Practise link from the report', () => {
+    expect(practiceRouteFromReport({ text: 'Drill', why: 'Why' }, 'flick')).toEqual({ path: '/training', query: { drill: 'Drill', why: 'Why', scenario: 'flick' } })
+    expect(practiceRouteFromReport(null, null)).toEqual({ path: '/training', query: {} })
   })
 })

@@ -21,6 +21,8 @@ import UfRoundsLine from '../../components/v3/UfRoundsLine.vue'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import HomeFocusPanel from '../../components/v3/home/HomeFocusPanel.vue'
 import HomeLiveStatus from '../../components/v3/home/HomeLiveStatus.vue'
+import { useReadyAnalyses } from '../../composables/useReadyAnalyses'
+import { openAnalysisInApp } from '../../lib/open-analysis-in-app'
 import HomeRankStrip from '../../components/v3/home/HomeRankStrip.vue'
 import StartingReportCardV3 from '../../components/v3/starting/StartingReportCardV3.vue'
 import SessionCoachV3 from '../../components/v3/ideas/SessionCoachV3.vue'
@@ -109,6 +111,7 @@ const coachPending = computed(() => {
 const primary = computed(() => pickPrimaryAction({
   hasMatch: !!last.value, obsConnected: d.status.value.obsConnected, isValorant: d.isValorant.value,
 }))
+const { count: readyCount, newest: readyNewest } = useReadyAnalyses()
 // Live pipeline: one quiet line while something is happening (old dashboard: Live ops panel).
 const live = computed(() => {
   const s = d.status.value
@@ -124,8 +127,16 @@ const live = computed(() => {
     uploads: d.inFlightUploadCount.value,
     analysisPct: typeof p === 'number' && Number.isFinite(p) ? p : null,
     analyses: d.inFlightAnalysisCount.value,
+    ready: readyNewest.value ? { count: readyCount.value, label: readyNewest.value.label, map: readyNewest.value.map } : null,
   })
 })
+// Several ready → Coaching reviews list; one → straight to it.
+function openReadyCoaching() {
+  const r = readyNewest.value
+  if (!r) return
+  if (readyCount.value > 1) d.router.push({ path: '/recordings', query: { view: 'coaching' } }).catch(() => {})
+  else void openAnalysisInApp(d.router, r.analysisId, { source: 'desktop_home_ready' })
+}
 const weekCount = computed(() => analysedThisWeek(d.dashboardAnalyses.value))
 
 // Weekly drill from the existing weekly plan (Valorant only; old dashboard right rail).
@@ -249,7 +260,7 @@ async function runPrimary() {
         </p>
         <HomePregameV3 />
         <StartingReportCardV3 :game="d.primaryGame.value" mode="home" />
-        <HomeLiveStatus v-if="live" :status="live" :busy="d.stopping.value" @stop="d.stopRecording()" @open="d.router.push('/recordings')" />
+        <HomeLiveStatus v-if="live" :status="live" :busy="d.stopping.value" @stop="d.stopRecording()" @open="d.router.push('/recordings')" @review="openReadyCoaching" />
         <section class="uf-rise uf-d2s home3-coach" aria-label="Coach">
           <p class="home3-coach-k"><img :src="upforgeIcon" alt="" width="16" height="16"><span class="uf-t4" style="color: var(--uf-muted)">Your coach</span></p>
           <p v-if="stateNote" class="home3-state uf-t4" :data-kind="stateNote.kind"><span class="uf-label">{{ stateNote.label }}</span> {{ stateNote.line }}</p>
@@ -274,7 +285,7 @@ async function runPrimary() {
           <UfSkeleton :w="210" :h="46" /><UfSkeleton :w="150" :h="46" />
         </div>
         <div v-else class="uf-rise uf-d3s home3-actions">
-          <UfButton :variant="gameSetupShown && primary !== 'open_last_match' ? 'secondary' : 'primary'" :icon="primary === 'open_last_match' ? 'play' : primary === 'setup_recording' ? 'settings' : 'spark'"
+          <UfButton :variant="gameSetupShown && primary !== 'open_last_match' ? 'secondary' : 'primary'" :icon="primary === 'open_last_match' ? 'play' : primary === 'setup_recording' ? 'settings' : 'analyse'"
             @click="runPrimary">{{ PRIMARY_LABEL[primary] }}</UfButton>
           <UfButton variant="secondary" icon="matches" @click="d.router.push('/recordings')">All matches</UfButton>
           <UfButton v-if="d.lastInsight.value" variant="link" @click="d.trainLastInsight()">Train this</UfButton>

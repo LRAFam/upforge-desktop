@@ -8,6 +8,27 @@ export interface AppNotificationOptions {
   onClick?: () => void
   /** Allow during an active match recording (default: block automated toasts). */
   allowDuringRecording?: boolean
+  /**
+   * When blocked by a recording, show it once the recording ends instead of dropping it.
+   * Only the newest deferred toast is kept (Windows shows one toast at a time anyway).
+   */
+  deferWhileRecording?: boolean
+}
+
+let deferred: AppNotificationOptions | null = null
+let deferTimer: ReturnType<typeof setInterval> | null = null
+const DEFER_POLL_MS = 5_000
+
+function flushDeferredWhenIdle(): void {
+  if (deferTimer) return
+  deferTimer = setInterval(() => {
+    if (isMatchRecordingActive()) return
+    if (deferTimer) clearInterval(deferTimer)
+    deferTimer = null
+    const next = deferred
+    deferred = null
+    if (next) showAppNotification({ ...next, deferWhileRecording: false })
+  }, DEFER_POLL_MS)
 }
 
 /** Set from main — suppresses focus-stealing toasts while OBS is capturing. */
@@ -40,16 +61,17 @@ let lastToastAt = 0
 const TOAST_DEDUPE_MS = 60_000
 
 /** Show a native OS notification, replacing any toast already on screen. */
-export function showAppNotification({
-  title,
-  body,
-  silent,
-  onClick,
-  allowDuringRecording = false,
-}: AppNotificationOptions): void {
+export function showAppNotification(opts: AppNotificationOptions): void {
+  const { title, body, silent, onClick, allowDuringRecording = false } = opts
   if (!Notification.isSupported()) return
 
-  if (!allowDuringRecording && isMatchRecordingActive()) return
+  if (!allowDuringRecording && isMatchRecordingActive()) {
+    if (opts.deferWhileRecording) {
+      deferred = opts
+      flushDeferredWhenIdle()
+    }
+    return
+  }
 
   const key = `${title}\0${body}`
   const now = Date.now()
