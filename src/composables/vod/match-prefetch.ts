@@ -9,7 +9,8 @@ export const PREFETCH_MAX = 8
 
 interface Entry<T> { at: number; promise: Promise<T> }
 
-export function createPrefetchCache<T, K extends string | number = number>(load: (id: K) => Promise<T>, ttlMs = PREFETCH_TTL_MS, max = PREFETCH_MAX) {
+/** `isFailure`: a resolved value that is really an error (e.g. `{ ok: false }`) is dropped like a rejection. */
+export function createPrefetchCache<T, K extends string | number = number>(load: (id: K) => Promise<T>, ttlMs = PREFETCH_TTL_MS, max = PREFETCH_MAX, isFailure?: (value: T) => boolean) {
   const entries = new Map<K, Entry<T>>()
   function fresh(id: K, now: number): Entry<T> | undefined {
     const e = entries.get(id)
@@ -23,7 +24,8 @@ export function createPrefetchCache<T, K extends string | number = number>(load:
       const hit = fresh(id, now)
       if (hit) return hit.promise
       const promise = load(id)
-      promise.catch(() => { if (entries.get(id)?.promise === promise) entries.delete(id) })
+      const drop = () => { if (entries.get(id)?.promise === promise) entries.delete(id) }
+      promise.then(v => { if (isFailure?.(v)) drop() }, drop)
       entries.set(id, { at: now, promise })
       while (entries.size > max) entries.delete(entries.keys().next().value as K)
       return promise
@@ -50,7 +52,17 @@ type ArchiveReview = Awaited<ReturnType<Window['api']['archives']['review']>>
 
 const timelines = createPrefetchCache<Timeline>(id => window.api.analyses.getTimeline(id))
 // Read-only: never pass the `analyse` flag here (that POSTs an analysis request).
-const archives = createPrefetchCache<ArchiveReview, string>(id => window.api.archives.review(id))
+const archives = createPrefetchCache<ArchiveReview, string>(id => window.api.archives.review(id), PREFETCH_TTL_MS, PREFETCH_MAX, r => !r?.ok)
+
+// After a 429, hovering must not keep spending the player's allowance: pause cloud prefetch for a while.
+const RATE_LIMIT_PAUSE_MS = 10 * 60_000
+let archivePausedUntil = 0
+export function noteArchiveRateLimited(result: { ok: boolean; error?: string } | null | undefined, now = Date.now()): void {
+  if (result && !result.ok && /too many requests/i.test(result.error ?? '')) archivePausedUntil = now + RATE_LIMIT_PAUSE_MS
+}
+export function archivePrefetchPaused(now = Date.now()): boolean {
+  return now < archivePausedUntil
+}
 const ARCHIVE_ID = /^[0-9a-f-]{36}$/i
 const details = createPrefetchCache<Detail>(id => window.api.analyses.getDetail(id).catch(() => null))
 
@@ -77,9 +89,10 @@ export function prefetchAnalysis(id: number | null | undefined): void {
 /** Warm the match page for a cloud recording (hover / focus on a row). */
 export function prefetchArchive(archiveId: string | null | undefined): void {
   if (typeof archiveId !== 'string' || !ARCHIVE_ID.test(archiveId)) return
+  if (archivePrefetchPaused()) return
   listenForAccountChange()
   void archives.prefetch(archiveId)
-    .then((r) => { const id = r.ok ? r.timeline.analysisId : null; if (validId(id)) void details.prefetch(id) })
+    .then((r) => { noteArchiveRateLimited(r); const id = r.ok ? r.timeline.analysisId : null; if (validId(id)) void details.prefetch(id) })
     .catch(() => null)
 }
 

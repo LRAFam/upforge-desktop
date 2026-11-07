@@ -4,7 +4,7 @@ vi.mock('@electron-toolkit/utils', () => ({ is: { dev: false } }))
 vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 vi.mock('../recording-playback', () => ({ resolveLocalRecordingFile: () => null, isLikelyBrowserPlayableLocal: () => false, fetchArchivePlaybackUrl: async () => 'https://media.example/vod.mp4', fetchRecordingPlaybackUrl: async () => 'https://media.example/vod.mp4', fetchJobPlaybackUrl: async () => null }))
 vi.mock('../riot-local-api', () => ({ recomputeTimelineVideoOffsets: vi.fn(), effectiveVideoSyncOffsetMs: () => -4000, defaultVideoSyncOffsetMs: () => 0 }))
-vi.mock('../analysis-readiness', () => ({ getAnalysisReadiness: () => ({ ready: true, message: 'Ready' }) }))
+vi.mock('../analysis-readiness', () => ({ getAnalysisReadiness: () => ({ ready: true, message: 'Ready' }), cloudArchiveReadinessMessage: (r: { message: string }) => r.message }))
 import { setupRecordingsHandlers, type RecordingsIpcDeps } from './recordings-ipc'
 function setup() {
   let owner = 1

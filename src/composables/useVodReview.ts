@@ -33,7 +33,7 @@ import {
 import { isWeaponName } from '../lib/valorant-ability-images'
 import { getVodAdapter } from '../lib/vod-games'
 import { useVodPortraits } from './vod/useVodPortraits'
-import { takeArchive, takeDetail, takeTimeline } from './vod/match-prefetch'
+import { takeArchive, takeDetail, takeTimeline, noteArchiveRateLimited } from './vod/match-prefetch'
 import { uiV3 } from '../lib/ui-v3'
 import { readCache, writeCache } from '../lib/stale-cache'
 
@@ -1784,7 +1784,7 @@ function createVodReview() {
       } else if (archiveId) {
         const result = await (takeArchive(archiveId) ?? window.api.archives.review(archiveId))
         if (seq !== loadSeq) return
-        if (!result.ok) { timelineError.value = result.error; return }
+        if (!result.ok) { noteArchiveRateLimited(result); timelineError.value = result.error; return }
         timeline.value = result.timeline
       } else if (id) {
         recordingId.value = id
@@ -1888,7 +1888,7 @@ function createVodReview() {
           ?? defaultSyncMsForGame(timeline.value?.game)
       } else if (archiveId) {
         const result = await window.api.archives.review(archiveId)
-        if (!result.ok) { timelineError.value = result.error; return }
+        if (!result.ok) { noteArchiveRateLimited(result); timelineError.value = result.error; return }
         timeline.value = result.timeline
         videoSyncOffsetMs.value = timeline.value.videoSyncOffsetMs ?? defaultSyncMsForGame(timeline.value.game)
       } else if (id) {
