@@ -3,7 +3,7 @@
 import type { HomeLiveStatus } from './home-v3'
 
 defineProps<{ status: HomeLiveStatus; busy?: boolean }>()
-defineEmits<{ stop: []; open: [] }>()
+defineEmits<{ stop: []; open: []; review: [] }>()
 </script>
 
 <template>
@@ -12,6 +12,7 @@ defineEmits<{ stop: []; open: [] }>()
     <span class="uf-t4 hls-text">{{ status.text }}</span>
     <button v-if="status.action === 'stop'" type="button" class="uf-link" :disabled="busy" @click="$emit('stop')">Stop recording →</button>
     <button v-else-if="status.action === 'matches'" type="button" class="uf-link" @click="$emit('open')">Follow in Matches →</button>
+    <button v-else-if="status.action === 'review'" type="button" class="uf-link" @click="$emit('review')">Open coaching →</button>
   </p>
 </template>
 
@@ -20,5 +21,7 @@ defineEmits<{ stop: []; open: [] }>()
 .hls-dot { width: 6px; height: 6px; border-radius: 3px; background: var(--uf-muted); flex: none; }
 .hls-dot--recording { background: var(--uf-red); }
 .hls-dot--waiting { background: var(--uf-gold); }
+.hls-dot--ready { background: var(--uf-win); }
+.hls-dot--ready + .hls-text { color: var(--uf-bone); }
 .hls-text { color: var(--uf-muted); }
 </style>

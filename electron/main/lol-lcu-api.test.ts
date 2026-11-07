@@ -52,6 +52,14 @@ describe('resolveLolFilterMode', () => {
     expect(resolveLolFilterMode({ queueId: 420 })).toBe('CLASSIC')
     expect(resolveLolFilterMode({ queueId: 400 })).toBe('CLASSIC')
   })
+
+  it('treats Swiftplay / Quickplay as Summoner\'s Rift (CLASSIC)', () => {
+    expect(normalizeLolQueueId(480)).toEqual({ gameMode: 'NORMAL', queueLabel: 'Swiftplay' })
+    expect(resolveLolFilterMode({ queueId: 480, liveGameMode: 'SWIFTPLAY', mapId: 11 })).toBe('CLASSIC')
+    expect(resolveLolFilterMode({ queueId: 490, mapId: 11 })).toBe('CLASSIC')
+    // LCU probe failed — only the Live Client mode is known.
+    expect(resolveLolFilterMode({ liveGameMode: 'SWIFTPLAY' })).toBe('CLASSIC')
+  })
 })
 
 describe('parseGameflowSession', () => {

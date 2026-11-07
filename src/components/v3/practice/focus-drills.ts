@@ -31,5 +31,10 @@ export function focusDrillPlan(metric: string | null | undefined, available: rea
   return scenarios.length ? { metric, caption: plan.caption, scenarios } : null
 }
 
+/** First trainer drill for a focus metric (unchecked against the catalogue; Practice validates it). */
+export function focusMetricScenario(metric: string | null | undefined): string | null {
+  return (metric && PLANS[metric]?.scenarios[0]) || null
+}
+
 /** Metric keys this mapping knows about (for tests and notes). */
 export const FOCUS_DRILL_METRICS = Object.keys(PLANS)

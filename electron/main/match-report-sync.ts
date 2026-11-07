@@ -65,7 +65,9 @@ export type SyncResult = FocusSyncResult
 
 export async function syncMatchReports(deps: SyncDeps, limit = 20): Promise<SyncResult> {
   const fetched = await deps.fetchRecent(limit)
-  if (!fetched.ok) {
+  // One match Riot can't serve yet must not hold back the rest (it stays unsynced and is retried).
+  const partial = !fetched.ok && fetched.reason === 'some_matches_failed' && fetched.matches.some(m => !!m.timeline)
+  if (!fetched.ok && !partial) {
     const reason = fetched.reason?.startsWith('riot_auth_missing') ? 'riot_client_unavailable' : fetched.reason ?? 'fetch_failed'
     return { ok: false, reason, uploaded: 0, skipped: 0, latest: null }
   }
@@ -82,7 +84,7 @@ export async function syncMatchReports(deps: SyncDeps, limit = 20): Promise<Sync
   let skipped = 0
   let latest: FocusSyncPayload | null = null
   let cachedLatest = state.latest ?? null
-  let reason: string | undefined
+  let reason: string | undefined = partial ? 'some_matches_failed' : undefined
   const synced = [...state.synced]
   let newest = state.newestSyncedStartMs
   const markDone = (p: PlannedUpload) => {
@@ -122,9 +124,11 @@ export async function syncMatchReports(deps: SyncDeps, limit = 20): Promise<Sync
           upforge_score: sanitizeUpforgeScore(res.data.upforge_score),
           upforge_score_breakdown: sanitizeUpforgeScoreBreakdown(res.data.upforge_score_breakdown),
           match_id: p.matchId,
-          previous_focus: cachedLatest?.focus && focus
-            ? cachedLatest.focus.id !== focus.id ? cachedLatest.focus : cachedLatest.previous_focus ?? null
-            : null,
+          // The API names the focus this match finished; older APIs leave it to the cached one.
+          previous_focus: res.data.previous_focus
+            ?? (cachedLatest?.focus && focus
+              ? cachedLatest.focus.id !== focus.id ? cachedLatest.focus : cachedLatest.previous_focus ?? null
+              : null),
         }
         cachedLatest = latest
         deps.onReport?.(latest)
@@ -142,4 +146,17 @@ export async function syncMatchReports(deps: SyncDeps, limit = 20): Promise<Sync
 
   await deps.saveState({ synced: synced.slice(-MAX_REMEMBERED), newestSyncedStartMs: newest, latest: cachedLatest })
   return { ok: !reason, ...(reason ? { reason } : {}), uploaded, skipped, latest }
+}
+
+/**
+ * After a match, should the focus sync try again later? Riot can be slow to publish a match,
+ * and a sync can be busy or throttled; without a retry the focus would not move until the next app start.
+ */
+export function shouldRetryFocusSync(res: SyncResult | null): boolean {
+  if (res == null) return true // throttled or signed out mid-way: cheap to try again
+  // ok with nothing new: Riot hasn't listed the match that just ended yet.
+  if (res.ok) return res.uploaded === 0
+  const r = res.reason ?? ''
+  return r === 'some_matches_failed' || r === 'sync_in_progress' || r === 'network_error' || r === 'sync_failed'
+    || r === 'match_history_unavailable' || r === 'no_recent_matches' || /^http_5\d\d$/.test(r)
 }

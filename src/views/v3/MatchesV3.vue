@@ -143,10 +143,10 @@ const countLine = computed(() => {
 
         <div v-if="loading || (cloudLoading && !filtered.length)" class="uf-skel-rows" role="status" aria-label="Loading matches">
           <div v-for="i in 6" :key="i" class="uf-skel-row">
-            <UfSkeleton :w="120" :h="62" />
-            <UfSkeleton :w="22" :h="16" />
-            <span class="uf-skel-who"><UfSkeleton :w="36" :h="36" /><UfSkeleton :lines="2" :w="'70%'" /></span>
+            <UfSkeleton :w="'100%'" :h="68" />
             <UfSkeleton :w="70" :h="26" />
+            <span class="uf-skel-who"><UfSkeleton :lines="2" :w="'70%'" /></span>
+            <UfSkeleton :w="70" :h="22" />
             <UfSkeleton :w="40" :h="16" />
             <UfSkeleton :w="'70%'" :h="14" />
             <span class="uf-skel-act"><UfSkeleton :w="96" :h="36" /></span>
@@ -239,9 +239,9 @@ const countLine = computed(() => {
 .uf-skel-rows { display: flex; flex-direction: column; }
 /* Rows size their columns against the list width (container query in MatchRowV3). */
 .uf-groups, .uf-skel-rows { container: uf-matches / inline-size; }
-.uf-skel-row { display: grid; grid-template-columns: 120px 22px minmax(160px, 1fr) 104px 72px 160px 260px; gap: 18px; align-items: center; padding: 10px 0; border-top: 1px solid var(--uf-line); }
+.uf-skel-row { display: grid; grid-template-columns: 150px 104px minmax(150px, 1fr) 104px 96px 140px 320px; gap: 18px; align-items: center; padding: 10px 16px 10px 0; min-height: 88px; border-top: 1px solid var(--uf-line); }
 @container uf-matches (max-width: 1040px) {
-  .uf-skel-row { grid-template-columns: 88px 20px minmax(120px, 1fr) 92px 56px 120px 214px; gap: 14px; }
+  .uf-skel-row { grid-template-columns: 110px 92px minmax(120px, 1fr) 88px 84px 112px 270px; gap: 14px; }
 }
 .uf-skel-who { display: flex; gap: 12px; align-items: center; min-width: 0; }
 .uf-skel-act { display: flex; justify-content: flex-end; padding-right: 54px; }

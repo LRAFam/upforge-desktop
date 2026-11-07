@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decidedStats, focusBeforeAfter, deriveRoundFacts, sanitizeRoundFacts, focusHeadline, focusSlots, focusSubline, focusSyncMessage, focusTransitionText, hydrateFocusResponse, pct, type Focus, type FocusResponse, type FocusUpdate } from './focus'
+import { decidedStats, focusBeforeAfter, deriveRoundFacts, sanitizeRoundFacts, focusHeadline, focusResult, pickFocusResult, focusSlots, focusSubline, focusSyncMessage, focusTransitionText, hydrateFocusResponse, pct, type Focus, type FocusResponse, type FocusUpdate } from './focus'
 
 const base: Focus = {
   id: 1, metric: 'opening_death_rate', label: 'Opening deaths', better: 'lower', baseline: 0.364, target: 0.22,
@@ -147,5 +147,62 @@ describe('focusBeforeAfter', () => {
     expect(r).toMatchObject({ games: 2, improved: true })
     expect(r!.before).toMatch(/30/)
     expect(r!.since).toMatch(/15/)
+  })
+})
+
+describe('focusResult', () => {
+  const base = {
+    id: 1, metric: 'opening_death_rate', label: 'Opening deaths', better: 'lower' as const, baseline: 0.36, target: 0.22,
+    started_at: null, completed_at: null,
+  }
+  const done = (status: 'achieved' | 'missed', values: number[], hits: number) => ({
+    ...base,
+    checks: values.map((v, i) => ({ match_id: `m${i}`, value: v, hit: v <= 0.22, played_at: null })),
+    progress: { games_played: values.length, hits, games_required: 3, hits_required: 2, status },
+  })
+  const next = (id: number, metric: string, attempt = 1) => ({
+    ...base, id, metric, label: metric === base.metric ? base.label : 'Deaths traded', better: 'higher' as const, target: 0.26, attempt,
+    checks: [], progress: { games_played: 0, hits: 0, games_required: 3, hits_required: 2, status: 'active' },
+  })
+
+  it('is null while a focus is running or has no games', () => {
+    expect(focusResult(next(2, 'x') as never, null)).toBeNull()
+    expect(focusResult(done('achieved', [], 0), null)).toBeNull()
+  })
+
+  it('celebrates an achieved focus with the player numbers and names the new one', () => {
+    const r = focusResult(done('achieved', [0.1, 0.2], 2), next(2, 'traded_death_rate'))!
+    expect(r.tone).toBe('achieved')
+    expect(r.title).toBe('Focus complete: opening deaths')
+    expect(r.body).toBe('On target in 2 of 2 games (goal under 22%). 36% → 15% average.')
+    expect(r.next).toBe('New focus: Deaths traded over 26%.')
+  })
+
+  it('says why a missed focus comes back and which attempt it is', () => {
+    const r = focusResult(done('missed', [0.4, 0.5], 0), next(2, 'opening_death_rate', 2))!
+    expect(r.tone).toBe('missed')
+    expect(r.next).toContain('stays your focus')
+    expect(r.next).toContain('Second attempt')
+  })
+
+  it('without a next focus yet, says when it comes', () => {
+    expect(focusResult(done('achieved', [0.1, 0.1], 2), null)!.next).toContain('next ranked match')
+  })
+})
+
+describe('pickFocusResult', () => {
+  const f = (id: number, status: string, completed_at: string | null) => ({
+    id, metric: 'm', label: 'L', better: 'lower' as const, baseline: 0.3, target: 0.2, checks: [],
+    progress: { games_played: 2, hits: 2, games_required: 3, hits_required: 2, status },
+    started_at: null, completed_at,
+  })
+  const now = Date.parse('2026-11-07T12:00:00Z')
+  it('takes the newest unseen, recent finished focus', () => {
+    expect(pickFocusResult([f(1, 'achieved', '2026-11-07T10:00:00Z'), f(2, 'missed', '2026-11-07T11:00:00Z')], new Set(), now)?.id).toBe(2)
+    expect(pickFocusResult([f(2, 'missed', '2026-11-07T11:00:00Z')], new Set([2]), now)).toBeNull()
+  })
+  it('ignores running and old focuses', () => {
+    expect(pickFocusResult([f(1, 'active', null), null, undefined], new Set(), now)).toBeNull()
+    expect(pickFocusResult([f(1, 'achieved', '2026-11-01T10:00:00Z')], new Set(), now)).toBeNull()
   })
 })

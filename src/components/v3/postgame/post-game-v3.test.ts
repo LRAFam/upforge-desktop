@@ -74,3 +74,13 @@ describe('postGameFocusStrip', () => {
     expect(postGameFocusStrip(null)).toBeNull()
   })
 })
+
+describe('postGameFocusStrip result', () => {
+  const f = (status: string) => ({ label: 'Opening deaths', checks: [{ hit: true }, { hit: true }],
+    progress: { games_played: 2, hits: 2, games_required: 3, hits_required: 2, status } })
+  it('names a finished focus', () => {
+    expect(postGameFocusStrip(f('achieved'))!.label).toBe('Focus complete · Opening deaths')
+    expect(postGameFocusStrip(f('missed'))!.label).toBe('Not yet · Opening deaths')
+    expect(postGameFocusStrip(f('active'))!.label).toBe('Opening deaths')
+  })
+})

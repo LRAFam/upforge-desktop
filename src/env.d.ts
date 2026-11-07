@@ -945,6 +945,8 @@ declare global {
         getTimeline: (id: number) => Promise<RecordingTimeline | null>
         refreshPlayback: (id: number) => Promise<string | null>
         getDetail: (id: number) => Promise<import('./lib/analysis-enrichment').AnalysisDetailEnriched | null>
+        ready: () => Promise<import('./composables/useReadyAnalyses').ReadyAnalysisItem[]>
+        markSeen: (analysisId: number) => Promise<import('./composables/useReadyAnalyses').ReadyAnalysisItem[]>
         getPercentiles: (id: number) => Promise<{
           success: boolean
           percentiles: Record<string, { score: number; percentile: number; peers: number; label: string }>

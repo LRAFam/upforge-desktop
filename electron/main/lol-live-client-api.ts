@@ -126,7 +126,8 @@ export function normalizeLolGameMode(raw: string | null | undefined): string | n
   if (upper === 'CHERRY' || upper.includes('ARENA')) return 'ARENA'
   if (upper === 'PRACTICETOOL' || upper === 'TUTORIAL') return 'CUSTOM'
   // CLASSIC is all Summoner's Rift queues (ranked + normals). Live Client has no queue id.
-  if (upper === 'CLASSIC') return 'CLASSIC'
+  // Swiftplay is a Summoner's Rift queue with its own Live Client mode name.
+  if (upper === 'CLASSIC' || upper === 'SWIFTPLAY') return 'CLASSIC'
   return upper
 }
 

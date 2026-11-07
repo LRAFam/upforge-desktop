@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchRowSummary, relativeTime, rowCloudAction, storageSummary } from './match-row'
+import { matchRowSummary, relativeTime, rowCloudAction, rowOpenAction, storageSummary } from './match-row'
 
 describe('matchRowSummary', () => {
   it('uses the final score and stats when present', () => {
@@ -69,5 +69,19 @@ describe('rowCloudAction', () => {
   it('a keep time (no date) is soft and carries the keep action', () => {
     expect(rowCloudAction({ archiveId: 'a', hasLocalFile: false }, line({ text: 'Kept for 14 days on Free', tone: 'quiet', keepTime: true })))
       .toEqual({ kind: 'keep', text: 'Kept for 14 days on Free · Keep it in the cloud', warn: false, detail: null })
+  })
+})
+
+describe('rowOpenAction', () => {
+  it('labels coached matches as AI coaching', () => {
+    expect(rowOpenAction({ analysisId: 5 }, { unavailable: false, timeline: true })).toMatchObject({ label: 'AI coaching', ai: true, icon: 'notes' })
+  })
+  it('keeps Review / Watch for recordings without coaching', () => {
+    expect(rowOpenAction({ analysisId: null }, { unavailable: false, timeline: true }).label).toBe('Review')
+    expect(rowOpenAction({ analysisId: null }, { unavailable: false, timeline: false }).label).toBe('Watch')
+    expect(rowOpenAction({ analysisId: null, cloudOnly: true }, { unavailable: false, timeline: false }).label).toBe('Review')
+  })
+  it('does not promise coaching when the match cannot open', () => {
+    expect(rowOpenAction({ analysisId: 5 }, { unavailable: true, timeline: true }).ai).toBe(false)
   })
 })

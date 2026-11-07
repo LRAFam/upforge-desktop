@@ -142,6 +142,9 @@ const api = {
     getTimeline: (id: number) => ipcRenderer.invoke('analyses:get-timeline', { id }),
     refreshPlayback: (id: number) => ipcRenderer.invoke('analyses:refresh-playback', { id }),
     getDetail: (id: number) => ipcRenderer.invoke('analyses:get-detail', { id }),
+    /** Finished analyses not opened yet (newest first). */
+    ready: () => ipcRenderer.invoke('analyses:ready'),
+    markSeen: (analysisId: number) => ipcRenderer.invoke('analyses:mark-seen', analysisId),
     getPercentiles: (id: number) => ipcRenderer.invoke('analyses:get-percentiles', { id }),
     reconcileStuck: () => ipcRenderer.invoke('analysis:reconcile-stuck') as Promise<{ ok: boolean; reconciled: number }>,
     submitFeedback: (opts: {
@@ -553,6 +556,7 @@ const api = {
       'post-game:analysis-readiness',
       'dashboard:refresh',
       'dashboard:last-insight',
+      'analyses:ready-changed',
       'recordings:updated',
       'storage:upload-progress',
       'recording:status-changed',

@@ -44,6 +44,8 @@ export interface MatchReportResponse {
   played_at?: string | null
   account?: { is_main: boolean } | null
   report?: { facts?: MatchReportFacts; notes?: MatchReportNotes | null; notes_source?: string | null } | null
+  /** Did this match's main finding come up in earlier matches? Counted by the API (≥ 2026-11-07). */
+  recurrence?: { finding_id: string; seen: number; of: number; streak: number } | null
   focus?: Focus | null
   focus_check?: { match_id: string; value: number; hit: boolean } | null
   notes_usage?: { used: number; limit: number } | null
@@ -99,6 +101,27 @@ export interface MatchReportView {
   watchRounds?: Array<{ round: number; why: string }>
   /** Valorant: how the enemy team played, from Riot's position snapshots. */
   enemyRead?: string | null
+  /** Valorant: whether the main finding is a repeat (a habit) or new. */
+  recurrence?: RecurrenceLine | null
+}
+
+export interface RecurrenceLine { tone: 'habit' | 'again' | 'new'; text: string }
+
+/**
+ * Honest repeat label for the main finding, from the player's own earlier reports.
+ * A repeat is not "already known" advice: it's a habit, so it says so and puts it first.
+ */
+export function recurrenceLine(r: MatchReportResponse['recurrence']): RecurrenceLine | null {
+  if (!r || !Number.isInteger(r.seen) || !Number.isInteger(r.of) || r.of <= 0) return null
+  const matches = (k: number) => `${k} ${k === 1 ? 'match' : 'matches'}`
+  if (r.streak >= 2) {
+    return { tone: 'habit', text: `${r.streak + 1} matches in a row. This is a habit now, not a one-off, so it's the one to fix first.` }
+  }
+  if (r.seen >= 2) {
+    return { tone: 'habit', text: `Also came up in ${r.seen} of your last ${matches(r.of)}. It keeps costing you rounds, so fix this before anything else.` }
+  }
+  if (r.seen === 1) return { tone: 'again', text: `Also came up in 1 of your last ${matches(r.of)}.` }
+  return r.of >= 3 ? { tone: 'new', text: `New: not in your last ${matches(r.of)}.` } : null
 }
 
 /** Coach finding → focus metric, so a next step can open the matching drills. */
@@ -169,6 +192,7 @@ export function matchReportView(res: MatchReportResponse): MatchReportView {
       .slice(0, 3)
       .map(w => ({ round: w.round, why: w.why!.trim() })),
     enemyRead: notes?.enemy_read?.text?.trim() || null,
+    recurrence: notes?.headline?.text ? recurrenceLine(res.recurrence) : null,
   }
 }
 

@@ -22,6 +22,7 @@ import { useCoachBadges } from './roster-flow/useCoachBadges'
 import { useCoachReplyWatch } from './roster-flow/useCoachReplyWatch'
 import { showStudentsNav } from './roster-flow/roster-flow'
 import type { UfIconName } from './uf-icons'
+import { useReadyAnalyses } from '../../composables/useReadyAnalyses'
 
 const route = useRoute()
 const router = useRouter()
@@ -31,6 +32,7 @@ const profileUser = ref<ProfileData['user'] | null>(readCache<ProfileData['user'
 const devMode = ref(false)
 const { notesReady, needsNotes, coachProfile } = useCoachBadges()
 useCoachReplyWatch()
+const { count: readyAnalyses } = useReadyAnalyses()
 
 interface Item { to: string; label: string; icon: UfIconName; match: (p: string) => boolean; needs?: string }
 const items: Item[] = [
@@ -53,6 +55,8 @@ const visible = computed(() => {
 function badge(to: string): number {
   if (to === '/rosters') return notesReady.value
   if (to === '/students') return needsNotes.value
+  // Finished coaching the player hasn't opened yet.
+  if (to === '/recordings') return readyAnalyses.value
   return 0
 }
 // Performance (PC booster) and cloud storage are settings-like tools, so they light up Settings.
@@ -103,10 +107,10 @@ onUnmounted(() => { if (typeof stopSettingsWatch === 'function') stopSettingsWat
     <!-- Web-only features for the current game (roadmap, lineups, guides…): one quiet menu. -->
     <WebLinksMenuV3 />
     <button v-if="devMode" type="button" class="uf-side-item" :class="{ 'is-on': route.path === '/dev' }" @click="go('/dev')">
-      <UfIcon name="spark" :size="17" />Developer
+      <UfIcon name="code" :size="17" />Developer
     </button>
     <button v-if="devMode" type="button" class="uf-side-item" :class="{ 'is-on': route.path === '/overstep' }" @click="go('/overstep')">
-      <UfIcon name="spark" :size="17" />Overstep
+      <UfIcon name="lab" :size="17" />Overstep
     </button>
     <button type="button" class="uf-side-item" :class="{ 'is-on': settingsOn }" @click="go('/settings', $event)">
       <UfIcon name="settings" :size="17" />Settings

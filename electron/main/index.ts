@@ -41,6 +41,7 @@ import fs from 'fs'
 import { addExcludedObsRecordingPath } from './obs-recording-exclusions'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { showAppNotification, setMatchRecordingGuard } from './app-notifications'
+import { addReady, readReadyFile, removeReady, writeReadyFile, type ReadyAnalysis } from './ready-analyses'
 import {
   startCoachNotificationPoller,
   stopCoachNotificationPoller,
@@ -128,7 +129,7 @@ import {
   recomputeTimelineVideoOffsets,
 } from './riot-local-api'
 import { readRecentMatchReport, saveRecentMatchExports } from './recent-match-export'
-import { syncMatchReports, type SyncResult } from './match-report-sync'
+import { shouldRetryFocusSync, syncMatchReports, type SyncResult } from './match-report-sync'
 import { focusReportDiagnostic, readFocusSyncState, writeFocusSyncState } from './focus-state'
 import { hydrateFocusResponse } from '../../src/lib/focus'
 import { decideRiotAccountSwitch } from './riot-account-switch'
@@ -2030,7 +2031,7 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
   }
   mainWindow?.webContents.send('dashboard:refresh')
 
-  notifyCoachingReady(coachingReadyBody(ctx.agent ?? gameLabel(ctx.game), ctx.map, result), analysisId ?? undefined)
+  notifyCoachingReady(coachingReadyBody(ctx.agent ?? gameLabel(ctx.game), ctx.map, result), analysisId ?? undefined, { game: ctx.game, label: ctx.agent ?? gameLabel(ctx.game), map: ctx.map })
   tray?.setToolTip(idleTooltip(ctx.game))
 }
 
@@ -2204,11 +2205,44 @@ function sendUploadFailure(
   })
 }
 
-function notifyCoachingReady(body: string, analysisId?: number | null): void {
+/** Per-account file (not settings): other screens save settings objects that don't carry this list. */
+function readyAnalysesFile(): string | null {
+  const userId = getActiveUserId()
+  return userId == null ? null : join(userDataRoot(userId), 'ready-analyses.json')
+}
+
+function readyAnalysesList(): ReadyAnalysis[] {
+  const file = readyAnalysesFile()
+  return file ? readReadyFile(file) : []
+}
+
+function saveReadyAnalyses(list: ReadyAnalysis[]): void {
+  const file = readyAnalysesFile()
+  if (!file) return
+  writeReadyFile(file, list)
+  mainWindow?.webContents.send('analyses:ready-changed', list)
+}
+
+function notifyCoachingReady(
+  body: string,
+  analysisId?: number | null,
+  ready?: { game: string; label: string; map?: string | null },
+): void {
+  if (analysisId != null && ready) {
+    saveReadyAnalyses(addReady(readyAnalysesList(), {
+      analysisId,
+      game: ready.game,
+      label: ready.label,
+      map: ready.map ?? null,
+      readyAt: new Date().toISOString(),
+    }))
+  }
   showAppNotification({
     title: 'Coaching ready',
     body,
     silent: notifySilent(),
+    // Players often queue straight into the next match: show it when that recording ends.
+    deferWhileRecording: true,
     onClick: () => {
       focusMainWindow()
       if (analysisId != null) {
@@ -6007,7 +6041,7 @@ async function resumePollForJob(
       mainWindow?.webContents.send('dashboard:refresh')
       tray?.setToolTip(idleTooltip(game))
       // Same notification as a live analysis: clicking it opens the result in the app.
-      notifyCoachingReady(coachingReadyBody(agent ?? gameLabel(game), map, resumedResult), analysisId ?? undefined)
+      notifyCoachingReady(coachingReadyBody(agent ?? gameLabel(game), map, resumedResult), analysisId ?? undefined, { game, label: agent ?? gameLabel(game), map })
     },
     onFailed: (userMessage, rawError, status) => {
       const rec = recordingsStore.getByJobId(jobId)
@@ -6700,7 +6734,7 @@ async function performUploadAndAnalyse(
         }
         mainWindow?.webContents.send('dashboard:refresh')
         tray?.setToolTip(idleTooltip(game))
-        notifyCoachingReady(coachingReadyBody(agent ?? gameLabel(game), map, completedResult), analysisId ?? undefined)
+        notifyCoachingReady(coachingReadyBody(agent ?? gameLabel(game), map, completedResult), analysisId ?? undefined, { game, label: agent ?? gameLabel(game), map })
         if (!targetWindow.isDestroyed()) {
           targetWindow.flashFrame(true)
           targetWindow.once('focus', () => targetWindow.flashFrame(false))
@@ -7346,6 +7380,15 @@ async function startApp(): Promise<void> {
 
   setupGameDataCaptureHandlers(ipcMain)
 
+  ipcMain.handle('analyses:ready', () => readyAnalysesList())
+  ipcMain.handle('analyses:mark-seen', (_e, analysisId: unknown) => {
+    if (typeof analysisId !== 'number') return readyAnalysesList()
+    const before = readyAnalysesList()
+    const next = removeReady(before, analysisId)
+    if (next.length !== before.length) saveReadyAnalyses(next)
+    return next
+  })
+
   ipcMain.handle('app:get-support-bundle', async () => {
     const riotDiag = riotLocalApi.getDiagnostics()
     const network = await runNetworkDiagnostics({
@@ -7646,7 +7689,10 @@ async function startApp(): Promise<void> {
       if (res.ok) trackFirstMatchSynced(res.uploaded)
       // An in-flight response belongs to the account that started it, even after logout.
       if (!ownsSession()) return null
-      if (res.latest) mainWindow?.webContents.send('focus:updated', res.latest)
+      if (res.latest) {
+        mainWindow?.webContents.send('focus:updated', res.latest)
+        if (postGameWindow && !postGameWindow.isDestroyed()) postGameWindow.webContents.send('focus:updated', res.latest)
+      }
       return res
     } catch {
       // Axios errors can contain authorization headers; never log the raw error.
@@ -7747,8 +7793,13 @@ async function startApp(): Promise<void> {
   setTimeout(() => { void runFocusSync('startup') }, 45_000)
   scheduleFocusSyncAfterMatch = (game: string) => {
     if (game !== 'valorant') return
-    // Riot needs a minute or two to publish match details after the game ends.
-    setTimeout(() => { void runFocusSync('match_end', 5) }, 120_000)
+    // Riot needs a minute or two to publish match details after the game ends; retry if it wasn't there yet.
+    const delays = [120_000, 6 * 60_000, 15 * 60_000]
+    const attempt = (i: number) => setTimeout(async () => {
+      const res = await runFocusSync(i === 0 ? 'match_end' : 'match_end_retry', 5)
+      if (i + 1 < delays.length && shouldRetryFocusSync(res)) attempt(i + 1)
+    }, delays[i] - (i > 0 ? delays[i - 1] : 0))
+    attempt(0)
   }
 
   ipcMain.handle('debug:probe-lol-lcu', async () => {

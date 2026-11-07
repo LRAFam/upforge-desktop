@@ -112,6 +112,9 @@ export function normalizeLolQueueId(queueId: number | null | undefined): {
     420: { gameMode: 'RANKED_SOLO', queueLabel: 'Ranked Solo/Duo' },
     430: { gameMode: 'NORMAL', queueLabel: 'Normal Blind' },
     440: { gameMode: 'RANKED_FLEX', queueLabel: 'Ranked Flex' },
+    // Swiftplay (2025+) and the older Quickplay are Summoner's Rift normals.
+    480: { gameMode: 'NORMAL', queueLabel: 'Swiftplay' },
+    490: { gameMode: 'NORMAL', queueLabel: 'Quickplay' },
     450: { gameMode: 'ARAM', queueLabel: 'ARAM' },
     // ARAM: Mayhem (Live Client gameMode "KIWI"). Sibling IDs from CommunityDragon queues.json.
     2400: { gameMode: 'ARAM', queueLabel: 'ARAM: Mayhem' },
@@ -157,7 +160,7 @@ export function resolveLolFilterMode(opts: {
   const live = (opts.liveGameMode ?? opts.lcuGameMode ?? '').toUpperCase()
   if (live === 'KIWI' || live.includes('ARAM')) return 'ARAM'
   if (live === 'CHERRY' || live.includes('ARENA')) return 'ARENA'
-  if (live === 'CLASSIC') return 'CLASSIC'
+  if (live === 'CLASSIC' || live === 'SWIFTPLAY') return 'CLASSIC'
   if (live === 'PRACTICETOOL' || live === 'CUSTOM' || live === 'TUTORIAL') return 'CUSTOM'
 
   // Howling Abyss (map 12) without a known queue → treat as ARAM-family.

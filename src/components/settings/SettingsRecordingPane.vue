@@ -55,7 +55,7 @@ const {
 
 const modeHint = computed(() => {
   if (settings.primaryGame === 'lol') {
-    return "Only selected modes are recorded. Summoner's Rift covers ranked and normals (Live Client cannot split them)."
+    return "Only selected modes are recorded. Summoner's Rift covers ranked, normals and Swiftplay."
   }
   if (settings.primaryGame === 'deadlock') {
     return 'Deadlock matchmaking is treated as Ranked until Steam exposes more queue types. Uncheck Ranked to skip all auto-recording.'

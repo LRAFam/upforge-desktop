@@ -1,3 +1,4 @@
+import { sanitizeHabitHistory } from '../components/analysis/habit-history'
 import type { DuelMoment } from './duel-moments'
 import { normalizeDuelMoment, normalizeDuelMoments } from './duel-moments'
 import { parseMatchHighlightsFromApi, type MatchHighlight } from './match-highlights'
@@ -37,6 +38,8 @@ export interface AnalysisDetailEnriched {
     success_metric?: string
   }>
   pattern_insights: string[]
+  /** Habits this match flagged again + its drill (API ≥ 2026-11-07). */
+  habit_history?: import('../components/analysis/habit-history').HabitHistory | null
   behaviours: Array<{
     behaviour_id: string
     title?: string
@@ -193,6 +196,7 @@ export function enrichAnalysisDetail(analysis: Record<string, unknown>): Analysi
     })),
     pattern_insights: stringList(analysis.pattern_insights)
       .map(item => sanitizeUnsupportedRankClaimsForDisplay(item) ?? ''),
+    habit_history: sanitizeHabitHistory(analysis.habit_history),
     behaviours: recordList(analysis.behaviours)
       .filter(row => typeof row.behaviour_id === 'string')
       .map(row => ({

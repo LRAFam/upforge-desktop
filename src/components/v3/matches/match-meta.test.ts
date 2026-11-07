@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dedupeAnalysesByMatch, formatMatchDate, groupByMatchDate, matchDateGroup, matchDateMs, matchMapArt, matchMapLabel } from './match-meta'
+import { dedupeAnalysesByMatch, formatMatchDate, groupByMatchDate, matchDateGroup, matchDateMs, matchMapArt, matchMapLabel, matchRowArt } from './match-meta'
 
 // Monday 2 Nov 2026, 12:00 local time.
 const now = new Date(2026, 10, 2, 12, 0).getTime()
@@ -80,5 +80,21 @@ describe('dedupeAnalysesByMatch', () => {
       { id: 550, match_id: '2d79', overall_score: 50, created_at: '2026-08-16T19:06:04Z' },
     ]
     expect(dedupeAnalysesByMatch(list).map(a => a.id)).toEqual([550])
+  })
+})
+
+describe('matchRowArt', () => {
+  const rec = (game: string, agent: string | null, map: string | null) => ({ game, agent, map, timeline: null }) as never
+  it('Valorant: map splash backdrop with the agent full portrait', () => {
+    const a = matchRowArt(rec('valorant', 'Jett', 'Bind'))
+    expect(a.backdrop).toMatch(/maps\/.+\/splash\.png$/)
+    expect(a.figure).toMatch(/agents\/.+\/fullportrait\.png$/)
+    expect(a.icon).toBe('')
+  })
+  it('League: champion splash as the backdrop', () => {
+    expect(matchRowArt(rec('lol', 'Ahri', "Summoner's Rift")).backdrop).toMatch(/champion\/splash\/Ahri_0\.jpg$/)
+  })
+  it('Valorant without an agent: map only', () => {
+    expect(matchRowArt(rec('valorant', null, 'Bind'))).toMatchObject({ figure: '', icon: '' })
   })
 })

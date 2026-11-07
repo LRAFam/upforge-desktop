@@ -124,6 +124,16 @@ describe('liveStatus', () => {
       kind: 'working', text: 'Uploading · 42% · Coach is analysing · 60%', action: 'matches' })
     expect(liveStatus({ ...idle, uploads: 2, analyses: 3 })?.text).toBe('Uploading 2 recordings · Coach is analysing 3 matches')
   })
+  it('points at finished coaching the player has not opened yet', () => {
+    expect(liveStatus({ ...idle, ready: { count: 1, label: 'Jett', map: 'Ascent' } })).toEqual({
+      kind: 'ready', text: 'Coaching ready · Jett on Ascent', action: 'review' })
+    expect(liveStatus({ ...idle, ready: { count: 3, label: 'Jett', map: null } })?.text).toBe('3 coaching reviews ready')
+    // Still says what else is running, but the review is the action.
+    expect(liveStatus({ ...idle, analyses: 1, ready: { count: 1, label: 'Jett', map: null } })).toEqual({
+      kind: 'ready', text: 'Coaching ready · Jett · Coach is analysing your match', action: 'review' })
+    // Recording still wins.
+    expect(liveStatus({ ...idle, recording: true, ready: { count: 1, label: 'Jett', map: null } })?.kind).toBe('recording')
+  })
   it('says when the game is open but the match has not started', () => {
     expect(liveStatus({ ...idle, waitingForMatch: true })).toMatchObject({ kind: 'waiting', action: null })
   })

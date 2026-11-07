@@ -93,5 +93,8 @@ export function postGameFocusStrip(focus: FocusLike | null | undefined): PostGam
   const line = recent.length === 0
     ? `Your next ${required} ${required === 1 ? 'game checks' : 'games check'} this focus.`
     : `On target in ${hits} of your last ${recent.length} ${recent.length === 1 ? 'game' : 'games'}${needed ? `, ${needed} needed` : ''}.`
-  return { label: focus.label, pips, line }
+  // The match that finishes a focus says so (no more silent rotation to the next one).
+  const status = focus.progress?.status
+  const label = status === 'achieved' ? `Focus complete · ${focus.label}` : status === 'missed' ? `Not yet · ${focus.label}` : focus.label
+  return { label, pips, line }
 }

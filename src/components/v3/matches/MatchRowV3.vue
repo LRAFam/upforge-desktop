@@ -6,7 +6,7 @@ import { matchReportPath } from '../../../lib/match-report'
 import type { LibraryRecording } from '../../../lib/footage-library'
 import { footageUnavailable } from '../../../lib/footage-library'
 import { canOpenTimeline, canWatchRawRecording } from '../../../lib/recording-demo-status'
-import { recordingGameTitle, recordingPlayerImage, recordingPlayerLabel } from '../../../lib/recording-display'
+import { recordingGameTitle, recordingPlayerLabel } from '../../../lib/recording-display'
 import { recordingNeedsAttention } from '../../../lib/recording-library'
 import { recordingStatusBadge } from '../../../lib/recording-status'
 import UfIcon from '../UfIcon.vue'
@@ -15,10 +15,11 @@ import UfButton from '../UfButton.vue'
 import { deadlockRecordingHero, loadDeadlockHeroesOnce } from '../../../lib/deadlock-hero-names'
 import { deadlockReviewState } from './deadlock-review-row'
 import { gameLogo } from './game-logo'
-import { matchRowSummary, rowCloudAction, storageLine } from './match-row'
+import { matchRowSummary, rowCloudAction, rowOpenAction, storageLine } from './match-row'
+import { useReadyAnalyses } from '../../../composables/useReadyAnalyses'
 import { parseRetention, retentionLine } from '../../../lib/cloud-retention'
 import { useCloudRetention } from '../../../composables/useCloudRetention'
-import { formatMatchDate, matchMapArt, matchMapLabel } from './match-meta'
+import { formatMatchDate, matchMapLabel, matchRowArt } from './match-meta'
 import { matchScore, scoreToneColor } from '../../../lib/upforge-score'
 import { cs2StatItems } from '../../../lib/cs2-analyses'
 import { modeQueueLabel } from '../../../lib/game-queue'
@@ -40,7 +41,11 @@ const summary = computed(() => matchRowSummary(props.rec, props.analysis ?? (pro
 const isAlt = computed(() => (props.rec as { riotAccountRole?: string | null }).riotAccountRole === 'alt')
 const unavailable = computed(() => footageUnavailable(props.rec))
 const canOpen = computed(() => !unavailable.value && (canWatchRawRecording(props.rec) || props.rec.analysisId != null))
-const openLabel = computed(() => unavailable.value || (props.rec.cloudOnly || props.rec.analysisId != null || canOpenTimeline(props.rec) ? 'Review' : 'Watch'))
+const openAction = computed(() => rowOpenAction(props.rec, { unavailable: !!unavailable.value, timeline: canOpenTimeline(props.rec) }))
+const openLabel = computed(() => unavailable.value || openAction.value.label)
+// Coaching finished but not opened yet: the same list that drives the Matches badge.
+const { items: readyItems } = useReadyAnalyses()
+const isNew = computed(() => props.rec.analysisId != null && readyItems.value.some(r => r.analysisId === props.rec.analysisId))
 const status = computed(() => recordingStatusBadge(props.rec).label)
 const storage = computed(() => storageLine(status.value, !!props.rec.hasLocalFile, !!(props.rec.archiveId || props.rec.cloudUploaded)))
 /** One status line ("Analysed · Cloud") so every row has the same height and baseline. */
@@ -49,7 +54,10 @@ const ufScore = computed(() => matchScore(props.analysis))
 /** CS2: ADR / KAST from the demo on hover (the column only fits K/D/A). */
 const rowStatsTitle = computed(() => (props.analysis ? cs2StatItems(props.analysis).map(i => `${i.value} ${i.label}`).join(' · ') : ''))
 const mapLabel = computed(() => matchMapLabel(props.rec.game, props.rec.map))
-const mapArt = computed(() => matchMapArt(props.rec.game, props.rec.map))
+// Web companion band: the map (or champion) fills the row, the agent stands in it, washed in the result colour.
+const art = computed(() => matchRowArt(props.rec))
+const tone = computed(() => summary.value.result ?? 'none')
+const resultWordText = computed(() => summary.value.result === 'win' ? 'Victory' : summary.value.result === 'loss' ? 'Defeat' : summary.value.score ? 'Draw' : '')
 const dateText = computed(() => formatMatchDate(props.playedAt || props.rec.recordedAt))
 /** "Wingman · 2v2" / "Premier · Ranked": fun modes are kept out of Progress, so the row says which is which. */
 const modeText = computed(() => modeQueueLabel(props.rec.game, props.rec.gameMode || props.analysis?.game_mode))
@@ -104,29 +112,31 @@ async function startReview() {
 </script>
 
 <template>
-  <div class="uf-row" :class="{ 'is-selected': selected, 'is-selecting': selecting }"
+  <div class="uf-row uf-band" :class="[{ 'is-selected': selected, 'is-selecting': selecting }, `is-${tone}`]"
     @click="selecting && !rec.cloudOnly ? emit('toggle') : undefined"
     @mouseenter="canOpen && emit('prefetch')" @focusin="canOpen && emit('prefetch')">
+    <img v-if="art.backdrop" :src="art.backdrop" alt="" aria-hidden="true" class="uf-band-bg" loading="lazy">
     <span v-if="selecting" class="uf-check" :class="{ 'is-on': selected }" aria-hidden="true">
       <UfIcon v-if="selected" name="check" :size="12" />
     </span>
-    <div class="uf-thumb">
-      <img v-if="mapArt" :src="mapArt" :alt="mapLabel">
-    </div>
-    <img v-if="logo" :src="logo" :alt="recordingGameTitle(rec)" class="uf-logo">
-    <span v-else class="uf-logo" />
-    <div class="uf-who">
-      <img v-if="recordingPlayerImage(rec)" :src="recordingPlayerImage(rec)" :alt="playerLabel" class="uf-agent">
-      <div class="uf-who-text">
-        <span class="uf-t3 uf-trunc">{{ mapLabel || recordingGameTitle(rec) }}</span>
-        <span class="uf-t4 uf-trunc">{{ [playerLabel, dateText, modeText].filter(Boolean).join(' · ') }}<span v-if="isAlt" class="uf-alt" title="Played on an alt account: coached, not counted for your focus"> · ALT</span></span>
-      </div>
+    <div class="uf-art" aria-hidden="true">
+      <img v-if="art.figure" :src="art.figure" alt="" class="uf-figure" loading="lazy">
+      <img v-else-if="art.icon" :src="art.icon" alt="" class="uf-figure-icon" loading="lazy">
     </div>
     <div class="uf-result">
-      <span v-if="summary.score" class="uf-d4 uf-num" :style="{ color: resultColor }">{{ summary.score }}</span>
-      <span v-else-if="summary.result" class="uf-d4" :style="{ color: resultColor }">{{ summary.result === 'win' ? 'WIN' : 'LOSS' }}</span>
-      <span v-if="summary.kda" class="uf-t4 uf-num" :title="rowStatsTitle || undefined">{{ summary.kda }} K/D/A</span>
-      <span v-else-if="!summary.score && !summary.result && analysis !== undefined" class="uf-t4" style="color: var(--uf-faint)">{{ rec.analysisId == null ? 'Not analysed' : 'No scoreboard' }}</span>
+      <span v-if="resultWordText" class="uf-label uf-res-word">{{ resultWordText }}</span>
+      <span v-if="summary.score" class="uf-d3 uf-num uf-res-score">{{ summary.score }}</span>
+      <span v-else-if="!summary.result && analysis !== undefined" class="uf-t4" style="color: var(--uf-faint)">{{ rec.analysisId == null ? 'Not analysed' : 'No scoreboard' }}</span>
+    </div>
+    <div class="uf-who-text">
+      <span class="uf-t3 uf-trunc uf-map"><img v-if="logo" :src="logo" :alt="recordingGameTitle(rec)" class="uf-logo">{{ mapLabel || recordingGameTitle(rec) }}</span>
+      <span class="uf-t4 uf-trunc">{{ [playerLabel, dateText, modeText].filter(Boolean).join(' · ') }}<span v-if="isAlt" class="uf-alt" title="Played on an alt account: coached, not counted for your focus"> · ALT</span></span>
+    </div>
+    <div class="uf-kda" :title="rowStatsTitle || undefined">
+      <template v-if="summary.kda">
+        <span class="uf-t1 uf-num">{{ summary.kda }}</span>
+        <span class="uf-t4">K / D / A</span>
+      </template>
     </div>
     <div class="uf-score" :title="ufScore ? (ufScore.kind === 'stats' ? `UpForge score ${ufScore.text} of 1000 · ${ufScore.label}` : `Coach rating ${ufScore.text}`) : undefined">
       <template v-if="ufScore">
@@ -146,9 +156,9 @@ async function startReview() {
       <button v-if="review === 'available'" type="button" class="uf-link" :disabled="busy" @click="confirmOpen = true">Review replay</button>
       <span v-else-if="review === 'in_progress'" class="uf-t4">Replay review in progress</span>
       <button v-if="rec.analysisId != null && canWatchRawRecording(rec)" type="button" class="uf-link" @click="emit('watch')">Watch</button>
-      <button v-if="reportPath" type="button" class="uf-link" title="Free data report for this match" @click.stop="openReport">Report</button>
-      <button type="button" class="uf-btn-secondary uf-open" :disabled="!canOpen || busy" @click="emit('open')">
-        <UfIcon :name="openLabel === 'Watch' ? 'play' : 'map'" :size="15" />{{ openLabel }}
+      <button v-if="reportPath" type="button" class="uf-link" title="Free stats report for this match (no AI)" @click.stop="openReport">Stats report</button>
+      <button type="button" class="uf-btn-secondary uf-open" :class="{ 'uf-open--ai': openAction.ai }" :title="openAction.title" :disabled="!canOpen || busy" @click="emit('open')">
+        <UfIcon :name="openAction.icon" :size="15" /><span v-if="isNew" class="uf-open-new" title="Not opened yet"><span class="uf-sr">New: </span></span>{{ openLabel }}
       </button>
       <button v-if="!rec.cloudOnly" type="button" class="uf-del" title="Delete recording" aria-label="Delete recording" :disabled="busy" @click="emit('delete')">
         <UfIcon name="close" :size="15" />
@@ -177,24 +187,45 @@ async function startReview() {
 
 <style scoped>
 .uf-alt { font-weight: 600; letter-spacing: 0.08em; color: var(--uf-muted); }
-/* Fixed columns (shared with the skeleton in MatchesV3) so results, scores, status and Review line up on every row. */
-.uf-row { display: grid; grid-template-columns: 18px 120px 22px minmax(160px, 1fr) 104px 72px 160px; gap: 18px; align-items: center; padding: 10px 0; border-top: 1px solid var(--uf-line); }
-.uf-row:not(.is-selecting) { grid-template-columns: 120px 22px minmax(160px, 1fr) 104px 72px 160px 260px; }
+/* Fixed columns (shared with the skeleton in MatchesV3) so results, scores, status and actions line up on every row. */
+.uf-row { display: grid; grid-template-columns: 18px 150px 104px minmax(150px, 1fr) 104px 96px 140px; gap: 18px; align-items: center; padding: 0 16px 0 0; min-height: 88px; border-top: 1px solid var(--uf-line); }
+.uf-row:not(.is-selecting) { grid-template-columns: 150px 104px minmax(150px, 1fr) 104px 96px 140px 320px; }
 /* Narrow windows (the list container sets container-type): same columns, tighter. */
 @container uf-matches (max-width: 1040px) {
-  .uf-row { grid-template-columns: 18px 88px 20px minmax(120px, 1fr) 92px 56px 120px; gap: 14px; }
-  .uf-row:not(.is-selecting) { grid-template-columns: 88px 20px minmax(120px, 1fr) 92px 56px 120px 214px; }
-  .uf-thumb { width: 88px; height: 48px; }
+  .uf-row { grid-template-columns: 18px 110px 92px minmax(120px, 1fr) 88px 84px 112px; gap: 14px; min-height: 80px; }
+  .uf-row:not(.is-selecting) { grid-template-columns: 110px 92px minmax(120px, 1fr) 88px 84px 112px 270px; }
 }
+/* Band (web companion Matches): backdrop art fills the row, a dark fade keeps text readable,
+   the result colour washes in from the left. */
+.uf-band { --tone: 122, 130, 142; position: relative; overflow: hidden; isolation: isolate; box-shadow: inset 3px 0 0 rgb(var(--tone)); }
+.uf-band.is-win { --tone: 34, 169, 155; }
+.uf-band.is-loss { --tone: 232, 80, 91; }
+.uf-band::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(var(--tone), 0.42) 0%, rgba(var(--tone), 0.12) 26%, rgba(var(--tone), 0) 55%),
+    linear-gradient(90deg, rgba(14, 17, 22, 0.2) 0%, rgba(14, 17, 22, 0.8) 26%, rgba(14, 17, 22, 0.95) 58%);
+  transition: opacity 0.15s ease; }
+.uf-band:hover::before { opacity: 0.88; }
+.uf-band-bg { position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; object-position: center 40%; filter: saturate(0.85); }
+.uf-art { position: relative; align-self: stretch; overflow: hidden; }
+.uf-figure { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); height: 250%; width: auto; max-width: none; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55)); transition: transform 0.2s ease; }
+.uf-band:hover .uf-figure { transform: translate(-50%, -3px); }
+.uf-figure-icon { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 52px; height: 52px; object-fit: cover; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); }
+.uf-res-word { color: rgb(var(--tone)); font-weight: 700; filter: brightness(1.15); }
+.uf-res-score { color: var(--uf-bone); white-space: nowrap; }
+.uf-map { display: inline-flex; align-items: center; gap: 8px; }
+.uf-kda { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.uf-kda .uf-t1 { font-size: 22px; line-height: 1.1; white-space: nowrap; }
+/* Text over the art: one step brighter than page greys, with a soft shadow. */
+.uf-band .uf-t4 { color: #c9c5be; }
+.uf-band .uf-result, .uf-band .uf-who-text, .uf-band .uf-kda, .uf-band .uf-score, .uf-band .uf-status { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+@media (prefers-reduced-motion: reduce) { .uf-band::before, .uf-figure { transition: none; } .uf-band:hover .uf-figure { transform: translateX(-50%); } }
 .uf-row.is-selecting { cursor: pointer; }
 .uf-row.is-selected { background: rgba(255, 70, 85, 0.06); }
-.uf-check { width: 18px; height: 18px; border: 1px solid var(--uf-line-2); display: flex; align-items: center; justify-content: center; }
+.uf-row.is-selecting .uf-check { margin-left: 12px; }
+.uf-check { width: 18px; height: 18px; border: 1px solid var(--uf-line-2); display: flex; align-items: center; justify-content: center; background: rgba(14, 17, 22, 0.6); }
 .uf-check.is-on { background: var(--uf-red); border-color: var(--uf-red); color: #fff; }
-.uf-thumb { width: 100%; height: 62px; background: var(--uf-raised); overflow: hidden; }
-.uf-thumb img { width: 100%; height: 100%; object-fit: cover; filter: saturate(0.7); }
-.uf-logo { width: 22px; height: 16px; object-fit: contain; }
-.uf-who { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.uf-agent { width: 36px; height: 36px; object-fit: cover; background: var(--uf-raised); flex: none; }
+.uf-logo { width: 18px; height: 14px; object-fit: contain; flex: none; }
 .uf-who-text, .uf-status, .uf-result, .uf-score { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .uf-num { font-variant-numeric: tabular-nums; }
 .uf-trunc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -203,6 +234,14 @@ async function startReview() {
 .uf-cloud.is-warn { color: var(--uf-gold); }
 .uf-del-slot { width: 36px; height: 36px; flex: none; }
 .uf-open { height: 36px; }
+/* AI-coached matches: the coaching is the thing to open, so the button says so and stands out. */
+.uf-open--ai { border-color: var(--uf-red); color: var(--uf-bone); }
+.uf-open--ai :deep(svg) { color: var(--uf-red); }
+.uf-open { position: relative; }
+/* Not opened yet: a small red corner marker (no pill). */
+.uf-open-new { position: absolute; top: -4px; right: -4px; width: 8px; height: 8px; background: var(--uf-red); }
+.uf-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.uf-score .uf-t4 { white-space: nowrap; }
 .uf-open:disabled { opacity: 0.4; cursor: not-allowed; }
 .uf-del { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: none; border: 1px solid var(--uf-line); color: var(--uf-faint); cursor: pointer; }
 .uf-del:hover { color: var(--uf-loss); border-color: var(--uf-loss); }
