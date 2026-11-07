@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getAnalysisReadiness, getVodFileReadiness, waitUntilVodFileReady } from './analysis-readiness'
+import { cloudArchiveReadinessMessage, getAnalysisReadiness, getVodFileReadiness, waitUntilVodFileReady } from './analysis-readiness'
 import { MATCH_DETAILS_ENRICH_MAX_MS } from './match-data-quality'
 import type { PendingRecording } from './recordings-store'
 import type { MatchData } from './riot-types'
@@ -136,5 +136,19 @@ describe('waitUntilVodFileReady', () => {
     const rec = baseRecording({ clipsOnly: true, path: undefined })
     const result = await waitUntilVodFileReady(() => rec, rec.id, async () => {})
     expect(result.ok).toBe(true)
+  })
+})
+
+describe('cloudArchiveReadinessMessage', () => {
+  const waiting = { ready: false, state: 'waiting_match_data' as const, message: 'Still getting Riot match data. Analyse unlocks when ready (usually about a minute). Keep Valorant / Riot Client open.' }
+  const now = Date.parse('2026-11-07T23:00:00Z')
+  it('keeps the live advice for a match that just ended', () => {
+    expect(cloudArchiveReadinessMessage(waiting, now - 2 * 60_000, now)).toBe(waiting.message)
+  })
+  it('explains an old cloud recording will not get Riot data', () => {
+    expect(cloudArchiveReadinessMessage(waiting, now - 3 * 3_600_000, now)).toMatch(/saved without its full Riot match data/)
+  })
+  it('leaves other states alone', () => {
+    expect(cloudArchiveReadinessMessage({ ready: false, state: 'blocked' as never, message: 'x' }, 0, now)).toBe('x')
   })
 })

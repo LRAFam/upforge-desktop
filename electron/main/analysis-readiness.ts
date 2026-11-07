@@ -262,3 +262,15 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
 export function withAnalysisReadiness<T extends PendingRecording>(rec: T): T & { analysisReadiness: AnalysisReadiness } {
   return { ...rec, analysisReadiness: getAnalysisReadiness(rec) }
 }
+
+/**
+ * A cloud recording that is still missing Riot data well after the match never gets it: the
+ * "keep the Riot Client open, about a minute" advice is for a match that just ended on this PC.
+ */
+export const CLOUD_ARCHIVE_STALE_MS = 15 * 60_000
+export function cloudArchiveReadinessMessage(readiness: Pick<AnalysisReadiness, 'ready' | 'state' | 'message'>, recordedAtMs: number, now = Date.now()): string {
+  if (readiness.ready) return readiness.message
+  const waiting = readiness.state === 'syncing' || readiness.state === 'waiting_match_data'
+  if (!waiting || !Number.isFinite(recordedAtMs) || now - recordedAtMs < CLOUD_ARCHIVE_STALE_MS) return readiness.message
+  return "This cloud recording was saved without its full Riot match data, so it can't be analysed from here. If you already analysed this match, open it from Matches."
+}

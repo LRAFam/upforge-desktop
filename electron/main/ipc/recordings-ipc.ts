@@ -38,7 +38,7 @@ import {
 import { extractDuelPreviewClip } from '../duel-clip-uploader'
 import { resolveCs2LocalPlayerName } from '../cs2-player-identity'
 import { attachDemoFileToRecording } from '../recording-demo-attach'
-import { getAnalysisReadiness } from '../analysis-readiness'
+import { cloudArchiveReadinessMessage, getAnalysisReadiness } from '../analysis-readiness'
 import type { ClipStore } from '../clip-store'
 import { parseProductionArchiveDetail, type ProductionVodFixtureLibrary } from '../production-vod-fixture'
 
@@ -524,7 +524,7 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
       if (!currentAccount()) return { ok: false, error: 'Your account changed. Reopen the recording.' }
       // Cloud retention of the archive's full video (absent on older APIs).
       const cloudRetention = (response.data.archive as { retention?: unknown } | undefined)?.retention ?? null
-      return { ok: true, timeline: { ...timeline, cloudRetention, archiveAnalysisState: archive.analysis_state, archiveAnalysisReady: readiness.ready, archiveAnalysisMessage: readiness.message, matchDataAvailable: archive.has_match_data } }
+      return { ok: true, timeline: { ...timeline, cloudRetention, archiveAnalysisState: archive.analysis_state, archiveAnalysisReady: readiness.ready, archiveAnalysisMessage: cloudArchiveReadinessMessage(readiness, recording.recordedAt), matchDataAvailable: archive.has_match_data } }
     } catch (error) {
       const response = (error as { response?: { status?: number; data?: { message?: string } } }).response
       return { ok: false, error: response?.status === 410 ? 'This cloud recording has expired.' : response?.status === 404 ? 'This cloud recording is unavailable.' : response?.data?.message ?? 'Cloud review could not be loaded. Please retry.' }
