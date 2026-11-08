@@ -5719,7 +5719,7 @@ function setupGameDetection(): void {
           const now = Date.now()
           if (now - lastShippingProcessCheckAt >= SHIPPING_PROCESS_CHECK_MS) {
             lastShippingProcessCheckAt = now
-            cachedShippingProcessUp = await gameDetector.isMatchProcessRunning()
+            cachedShippingProcessUp = await gameDetector.isMatchProcessRunningRecent()
           }
           await riotLocalApi.pollActiveMatch({
             shippingProcessRunning: cachedShippingProcessUp,
@@ -7509,13 +7509,13 @@ async function startApp(): Promise<void> {
       }
       if (inMatch === null && backgroundMatchState.active) {
         // A timed-out tasklist probe is unknown, not evidence that Valorant exited.
-        const stopped = game === 'valorant'
-          ? await gameDetector.probeMatchProcess() === 'stopped'
-          : !await gameDetector.isGameProcessRunning(game)
+        const stopped = await gameDetector.probeGameProcessRecent(game) === 'stopped'
         if (stopped) inMatch = false
       }
       const wasActive = backgroundMatchState.active
       backgroundMatchState.observe(inMatch)
+      // Only game APIs set inMatch=true; the process check above can only set false.
+      gameDetector.setMatchConfirmed(inMatch === true)
       if (!wasActive && backgroundMatchState.active) interruptBackgroundWorkForMatch()
       else if (wasActive && !backgroundMatchState.active) maybeResumeDeferredUploads()
     })().catch((err) => log.debug('[MatchPriority] Match probe unavailable:', err))
