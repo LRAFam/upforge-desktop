@@ -709,7 +709,9 @@ export function applyDeathTradeFlags(match: MatchData, allyPuids: Set<string>): 
       death.spatial.alliesAlive = alliesAlive
     }
     // Unknown, not false, when the kill list only has the player's own events.
-    if (measurable) death.spatial.traded = deathWasTraded(death, roundEvents, allyPuids)
-    else delete death.spatial.traded
+    // Also unknown when the killer or death time is missing (deathWasTraded → null).
+    const traded = measurable ? deathWasTraded(death, roundEvents, allyPuids) : null
+    if (traded == null) delete death.spatial.traded
+    else death.spatial.traded = traded
   }
 }

@@ -108,6 +108,30 @@ describe('trade flags', () => {
   })
 })
 
+describe('unknown killer or time (coaching claim leak)', () => {
+  const allies = new Set(['me', 'ally1'])
+  const kills = [{ videoOffsetMs: 6000, round: 0, killerPuuid: 'ally1', victimPuuid: 'enemy9' }]
+
+  it('is unknown, not untraded, when the killer is missing', () => {
+    const death = { videoOffsetMs: 5000, round: 0 }
+    expect(deathWasTraded(death, kills, allies)).toBeNull()
+    const traded = deathWasTraded(death, kills, allies)
+    const spatial = { alliesAlive: 1, ...(traded == null ? {} : { traded }) }
+    expect(isUntradedDeath(spatial)).toBe(false)
+  })
+
+  it('is unknown when the death time is missing', () => {
+    expect(deathWasTraded({ round: 0, killerPuuid: 'enemy1' }, kills, allies)).toBeNull()
+  })
+
+  it('enrich drops traded instead of storing false when unknown', () => {
+    const { readFileSync } = require('fs') as typeof import('fs')
+    const { join } = require('path') as typeof import('path')
+    const enrich = readFileSync(join(__dirname, 'enrich.ts'), 'utf8')
+    expect(enrich).not.toMatch(/death\.spatial\.traded = deathWasTraded\(/)
+  })
+})
+
 describe('trade window per game', () => {
   const allies = new Set(['player', 'ally1'])
   const death = { victimPuuid: 'player', killerPuuid: 'enemy1', videoOffsetMs: 10_000, round: 2 }
@@ -155,7 +179,7 @@ describe('shared trade golden (AI service card-56-210)', () => {
       for (const death of events.filter(e => e.victimPuuid === c.own)) {
         const sameRound = events.filter(e => e.round === death.round)
         const alive = countAlliesAliveAtDeath(sameRound, sameRound.indexOf(death), c.own, allyPuids)
-        const spatial = { alliesAlive: alive, traded: deathWasTraded(death, events, allyPuids) }
+        const spatial = { alliesAlive: alive, traded: deathWasTraded(death, events, allyPuids) ?? undefined }
         const n = death.round + 1
         if (alive === 0) got.last_alive.push(n)
         else if (isUntradedDeath(spatial)) got.untraded.push(n)

@@ -63,16 +63,17 @@ export function countAlliesAliveAtDeath(
  * True when an ally kills the player's killer within `windowMs` (same round; Valorant 3 s by default).
  * One trade rule everywhere (AI service services/trade_claims.py): killing some other enemy near
  * the body is not a trade.
+ * Null when the killer, round or death time is unknown — "unknown" must never read as untraded.
  */
 export function deathWasTraded(
   death: TradeTimelineEvent & { killerPuuid?: string },
   subsequentKills: TradeTimelineEvent[],
   allyPuids: Set<string>,
   windowMs: number = TRADE_AFTER_DEATH_MS,
-): boolean {
+): boolean | null {
   const t0 = death.videoOffsetMs
   const killer = death.killerPuuid?.toLowerCase()
-  if (t0 == null || death.round == null || !killer) return false
+  if (t0 == null || death.round == null || !killer) return null
 
   return subsequentKills.some((k) => {
     if (k.round !== death.round || k.videoOffsetMs == null) return false
