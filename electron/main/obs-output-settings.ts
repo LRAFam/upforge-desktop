@@ -99,9 +99,9 @@ async function resolveEncoderPlan(
   }
   if (plan) {
     log.info(
-      `[OBS Output] Recording encoder=${plan.encoder} bitrate=${plan.bitrateKbps} kbps CBR ` +
-      `(source=${plan.source}, RecQuality=Stream). Encoder change applies from the next OBS launch; ` +
-      'bitrate applies on each recording start once OBS runs this profile.',
+      `[OBS Output] Recording encoder=${plan.encoder} (source=${plan.source}, RecQuality=Small; ` +
+      `preset ${plan.bitrateKbps} kbps not forced — streaming settings left untouched). ` +
+      'Encoder change applies from the next OBS launch.',
     )
   } else {
     log.info(
@@ -245,7 +245,7 @@ export async function applyObsRecordingSettings(
 
   const recRb = await getProfileParam(obs, 'SimpleOutput', 'RecRB')
   const label = encoderPlan
-    ? `${config.quality} · ${fps} fps · OBS Simple/${encoderPlan.encoder} @ ${encoderPlan.bitrateKbps} kbps`
+    ? `${config.quality} · ${fps} fps · OBS Simple/${encoderPlan.encoder} Small quality`
     : `${config.quality} · ${fps} fps · OBS Simple/Small quality`
   log.info(
     `[OBS Output] Applied ${label}${config.manageObsVideo === false ? ' (OBS video settings unchanged)' : ''} → ${savePath} ` +

@@ -1,6 +1,6 @@
 /**
  * Pick a hardware recording encoder for OBS Simple Output and build the
- * profile keys that make OBS record at the preset bitrate.
+ * profile keys that make OBS record with it (recording output only).
  *
  * Why: OBS only defaults Simple Output to NVENC. AMD / Intel machines get
  * software x264, which encodes on the CPU while the user is gaming.
@@ -12,9 +12,10 @@
  * OBS swaps it back to x264 on startup (CheckForSimpleModeX264Fallback).
  *
  * Bitrate: RecQuality "Small" / "HQ" use CQP/CRF and ignore any bitrate. Only
- * RecQuality "Stream" records with the streaming encoder at SimpleOutput
- * VBitrate (CBR). Stream1 IgnoreRecommended stops a streaming-service cap
- * (e.g. Twitch 6000 kbps) from lowering it.
+ * RecQuality "Stream" honours a bitrate, but it records with the user's
+ * *streaming* encoder + VBitrate, so forcing it would change streamers' OBS
+ * settings. We use "Small" with our own RecEncoder and never touch StreamEncoder,
+ * VBitrate or Stream1. bitrateKbps is kept for logging only.
  *
  * Detection order: OBS's own "Available Encoders" log block (authoritative),
  * then Electron GPU vendor IDs. If both fail, callers keep the old behaviour.
@@ -206,12 +207,12 @@ export function buildObsEncoderPlan(
     encoder,
     bitrateKbps,
     source: detection.source,
+    // Recording encoder only. RecQuality=Stream would share the user's *streaming* encoder
+    // and bitrate (and need Stream1 IgnoreRecommended), changing streamers' OBS settings —
+    // so recording keeps its own quality-based mode and the stream is never touched.
     keys: [
       ['SimpleOutput', 'RecEncoder', encoder],
-      ['SimpleOutput', 'StreamEncoder', encoder],
-      ['SimpleOutput', 'RecQuality', 'Stream'],
-      ['SimpleOutput', 'VBitrate', String(bitrateKbps)],
-      ['Stream1', 'IgnoreRecommended', 'true'],
+      ['SimpleOutput', 'RecQuality', 'Small'],
     ],
   }
 }

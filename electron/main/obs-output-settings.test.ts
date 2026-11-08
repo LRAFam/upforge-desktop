@@ -183,7 +183,7 @@ describe('applyObsRecordingSettings replay configuration', () => {
     })
   }
 
-  it('writes the detected hardware encoder and preset bitrate into the profile', async () => {
+  it('writes the detected hardware encoder for recording only', async () => {
     const call = simpleObs()
     await applyObsRecordingSettings({ call } as never, {
       quality: '1080p', bitrate: 10, fps: 60, manageObsVideo: false, audioEnabled: true, savePath, captureMonitor: 'auto',
@@ -193,11 +193,9 @@ describe('applyObsRecordingSettings replay configuration', () => {
     const writes = profileWrites(call)
     const expected = process.platform === 'darwin' ? 'apple_h264' : process.platform === 'win32' ? 'nvenc' : 'x264'
     expect(writes).toContainEqual(['SimpleOutput', 'RecEncoder', expected])
-    expect(writes).toContainEqual(['SimpleOutput', 'StreamEncoder', expected])
-    expect(writes).toContainEqual(['SimpleOutput', 'RecQuality', 'Stream'])
-    expect(writes).toContainEqual(['SimpleOutput', 'VBitrate', '10000'])
-    expect(writes).toContainEqual(['Stream1', 'IgnoreRecommended', 'true'])
-    expect(writes).not.toContainEqual(['SimpleOutput', 'RecQuality', 'Small'])
+    expect(writes).toContainEqual(['SimpleOutput', 'RecQuality', 'Small'])
+    // Never touch the user's streaming encoder, bitrate or service settings.
+    expect(writes.some(([category, key]) => category === 'Stream1' || key === 'StreamEncoder' || key === 'VBitrate')).toBe(false)
   })
 
   it.each([

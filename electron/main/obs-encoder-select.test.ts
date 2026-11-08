@@ -89,16 +89,19 @@ describe('GPU vendor fallback', () => {
 })
 
 describe('profile plan', () => {
-  it('writes encoder, Stream quality and preset bitrate in kbps', () => {
+  it('sets only the recording encoder, with its own quality — never the stream', () => {
     const plan = buildObsEncoderPlan({ available: ['amd', 'qsv'], source: 'obs-log' }, 5, 'win32')
-    expect(plan).toMatchObject({ encoder: 'amd', bitrateKbps: 5000 })
+    expect(plan).toMatchObject({ encoder: 'amd' })
+    // RecQuality=Stream would make the recording share (and force us to rewrite) the user's
+    // streaming encoder + bitrate. Streamers' settings must never change.
     expect(plan!.keys).toEqual([
       ['SimpleOutput', 'RecEncoder', 'amd'],
-      ['SimpleOutput', 'StreamEncoder', 'amd'],
-      ['SimpleOutput', 'RecQuality', 'Stream'],
-      ['SimpleOutput', 'VBitrate', '5000'],
-      ['Stream1', 'IgnoreRecommended', 'true'],
+      ['SimpleOutput', 'RecQuality', 'Small'],
     ])
+    for (const [category, name] of plan!.keys) {
+      expect(category).not.toBe('Stream1')
+      expect(['StreamEncoder', 'VBitrate', 'ABitrate', 'Preset', 'NVENCPreset']).not.toContain(name)
+    }
   })
 
   it('falls back to x264 at the preset bitrate when no hardware encoder exists', () => {
