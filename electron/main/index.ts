@@ -7505,7 +7505,7 @@ async function startApp(): Promise<void> {
         if (isDeadlockMatchLive() || isDeadlockReadyToRecord()) inMatch = true
         else if (isDeadlockMatchEnded()) inMatch = false
       } else if (game === 'lol') {
-        inMatch = (await lolLiveClientApi.probeActiveMatch())?.inMatch ?? null
+        inMatch = (await lolLiveClientApi.probeLiveness())?.inMatch ?? null
       }
       if (inMatch === null && backgroundMatchState.active) {
         // A timed-out tasklist probe is unknown, not evidence that Valorant exited.
