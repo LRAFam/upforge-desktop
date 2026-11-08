@@ -30,7 +30,7 @@ export function useAccountUsage() {
     finally { if (request === generation) loading.value = false }
   }
   function clear() { generation++; usage.value = null; error.value = 'Sign in again to view usage.'; loading.value = false }
-  const cleanup = [window.api.on('session:user-changed', clear), window.api.on('auth:session-expired', clear), ...['recordings:updated', 'clips:updated', 'clips:new'].map(event => window.api.on(event, () => { void load() }))]
+  const cleanup = [window.api.on('session:user-changed', clear), window.api.on('auth:session-expired', clear), ...['recordings:updated', 'clips:updated', 'clips:new', 'account:billing-refreshed'].map(event => window.api.on(event, () => { void load() }))]
   const focus = () => { if (Date.now() - lastLoaded > 30000) void load() }
   onMounted(() => { void load(); window.addEventListener('focus', focus) })
   onBeforeUnmount(() => { generation++; cleanup.forEach(fn => fn()); window.removeEventListener('focus', focus) })

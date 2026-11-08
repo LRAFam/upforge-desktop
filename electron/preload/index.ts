@@ -607,6 +607,7 @@ const api = {
       'post-game:demo-download-progress',
       'deadlock:upload-progress',
       'spatial:population-updated',
+      'account:billing-refreshed',
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

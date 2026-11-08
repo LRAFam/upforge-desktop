@@ -1290,6 +1290,11 @@ function createSettings() {
       })
       subscribe('recordings:updated', () => { void loadStorageUsage() })
       subscribe('dashboard:refresh', () => { void loadDeadlockLink() })
+      // Back from browser checkout: show the new plan without a restart.
+      subscribe('account:billing-refreshed', (...args: unknown[]) => {
+        const fresh = args[0] as UserWithUsage | null
+        if (fresh) user.value = { ...(user.value ?? fresh), ...fresh }
+      })
     } catch (err) {
       console.error('[Settings] Failed to load status:', err)
       try {
