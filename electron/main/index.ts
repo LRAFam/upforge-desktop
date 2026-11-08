@@ -5838,7 +5838,7 @@ function setupGameDetection(): void {
           return
         }
 
-        const state = await riotLocalApi.getSessionState()
+        const state = await riotLocalApi.getSharedSessionState()
         if (obsRecorder.isRecording() && !matchHandled) {
           const now = Date.now()
           if (now - lastShippingProcessCheckAt >= SHIPPING_PROCESS_CHECK_MS) {
@@ -7666,10 +7666,10 @@ async function startApp(): Promise<void> {
       const game = gameDetector.currentGame() ?? trackedPrimaryGame
       let inMatch: boolean | null = null
       if (game === 'valorant') {
-        let state = await riotLocalApi.getSessionState()
+        let state = await riotLocalApi.getSharedSessionState()
         if (!state && Date.now() - lastMatchAuthAttempt > 30_000) {
           lastMatchAuthAttempt = Date.now()
-          if (await riotLocalApi.initAuth()) state = await riotLocalApi.getSessionState()
+          if (await riotLocalApi.initAuth()) state = await riotLocalApi.getSharedSessionState({ fresh: true })
         }
         if (state?.sessionLoopState === 'INGAME' || state?.sessionLoopState === 'PREGAME') inMatch = true
         else if (state?.sessionLoopState === 'MENUS') {
