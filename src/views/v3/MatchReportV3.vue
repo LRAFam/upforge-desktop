@@ -21,6 +21,7 @@ import {
   type Cs2ReportTimeline, type DeadlockReportResponse, type LolReportResponse, type ReportGame,
 } from '../../lib/match-report-games'
 import { readCache, writeCache } from '../../lib/stale-cache'
+import { createReportPoller, REPORT_RETRY } from '../../lib/report-poller'
 import UfRoundsLine from '../../components/v3/UfRoundsLine.vue'
 import ScoreWhyV3 from '../../components/v3/score/ScoreWhyV3.vue'
 import { matchScore, scoreToneColor } from '../../lib/upforge-score'
@@ -82,26 +83,43 @@ async function loadNotes(g: 'lol' | 'deadlock' | 'cs2', id: string, facts: unkno
   writeCache(`match-report:${g}:${id}`, next)
 }
 
-async function load(): Promise<void> {
+/**
+ * `quiet` re-checks (the "no report yet" poll) keep the page as it is instead of flashing the skeleton.
+ * Returns true when there is nothing left to wait for (report ready, or a state polling can't fix).
+ */
+async function load(quiet = false): Promise<boolean> {
   const id = matchId.value
   const g = game.value
   const key = `match-report:${g}:${id}`
-  const cached = readCache<MatchReportState>(key)
-  state.value = cached?.value ?? null
-  needsDemo.value = false
+  if (!quiet) {
+    reportPoller.stop()
+    const cached = readCache<MatchReportState>(key)
+    state.value = cached?.value ?? null
+    needsDemo.value = false
+  }
   const res = await fetchReport(g, id)
-  if (id !== matchId.value || g !== game.value) return
-  if (!res) { if (!state.value) state.value = { kind: 'error' }; return }
-  if (res.ok) {
+  if (id !== matchId.value || g !== game.value) return true
+  if (!res) { if (!state.value) state.value = { kind: 'error' } }
+  else if (res.ok) {
     state.value = res.state
     writeCache(key, res.state)
   } else if (!state.value || state.value.kind !== 'ready') {
     needsDemo.value = res.error === 'needs_demo'
     state.value = res.error === 'not_found' || res.error === 'needs_demo' ? { kind: 'not_found' } : { kind: 'error' }
   }
+  const waiting = canWaitForReport()
+  if (!quiet && waiting) reportPoller.start()
+  return !waiting
 }
-onMounted(load)
-watch([matchId, game], load)
+/** "No report yet" can fix itself (the API builds it, the demo gets parsed); a missing CS2 recording can't. */
+function canWaitForReport(): boolean {
+  return state.value?.kind === 'not_found' && !(game.value === 'cs2' && !needsDemo.value)
+}
+const reportPoller = createReportPoller(REPORT_RETRY, () => load(true))
+const reportChecking = reportPoller.active
+function retry(): void { void load() }
+onMounted(() => { void load() })
+watch([matchId, game], () => { void load() })
 
 /**
  * Valorant: when the match's recording is on this PC, its timeline (round summaries, every kill,
@@ -184,7 +202,7 @@ onMounted(() => {
     if (u.state === 'done') void loadCoachFlow()
   }) ?? null
 })
-onBeforeUnmount(() => { stopUpdates?.() })
+onBeforeUnmount(() => { stopUpdates?.(); reportPoller.stop() })
 watch(matchId, () => { moments.value = []; flowState.value = null; void loadCoachFlow() })
 
 // Practice opens on this report's drill ("Do this next"), not a generic page.
@@ -208,8 +226,9 @@ function back(): void { if (window.history.length > 1) router.back(); else route
       <span class="uf-label">Match report</span>
       <h1 class="uf-d3">{{ needsDemo ? 'This report needs the demo' : state.kind === 'not_found' ? 'No report for this match yet' : 'Couldn’t load this report' }}</h1>
       <p class="uf-t2">{{ state.kind === 'not_found' ? notFoundText : 'Check your connection and try again.' }}</p>
+      <p v-if="reportChecking" class="uf-t4" aria-live="polite">Checking again every 30 seconds.</p>
       <div class="mr3-actions">
-        <UfButton v-if="state.kind === 'error'" variant="primary" @click="load">Try again</UfButton>
+        <UfButton variant="primary" @click="retry">Try again</UfButton>
         <UfButton variant="secondary" @click="back">Back</UfButton>
       </div>
     </div>
