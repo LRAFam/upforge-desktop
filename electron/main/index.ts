@@ -3,6 +3,7 @@ import { selftestRequest } from './selftest-early'
 import { getApiBaseUrl } from './api-base'
 import { buildQuitActivity, createQuitGuard } from './quit-guard'
 import { askQuitChoice } from './quit-dialog'
+import { canUseDeveloperTools, devOnly } from './dev-access'
 import { createCoalescedNotifier, createVodProbeSweep } from './vod-probe-sweep'
 import { createCallRateLogger, startMainLoopLagMonitor } from './main-loop-lag'
 import { saveReplay } from './valorant-replay-download'
@@ -7476,15 +7477,22 @@ async function startApp(): Promise<void> {
   })
   ipcMain.handle('discord:get-status', () => discordRPC.getStatus())
 
+  // Developer/debug channels refuse in packaged builds unless dev mode is on or the user is an admin.
+  const canUseDevTools = () => canUseDeveloperTools({
+    isDev: is.dev,
+    devModeEnabled: settingsManager.get().devModeEnabled,
+    isAdmin: authManager.getUser()?.is_admin,
+  })
+
   // Developer diagnostics — full internal state snapshot for the admin panel
   // Developer test: download the latest own Valorant replay (.vrf) into userData/valorant-replays.
-  ipcMain.handle('dev:valorant-replay:download', async (_event, args?: { matchId?: string }) => {
+  ipcMain.handle('dev:valorant-replay:download', devOnly(canUseDevTools, 'dev:valorant-replay:download', async (_event, args?: { matchId?: string }) => {
     const res = await riotLocalApi.downloadOwnReplay(args?.matchId)
     if (!res.ok) return { ok: false as const, error: res.error, matchId: res.matchId }
     const dir = join(app.getPath('userData'), 'valorant-replays')
     const file = saveReplay(dir, res.matchId!, res.bytes)
     return { ok: true as const, matchId: res.matchId!, file, bytes: res.bytes.length, gameVersion: res.gameVersion }
-  })
+  }))
 
   // Replay sync: after matches, download the player's own replays from Riot and upload them for coaching.
   const replaySyncFile = join(app.getPath('userData'), 'valorant-replay-sync.json')
@@ -7510,7 +7518,7 @@ async function startApp(): Promise<void> {
   const runReplaySync = () => { void replaySync.run().catch((err) => log.warn('[ReplaySync] run failed', err)) }
   setTimeout(runReplaySync, 90_000)
   setInterval(runReplaySync, 5 * 60_000)
-  ipcMain.handle('dev:valorant-replay:sync', async () => ({ run: await replaySync.run(), state: replaySync.status() }))
+  ipcMain.handle('dev:valorant-replay:sync', devOnly(canUseDevTools, 'dev:valorant-replay:sync', async () => ({ run: await replaySync.run(), state: replaySync.status() })))
   ipcMain.handle('valorant-replay:get', async (_event, args: { matchId?: string }) =>
     fetchViewerReplay(String(args?.matchId ?? ''), authManager.getToken()))
 
@@ -7833,19 +7841,19 @@ async function startApp(): Promise<void> {
 
   let recentMatchesFolder = join(app.getPath('userData'), 'poc-recent-matches')
   // Debug PoC: export coaching facts from Riot history without pretending a VOD exists.
-  ipcMain.handle('debug:poc-recent-matches', async (_e, limit: number = 10) => {
+  ipcMain.handle('debug:poc-recent-matches', devOnly(canUseDevTools, 'debug:poc-recent-matches', async (_e, limit: number = 10) => {
     const started = Date.now()
     const result = await riotLocalApi.fetchRecentMatchTimelines(limit)
     const report = await saveRecentMatchExports(result, join(app.getPath('userData'), 'poc-recent-matches'), started)
     recentMatchesFolder = report.folder
     return report
-  })
-  ipcMain.handle('debug:poc-open-folder', () => shell.openPath(recentMatchesFolder))
-  ipcMain.handle('debug:poc-latest-report', async () => {
+  }))
+  ipcMain.handle('debug:poc-open-folder', devOnly(canUseDevTools, 'debug:poc-open-folder', () => shell.openPath(recentMatchesFolder)))
+  ipcMain.handle('debug:poc-latest-report', devOnly(canUseDevTools, 'debug:poc-latest-report', async () => {
     const report = await readRecentMatchReport(join(app.getPath('userData'), 'poc-recent-matches'))
     if (report) recentMatchesFolder = report.folder
     return report
-  })
+  }))
 
   // ── Focus loop: send recent Riot matches (no recording needed) for checked reports ──
   let focusSyncRunning = false
@@ -7990,15 +7998,11 @@ async function startApp(): Promise<void> {
     attempt(0)
   }
 
-  ipcMain.handle('debug:probe-lol-lcu', async () => {
+  ipcMain.handle('debug:probe-lol-lcu', devOnly(canUseDevTools, 'debug:probe-lol-lcu', async () => {
     return probeLolLcu({ liveClient: lolLiveClientApi })
-  })
+  }))
 
-  const canUseProductionFixtures = () => Boolean(
-    is.dev
-    || settingsManager.get().devModeEnabled
-    || authManager.getUser()?.is_admin,
-  )
+  const canUseProductionFixtures = canUseDevTools
   const productionFixtureError = (err: unknown): string => {
     const apiMessage = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
     return apiMessage || (err instanceof Error ? err.message : 'Production fixture request failed')
