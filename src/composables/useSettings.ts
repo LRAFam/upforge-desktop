@@ -109,6 +109,9 @@ function createSettings() {
     cloudBackedBytes: 0,
     orphanCount: 0,
     orphanBytes: 0,
+    orphanScheduledCount: 0,
+    orphanScheduledBytes: 0,
+    orphanDeleteAt: null as number | null,
     legacyDuplicateBytes: 0,
   })
   const storageEstimate = ref<{

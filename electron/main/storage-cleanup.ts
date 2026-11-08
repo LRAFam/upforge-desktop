@@ -16,6 +16,14 @@ import {
 import { MIN_RECORDING_FILE_BYTES } from './recording-limits'
 import { getFreeDiskSpace } from './disk-space'
 import { planRecordingExpiry, type ExpiryWarningStage } from './recording-expiry'
+import {
+  planUntrackedRecordings,
+  readUntrackedState,
+  untrackedSchedule,
+  writeUntrackedState,
+  type UntrackedFile,
+  type UntrackedWarning,
+} from './untracked-recording-grace'
 
 export interface StorageBreakdown {
   pendingCount: number
@@ -24,6 +32,10 @@ export interface StorageBreakdown {
   cloudBackedBytes: number
   orphanCount: number
   orphanBytes: number
+  /** Untracked files already warned and scheduled for automatic removal (Settings countdown). */
+  orphanScheduledCount: number
+  orphanScheduledBytes: number
+  orphanDeleteAt: number | null
   legacyDuplicateBytes: number
 }
 
@@ -48,6 +60,8 @@ export interface StorageMaintenanceResult {
   freedBytes: number
   /** Local-only recordings warned this run — the caller shows the desktop notification. */
   expiryWarnings: RecordingExpiryWarning[]
+  /** Untracked recording files warned this run — the caller logs and notifies (count + size). */
+  untrackedWarnings: UntrackedWarning[]
 }
 
 function fileSizeBytes(filePath: string): number {
@@ -146,6 +160,7 @@ export function getStorageBreakdown(
   const known = store.getKnownPaths()
   const orphans = listOrphanRecordingFiles(savePath, known)
   const legacyDuplicateBytes = estimateLegacyDuplicateBytes(savePath)
+  const scheduled = untrackedSchedule(readUntrackedState(untrackedStatePath()), orphans)
 
   return {
     pendingCount: pending.length,
@@ -154,6 +169,9 @@ export function getStorageBreakdown(
     cloudBackedBytes: cloudBacked.reduce((sum, r) => sum + fileSizeBytes(r.path), 0),
     orphanCount: orphans.length,
     orphanBytes: orphans.reduce((sum, filePath) => sum + fileSizeBytes(filePath), 0),
+    orphanScheduledCount: scheduled.count,
+    orphanScheduledBytes: scheduled.bytes,
+    orphanDeleteAt: scheduled.deleteAt,
     legacyDuplicateBytes,
   }
 }
@@ -276,41 +294,99 @@ export function cleanupLegacyRecordingDuplicates(activeSavePath: string): { remo
   return { removed, freedBytes }
 }
 
-export function purgeUntrackedRecordingFiles(
-  store: RecordingsStore,
-  savePath: string,
-  maxAgeDays = 0,
-): { removed: number; freedBytes: number } {
+/** Where untracked-file warnings are remembered across runs and restarts. */
+export function untrackedStatePath(): string {
+  return path.join(app.getPath('userData'), 'untracked-recordings.json')
+}
+
+/** Known catalogue paths (this profile + every other account), or null when one cannot be read. */
+function allKnownRecordingPaths(store: RecordingsStore): Set<string> | null {
   const known = store.getKnownPaths()
   try {
     for (const registered of registeredLocalRecordingPaths()) known.add(registered)
   } catch (err) {
     log.warn('[StorageCleanup] Keeping files because a media catalogue could not be read:', err)
-    return { removed: 0, freedBytes: 0 }
+    return null
   }
-  const cutoff = maxAgeDays > 0 ? Date.now() - maxAgeDays * 24 * 60 * 60 * 1000 : 0
+  return known
+}
+
+/** User-initiated "Remove untracked files" (Settings, after a confirm dialog): deletes them now. */
+export function purgeUntrackedRecordingFiles(
+  store: RecordingsStore,
+  savePath: string,
+): { removed: number; freedBytes: number } {
+  const known = allKnownRecordingPaths(store)
+  if (!known) return { removed: 0, freedBytes: 0 }
   let removed = 0
   let freedBytes = 0
 
   for (const filePath of listOrphanRecordingFiles(savePath, known)) {
-    if (maxAgeDays > 0) {
-      try {
-        if (fs.statSync(filePath).mtimeMs >= cutoff) continue
-      } catch {
-        continue
-      }
-    }
-
     try {
       freedBytes += deleteLocalRecordingFiles(filePath)
       removed++
-      log.info(`[StorageCleanup] Removed untracked recording: ${filePath}`)
+      log.info(`[StorageCleanup] Removed untracked recording (user request): ${filePath}`)
     } catch (err) {
       log.warn(`[StorageCleanup] Failed to remove untracked ${filePath}:`, err)
     }
   }
 
   return { removed, freedBytes }
+}
+
+/**
+ * Automatic cleanup of untracked recording files — never silent. Files past retention, or over the
+ * untracked size cap (oldest first), are listed and warned first; each is deleted only after the
+ * grace period since its warning (persisted in untracked-recordings.json). "Never" keeps them all.
+ */
+export function expireUntrackedRecordingFiles(
+  store: RecordingsStore,
+  savePath: string,
+  retentionDays: number,
+  opts: { now?: number; capBytes?: number; statePath?: string } = {},
+): { removed: number; freedBytes: number; warnings: UntrackedWarning[] } {
+  const known = allKnownRecordingPaths(store)
+  if (!known) return { removed: 0, freedBytes: 0, warnings: [] }
+
+  const files: UntrackedFile[] = []
+  for (const filePath of listOrphanRecordingFiles(savePath, known)) {
+    try {
+      const stat = fs.statSync(filePath)
+      files.push({ path: filePath, size: stat.size, mtimeMs: stat.mtimeMs })
+    } catch { /* gone or unreadable: skip */ }
+  }
+
+  const statePath = opts.statePath ?? untrackedStatePath()
+  const plan = planUntrackedRecordings(files, readUntrackedState(statePath), {
+    retentionDays,
+    now: opts.now,
+    capBytes: opts.capBytes,
+  })
+
+  for (const w of plan.warn) {
+    log.info(`[StorageCleanup] Untracked recording will be deleted ${new Date(w.deleteAt).toISOString()} (${w.reason}, ${w.stage} warning): ${w.path}`)
+  }
+
+  let removed = 0
+  let freedBytes = 0
+  for (const f of plan.delete) {
+    try {
+      freedBytes += deleteLocalRecordingFiles(f.path)
+      removed++
+      log.info(`[StorageCleanup] Removed untracked recording after warning: ${f.path}`)
+    } catch (err) {
+      log.warn(`[StorageCleanup] Failed to remove untracked ${f.path}:`, err)
+    }
+  }
+
+  try {
+    writeUntrackedState(statePath, plan.state)
+  } catch (err) {
+    // Without the record the next run would warn again (and wait again) — never deletes early.
+    log.warn('[StorageCleanup] Could not save untracked recording warnings:', err)
+  }
+
+  return { removed, freedBytes, warnings: plan.warn }
 }
 
 export interface RecordingExpiryWarning {
@@ -371,17 +447,21 @@ export function runRecordingStorageMaintenance(opts: {
   savePath: string
   recordingRetentionDays: number
   linkedRiot: LinkedRiotId | null
+  now?: number
+  untrackedCapBytes?: number
 }): StorageMaintenanceResult {
   const legacy = cleanupLegacyRecordingDuplicates(opts.savePath)
   const pending = prunePendingRecordingsByAge(
     opts.store,
     opts.recordingRetentionDays,
     opts.linkedRiot,
+    opts.now,
   )
-  const orphans = purgeUntrackedRecordingFiles(
+  const orphans = expireUntrackedRecordingFiles(
     opts.store,
     opts.savePath,
     opts.recordingRetentionDays,
+    { now: opts.now, capBytes: opts.untrackedCapBytes },
   )
 
   const freedBytes = legacy.freedBytes + pending.freedBytes + orphans.freedBytes
@@ -392,6 +472,7 @@ export function runRecordingStorageMaintenance(opts: {
     catalogEvicted: 0,
     freedBytes,
     expiryWarnings: pending.warnings,
+    untrackedWarnings: orphans.warnings,
   }
 
   const totalRemoved =
