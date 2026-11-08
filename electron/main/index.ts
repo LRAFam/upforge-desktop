@@ -8087,7 +8087,9 @@ async function startApp(): Promise<void> {
       }
     }
 
-    await tryAutoUploadSourceReplay({
+    // Don't hold the IPC open for the demo job poll (up to DEMO_POLL_MAX_MS = 40 min);
+    // uploadReplayInBackground streams post-game:demo-status events to the window.
+    void tryAutoUploadSourceReplay({
       game: context.game,
       demoPath: null,
       matchSessionStart: context.matchSessionStart,
@@ -8098,7 +8100,7 @@ async function startApp(): Promise<void> {
       onJobId: context.game === 'deadlock'
         ? (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: context.meta?.matchId ?? null, sessionStart: context.matchSessionStart }, recordingId)
         : undefined,
-    })
+    }).catch((err) => log.warn('[Replay] retry scan failed:', (err as Error)?.message))
     return { ok: true as const }
   })
 
