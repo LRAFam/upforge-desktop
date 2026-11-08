@@ -12,6 +12,7 @@ import { ClipExtractor } from './clip-extractor'
 import { openPathSafe } from './shell-open'
 import { trackUpgradeClicked } from './funnel-events'
 import { isTrustedRendererUrl } from './renderer-trust'
+import { lockDownWindowNavigation } from './window-security'
 import {
   DEFAULT_APP_LAYOUT,
   LOGIN_LAYOUT,
@@ -67,7 +68,7 @@ export function createMainWindow(
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true
     },
   })
 
@@ -176,7 +177,7 @@ export function createPostGameWindow(): BrowserWindow {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true
     }
   })
 
@@ -218,9 +219,11 @@ export function createSplashWindow(): BrowserWindow {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true
     }
   })
+
+  lockDownWindowNavigation(win, 'desktop_splash')
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/splash`)
