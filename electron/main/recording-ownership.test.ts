@@ -223,7 +223,7 @@ describe('createIgnoredStartRearm (game start ignored because OBS could not stop
 describe('index.ts wiring (card 232 follow-ups)', () => {
   const { readFileSync } = require('fs') as typeof import('fs')
   const { join } = require('path') as typeof import('path')
-  const source = readFileSync(join(__dirname, 'index.ts'), 'utf8')
+  const source = readFileSync(join(__dirname, 'index.ts'), 'utf8').replace(/\r\n/g, '\n') // Windows checkouts are CRLF
   const start = source.indexOf("gameDetector.on('game-started'")
   const handler = source.slice(start, source.indexOf('const ownership = await resolveGameStartOwnership', start))
 

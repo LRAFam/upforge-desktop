@@ -191,7 +191,7 @@ describe('confirmThen (update install)', () => {
 })
 
 describe('index.ts wiring', () => {
-  const source = readFileSync(join(__dirname, 'index.ts'), 'utf8')
+  const source = readFileSync(join(__dirname, 'index.ts'), 'utf8').replace(/\r\n/g, '\n') // Windows checkouts are CRLF
   it('checks the guard first in before-quit', () => {
     expect(source).toMatch(/app\.on\('before-quit', \(event\) => \{\n\s+if \(quitGuard\.handleBeforeQuit\(event\)\) return/)
   })
