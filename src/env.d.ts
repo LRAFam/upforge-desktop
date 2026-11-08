@@ -558,9 +558,9 @@ export interface ProfileData {
       subscription_ends_at?: string | null
     }
     archive_stats?: {
-      count: number
-      limit: number | null
-      remaining: number | null
+      count?: number
+      limit?: number | null
+      remaining?: number | null
       retention_days: number | null
       storage_bytes_used: number
       /** API sends these names; count/limit/remaining are older ones. */

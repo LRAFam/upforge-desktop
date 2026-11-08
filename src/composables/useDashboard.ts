@@ -51,7 +51,7 @@ import {
 import { POST_MATCH_COPY } from '../lib/post-match-copy'
 import { filterAnalysesForPrimaryGame } from '../lib/analysis-display'
 import { openAnalysisInApp } from '../lib/open-analysis-in-app'
-import { freeArchiveRetentionHint } from '../lib/archive-retention-hint'
+import { freeArchiveRetentionHint, readArchiveQuota } from '../lib/archive-retention-hint'
 import { asSessionEnded, DEFAULT_TRAINER_DURATION, launchTrainer, sessionEndedMessage, TRAINER_LAUNCH_FAILED_MESSAGE } from '../lib/trainer-launch'
 import { appendActivityEntry } from '../lib/activity-log-append'
 
@@ -594,10 +594,12 @@ function createDashboard(opts: DashboardOptions = {}) {
     return Math.min(100, Math.round((stats.total / stats.limit) * 100))
   })
 
+  const archiveQuota = computed(() => readArchiveQuota(profile.value?.user?.archive_stats))
+
   const archiveQuotaPercent = computed(() => {
-    const stats = profile.value?.user?.archive_stats
-    if (!stats?.limit || isAdmin.value) return 0
-    return Math.min(100, Math.round((stats.count / stats.limit) * 100))
+    const { count, limit } = archiveQuota.value
+    if (!limit || isAdmin.value) return 0
+    return Math.min(100, Math.round((count / limit) * 100))
   })
 
   /** Free-tier cloud keep nudge — shown when user already has ≥1 archived VOD. */
@@ -1930,6 +1932,7 @@ function createDashboard(opts: DashboardOptions = {}) {
     quotaLowWarning,
     groupedAnalyses,
     quotaPercent,
+    archiveQuota,
     archiveQuotaPercent,
     avgScore,
     scoreTrend,

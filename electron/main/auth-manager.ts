@@ -9,6 +9,7 @@ import { normalizeToAcs } from './combat-score'
 import { getApiBaseUrl } from './api-base'
 import { resolveMaxValorantAccounts } from './valorant-account-cap'
 import { normalizeLolRecent, type LolRecentResult } from '../../src/lib/lol-recent'
+import { normalizeArchiveStats, type NormalizedArchiveStats } from '../../src/lib/archive-retention-hint'
 import {
   clearCachedUser, clearTokenMeta, desktopDeviceName, loadCachedUser, markTokenIssued, queueSignOutEvent,
   readInstallId, saveCachedUser, takeSignOutEvents, tokenAgeDays, type SignOutEvent, type SignOutReason,
@@ -231,13 +232,7 @@ export interface ProfileData {
     lol_platform?: string | null
     discord_username: string | null
     analysis_stats: { purchased?: number; total: number; limit: number | null; subscription_ends_at?: string | null }
-    archive_stats?: {
-      count: number
-      limit: number | null
-      remaining: number | null
-      retention_days: number | null
-      storage_bytes_used: number
-    }
+    archive_stats?: NormalizedArchiveStats
   }
   latest_stats: ValorantStats | null
 }
@@ -549,7 +544,7 @@ export class AuthManager {
       const stats = p.user?.analysis_stats ?? {}
       if (!Number.isFinite(stats.free_analyses_used) || stats.free_analyses_used < 0
         || !(stats.monthly_free_analyses === null || (Number.isFinite(stats.monthly_free_analyses) && stats.monthly_free_analyses >= 0))) return null
-      const archiveRaw = p.user?.archive_stats ?? {}
+      const archiveRaw = p.user?.archive_stats
       const isAdmin = !!(p.user?.is_admin)
       return {
         user: {
@@ -562,13 +557,7 @@ export class AuthManager {
             limit: stats.monthly_free_analyses,
             subscription_ends_at: stats.subscription_ends_at ?? null,
           },
-          archive_stats: archiveRaw.archived_count == null ? undefined : {
-            count: archiveRaw.archived_count,
-            limit: archiveRaw.archived_limit,
-            remaining: archiveRaw.archived_remaining,
-            retention_days: archiveRaw.retention_days ?? null,
-            storage_bytes_used: archiveRaw.storage_bytes_used,
-          },
+          archive_stats: normalizeArchiveStats(archiveRaw),
           forge_rank: p.forge_rank ?? null,
         },
         latest_stats: p.latest_stats ?? null,
