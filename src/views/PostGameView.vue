@@ -942,6 +942,7 @@ import { sendStateFor } from '../components/v3/roster-flow/roster-flow'
 import { uiV3 } from '../lib/ui-v3'
 import { useCloudRetention } from '../composables/useCloudRetention'
 import { postGameCloudLine } from '../lib/cloud-retention'
+import { freeArchiveRetentionHint as buildFreeArchiveRetentionHint, type ArchiveRetentionStats } from '../lib/archive-retention-hint'
 import {
   pickWebNextStep,
   tierDisplayLabel,
@@ -1048,17 +1049,13 @@ const upgradeUrl = ref('https://upforge.gg/pricing')
 const userTier = ref<string>('free')
 const analysesUsed = ref<number | null>(null)
 const analysesLimit = ref<number | null>(null)
-const archiveRetentionDays = ref<number | null>(null)
-const archiveLimit = ref<number | null>(null)
+const archiveStats = ref<ArchiveRetentionStats | null>(null)
 const canSeekFromSpatial = computed(() => canSpatialVodSeek(userTier.value))
 const subscriptionEndsAt = ref<string | null>(null)
 const tierLabel = computed(() => tierDisplayLabel(userTier.value))
 const freeArchiveRetentionHint = computed(() => {
   if (userTier.value !== 'free') return null
-  const days = archiveRetentionDays.value
-  const max = archiveLimit.value
-  if (days == null || max == null) return null
-  return `Free keeps cloud VODs for ${days} days (${max} max). Plus keeps them 90 days.`
+  return buildFreeArchiveRetentionHint(archiveStats.value)
 })
 const webNextStep = computed(() => pickWebNextStep(result.value?.analysis_id ?? null))
 const analysesRemainingLabel = computed(() => {
@@ -1931,10 +1928,7 @@ onMounted(() => {
       analysesUsed.value = p.user.analysis_stats.total
       analysesLimit.value = p.user.analysis_stats.limit
     }
-    if (p?.user?.archive_stats) {
-      archiveRetentionDays.value = p.user.archive_stats.retention_days
-      archiveLimit.value = p.user.archive_stats.limit
-    }
+    if (p?.user?.archive_stats) archiveStats.value = p.user.archive_stats
     if (p?.user?.tier) userTier.value = p.user.tier
   }).catch(() => {})
   setTimeout(() => {

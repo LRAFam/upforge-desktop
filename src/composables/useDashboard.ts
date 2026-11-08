@@ -51,6 +51,7 @@ import {
 import { POST_MATCH_COPY } from '../lib/post-match-copy'
 import { filterAnalysesForPrimaryGame } from '../lib/analysis-display'
 import { openAnalysisInApp } from '../lib/open-analysis-in-app'
+import { freeArchiveRetentionHint } from '../lib/archive-retention-hint'
 import { asSessionEnded, DEFAULT_TRAINER_DURATION, launchTrainer, sessionEndedMessage, TRAINER_LAUNCH_FAILED_MESSAGE } from '../lib/trainer-launch'
 
 export interface LolRecentMatch {
@@ -604,12 +605,7 @@ function createDashboard(opts: DashboardOptions = {}) {
     if (archiveRetentionDismissed.value || isAdmin.value) return null
     const u = profile.value?.user
     if (!u || u.tier !== 'free') return null
-    const stats = u.archive_stats
-    if (!stats || (stats.count ?? 0) < 1) return null
-    const days = stats.retention_days
-    const max = stats.limit
-    if (days == null || max == null) return null
-    return `Free keeps cloud VODs for ${days} days (${max} max). Plus keeps them 90 days.`
+    return freeArchiveRetentionHint(u.archive_stats, { requireSaved: true })
   })
   function dismissArchiveRetentionNudge() {
     archiveRetentionDismissed.value = true
