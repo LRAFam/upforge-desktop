@@ -10,11 +10,18 @@ import log from 'electron-log'
 import { getCandidateCS2CsgoDirs } from './cs2-demo-finder'
 import { Cs2GsiTracker, type Cs2GsiPayload } from './cs2-gsi-timeline'
 import { getGameDataCapture } from './game-data-capture'
+import { GSI_PORT_RANGE_SIZE, gsiPortCandidates, listenOnFirstFreePort } from './steam-gsi-port'
 
 /** Live CS2 events for the current capture (kills / deaths / rounds) — see cs2-gsi-timeline.ts. */
 export const cs2GsiTracker = new Cs2GsiTracker()
 
 export const STEAM_GSI_PORT = 3001
+/** Port the server is bound to (or will try first) — written into the GSI cfg. */
+let activeGsiPort = STEAM_GSI_PORT
+
+export function getActiveGsiPort(): number {
+  return activeGsiPort
+}
 const GSI_CFG_NAME = 'gamestate_integration_upforge.cfg'
 
 export interface SteamGsiPayload {
@@ -83,13 +90,23 @@ export interface SteamGsiServerOptions {
   token?: string
   /** Called once per run when CS2 posts without the right token (old cfg — CS2 needs a restart). */
   onStaleConfig?: () => void
+  /** Port to try first (last port used, from settings). Defaults to STEAM_GSI_PORT. */
+  preferredPort?: number
+  /** Fallback range when the preferred port is busy. Defaults to STEAM_GSI_PORT + GSI_PORT_RANGE_SIZE. */
+  portRange?: { base: number; size: number }
+  /**
+   * Bound a different port than preferred (it was busy). The cfg has already been rewritten;
+   * a CS2 that is open must restart to pick up the new port. Persist `port` so it stays stable.
+   */
+  onPortChanged?: (info: { port: number; previousPort: number; cfgUpdated: boolean }) => void
 }
 
 export function startSteamGsiServer(opts: SteamGsiServerOptions = {}): http.Server {
   if (server) return server
   if (opts.token) gsiAuthToken = opts.token
   if (!gsiAuthToken) gsiAuthToken = randomBytes(32).toString('hex')
-  const port = opts.port ?? STEAM_GSI_PORT
+  const preferred = opts.port ?? opts.preferredPort ?? STEAM_GSI_PORT
+  if (preferred > 0) activeGsiPort = preferred
 
   server = http.createServer((req, res) => {
     if (req.method !== 'POST') {
@@ -151,19 +168,33 @@ export function startSteamGsiServer(opts: SteamGsiServerOptions = {}): http.Serv
   // Put the normal cfg back once a diagnostics capture finishes or is switched off.
   getGameDataCapture()?.onDisarmed(() => { void installSteamGsiConfig('cs2') })
 
-  server.listen(port, '127.0.0.1', () => {
+  const srv = server
+  // An explicit `port` (tests) is used as-is; otherwise fall back through a small range.
+  const range = opts.portRange ?? { base: STEAM_GSI_PORT, size: GSI_PORT_RANGE_SIZE }
+  const candidates = opts.port !== undefined ? [opts.port] : gsiPortCandidates(preferred, range.base, range.size)
+  void listenOnFirstFreePort(srv, candidates, '127.0.0.1').then(async (bound) => {
+    if (server !== srv) return
+    if (bound == null) {
+      serverListening = false
+      serverPortBlocked = true
+      log.warn('[SteamGSI] Ports', candidates.join(', '), 'all in use — CS2 match detection will not work')
+      return
+    }
     serverListening = true
     serverPortBlocked = false
-    log.info('[SteamGSI] Listening on 127.0.0.1:' + port)
-  })
-  server.on('error', (err: NodeJS.ErrnoException) => {
+    activeGsiPort = bound
+    log.info('[SteamGSI] Listening on 127.0.0.1:' + bound)
+    if (opts.port !== undefined || bound === preferred) return
+    log.warn('[SteamGSI] Port', preferred, 'in use — using', bound, 'instead; restart CS2 so it posts to the new port')
+    const r = await installSteamGsiConfig('cs2').catch(() => ({ ok: false, needsRestart: false }))
+    try { opts.onPortChanged?.({ port: bound, previousPort: preferred, cfgUpdated: !!r.needsRestart }) } catch { /* notice only */ }
+  }).catch((err) => {
     serverListening = false
-    if (err.code === 'EADDRINUSE') {
-      serverPortBlocked = true
-      log.warn('[SteamGSI] Port', STEAM_GSI_PORT, 'already in use — CS2 match detection will not work')
-    } else {
-      log.warn('[SteamGSI] Server error:', err)
-    }
+    log.warn('[SteamGSI] Server error:', err)
+  })
+  srv.on('error', (err: NodeJS.ErrnoException) => {
+    if (!srv.listening) return // listen errors are handled by listenOnFirstFreePort
+    log.warn('[SteamGSI] Server error:', err)
   })
   return server
 }
@@ -313,7 +344,7 @@ function authBlock(token: string | null): string {
 function normalGsiCfgContents(token: string | null): string {
   return `"UpForge"
 {
-    "uri" "http://127.0.0.1:${STEAM_GSI_PORT}"
+    "uri" "http://127.0.0.1:${activeGsiPort}"
 ${authBlock(token)}    "timeout" "5.0"
     "buffer"  "0.1"
     "throttle" "0.5"
@@ -337,7 +368,7 @@ export function gsiCfgContents(full = false, token: string | null = gsiAuthToken
   const data = FULL_GSI_COMPONENTS.map((c) => `        "${c}" "1"`).join('\n')
   return `"UpForge"
 {
-    "uri" "http://127.0.0.1:${STEAM_GSI_PORT}"
+    "uri" "http://127.0.0.1:${activeGsiPort}"
 ${authBlock(token)}    "timeout" "5.0"
     "buffer"  "0.1"
     "throttle" "0.2"

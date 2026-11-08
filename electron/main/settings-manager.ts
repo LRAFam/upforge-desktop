@@ -136,6 +136,8 @@ export interface AppSettings {
   cs2SteamName?: string
   /** Per-install secret CS2 GSI must echo in auth.token (written into the GSI cfg). */
   cs2GsiAuthToken?: string
+  /** Port the CS2 GSI server last bound (fallback when 3001 is busy); written into the GSI cfg. */
+  cs2GsiPort?: number
   /** Developer / admin mode — unlocked by tapping the version number 5 times in Settings */
   devModeEnabled: boolean
   /** Download VALORANT match replays from Riot after each match and upload them for replay-based coaching */
