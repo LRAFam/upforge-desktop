@@ -758,6 +758,12 @@ export interface DeadlockProfileStats {
     /** Hero card / tall portrait art (API 2 Nov 2026+). */
     hero_card?: string | null
     hero_portrait?: string | null
+    /** ranked · standard · street_brawl · other (API 8 Nov 2026+); else derived from the raw modes below. */
+    queue?: string | null
+    game_mode?: number | null
+    match_mode?: number | null
+    player_team?: number | null
+    player_match_outcome?: number | null
   }>
   hero_stats: Array<{
     hero_id: number
@@ -770,6 +776,8 @@ export interface DeadlockProfileStats {
     hero_portrait?: string | null
   }>
   mmr_history: Array<{ rank: number | null; start_time?: number; match_id?: number }>
+  /** The ranked season running now (API 8 Nov 2026+): unix seconds. */
+  ranked_season?: { name: string; start_time: number; end_time?: number | null } | null
   meta_insights?: Array<{
     hero_id: number
     hero_name: string

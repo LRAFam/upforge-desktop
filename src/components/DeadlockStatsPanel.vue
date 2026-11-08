@@ -112,9 +112,9 @@
           >
             <span
               class="w-5 text-center text-[9px] font-bold rounded py-0.5 flex-shrink-0"
-              :class="match.match_result === 1 ? 'bg-teal-500/20 text-teal-400' : 'bg-red-500/20 text-red-400'"
+              :class="deadlockMatchWon(match) ? 'bg-teal-500/20 text-teal-400' : 'bg-red-500/20 text-red-400'"
             >
-              {{ match.match_result === 1 ? 'W' : 'L' }}
+              {{ deadlockMatchWon(match) ? 'W' : 'L' }}
             </span>
             <div
               class="w-5 h-5 rounded flex-shrink-0 overflow-hidden flex items-center justify-center text-[9px] font-bold"
@@ -218,6 +218,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { DeadlockProfileStats } from '../env.d.ts'
 import { getDeadlockRankIconUrl, getDeadlockHeroIconUrl } from '../lib/deadlock'
 import { formatDeadlockMatchDate, fmtDeadlockDuration, fmtDeadlockNW } from '../lib/deadlock-analyses'
+import { deadlockMatchWon } from '../lib/deadlock-queues'
 
 const loading = ref(true)
 const stats = ref<DeadlockProfileStats | null>(null)

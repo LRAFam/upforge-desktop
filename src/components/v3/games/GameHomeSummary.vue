@@ -1,5 +1,6 @@
 <script setup lang="ts">
 /** Home, game set up: the game's real stats summary (CS2 / Deadlock / League). */
+import { deadlockMatchWon } from '../../../lib/deadlock-queues'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import UfStatRow from '../UfStatRow.vue'
@@ -64,7 +65,7 @@ const topLine = computed(() => {
 })
 const form = computed(() => {
   if (props.game === 'lol') return [...props.data.lol.matches].slice(0, 10).reverse().map(m => ({ won: m.win }))
-  if (props.game === 'deadlock') return [...(props.data.deadlock.stats?.recent_matches ?? [])].slice(0, 10).reverse().map(m => ({ won: m.match_result === 1 }))
+  if (props.game === 'deadlock') return [...(props.data.deadlock.stats?.recent_matches ?? [])].slice(0, 10).reverse().map(m => deadlockMatchWon(m)).filter((w): w is boolean => w !== null).map(won => ({ won }))
   return []
 })
 const emptyText = computed(() => {
