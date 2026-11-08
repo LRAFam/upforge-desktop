@@ -219,6 +219,7 @@ import type { DeadlockProfileStats } from '../env.d.ts'
 import { getDeadlockRankIconUrl, getDeadlockHeroIconUrl } from '../lib/deadlock'
 import { formatDeadlockMatchDate, fmtDeadlockDuration, fmtDeadlockNW } from '../lib/deadlock-analyses'
 import { deadlockMatchWon } from '../lib/deadlock-queues'
+import { inMatchPollGuard } from '../lib/in-match-poll-pause'
 
 const loading = ref(true)
 const stats = ref<DeadlockProfileStats | null>(null)
@@ -258,7 +259,7 @@ onMounted(() => {
     const payload = args[0] as { fresh?: boolean } | undefined
     loadStats(!!payload?.fresh)
   })
-  periodicRefresh = setInterval(() => { loadStats(true) }, 3 * 60 * 1000)
+  periodicRefresh = setInterval(inMatchPollGuard('deadlock-stats-panel', () => { loadStats(true) }), 3 * 60 * 1000)
 })
 
 onUnmounted(() => {

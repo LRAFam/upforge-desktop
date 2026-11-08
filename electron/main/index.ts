@@ -26,6 +26,7 @@ import { CaptureOwnership } from './capture-ownership'
 import { initProductActivity, trackProductActivity } from './product-activity'
 import { backgroundWork } from './background-work'
 import { BackgroundMatchState } from './background-match-state'
+import { matchPollPause } from './poll-pause'
 import {
   app,
   BrowserWindow,
@@ -456,6 +457,8 @@ let matchPerformanceModeActive = false
  */
 let matchCapturePriority = false
 const backgroundMatchState = new BackgroundMatchState()
+// Same hold as the background-work gate: skip non-essential polls while a match / recording is on.
+matchPollPause.configure(() => matchPriorityDeps().isRecording())
 /** Bundled ffmpeg — post-match clip extraction only (not used for live recording). */
 const clipFfmpegProbe = new Recorder()
 const obsRecorder = new OBSRecorder(
@@ -2285,7 +2288,7 @@ function runStuckAnalysisReconcile(): Promise<number> {
 function startStuckAnalysisReconciler(): void {
   if (stuckAnalysisReconcileTimer) return
   void runStuckAnalysisReconcile()
-  stuckAnalysisReconcileTimer = setInterval(() => { void runStuckAnalysisReconcile() }, 2 * 60 * 1000)
+  stuckAnalysisReconcileTimer = setInterval(matchPollPause.guard('stuck-analysis-reconcile', () => { void runStuckAnalysisReconcile() }), 2 * 60 * 1000)
 }
 
 function stopStuckAnalysisReconciler(): void {
@@ -7517,7 +7520,7 @@ async function startApp(): Promise<void> {
       const wasActive = backgroundMatchState.active
       backgroundMatchState.observe(inMatch)
       if (!wasActive && backgroundMatchState.active) interruptBackgroundWorkForMatch()
-      else if (wasActive && !backgroundMatchState.active) maybeResumeDeferredUploads()
+      else if (wasActive && !backgroundMatchState.active) { maybeResumeDeferredUploads(); matchPollPause.resume() }
     })().catch((err) => log.debug('[MatchPriority] Match probe unavailable:', err))
       .finally(() => { matchProbeBusy = false })
   }, 2000)
