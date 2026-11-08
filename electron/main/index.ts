@@ -66,6 +66,7 @@ import {
   checkForUpdatesIfIdle,
   setUpdateActivityGuard,
   resumeDeferredUpdateWork,
+  setInstallGate,
 } from './updater'
 import { pingDesktopOnboarding, resetDesktopOnboardingPing } from './onboarding-ping'
 import { GameDetector } from './game-detector'
@@ -8664,6 +8665,7 @@ app.on('child-process-gone', (_event, details) => {
 const quitGuard = createQuitGuard({
   getActivity: () => buildQuitActivity({
     recording: obsRecorder.isActivelyRecording(),
+    finalizing: localMediaWork > 0 || matchFinalizeInFlight !== null,
     session: getPostGameSessionSnapshot(),
     recordings: recordingsStore?.listInFlightPipelines() ?? [],
     jobStages: postMatchJobStore?.list().map((j) => j.stage) ?? [],
@@ -8673,6 +8675,14 @@ const quitGuard = createQuitGuard({
   bypass: () => isQuitting,
   log: (message) => log.info(message),
 })
+// The in-app "Restart to update" destroys windows and starts the installer before
+// before-quit runs, so ask first; once approved the quit bypasses the guard.
+setInstallGate((proceed) => quitGuard.confirmThen(() => {
+  isQuitting = true
+  stopObsHealthMonitor?.()
+  obsRecorder.forceStop()
+  proceed()
+}))
 
 app.on('before-quit', (event) => {
   if (quitGuard.handleBeforeQuit(event)) return

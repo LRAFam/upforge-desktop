@@ -3,7 +3,7 @@ import { join } from 'path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildQuitActivity, choiceFromButton, createQuitGuard, decideQuit, type QuitActivity, type QuitChoice } from './quit-guard'
 
-const IDLE: QuitActivity = { recording: false, remuxing: false, uploadPercents: [] }
+const IDLE: QuitActivity = { recording: false, remuxing: false, finalizing: false, uploadPercents: [] }
 
 describe('decideQuit (card 38)', () => {
   it('quits immediately when idle', () => {
@@ -24,7 +24,7 @@ describe('decideQuit (card 38)', () => {
   })
 
   it('mentions remuxing and combines reasons', () => {
-    const d = decideQuit({ recording: true, remuxing: true, uploadPercents: [] })
+    const d = decideQuit({ recording: true, remuxing: true, finalizing: false, uploadPercents: [] })
     expect(d.action === 'confirm' && d.message).toBe('A match is recording and a recording is being prepared for upload — quit anyway?')
   })
 
@@ -47,7 +47,7 @@ describe('buildQuitActivity', () => {
         { id: 'c', pipelineStatus: 'uploading' },
       ],
       jobStages: ['polling'],
-    })).toEqual({ recording: false, remuxing: false, uploadPercents: [45, null] })
+    })).toEqual({ recording: false, remuxing: false, finalizing: false, uploadPercents: [45, null] })
   })
 
   it('reports a remux once, not also as an upload', () => {
@@ -56,7 +56,7 @@ describe('buildQuitActivity', () => {
       session: { compressing: true, recordingId: 'a' },
       recordings: [{ id: 'a', pipelineStatus: 'uploading', uploadProgress: 0 }],
       jobStages: [],
-    })).toEqual({ recording: true, remuxing: true, uploadPercents: [] })
+    })).toEqual({ recording: true, remuxing: true, finalizing: false, uploadPercents: [] })
   })
 })
 
@@ -128,10 +128,78 @@ describe('createQuitGuard', () => {
   })
 })
 
+describe('finalising gap after OBS stops', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  it('counts post-match finalising as busy', () => {
+    expect(buildQuitActivity({ recording: false, finalizing: true, session: null, recordings: [], jobStages: [] }).finalizing).toBe(true)
+    const d = decideQuit({ ...IDLE, finalizing: true })
+    expect(d.action).toBe('confirm')
+    if (d.action === 'confirm') expect(d.message).toBe('A finished match is being saved — quit anyway?')
+  })
+
+  it('quit when finished does not quit between recording stop and upload start', async () => {
+    vi.useFakeTimers()
+    let current: QuitActivity = { ...IDLE, recording: true }
+    const quit = vi.fn()
+    const guard = createQuitGuard({ getActivity: () => current, ask: async () => 'wait' as QuitChoice, quit, pollMs: 1000 })
+    guard.handleBeforeQuit({ preventDefault: vi.fn() })
+    await vi.advanceTimersByTimeAsync(0)
+    current = { ...IDLE, finalizing: true }
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(quit).not.toHaveBeenCalled()
+    current = { ...IDLE, uploadPercents: [5] }
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(quit).not.toHaveBeenCalled()
+    current = IDLE
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(quit).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('confirmThen (update install)', () => {
+  afterEach(() => { vi.useRealTimers() })
+  const make = (activity: QuitActivity, choice: QuitChoice) => {
+    const ask = vi.fn(async () => choice)
+    const guard = createQuitGuard({ getActivity: () => activity, ask, quit: vi.fn(), pollMs: 1000 })
+    return { guard, ask }
+  }
+
+  it('runs at once when idle', () => {
+    const { guard, ask } = make(IDLE, 'cancel')
+    const go = vi.fn()
+    guard.confirmThen(go)
+    expect(go).toHaveBeenCalledTimes(1)
+    expect(ask).not.toHaveBeenCalled()
+  })
+
+  it('cancel never runs it', async () => {
+    const { guard, ask } = make({ ...IDLE, recording: true }, 'cancel')
+    const go = vi.fn()
+    guard.confirmThen(go)
+    await vi.waitFor(() => expect(ask).toHaveBeenCalled())
+    await vi.waitFor(() => expect(guard.isAsking()).toBe(false))
+    expect(go).not.toHaveBeenCalled()
+  })
+
+  it('quit anyway runs it', async () => {
+    const { guard } = make({ ...IDLE, uploadPercents: [10] }, 'quit')
+    const go = vi.fn()
+    guard.confirmThen(go)
+    await vi.waitFor(() => expect(go).toHaveBeenCalledTimes(1))
+  })
+})
+
 describe('index.ts wiring', () => {
   const source = readFileSync(join(__dirname, 'index.ts'), 'utf8')
   it('checks the guard first in before-quit', () => {
     expect(source).toMatch(/app\.on\('before-quit', \(event\) => \{\n\s+if \(quitGuard\.handleBeforeQuit\(event\)\) return/)
+  })
+  it('gates the in-app update install on the quit guard', () => {
+    expect(source).toMatch(/setInstallGate\(\(proceed\) => quitGuard\.confirmThen\(/)
+  })
+  it('treats post-match finalising as busy', () => {
+    expect(source).toMatch(/finalizing: localMediaWork > 0 \|\| matchFinalizeInFlight !== null/)
   })
   it('clears background timers on will-quit so a cancelled quit keeps them', () => {
     expect(source).not.toMatch(/app\.(once|on)\('before-quit', \(\) => clearInterval/)
