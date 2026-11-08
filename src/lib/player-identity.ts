@@ -132,7 +132,7 @@ function rankFor(game: ReturnType<typeof gameOf>, p: PersonInput): { icon: strin
   if (game === 'league') {
     if (!raw || /^unrank/i.test(raw)) return { icon: null, label: null }
     const icon = lolRankEmblemUrl(raw)
-    return { icon: icon.endsWith('emblem-unranked.png') ? null : icon, label: raw }
+    return { icon: icon.endsWith('/unranked.svg') ? null : icon, label: raw }
   }
   if (game === 'cs2') {
     const faceit = getFaceitLevelIconUrl(p.faceitLevel)
