@@ -4,8 +4,9 @@ export const DDRAGON_BASE = 'https://ddragon.leagueoflegends.com/cdn'
 /** Keep current so new champions don't 404 when versions.json isn't fetched. */
 export const FALLBACK_VERSION = '16.13.1'
 
+/** Tightly cropped rank crests (every tier incl. unranked). The old rcp-be-lol-game-data ranked-emblems path is 404. */
 const EMBLEM_BASE =
-  'https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/ranked-emblems'
+  'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-mini-crests'
 
 const ROLE_ICON_BASE =
   'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-clash/global/default/assets/images/position-selector/positions'
@@ -67,8 +68,7 @@ function parseTier(rank: string | null | undefined): string {
 
 export function lolRankEmblemUrl(rank: string | null | undefined): string {
   const tier = parseTier(rank)
-  if (tier === 'unranked') return `${EMBLEM_BASE}/emblem-unranked.png`
-  return `${EMBLEM_BASE}/emblem-${tier}.png`
+  return `${EMBLEM_BASE}/${tier}.svg`
 }
 
 export function lolRoleIconUrl(role: string | null | undefined): string {
