@@ -181,6 +181,8 @@ import { reconcileStuckAnalysisJobs, type ReconciledAnalysisContext } from './st
 import { buildAnalysisErrorPayload, classifyAnalysisFailure, formatAnalysisFailureMessage, isDegradedTelemetryResult, type AnalysisErrorPayload } from './analysis-failure-messages'
 import { parseDuelFailureDiagnostics, diagnosticsSummary, type DuelFailureDiagnostics } from '../../src/lib/duel-diagnostics'
 import { AuthManager } from './auth-manager'
+import { closeWebShell } from './web-shell'
+import { clearWebShellSession } from './web-shell-session'
 import { SettingsManager, DEFAULT_CLIP_CAPTURE } from './settings-manager'
 import { setupIpcHandlers, setupClipHandlers, cancelAllPollingTimers } from './ipc-handlers'
 import {
@@ -775,6 +777,11 @@ const riotLocalApi = new RiotLocalApi()
 let valorantRankService: ValorantRankService | null = null
 const lolLiveClientApi = new LoLLiveClientApi()
 const authManager = new AuthManager()
+// Any sign-out (button or expiry) also ends the embedded website's session and revokes its token.
+authManager.onSessionEnded = () => {
+  closeWebShell()
+  void clearWebShellSession(authManager)
+}
 /** Set once IPC is ready; queues a focus sync after a match ends. */
 let scheduleFocusSyncAfterMatch: (game: string) => void = () => {}
 

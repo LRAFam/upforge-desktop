@@ -8,7 +8,12 @@ import { sessionRejected } from './auth-manager'
 describe('sessionRejected', () => {
   it('signs out only when the server rejects the token', () => {
     expect(sessionRejected(401)).toBe(true)
-    expect(sessionRejected(403)).toBe(true)
+    expect(sessionRejected(403, { message: 'Unauthenticated.' })).toBe(true)
+  })
+  it('keeps the session on a 403 that is not Laravel\'s unauthenticated reply (WAF, CDN, policy)', () => {
+    expect(sessionRejected(403)).toBe(false)
+    expect(sessionRejected(403, '<html>Forbidden</html>')).toBe(false)
+    expect(sessionRejected(403, { message: 'This action is unauthorized.' })).toBe(false)
   })
   it('keeps the session on timeouts, network errors and server errors', () => {
     expect(sessionRejected(undefined)).toBe(false)

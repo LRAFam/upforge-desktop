@@ -89,9 +89,17 @@ function appVersion(): string | undefined {
   try { return app.getVersion() } catch { return undefined }
 }
 
-/** Only an explicit 401/403 means the token is no longer valid; timeouts and 5xx are not a sign-out. */
-export function sessionRejected(status: number | undefined): boolean {
-  return status === 401 || status === 403
+/** Laravel's reply when the token is not accepted: `{"message":"Unauthenticated."}`. */
+function isUnauthenticatedBody(data: unknown): boolean {
+  return !!data && typeof data === 'object' && (data as { message?: unknown }).message === 'Unauthenticated.'
+}
+
+/**
+ * Only the server rejecting the token is a sign-out: any 401, or a 403 carrying Laravel's
+ * Unauthenticated body. Other 403s (WAF/CDN/policy), timeouts and 5xx keep the session.
+ */
+export function sessionRejected(status: number | undefined, data?: unknown): boolean {
+  return status === 401 || (status === 403 && isUnauthenticatedBody(data))
 }
 
 /** Coach notes: the API's own message when it explains the refusal, else a plain fallback. */
@@ -281,6 +289,8 @@ export class AuthManager {
   private _api: AxiosInstance
   /** Called when the server rejects the session (401/403) — use to force logout in the UI. */
   onSessionExpired?: () => void
+  /** Called whenever a session ends (sign-out or expiry) — e.g. clear the embedded website's session. */
+  onSessionEnded?: () => void
   /** False while running on the cached user because the server could not be reached. */
   private _userFresh = false
   private _refreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -389,6 +399,7 @@ export class AuthManager {
     delete this._api.defaults.headers.common['Authorization']
     clearToken()
     clearCachedUser(userDataDir())
+    try { this.onSessionEnded?.() } catch (err) { log.warn('[Auth] session-ended hook failed:', (err as Error)?.message) }
     if (notify) this.onSessionExpired?.()
   }
 
@@ -485,7 +496,8 @@ export class AuthManager {
       const status = (err as { status?: number; response?: { status?: number } })?.status
         ?? (err as { response?: { status?: number } })?.response?.status
       const code = (err as { code?: string })?.code
-      if (!sessionRejected(status)) {
+      const body = (err as { response?: { data?: unknown } })?.response?.data
+      if (!sessionRejected(status, body)) {
         // Slow or offline network: keep the session. On launch there is no user yet, so use the last
         // signed-in user from disk and keep retrying in the background.
         if (!this._user && this._token) {
