@@ -51,6 +51,7 @@ import { applyMenuWatchTick } from './menu-watch'
 import { parseRiotMatchHistory, type RiotMatchHistoryEntry } from './riot-match-history'
 import { downloadReplay, type ReplayDownloadResult } from './valorant-replay-download'
 import type { RecentMatchFetchResult } from './recent-match-export'
+import { createTtlSingleFlight } from './ttl-single-flight'
 export type {
   GameEvent,
   KillEvent,
@@ -160,6 +161,12 @@ export class RiotLocalApi {
   private readonly SESSION_STATE_CB_THRESHOLD = 10
   private _sessionStateCbOpen = false
   private _sessionStateCbResetAt = 0
+  static readonly SHARED_SESSION_STATE_TTL_MS = 2_000
+  /** Presence snapshot shared by the in-match session loop and background match probe. */
+  private readonly _sharedSessionState = createTtlSingleFlight(
+    () => this.getSessionState(),
+    RiotLocalApi.SHARED_SESSION_STATE_TTL_MS,
+  )
 
   /**
    * Fired when presence transitions INGAME -> MENUS (match ended).
@@ -183,7 +190,7 @@ export class RiotLocalApi {
     const tick = async () => {
       if (gen !== this.menuWatchGeneration) return
       try {
-        const state = await this.getSessionState()
+        const state = await this.getSharedSessionState()
         // Missing presence must not default to MENUS — that re-arms mid-match.
         if (!state?.sessionLoopState) {
           missingPresencePolls++
@@ -554,6 +561,16 @@ export class RiotLocalApi {
       }
       return null
     }
+  }
+
+  /**
+   * Presence state shared between periodic loops: one /chat/v4/presences request per
+   * ~2 s however many loops ask, and concurrent callers join the request in flight.
+   * Confirmation checks that need a fresh read keep calling getSessionState().
+   */
+  getSharedSessionState(opts?: { fresh?: boolean }): Promise<SessionState | null> {
+    if (opts?.fresh) this._sharedSessionState.invalidate()
+    return this._sharedSessionState.get()
   }
 
   private _validateShape(obj: unknown, keys: string[]): obj is Record<string, unknown> {
