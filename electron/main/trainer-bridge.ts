@@ -1,4 +1,5 @@
 import { APP_VERSION } from './app-version'
+import { ERROR_REPORTING_KEY } from './error-reporting-key'
 /**
  * trainer-bridge.ts
  * Electron main-process module that manages the Godot training process.
@@ -398,7 +399,7 @@ export class TrainerBridge {
         user_email: user?.email ?? null,
         user_name: user?.name ?? null,
         app_version: APP_VERSION,
-        error_key: process.env['VITE_ERROR_REPORTING_KEY'] ?? '',
+        error_key: ERROR_REPORTING_KEY,
       },
     }
     socket.write(JSON.stringify(enriched) + '\n', 'utf8')

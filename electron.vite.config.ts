@@ -6,6 +6,15 @@ import { readFileSync } from 'fs'
 
 const pkg = JSON.parse(readFileSync(resolve('package.json'), 'utf-8'))
 
+/**
+ * Build-time constants for the main process. The packaged app has no
+ * VITE_ERROR_REPORTING_KEY env at runtime, so CI's key must be inlined here
+ * (see electron/main/error-reporting-key.ts).
+ */
+export const mainDefine = {
+  __UPFORGE_ERROR_REPORTING_KEY__: JSON.stringify(process.env['VITE_ERROR_REPORTING_KEY'] ?? '')
+}
+
 export default defineConfig({
   main: {
     build: {
@@ -13,7 +22,8 @@ export default defineConfig({
         entry: resolve('electron/main/index.ts')
       }
     },
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    define: mainDefine
   },
   preload: {
     build: {
