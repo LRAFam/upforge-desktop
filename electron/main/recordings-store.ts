@@ -581,7 +581,7 @@ export class RecordingsStore {
    * Reset upload rows left mid-S3 after a crash (no active upload in this process).
    * Returns count reset so the dashboard shows Analyse/Save again.
    */
-  resetInterruptedUploads(activeUploadIds: ReadonlySet<string> = new Set()): number {
+  resetInterruptedUploads(activeUploadIds: ReadonlySet<string> = new Set(), onReset?: (id: string) => void): number {
     let reset = 0
     for (const rec of this.recordings) {
       if (rec.pipelineStatus !== 'uploading') continue
@@ -589,6 +589,7 @@ export class RecordingsStore {
       rec.pipelineStatus = 'pending'
       rec.uploadProgress = undefined
       reset++
+      onReset?.(rec.id)
     }
     if (reset > 0) this.persist()
     return reset

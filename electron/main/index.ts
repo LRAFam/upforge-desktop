@@ -39,6 +39,7 @@ import {
   resolveGameStartOwnership,
 } from './recording-ownership'
 import { RecordingSessionLog, resolveOrphanRecordingGame } from './recording-session-log'
+import { StartupFailureSummary, fileSeenStore } from './startup-failure-summary'
 import {
   app,
   BrowserWindow,
@@ -935,11 +936,20 @@ let lastReplayRetryContext: ReplayRetryContext | null = null
 
 /** Recording ids with an active S3 upload in this process — excludes them from stale-upload reset. */
 const activeUploadRecordingIds = new Set<string>()
+const startupFailuresSeen = () => fileSeenStore(join(app.getPath('userData'), 'startup-failures-notified.json'))
+/** One summary toast for failures found right after start (see startup-failure-summary.ts). */
+const startupFailures = new StartupFailureSummary({
+  notify: ({ title, body }) => showAppNotification({ title, body, silent: notifySilent(), deferWhileRecording: true, onClick: () => focusMainWindow() }),
+  logActivity: (msg) => logActivity(msg),
+  loadSeen: () => startupFailuresSeen().load(),
+  saveSeen: (ids) => startupFailuresSeen().save(ids),
+})
 const analysisPipelineSingleFlight = new RecordingPipelineSingleFlight<string | null>()
 
 function reconcileInterruptedUploads(): void {
   if (!recordingsStore) return
-  const reset = recordingsStore.resetInterruptedUploads(activeUploadRecordingIds)
+  const reset = recordingsStore.resetInterruptedUploads(activeUploadRecordingIds,
+    (id) => startupFailures.note({ key: `upload:${id}`, kind: 'upload' }))
   if (reset > 0) {
     logActivity(`Upload interrupted — tap Analyse to retry (${reset} recording${reset === 1 ? '' : 's'})`)
     notifyRecordingsUpdated()
@@ -1705,6 +1715,7 @@ function syncUserSessionFromAuth(): void {
     initPostMatchWorker(user.id)
     restoreDeferredUploadsFromDisk()
     void pingDesktopOnboarding(authManager)
+    startupFailures.begin()
     reconcileInterruptedUploads()
     runStorageMaintenanceIfReady(true)
     syncPrimaryGameFromUser()
@@ -2346,7 +2357,8 @@ function runStuckAnalysisReconcile(): Promise<number> {
       return rows.map((a) => ({ id: a.id, job_id: a.job_id, overall_score: a.overall_score }))
     },
     onCompleted: dispatchReconciledAnalysisReady,
-    onFailed: ({ error, recordingId, status }) => {
+    onFailed: ({ jobId, error, recordingId, status }) => {
+      startupFailures.note({ key: `analysis:${jobId}`, kind: 'analysis' })
       dispatchAnalysisFailure(error, {
         recordingId,
         notify: false,
@@ -6163,6 +6175,7 @@ async function handleOrphanedJobAtStartup(
   if (decision.action === 'failed') {
     clearPendingJob()
     const rec = recordingsStore.getByJobId(orphanedJob.job_id)
+    startupFailures.note({ key: `analysis:${orphanedJob.job_id}`, kind: 'analysis' })
     dispatchAnalysisFailure(decision.error, { recordingId: rec?.id ?? null, notify: false })
     logActivity(`Previous analysis failed: ${decision.error}`)
     tray?.setToolTip(idleTooltip(context.game))
