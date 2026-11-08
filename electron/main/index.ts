@@ -338,7 +338,7 @@ import {
   hasEverReceivedGsi,
   getLatestGsiMap,
   getLatestGsiPayload,
-  STEAM_GSI_PORT,
+  getActiveGsiPort,
   cs2GsiTracker,
 } from './steam-gsi-server'
 import {
@@ -3393,6 +3393,11 @@ function setupGameDetection(): void {
   ensureGsiAuthToken(settingsManager)
   startSteamGsiServer({
     onStaleConfig: () => logActivity('CS2 match detection: restart CS2 once so it loads UpForge\'s updated (secured) config', 'cs2'),
+    preferredPort: settingsManager.get().cs2GsiPort,
+    onPortChanged: ({ port, previousPort }) => {
+      settingsManager.save({ cs2GsiPort: port })
+      logActivity(`CS2 match detection: port ${previousPort} was busy, now using ${port} — restart CS2 if it is open`, 'cs2')
+    },
   })
   // Existing installs: rewrite the CS2 GSI cfg with the auth token (CS2 loads it on next launch).
   void installSteamGsiConfig('cs2').then((r) => {
@@ -4814,9 +4819,9 @@ function setupGameDetection(): void {
     if (game === 'cs2') {
       resetSteamGsiSession()
       if (isGsiPortBlocked()) {
-        logActivity(`CS2 match detection blocked — port ${STEAM_GSI_PORT} is in use (close other apps using it, e.g. Discord bot dev server)`)
+        logActivity(`CS2 match detection blocked — port ${getActiveGsiPort()} is in use (close other apps using it, e.g. Discord bot dev server)`)
         notifyRecordingUx(
-          `UpForge cannot listen for CS2 match events — port ${STEAM_GSI_PORT} is already in use. Close the other app and restart UpForge.`,
+          `UpForge cannot listen for CS2 match events — port ${getActiveGsiPort()} is already in use. Close the other app and restart UpForge.`,
           'UpForge — CS2 detection blocked',
         )
       }
@@ -4872,7 +4877,7 @@ function setupGameDetection(): void {
           && !isGsiServerReady()
         ) {
           gsiServerHintShown = true
-          logActivity(`CS2 match detection server not running — port ${STEAM_GSI_PORT} may be blocked`)
+          logActivity(`CS2 match detection server not running — port ${getActiveGsiPort()} may be blocked`)
         }
 
         if (!gsiHintShown && Date.now() - loopStart > 45_000 && !hasEverReceivedGsi() && !gsiNeedsRestart) {
