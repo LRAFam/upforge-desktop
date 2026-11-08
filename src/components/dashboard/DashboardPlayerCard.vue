@@ -22,6 +22,7 @@ const {
   isAdmin,
   paymentPastDue,
   quotaPercent,
+  archiveQuota,
   archiveQuotaPercent,
   onboardingTargetRank,
   cs2FaceitConnection,
@@ -267,13 +268,13 @@ function deadlockRankIconUrl() {
           </span>
         </template>
       </div>
-      <div v-if="profile.user.archive_stats?.limit != null" class="flex items-center gap-2.5">
+      <div v-if="archiveQuota.limit != null" class="flex items-center gap-2.5">
         <span class="text-[9px] text-gray-600 shrink-0 w-12 uppercase tracking-wide">Cloud</span>
         <div class="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
           <div class="h-full rounded-full transition-all bg-emerald-500/80" :style="{ width: archiveQuotaPercent + '%' }" />
         </div>
         <span class="text-xs font-medium tabular-nums shrink-0 text-gray-400">
-          {{ profile.user.archive_stats.remaining ?? 0 }}/{{ profile.user.archive_stats.limit }}
+          {{ archiveQuota.remaining ?? 0 }}/{{ archiveQuota.limit }}
         </span>
       </div>
     </div>

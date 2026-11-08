@@ -16,6 +16,7 @@ import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { BADGE_PREVIEW_ITEMS, getBadgeIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
 import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../lib/billing'
 import { uiV3 } from '../lib/ui-v3'
+import { readArchiveQuota } from '../lib/archive-retention-hint'
 import { usePrimaryGame } from './usePrimaryGame'
 import { cs2AccountHint, cs2SteamNameToShow, followSelectedGame } from '../components/settings/settings-game'
 
@@ -1305,6 +1306,7 @@ function createSettings() {
     try {
       const prof = earlyProfile ? await earlyProfile : await window.api.profile.get()
       if (prof?.user) {
+        const archiveQuota = readArchiveQuota(prof.user.archive_stats)
         user.value = {
           ...user.value,
           name: prof.user.name,
@@ -1320,9 +1322,9 @@ function createSettings() {
             ?? null,
           analyses_used: prof.user.analysis_stats?.total,
           analyses_limit: prof.user.analysis_stats?.limit,
-          archive_count: prof.user.archive_stats?.count,
-          archive_limit: prof.user.archive_stats?.limit ?? null,
-          archive_remaining: prof.user.archive_stats?.remaining ?? null,
+          archive_count: archiveQuota.count,
+          archive_limit: archiveQuota.limit,
+          archive_remaining: archiveQuota.remaining,
           archive_retention_days: prof.user.archive_stats?.retention_days ?? null,
           stripe_subscription_status: prof.user.stripe_subscription_status ?? null,
           discord_username: prof.user.discord_username ?? user.value?.discord_username ?? null,
