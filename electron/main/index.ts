@@ -147,7 +147,7 @@ import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { withTimeout } from './promise-timeout'
 import { LoLLiveClientApi } from './lol-live-client-api'
 import type { LolCaptureContext } from './lol-account-identity'
-import { appendSupportActivity, readSupportActivity } from './support-activity-history'
+import { createSupportActivityStore } from './support-activity-history'
 import { probeLolLcu, resolveLolFilterMode, lolLinkedPuuidFromAuth } from './lol-lcu-api'
 import {
   gameLabel,
@@ -1282,6 +1282,8 @@ function endMatchPerformanceMode(): void {
 // Activity log — recent events shown on dashboard for user visibility
 const MAX_LOG_ENTRIES = 30
 const activityLog: { time: number; message: string; game?: string }[] = []
+/** Persisted support history — in memory, flushed async on a 5 s throttle + sync on quit. */
+const supportActivity = createSupportActivityStore()
 
 // Hotkey bookmarks — timestamps (ms) relative to recording start pressed during a match
 const hotkeyBookmarks: number[] = []
@@ -1411,11 +1413,12 @@ function logActivity(message: string, explicitGame?: string): void {
   }
   log.info('[Activity]', entry.game ?? 'app', message)
   activityLog.push(entry)
-  appendSupportActivity(localMediaRoot(getActiveUserId()), entry)
+  supportActivity.append(localMediaRoot(getActiveUserId()), entry)
   recordErrorActivity(message, entry.time)
   if (activityLog.length > MAX_LOG_ENTRIES) activityLog.shift()
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('app:activity-log', activityLog.slice())
+    // Only the new entry — the renderer appends (full list via app:get-activity-log on load).
+    mainWindow.webContents.send('app:activity-entry', entry)
   }
   const lower = message.toLowerCase()
   if (
@@ -7601,7 +7604,7 @@ async function startApp(): Promise<void> {
     return formatSupportBundle({
       version: APP_VERSION,
       network,
-      activityLog: readSupportActivity(localMediaRoot(getActiveUserId())),
+      activityLog: await supportActivity.read(localMediaRoot(getActiveUserId())),
       riot: riotDiag,
       lastMatch: last
         ? {
@@ -8636,6 +8639,7 @@ app.on('child-process-gone', (_event, details) => {
 app.on('before-quit', () => {
   // Recordings catalogue writes are async + debounced; put the last change on disk before exit.
   flushAllCataloguesSync()
+  supportActivity.flushSync()
   replayScope++
   cs2DemoRetrieval.clear()
   void overstepBridge?.disable()
