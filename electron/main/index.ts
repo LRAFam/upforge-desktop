@@ -1,6 +1,8 @@
 // Must stay the first import: redirects userData before any other module loads in self-test mode.
 import { selftestRequest } from './selftest-early'
 import { getApiBaseUrl } from './api-base'
+import { buildQuitActivity, createQuitGuard } from './quit-guard'
+import { askQuitChoice } from './quit-dialog'
 import { createCoalescedNotifier, createVodProbeSweep } from './vod-probe-sweep'
 import { createCallRateLogger, startMainLoopLagMonitor } from './main-loop-lag'
 import { saveReplay } from './valorant-replay-download'
@@ -7122,7 +7124,7 @@ async function startApp(): Promise<void> {
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused() && !mainWindow.isMinimized()) trackProductActivity('app_foreground', 'unknown')
   }, 300_000)
   activityPresenceTimer.unref()
-  app.once('before-quit', () => clearInterval(activityPresenceTimer))
+  app.once('will-quit', () => clearInterval(activityPresenceTimer))
   trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
   recordingsStore = new RecordingsStore()
 
@@ -7707,7 +7709,7 @@ async function startApp(): Promise<void> {
     })().catch((err) => log.debug('[MatchPriority] Match probe unavailable:', err))
       .finally(() => { matchProbeBusy = false })
   }, 2000)
-  app.on('before-quit', () => clearInterval(backgroundMatchInterval))
+  app.on('will-quit', () => clearInterval(backgroundMatchInterval))
 
   // Presence heartbeat — update squad presence every 60s when authenticated
   const presenceInterval = setInterval(() => {
@@ -7716,7 +7718,7 @@ async function startApp(): Promise<void> {
       .catch(() => { /* ignore */ })
   }, 60000)
 
-  app.on('before-quit', () => clearInterval(presenceInterval))
+  app.on('will-quit', () => clearInterval(presenceInterval))
 
   // Register global hotkeys
   hotkeyManager.on('save-clip', () => {
@@ -8639,7 +8641,22 @@ app.on('child-process-gone', (_event, details) => {
   log.warn('[Main] Child process gone:', details.type, details.reason)
 })
 
-app.on('before-quit', () => {
+// Confirm before a quit (tray, menu, Cmd+Q) would cut off a recording, remux or upload.
+const quitGuard = createQuitGuard({
+  getActivity: () => buildQuitActivity({
+    recording: obsRecorder.isActivelyRecording(),
+    session: getPostGameSessionSnapshot(),
+    recordings: recordingsStore?.listInFlightPipelines() ?? [],
+    jobStages: postMatchJobStore?.list().map((j) => j.stage) ?? [],
+  }),
+  ask: (decision) => askQuitChoice(decision, mainWindow),
+  quit: () => app.quit(),
+  bypass: () => isQuitting,
+  log: (message) => log.info(message),
+})
+
+app.on('before-quit', (event) => {
+  if (quitGuard.handleBeforeQuit(event)) return
   // Recordings catalogue writes are async + debounced; put the last change on disk before exit.
   flushAllCataloguesSync()
   supportActivity.flushSync()
