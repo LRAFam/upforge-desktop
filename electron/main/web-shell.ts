@@ -3,12 +3,14 @@
  * with its own web-shell Sanctum token (see web-shell-session.ts) as the web auth_token cookie.
  */
 
+import { WEB_SHELL_PARTITION, applyWebShellCookie, noteShellApiResponse } from './web-shell-session'
+import { getApiBaseUrl } from './api-base'
 import { BrowserWindow, Menu, shell, session } from 'electron'
 import { AuthManager } from './auth-manager'
-import { getApiBaseUrl, getFrontendBaseUrl } from './api-base'
-import { WEB_SHELL_PARTITION, applyWebShellCookie, noteShellApiResponse } from './web-shell-session'
+import { getFrontendBaseUrl } from './api-base'
 
 let shellWindow: BrowserWindow | null = null
+let watchingShellApi = false
 
 function allowedHost(hostname: string, frontendOrigin: string): boolean {
   try {
@@ -19,12 +21,9 @@ function allowedHost(hostname: string, frontendOrigin: string): boolean {
   }
 }
 
-/**
- * Give the shell its OWN web-shell token (never the desktop token — a website logout deletes the
- * token it holds). Watches the shell's API replies so a 401 re-mints on the next open.
- */
-let watchingShellApi = false
 async function injectAuthCookie(auth: AuthManager, frontendBase: string): Promise<boolean> {
+  // The shell gets its OWN web-shell token, never the desktop token (a website logout deletes the
+  // token it holds). Its API replies are watched so a 401 re-mints on the next open.
   if (!auth.getToken()) return false
   if (!watchingShellApi) {
     watchingShellApi = true
