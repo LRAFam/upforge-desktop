@@ -1426,7 +1426,7 @@ async function captureNetworkEvidence(trigger: string, force = false): Promise<v
     const snapshot = await runNetworkDiagnostics({
       trigger,
       region: riotDiag.region,
-      apiBase: process.env['VITE_API_URL'] || 'https://api.upforge.gg',
+      apiBase: getApiBaseUrl(),
       lastRiotMatchDetails: riotLocalApi.getLastMatchDetailsFetch(),
       lastUploadError: getLastUploadNetworkError(),
     })
@@ -3295,10 +3295,10 @@ function requestPregameBrief(context?: {
         rank: valorantRankService?.current()?.tierName ?? history[history.length - 1]?.rank ?? null,
         skillFocus: skillFocus ?? null,
       },
-      process.env['VITE_API_URL'],
+      getApiBaseUrl(),
     )
   }).catch(() => {
-    _requestPregameBrief(() => authManager.getToken(), logActivity, context, process.env['VITE_API_URL'])
+    _requestPregameBrief(() => authManager.getToken(), logActivity, context, getApiBaseUrl())
   })
 }
 
@@ -3314,7 +3314,7 @@ async function requestPostGameDebrief(opts: {
   return _requestPostGameDebrief({
     ...opts,
     getToken: () => authManager.getToken(),
-    apiUrl: process.env['VITE_API_URL'],
+    apiUrl: getApiBaseUrl(),
   })
 }
 
@@ -7278,7 +7278,7 @@ async function startApp(): Promise<void> {
       riotName: recording.riotName, riotTag: recording.riotTag,
       agent: recording.agent, map: recording.map, timeline: recording.timeline,
       manual: true, getToken: () => authManager.getToken(),
-      apiUrl: process.env['VITE_API_URL'],
+      apiUrl: getApiBaseUrl(),
       sendToWindow: (channel, payload) => {
         const win = BrowserWindow.fromWebContents(event.sender)
         if (win) sendPostGameEventForRecording(win, id, channel, payload, ownerId)
@@ -7341,7 +7341,7 @@ async function startApp(): Promise<void> {
       network = await runNetworkDiagnostics({
         trigger: 'dev-diagnostics',
         region: riotLocalApi.getDiagnostics().region,
-        apiBase: process.env['VITE_API_URL'] || 'https://api.upforge.gg',
+        apiBase: getApiBaseUrl(),
         lastRiotMatchDetails: riotLocalApi.getLastMatchDetailsFetch(),
         lastUploadError: getLastUploadNetworkError(),
       })
@@ -7394,7 +7394,7 @@ async function startApp(): Promise<void> {
     const network = await runNetworkDiagnostics({
       trigger: 'support-bundle',
       region: riotDiag.region,
-      apiBase: process.env['VITE_API_URL'] || 'https://api.upforge.gg',
+      apiBase: getApiBaseUrl(),
       lastRiotMatchDetails: riotLocalApi.getLastMatchDetailsFetch(),
       lastUploadError: getLastUploadNetworkError(),
     })
