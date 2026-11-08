@@ -101,6 +101,55 @@ export async function resolveGameStartOwnership(deps: GameStartOwnershipDeps): P
 }
 
 /**
+ * A game start ignored because the previous recording would not stop is otherwise never
+ * picked up again: the detector already counts the game as active, so game-started only
+ * fires after the game closes. Watch until OBS lets go, then clear the detector's active
+ * game so the next poll re-emits game-started (the onStopGaveUp toast promises a retry).
+ */
+export function createIgnoredStartRearm(deps: {
+  isRecording: () => boolean
+  currentGame: () => string | null
+  resetActiveGame: (game: string) => void
+  /** Release ownership when OBS reports idle (e.g. the user restarted OBS). */
+  releaseStale?: () => Promise<unknown>
+  intervalMs?: number
+  log?: Logger
+}): { arm: (game: string) => void; cancel: () => void; armedGame: () => string | null } {
+  let timer: ReturnType<typeof setInterval> | null = null
+  let game: string | null = null
+  let ticking = false
+  const cancel = (): void => {
+    if (timer) clearInterval(timer)
+    timer = null
+    game = null
+  }
+  const tick = async (): Promise<void> => {
+    if (!game || ticking) return
+    ticking = true
+    try {
+      if (deps.currentGame() !== game) return cancel()
+      await deps.releaseStale?.().catch(() => undefined)
+      if (!game || deps.isRecording()) return
+      const target = game
+      cancel()
+      deps.log?.info(`[GameDetector] previous recording released — re-detecting ${target}`)
+      deps.resetActiveGame(target)
+    } finally {
+      ticking = false
+    }
+  }
+  return {
+    arm(next) {
+      cancel()
+      game = next
+      timer = setInterval(() => { void tick() }, deps.intervalMs ?? 15_000)
+    },
+    cancel,
+    armedGame: () => game,
+  }
+}
+
+/**
  * A game-stopped for a game that neither owns the current match flow nor the recording
  * (the flow already moved on to another game) must not tear down the new game's state.
  */

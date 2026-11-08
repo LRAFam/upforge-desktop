@@ -33,6 +33,7 @@ import { matchPollPause } from './poll-pause'
 import {
   RECORDING_MAX_DURATION_CHECK_MS,
   checkRecordingMaxDuration,
+  createIgnoredStartRearm,
   createSerialRunner,
   isSupersededGameStop,
   maxRecordingDurationMs,
@@ -1633,7 +1634,10 @@ function handlePrimaryGameSwitch(
   gameDetector.setWatchGame(game, { deferActiveStop })
   logActivity(`Switched to ${gameLabel(game)}`)
 
-  void ensureObsCaptureForGame(game)
+  // Never retarget the capture source under a recording UpForge still owns (card 232:
+  // a failed stop + tab auto-switch pointed the stuck League recording at Valorant).
+  // game-started sets capture up once ownership is resolved.
+  if (!obsRecorder.isRecording()) void ensureObsCaptureForGame(game)
 
   if (game !== 'deadlock') {
     stopDeadlockLogWatcher()
@@ -4790,12 +4794,20 @@ function setupGameDetection(): void {
     mainWindow?.webContents.send('game:client-changed', { game: 'valorant', open })
   })
 
+  const ignoredStartRearm = createIgnoredStartRearm({
+    isRecording: () => obsRecorder.isRecording(),
+    currentGame: () => gameDetector.currentGame(),
+    resetActiveGame: (g) => gameDetector.resetActiveGame(g),
+    releaseStale: () => obsRecorder.releaseStaleMatchOwnership(),
+    log,
+  })
   gameDetector.on('game-started', async (game: string) => {
     if (overstepBridge?.isBusy()) { gameDetector.resetActiveGame(game); return }
     // These game processes can first be detected while a map is already loading.
     // Hold until the independent match probe confirms menus, even if OBS is unavailable.
     if (game === 'valorant' || game === 'lol') backgroundMatchState.observe(true)
-    mainWindow?.webContents.send('game:status-changed', { game, active: true })
+    // game:status-changed {active:true} is sent only after ownership resolves: the renderer's
+    // game-tab auto-switch must not run while an old recording may still own OBS.
     abortBackgroundWorkOnGameStart()
     // A different game starting while another game's recording is still owned saves the old
     // session first; a finalise already in flight is awaited (card 232 same-poll race).
@@ -4826,11 +4838,12 @@ function setupGameDetection(): void {
     if (ownership.action === 'ignore') {
       if (obsRecorder.isRecording() && recordingSessionLog().activeGame() !== game) {
         logActivity(`${gameLabel(game)} detected but the previous recording is still running in OBS — not recorded`, game)
+        ignoredStartRearm.arm(game)
       }
       return
     }
-    // The renderer may have skipped the first event while the old game was still recording.
-    if (ownership.finalizedPrevious) mainWindow?.webContents.send('game:status-changed', { game, active: true })
+    ignoredStartRearm.cancel()
+    mainWindow?.webContents.send('game:status-changed', { game, active: true })
     syncPrimaryGameFromDetection(game)
 
     activeCapture = { ownerId: captureOwnership.get() }
