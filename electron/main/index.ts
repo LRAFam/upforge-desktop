@@ -327,6 +327,7 @@ import { resolveInstanceLock, startInstanceCoordinator } from './instance-coordi
 import { decideValorantNextMatchRearm } from './valorant-next-match-rearm'
 import {
   startSteamGsiServer,
+  ensureGsiAuthToken,
   resetSteamGsiSession,
   installSteamGsiConfig,
   isGsiServerReady,
@@ -3389,7 +3390,14 @@ async function refreshDeadlockProfile(fresh = true): Promise<void> {
 
 function setupGameDetection(): void {
   setMatchRecordingGuard(() => obsRecorder.isActivelyRecording())
-  startSteamGsiServer()
+  ensureGsiAuthToken(settingsManager)
+  startSteamGsiServer({
+    onStaleConfig: () => logActivity('CS2 match detection: restart CS2 once so it loads UpForge\'s updated (secured) config', 'cs2'),
+  })
+  // Existing installs: rewrite the CS2 GSI cfg with the auth token (CS2 loads it on next launch).
+  void installSteamGsiConfig('cs2').then((r) => {
+    if (r.needsRestart) log.info('[SteamGSI] CS2 GSI cfg updated with auth token — restart CS2 once to load it')
+  }).catch(() => {})
   gameDetector.setWatchGame(normalizePrimaryGame(settingsManager.get().primaryGame))
   if (normalizePrimaryGame(settingsManager.get().primaryGame) === 'cs2') {
     void ensureCs2DemoRecordingConfig()
