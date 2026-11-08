@@ -134,6 +134,8 @@ export interface AppSettings {
   cs2DemoDir?: string
   /** Override Steam/in-game name for CS2 demo kill matching (undefined = auto-detect) */
   cs2SteamName?: string
+  /** Per-install secret CS2 GSI must echo in auth.token (written into the GSI cfg). */
+  cs2GsiAuthToken?: string
   /** Developer / admin mode — unlocked by tapping the version number 5 times in Settings */
   devModeEnabled: boolean
   /** Download VALORANT match replays from Riot after each match and upload them for replay-based coaching */

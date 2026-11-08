@@ -3,6 +3,7 @@
  */
 
 import http from 'http'
+import { randomBytes, timingSafeEqual } from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
@@ -41,8 +42,54 @@ export const CS2_LEFT_SERVER_GRACE_MS = 90_000
 let serverListening = false
 let serverPortBlocked = false
 
-export function startSteamGsiServer(): void {
-  if (server) return
+/** Largest GSI POST accepted (full diagnostics payloads are ~10-50 KB). */
+export const GSI_MAX_BODY_BYTES = 1_000_000
+
+/** Shared secret CS2 echoes back as `auth.token` (set from settings via ensureGsiAuthToken). */
+let gsiAuthToken: string | null = null
+let staleConfigNoticed = false
+
+const TOKEN_RE = /^[a-f0-9]{64}$/
+
+/** Read the per-install GSI token from settings, creating + persisting one if missing. */
+export function ensureGsiAuthToken(store: {
+  get(): { cs2GsiAuthToken?: string }
+  save(partial: { cs2GsiAuthToken: string }): unknown
+}): string {
+  let token = store.get().cs2GsiAuthToken
+  if (!token || !TOKEN_RE.test(token)) {
+    token = randomBytes(32).toString('hex')
+    store.save({ cs2GsiAuthToken: token })
+  }
+  gsiAuthToken = token
+  return token
+}
+
+export function getGsiAuthToken(): string | null {
+  return gsiAuthToken
+}
+
+function tokenMatches(candidate: unknown): boolean {
+  if (!gsiAuthToken || typeof candidate !== 'string') return false
+  const a = Buffer.from(candidate, 'utf8')
+  const b = Buffer.from(gsiAuthToken, 'utf8')
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
+export interface SteamGsiServerOptions {
+  /** Defaults to STEAM_GSI_PORT; tests pass 0. */
+  port?: number
+  /** Overrides the token set by ensureGsiAuthToken. */
+  token?: string
+  /** Called once per run when CS2 posts without the right token (old cfg — CS2 needs a restart). */
+  onStaleConfig?: () => void
+}
+
+export function startSteamGsiServer(opts: SteamGsiServerOptions = {}): http.Server {
+  if (server) return server
+  if (opts.token) gsiAuthToken = opts.token
+  if (!gsiAuthToken) gsiAuthToken = randomBytes(32).toString('hex')
+  const port = opts.port ?? STEAM_GSI_PORT
 
   server = http.createServer((req, res) => {
     if (req.method !== 'POST') {
@@ -50,9 +97,51 @@ export function startSteamGsiServer(): void {
       res.end()
       return
     }
-    let body = ''
-    req.on('data', (chunk) => { body += String(chunk) })
+    // CS2 never sends Origin; a browser page posting to localhost always does.
+    if (req.headers.origin !== undefined) {
+      res.writeHead(403)
+      res.end()
+      req.resume()
+      return
+    }
+    const declared = Number(req.headers['content-length'] ?? 0)
+    if (declared > GSI_MAX_BODY_BYTES) {
+      res.writeHead(413, { Connection: 'close' })
+      res.end()
+      req.destroy()
+      return
+    }
+    req.setTimeout(10_000, () => req.destroy())
+    const chunks: Buffer[] = []
+    let bytes = 0
+    let tooLarge = false
+    req.on('data', (chunk: Buffer) => {
+      if (tooLarge) return
+      bytes += chunk.length
+      if (bytes > GSI_MAX_BODY_BYTES) {
+        tooLarge = true
+        res.writeHead(413, { Connection: 'close' })
+        res.end()
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
     req.on('end', () => {
+      if (tooLarge) return
+      const body = Buffer.concat(chunks).toString('utf8')
+      let token: unknown
+      try { token = (JSON.parse(body) as { auth?: { token?: unknown } })?.auth?.token } catch { token = undefined }
+      if (!tokenMatches(token)) {
+        if (!staleConfigNoticed) {
+          staleConfigNoticed = true
+          log.warn('[SteamGSI] Ignored GSI POST without a valid auth token — if CS2 was running when UpForge updated its config, restart CS2 once so match detection works again')
+          try { opts.onStaleConfig?.() } catch { /* notice only */ }
+        }
+        res.writeHead(401)
+        res.end()
+        return
+      }
       ingestGsiBody(body)
       res.writeHead(200)
       res.end()
@@ -62,10 +151,10 @@ export function startSteamGsiServer(): void {
   // Put the normal cfg back once a diagnostics capture finishes or is switched off.
   getGameDataCapture()?.onDisarmed(() => { void installSteamGsiConfig('cs2') })
 
-  server.listen(STEAM_GSI_PORT, '127.0.0.1', () => {
+  server.listen(port, '127.0.0.1', () => {
     serverListening = true
     serverPortBlocked = false
-    log.info('[SteamGSI] Listening on 127.0.0.1:' + STEAM_GSI_PORT)
+    log.info('[SteamGSI] Listening on 127.0.0.1:' + port)
   })
   server.on('error', (err: NodeJS.ErrnoException) => {
     serverListening = false
@@ -76,6 +165,7 @@ export function startSteamGsiServer(): void {
       log.warn('[SteamGSI] Server error:', err)
     }
   })
+  return server
 }
 
 /** One GSI POST body (what the HTTP handler receives). Exported so tests can replay real sequences. */
@@ -89,6 +179,17 @@ export function ingestGsiBody(body: string, at: number = Date.now()): void {
   latestAt = at
   noteMatchLifecycle(payload, at)
   try { cs2GsiTracker.ingest(payload as Cs2GsiPayload, at) } catch { /* timeline only */ }
+}
+
+/** Close the server (tests / shutdown). */
+export function stopSteamGsiServer(): Promise<void> {
+  const s = server
+  server = null
+  serverListening = false
+  staleConfigNoticed = false
+  if (!s) return Promise.resolve()
+  s.closeAllConnections?.()
+  return new Promise((resolve) => s.close(() => resolve()))
 }
 
 export function isGsiServerReady(): boolean {
@@ -199,12 +300,21 @@ export const FULL_GSI_COMPONENTS = [
   'allplayers_position', 'bomb', 'grenades', 'phase_countdowns', 'map_round_wins',
 ] as const
 
-/** Normal cfg — keep byte-identical, or every user's CS2 would be asked to restart. */
-function normalGsiCfgContents(): string {
+function authBlock(token: string | null): string {
+  if (!token) return ''
+  return `    "auth"
+    {
+        "token" "${token}"
+    }
+`
+}
+
+/** Normal cfg — keep byte-identical per token, or every user's CS2 would be asked to restart. */
+function normalGsiCfgContents(token: string | null): string {
   return `"UpForge"
 {
     "uri" "http://127.0.0.1:${STEAM_GSI_PORT}"
-    "timeout" "5.0"
+${authBlock(token)}    "timeout" "5.0"
     "buffer"  "0.1"
     "throttle" "0.5"
     "heartbeat" "30.0"
@@ -222,13 +332,13 @@ function normalGsiCfgContents(): string {
 `
 }
 
-export function gsiCfgContents(full = false): string {
-  if (!full) return normalGsiCfgContents()
+export function gsiCfgContents(full = false, token: string | null = gsiAuthToken): string {
+  if (!full) return normalGsiCfgContents(token)
   const data = FULL_GSI_COMPONENTS.map((c) => `        "${c}" "1"`).join('\n')
   return `"UpForge"
 {
     "uri" "http://127.0.0.1:${STEAM_GSI_PORT}"
-    "timeout" "5.0"
+${authBlock(token)}    "timeout" "5.0"
     "buffer"  "0.1"
     "throttle" "0.2"
     "heartbeat" "5.0"
