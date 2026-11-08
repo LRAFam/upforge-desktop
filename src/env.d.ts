@@ -563,6 +563,17 @@ export interface ProfileData {
       remaining: number | null
       retention_days: number | null
       storage_bytes_used: number
+      /** API sends these names; count/limit/remaining are older ones. */
+      archived_count?: number
+      archived_limit?: number | null
+      archived_remaining?: number | null
+      /** How long Plus really keeps cloud videos (server config). Missing on older APIs. */
+      plus_retention?: {
+        tier?: string
+        name?: string
+        keep_days: number | null
+        keeps_while_subscribed: boolean
+      }
     }
     forge_rank?: ForgeRankInfo
   }
