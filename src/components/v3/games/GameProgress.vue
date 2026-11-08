@@ -24,6 +24,11 @@ import { fmtLolKda } from '../../../lib/lol-analyses'
 import { leagueDivisionName, rankForecast } from '../../../lib/ideas/rank-forecast'
 import { lolEarlyDeaths, lolRankSentence, lolRankSeries, lolTrendSentence, lolTrends, type LolEarlyDeathRow, type LolTrendMatch } from '../../../lib/lol-progress'
 import UfSkeleton from '../UfSkeleton.vue'
+import UfTabs from '../UfTabs.vue'
+import {
+  DEADLOCK_QUEUE_LABEL, deadlockMatchWon, deadlockQueueOf, deadlockQueueStats, deadlockQueueTabs, deadlockSeasonView,
+  defaultDeadlockQueue, filterDeadlockQueue, type DeadlockQueueTab,
+} from '../../../lib/deadlock-queues'
 import DeadlockReviewV3 from './DeadlockReviewV3.vue'
 import Cs2ResultV3 from './Cs2ResultV3.vue'
 import LolLoadoutStrip from './LolLoadoutStrip.vue'
@@ -57,9 +62,22 @@ function openLolReport(matchId: string) {
 }
 
 const setup = computed(() => gd.setup.value)
+// Deadlock: Ranked, Standard and Street Brawl are shown apart (Street Brawl is its own short mode).
+const dlMatches = computed(() => gd.deadlock.stats?.recent_matches ?? [])
+const dlQueueTabs = computed(() => deadlockQueueTabs(dlMatches.value))
+const dlQueuePick = ref<DeadlockQueueTab | null>(null)
+const dlQueue = computed<DeadlockQueueTab>(() => {
+  const pick = dlQueuePick.value
+  return pick && dlQueueTabs.value.some(t => t.key === pick) ? pick : defaultDeadlockQueue(dlMatches.value)
+})
+const dlQueueMatches = computed(() => filterDeadlockQueue(dlMatches.value, dlQueue.value))
+
 const stats = computed(() => {
   if (props.game === 'cs2') return cs2Stats(gd.cs2.profile, gd.cs2.faceit)
-  if (props.game === 'deadlock') return deadlockStats(gd.deadlock.stats)
+  if (props.game === 'deadlock') {
+    // Older API builds send no mode fields: keep the summary view (one "Other" queue only).
+    return dlQueueTabs.value.every(t => t.key === 'other') ? deadlockStats(gd.deadlock.stats) : deadlockQueueStats(dlMatches.value, dlQueue.value)
+  }
   return lolStats(lolSummary(gd.lol.matches))
 })
 const table = computed(() => {
@@ -71,7 +89,8 @@ const table = computed(() => {
   }
   if (props.game === 'deadlock') {
     const art = new Map((gd.deadlock.stats?.hero_stats ?? []).map(h => [h.hero_name, deadlockRowHeroArt(h)?.src ?? null]))
-    return { title: 'Heroes · win rate', head: 'Won', rows: deadlockHeroRows(gd.deadlock.stats).map(r => ({ ...r, icon: art.get(r.name) ?? getDeadlockHeroIconUrl(r.icon) })) }
+    // hero_stats is deadlock-api's all-time total over every mode, so say so.
+    return { title: 'Heroes · win rate, all modes', head: 'Won', rows: deadlockHeroRows(gd.deadlock.stats).map(r => ({ ...r, icon: art.get(r.name) ?? getDeadlockHeroIconUrl(r.icon) })) }
   }
   return { title: 'Champions · win rate', head: 'Won', rows: lolChampionRows(gd.lol.matches).map(r => ({ ...r, icon: championIconUrl(r.name) })) }
 })
@@ -79,10 +98,14 @@ const table = computed(() => {
 // Deadlock rank line: mmr_history, or the rank badge on recent matches when that is empty (dated when the API sends start_time).
 const W = 1100
 const H = 170
-const series = computed(() => (props.game === 'deadlock' ? deadlockRankSeries(gd.deadlock.stats?.mmr_history, gd.deadlock.stats?.recent_matches) : []))
+const allSeries = computed(() => (props.game === 'deadlock' ? deadlockRankSeries(gd.deadlock.stats?.mmr_history, gd.deadlock.stats?.recent_matches) : []))
+// A new ranked season moves every rank: draw this season only, or mark the reset (never call it a drop).
+const seasonView = computed(() => deadlockSeasonView(allSeries.value, gd.deadlock.stats?.ranked_season, rankSentence(allSeries.value)))
+const series = computed(() => seasonView.value.series)
 const points = computed(() => stepLine(series.value.map(p => p.score), W, H, 10))
-const rising = computed(() => series.value.length >= 2 && series.value[series.value.length - 1].score >= series.value[0].score)
-const sentence = computed(() => rankSentence(series.value))
+const lineColor = computed(() => (seasonView.value.tone === 'win' ? 'var(--uf-win)' : seasonView.value.tone === 'loss' ? 'var(--uf-loss)' : 'var(--uf-bone)'))
+const markerX = computed(() => (seasonView.value.markerAt == null ? null : points.value[seasonView.value.markerAt]?.x ?? null))
+const sentence = computed(() => seasonView.value.sentence)
 const rank = computed(() => {
   const r = gd.deadlock.stats?.current_rank
   if (props.game !== 'deadlock' || !r) return null
@@ -105,7 +128,9 @@ const lolEarly = computed(() => (props.game === 'lol' ? lolEarlyDeaths(gd.lol.an
 const faceit = computed(() => (props.game === 'cs2' && gd.cs2.faceit?.connected ? gd.cs2.faceit : null))
 const form = computed(() => {
   if (props.game === 'lol') return [...gd.lol.matches].slice(0, 20).reverse().map(m => ({ won: m.win }))
-  if (props.game === 'deadlock') return [...(gd.deadlock.stats?.recent_matches ?? [])].slice(0, 20).reverse().map(m => ({ won: m.match_result === 1 }))
+  if (props.game === 'deadlock') {
+    return [...dlQueueMatches.value].slice(0, 20).reverse().map(m => deadlockMatchWon(m)).filter((w): w is boolean => w !== null).map(won => ({ won }))
+  }
   // CS2: the API's recent list is already oldest first; matches without a known result are left out.
   if (props.game === 'cs2') return (gd.cs2.profile?.valve_stats.recent ?? []).filter(m => typeof m.won === 'boolean').map(m => ({ won: m.won as boolean }))
   return []
@@ -113,11 +138,12 @@ const form = computed(() => {
 // CS2 matches analysed from FACEIT or web demo uploads count even before this PC's demo folder is found:
 // show them, with the setup step as one line, instead of "Nothing to track yet".
 const cs2HasData = computed(() => props.game === 'cs2' && (gd.cs2.profile?.valve_stats.matches_tracked ?? 0) > 0)
-const deadlockRecent = computed(() => (gd.deadlock.stats?.recent_matches ?? []).slice(0, 6))
+const deadlockRecent = computed(() => dlQueueMatches.value.slice(0, 6))
 const deadlockRankCap = computed(() => deadlockRankCaption(gd.deadlock.stats?.current_rank))
 type DeadlockRecent = DeadlockProfileStats['recent_matches'][number]
 function deadlockMatchLine(m: DeadlockRecent): string {
-  return `K/D/A ${m.player_kills}/${m.player_deaths}/${m.player_assists} · ${fmtDeadlockNW(m.net_worth)} souls · ${fmtDeadlockDuration(m.match_duration_s)}`
+  const mode = dlQueue.value === 'all' ? `${DEADLOCK_QUEUE_LABEL[deadlockQueueOf(m)]} · ` : ''
+  return `${mode}K/D/A ${m.player_kills}/${m.player_deaths}/${m.player_assists} · ${fmtDeadlockNW(m.net_worth)} souls · ${fmtDeadlockDuration(m.match_duration_s)}`
 }
 function openDeadlockReport(matchId: number) {
   const path = matchReportPath('deadlock', String(matchId))
@@ -187,13 +213,15 @@ function openWeb() {
           <div class="gprog-chart">
             <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" role="img" :aria-label="sentence">
               <line v-for="p in points" :key="p.x" :x1="p.x" :x2="p.x" :y1="H" :y2="H - 4" stroke="var(--uf-line-2)" />
+              <line v-if="markerX != null" :x1="markerX" :x2="markerX" y1="0" :y2="H" stroke="var(--uf-muted)"
+                stroke-dasharray="6 5" stroke-width="2" vector-effect="non-scaling-stroke" />
               <polyline :points="points.map(p => `${p.x},${p.y}`).join(' ')" fill="none"
-                :stroke="rising ? 'var(--uf-win)' : 'var(--uf-loss)'" stroke-width="2.5" vector-effect="non-scaling-stroke" />
+                :stroke="lineColor" stroke-width="2.5" vector-effect="non-scaling-stroke" />
             </svg>
             <span class="gprog-chart-l uf-t4"><img v-if="firstIcon" :src="firstIcon" alt="" width="22" height="22">{{ series[0].label }}<template v-if="series[0].at"> · {{ formatRankDate(series[0].at) }}</template></span>
             <span class="gprog-chart-r uf-t4">{{ series[series.length - 1].label }} · {{ series[series.length - 1].at ? formatRankDate(series[series.length - 1].at) : 'now' }}</span>
           </div>
-          <span class="uf-t4">{{ series[0].at ? `${series.length} ranked matches, oldest on the left.` : `Last ${series.length} rank updates, oldest on the left.` }}</span>
+          <span class="uf-t4">{{ series[0].at ? `${series.length} ranked matches${seasonView.seasonOnly ? ' this season' : ''}, oldest on the left.` : `Last ${series.length} rank updates, oldest on the left.` }}<template v-if="markerX != null"> Dashed line: {{ gd.deadlock.stats?.ranked_season?.name ?? 'new season' }} reset.</template></span>
         </template>
         <p v-else class="uf-t2">Not enough rank history yet. Play ranked matches and your rank line starts here.</p>
       </section>
@@ -254,6 +282,8 @@ function openWeb() {
       <!-- Numbers -->
       <section class="gprog-block uf-rise uf-d2s">
         <span class="uf-label">Your matches</span>
+        <UfTabs v-if="game === 'deadlock' && dlQueueTabs.length > 1" size="filter" label="Queue" :items="dlQueueTabs"
+          :model-value="dlQueue" @update:model-value="k => (dlQueuePick = k as DeadlockQueueTab)" />
         <UfStatRow v-if="stats.length" :items="stats" />
         <LolRecentNotice v-else-if="lolRiotDown" :state="gd.lol.matchesError" :has-matches="false" :busy="gd.loading.value" @retry="gd.load(true)" />
         <p v-else class="uf-t2">{{ game === 'cs2'
@@ -289,11 +319,11 @@ function openWeb() {
           <template v-if="game === 'deadlock'">
             <span class="uf-label">Recent matches</span>
             <button v-for="m in deadlockRecent" :key="m.match_id" type="button" class="gprog-dl gprog-btn"
-              :disabled="!matchReportPath('deadlock', String(m.match_id))" :aria-label="`${m.hero_name}, ${m.match_result === 1 ? 'won' : 'lost'}: open the match report`"
+              :disabled="!matchReportPath('deadlock', String(m.match_id))" :aria-label="`${m.hero_name}, ${deadlockMatchWon(m) ? 'won' : 'lost'}: open the match report`"
               @click="openDeadlockReport(m.match_id)">
               <img v-if="deadlockRowHeroArt(m)" :src="deadlockRowHeroArt(m)!.src" alt="" width="32" height="40" :class="`is-${deadlockRowHeroArt(m)!.kind}`">
               <span class="gprog-dl-t">
-                <span class="uf-t3"><span :style="{ color: m.match_result === 1 ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ m.match_result === 1 ? 'Won' : 'Lost' }}</span> · {{ m.hero_name }}</span>
+                <span class="uf-t3"><span :style="{ color: deadlockMatchWon(m) ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ deadlockMatchWon(m) ? 'Won' : 'Lost' }}</span> · {{ m.hero_name }}</span>
                 <span class="uf-t4 uf-num">{{ deadlockMatchLine(m) }}</span>
               </span>
               <span class="uf-t4">Report →</span>
