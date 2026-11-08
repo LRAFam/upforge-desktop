@@ -1,18 +1,17 @@
 /**
  * In-app web shell — loads upforge.gg pages inside a dedicated BrowserWindow
- * with the desktop Sanctum token injected as the web auth_token cookie.
+ * with its own web-shell Sanctum token (see web-shell-session.ts) as the web auth_token cookie.
  */
 
+import { WEB_SHELL_PARTITION, applyWebShellCookie, noteShellApiResponse } from './web-shell-session'
+import { getApiBaseUrl } from './api-base'
 import { BrowserWindow, Menu, shell, session } from 'electron'
 import { AuthManager } from './auth-manager'
 import { getFrontendBaseUrl } from './api-base'
 import { isSafeExternalUrl } from './renderer-trust'
 
 let shellWindow: BrowserWindow | null = null
-
-function encodeAuthCookie(token: string): string {
-  return 'b64.' + Buffer.from(token, 'utf8').toString('base64')
-}
+let watchingShellApi = false
 
 function allowedHost(hostname: string, frontendOrigin: string): boolean {
   try {
@@ -49,24 +48,18 @@ export function openExternalFromShell(
 }
 
 async function injectAuthCookie(auth: AuthManager, frontendBase: string): Promise<boolean> {
-  const token = auth.getToken()
-  if (!token) return false
-
-  const ses = session.fromPartition('persist:upforge-web')
-  const url = frontendBase.replace(/\/$/, '')
-  const secure = url.startsWith('https://')
-
-  await ses.cookies.set({
-    url,
-    name: 'auth_token',
-    value: encodeAuthCookie(token),
-    path: '/',
-    secure,
-    httpOnly: false,
-    sameSite: 'lax',
-    expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30,
-  })
-
+  // The shell gets its OWN web-shell token, never the desktop token (a website logout deletes the
+  // token it holds). Its API replies are watched so a 401 re-mints on the next open.
+  if (!auth.getToken()) return false
+  if (!watchingShellApi) {
+    watchingShellApi = true
+    session.fromPartition(WEB_SHELL_PARTITION).webRequest.onCompleted(
+      { urls: [`${getApiBaseUrl()}/*`] },
+      (details) => noteShellApiResponse(details.statusCode),
+    )
+  }
+  // Signed out on failure (logged there): the page still opens, just without a session.
+  await applyWebShellCookie(auth, frontendBase)
   return true
 }
 
