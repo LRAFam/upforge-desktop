@@ -1389,6 +1389,9 @@ declare global {
           cloudBackedBytes: number
           orphanCount: number
           orphanBytes: number
+          orphanScheduledCount: number
+          orphanScheduledBytes: number
+          orphanDeleteAt: number | null
           legacyDuplicateBytes: number
         }>
         purgeCloudBacked: () => Promise<{ freedBytes: number; removed: number; skipped: number }>

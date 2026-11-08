@@ -261,6 +261,7 @@ import {
 } from './disk-space'
 import { isLocalOnlyRecording, runRecordingStorageMaintenance } from './storage-cleanup'
 import { expiryNotificationBody, localExpiryDeleteAt } from './recording-expiry'
+import { untrackedNotificationBody } from './untracked-recording-grace'
 import { setupStorageHandlers } from './ipc/storage-ipc'
 import { setupValorantRankHandlers } from './ipc/valorant-rank-ipc'
 import type { ValorantRankService } from './valorant-rank'
@@ -1788,6 +1789,17 @@ function runStorageMaintenanceIfReady(notify = false): void {
       onClick: () => focusMainWindow(),
     })
     notifyRecordingsUpdated()
+  }
+  if (maintenance.untrackedWarnings.length > 0) {
+    const body = untrackedNotificationBody(maintenance.untrackedWarnings)
+    log.info(`[App] Untracked recording warning: ${body}`)
+    logActivity(body)
+    showAppNotification({
+      title: 'UpForge — Untracked recordings',
+      body,
+      deferWhileRecording: true,
+      onClick: () => focusMainWindow(),
+    })
   }
   if (maintenance.freedBytes > 0) {
     log.info(

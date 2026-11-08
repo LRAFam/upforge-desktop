@@ -4,6 +4,7 @@ import {
   defaultLolPlatform,
   defaultValorantRegion,
   localStorageLine,
+  untrackedCountdownLine,
   regionFromTimeZone,
   shortcutKeyParts,
   showPurchasedReports,
@@ -98,5 +99,19 @@ describe('crosshair editor', () => {
   it('covers dot, inner and outer lines with the classic ranges', () => {
     expect(CROSSHAIR_GROUPS.map(g => g.show)).toEqual(['dotShow', 'innerShow', 'outerShow'])
     expect(CROSSHAIR_GROUPS[1].sliders.find(s => s.key === 'innerLength')).toMatchObject({ min: 0, max: 30, step: 1 })
+  })
+})
+
+describe('untrackedCountdownLine', () => {
+  const fmt = (n: number) => `${n} B`
+  const now = Date.UTC(2026, 10, 8)
+  it('counts down the days before untracked files are auto-deleted', () => {
+    expect(untrackedCountdownLine({ orphanScheduledCount: 2, orphanScheduledBytes: 10, orphanDeleteAt: now + 5 * 86_400_000 }, fmt, now))
+      .toBe('2 untracked files (10 B) will be deleted in 5 days by auto-delete. Move them out of the recordings folder to keep them.')
+    expect(untrackedCountdownLine({ orphanScheduledCount: 1, orphanScheduledBytes: 3, orphanDeleteAt: now + 3_600_000 }, fmt, now))
+      .toMatch(/^1 untracked file \(3 B\) will be deleted within a day/)
+  })
+  it('is empty when nothing is scheduled', () => {
+    expect(untrackedCountdownLine({ orphanScheduledCount: 0, orphanScheduledBytes: 0, orphanDeleteAt: null }, fmt, now)).toBe('')
   })
 })
