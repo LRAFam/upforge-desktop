@@ -51,6 +51,7 @@ import { applyMenuWatchTick } from './menu-watch'
 import { parseRiotMatchHistory, type RiotMatchHistoryEntry } from './riot-match-history'
 import { downloadReplay, type ReplayDownloadResult } from './valorant-replay-download'
 import type { RecentMatchFetchResult } from './recent-match-export'
+import { RIOT_WS_SUBSCRIBE_EVENTS, WsFrameReader, isRelevantRiotWsPayload } from './riot-ws-frames'
 export type {
   GameEvent,
   KillEvent,
@@ -565,6 +566,9 @@ export class RiotLocalApi {
   // WEBSOCKET (match-end signal + matchId detection)
   // ──────────────────────────────────────────────────────────────────────
 
+  /** Frames JSON-parsed since construction (tests / diagnostics). */
+  private _wsParsedFrames = 0
+
   private _disconnectWebSocket(): void {
     this.wsGeneration++
     if (this.wsReconnectTimer) clearTimeout(this.wsReconnectTimer)
@@ -594,40 +598,25 @@ export class RiotLocalApi {
     )
 
     this.wsSocket = socket
-    let wsBuffer = Buffer.alloc(0)
+    const reader = new WsFrameReader()
     let handshakeDone = false
 
     socket.on('data', (chunk: Buffer) => {
       if (generation !== this.wsGeneration || socket !== this.wsSocket) return
-      wsBuffer = Buffer.concat([wsBuffer, chunk])
+      reader.push(chunk)
       if (!handshakeDone) {
-        const headerEnd = wsBuffer.indexOf('\r\n\r\n')
-        if (headerEnd === -1) return
+        if (!reader.takeHandshake()) return
         handshakeDone = true
-        this._wsSend(socket, JSON.stringify([5, 'OnJsonApiEvent']))
-        wsBuffer = wsBuffer.slice(headerEnd + 4)
+        // Only the Riot Messaging Service events _handleWsEvent uses — not every client event.
+        for (const event of RIOT_WS_SUBSCRIBE_EVENTS) this._wsSend(socket, JSON.stringify([5, event]))
       }
       // Parse RFC 6455 frames (server->client, no masking)
-      while (wsBuffer.length >= 2) {
-        const b1 = wsBuffer[0]
-        const b2 = wsBuffer[1]
-        const opcode = b1 & 0x0f
-        if (opcode === 8) break // close
-        let payloadLen = b2 & 0x7f
-        let offset = 2
-        if (payloadLen === 126) {
-          if (wsBuffer.length < 4) break
-          payloadLen = wsBuffer.readUInt16BE(2); offset = 4
-        } else if (payloadLen === 127) {
-          if (wsBuffer.length < 10) break
-          payloadLen = Number(wsBuffer.readBigUInt64BE(2)); offset = 10
-        }
-        if (wsBuffer.length < offset + payloadLen) break
-        const payload = wsBuffer.slice(offset, offset + payloadLen).toString('utf8')
-        wsBuffer = wsBuffer.slice(offset + payloadLen)
-        if (!payload) continue
+      for (let frame = reader.next(); frame; frame = reader.next()) {
+        if (frame.opcode === 8) break // close
+        if (!frame.payload.length || !isRelevantRiotWsPayload(frame.payload)) continue
+        this._wsParsedFrames++
         try {
-          const msg = JSON.parse(payload) as unknown[]
+          const msg = JSON.parse(frame.payload.toString('utf8')) as unknown[]
           if (Array.isArray(msg) && msg[0] === 8) this._handleWsEvent(msg[2] as Record<string, unknown>)
         } catch { /* ignore malformed frames */ }
       }
