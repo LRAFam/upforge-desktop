@@ -63,12 +63,14 @@ describe('support activity store', () => {
       await settle()
     }
     await vi.advanceTimersByTimeAsync(SUPPORT_ACTIVITY_FLUSH_MS)
-    await settle()
+    // Writes are serialised and use the real fs threadpool; on slow CI runners the last
+    // flush can still be queued behind an earlier write after a fixed number of ticks.
+    // Wait for it to land (vi.waitFor uses real timers) instead of guessing.
+    await vi.waitFor(() => expect(readSupportActivity(dir).at(-1)?.message).toBe('tick 59500'), { timeout: 5000, interval: 20 })
     expect(writes.length).toBeLessThanOrEqual(60_000 / SUPPORT_ACTIVITY_FLUSH_MS + 1)
     expect(writes.length).toBeGreaterThan(0)
     const saved = readSupportActivity(dir)
     expect(saved[0]?.message).toBe('previous session')
-    expect(saved.at(-1)?.message).toBe('tick 59500')
     expect(saved).toHaveLength(121)
   })
 
