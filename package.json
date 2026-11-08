@@ -61,7 +61,6 @@
     "autoprefixer": "^10.4.17",
     "electron": "^35.0.0",
     "electron-builder": "^26.0.0",
-    "electron-rebuild": "^3.2.9",
     "electron-vite": "^3.1.0",
     "eslint": "^8.56.0",
     "eslint-plugin-vue": "^9.20.0",

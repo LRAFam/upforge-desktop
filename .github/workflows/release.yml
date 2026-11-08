@@ -65,10 +65,10 @@ jobs:
           Write-Host "Trainer binary downloaded: $size bytes"
           if ($size -lt 1MB) { throw "Trainer binary too small — download likely failed" }
 
-      - name: Rebuild native modules for Electron
-        run: npx electron-rebuild -f -w keytar
-        env:
-          npm_config_msvs_version: "2022"
+      # No separate native rebuild step: the app has no keytar (tokens use Electron safeStorage),
+      # demoparser2 ships N-API prebuilds, and electron-builder rebuilds any native production
+      # deps for the Electron ABI itself (npmRebuild, default on). Guarded by
+      # electron/main/native-module-build.test.ts.
 
       # ── Windows code signing (release tags only) ───────────────────────────
       # Provider is chosen with the repo variable WIN_SIGNING_PROVIDER
