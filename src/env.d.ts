@@ -383,6 +383,8 @@ export interface PendingRecording {
   hasLocalFile?: boolean
   /** Present on recordings:get — full VOD uploaded to S3. */
   cloudUploaded?: boolean
+  /** Present on recordings:get / list-all — when auto-delete removes this local-only recording (warned first), else null. */
+  localExpiresAt?: number | null
   analysisReadiness?: {
     ready: boolean
     state: 'ready' | 'syncing' | 'waiting_match_data' | 'no_deaths' | 'unavailable' | 'file_missing' | 'finalizing' | 'mode_unsupported' | 'file_unreadable'

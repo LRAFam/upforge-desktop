@@ -259,7 +259,8 @@ import {
   formatFreeDiskLabel,
   getFreeDiskSpace,
 } from './disk-space'
-import { runRecordingStorageMaintenance } from './storage-cleanup'
+import { isLocalOnlyRecording, runRecordingStorageMaintenance } from './storage-cleanup'
+import { expiryNotificationBody, localExpiryDeleteAt } from './recording-expiry'
 import { setupStorageHandlers } from './ipc/storage-ipc'
 import { setupValorantRankHandlers } from './ipc/valorant-rank-ipc'
 import type { ValorantRankService } from './valorant-rank'
@@ -1762,6 +1763,12 @@ function clearAccountScopedRuntimeState(): void {
   lastMatchDiagnostic = null
 }
 
+/** When auto-delete will remove this local-only recording (shown as "Deletes in N days"), or null. */
+function rowLocalExpiresAt(rec: PendingRecording): number | null {
+  if (!settingsManager || rec.savedOffline || rec.productionFixture || !isLocalOnlyRecording(rec)) return null
+  return localExpiryDeleteAt(rec, settingsManager.get().recordingRetentionDays)
+}
+
 function runStorageMaintenanceIfReady(notify = false): void {
   if (!recordingsStore || !settingsManager) return
   const maintenance = runRecordingStorageMaintenance({
@@ -1770,6 +1777,19 @@ function runStorageMaintenanceIfReady(notify = false): void {
     recordingRetentionDays: settingsManager.get().recordingRetentionDays,
     linkedRiot: linkedRiotFromAuth(),
   })
+  if (maintenance.expiryWarnings.length > 0) {
+    const soonest = Math.min(...maintenance.expiryWarnings.map(w => w.deleteAt))
+    const body = expiryNotificationBody(maintenance.expiryWarnings.length, soonest)
+    log.info(`[App] Local recording expiry warning: ${body}`)
+    logActivity(body)
+    showAppNotification({
+      title: 'UpForge — Recordings expiring',
+      body,
+      deferWhileRecording: true,
+      onClick: () => focusMainWindow(),
+    })
+    notifyRecordingsUpdated()
+  }
   if (maintenance.freedBytes > 0) {
     log.info(
       `[App] Storage maintenance freed ${(maintenance.freedBytes / (1024 ** 3)).toFixed(2)} GB`,
@@ -7958,6 +7978,7 @@ async function startApp(): Promise<void> {
       timeline: rowTimelineSummary(rec),
       hasLocalFile: Boolean(rec.path && fs.existsSync(rec.path)),
       cloudUploaded: Boolean(rec.jobId || rec.analysisId || rec.archiveId),
+      localExpiresAt: rowLocalExpiresAt(rec),
     }))
   })
 
@@ -7989,6 +8010,7 @@ async function startApp(): Promise<void> {
       timeline: rowTimelineSummary(rec),
       hasLocalFile: Boolean(rec.path && fs.existsSync(rec.path)),
       cloudUploaded: Boolean(rec.jobId || rec.analysisId || rec.archiveId),
+      localExpiresAt: rowLocalExpiresAt(rec),
       ...(opts?.allAccounts === true ? { riotAccountRole: riotAccountRole(rec, linkedAccounts, linkedLolAccounts) } : {}),
     }))
   })

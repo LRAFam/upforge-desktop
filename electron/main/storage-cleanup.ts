@@ -15,6 +15,7 @@ import {
 } from './user-data-paths'
 import { MIN_RECORDING_FILE_BYTES } from './recording-limits'
 import { getFreeDiskSpace } from './disk-space'
+import { planRecordingExpiry, type ExpiryWarningStage } from './recording-expiry'
 
 export interface StorageBreakdown {
   pendingCount: number
@@ -45,6 +46,8 @@ export interface StorageMaintenanceResult {
   legacyDuplicatesRemoved: number
   catalogEvicted: number
   freedBytes: number
+  /** Local-only recordings warned this run — the caller shows the desktop notification. */
+  expiryWarnings: RecordingExpiryWarning[]
 }
 
 function fileSizeBytes(filePath: string): number {
@@ -310,20 +313,40 @@ export function purgeUntrackedRecordingFiles(
   return { removed, freedBytes }
 }
 
+export interface RecordingExpiryWarning {
+  id: string
+  stage: ExpiryWarningStage
+  deleteAt: number
+}
+
+/**
+ * Expire local-only recordings past `days` — never silently. Each one is warned
+ * first (persisted on the row, returned for the caller to notify); deletion only
+ * happens on a later run after the notice period. Demo-blocked, failed-upload and
+ * in-flight recordings are kept.
+ */
 export function prunePendingRecordingsByAge(
   store: RecordingsStore,
   days: number,
   linkedRiot: LinkedRiotId | null,
-): { removed: number; freedBytes: number } {
-  if (days <= 0) return { removed: 0, freedBytes: 0 }
+  now = Date.now(),
+): { removed: number; freedBytes: number; warnings: RecordingExpiryWarning[] } {
+  const warnings: RecordingExpiryWarning[] = []
+  if (days <= 0) return { removed: 0, freedBytes: 0, warnings }
 
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
   let removed = 0
   let freedBytes = 0
 
   for (const rec of store.getPending(linkedRiot)) {
     if (!isLocalOnlyRecording(rec) || rec.savedOffline) continue
-    if (rec.recordedAt >= cutoff) continue
+    const plan = planRecordingExpiry(rec, days, now)
+    if (plan.action === 'warn') {
+      store.markExpiryWarned(rec.id, plan.stage, now)
+      warnings.push({ id: rec.id, stage: plan.stage, deleteAt: plan.deleteAt })
+      continue
+    }
+    if (plan.action !== 'delete') continue
+
     if (!fs.existsSync(rec.path)) {
       store.remove(rec.id)
       removed++
@@ -334,15 +357,14 @@ export function prunePendingRecordingsByAge(
       freedBytes += deleteLocalRecordingFiles(rec.path)
       store.remove(rec.id)
       removed++
-      log.info(`[StorageCleanup] Pruned aged pending recording: ${rec.path}`)
+      log.info(`[StorageCleanup] Deleted expired local recording after warning: ${rec.path}`)
     } catch (err) {
       log.warn(`[StorageCleanup] Failed to prune pending ${rec.path}:`, err)
     }
   }
 
-  return { removed, freedBytes }
+  return { removed, freedBytes, warnings }
 }
-
 
 export function runRecordingStorageMaintenance(opts: {
   store: RecordingsStore
@@ -369,6 +391,7 @@ export function runRecordingStorageMaintenance(opts: {
     legacyDuplicatesRemoved: legacy.removed,
     catalogEvicted: 0,
     freedBytes,
+    expiryWarnings: pending.warnings,
   }
 
   const totalRemoved =

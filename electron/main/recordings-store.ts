@@ -72,6 +72,10 @@ export interface PendingRecording {
   lastAnalysisFailureDiagnostics?: Record<string, unknown> | null
   /** When we last showed an OS notification for this recording's analysis failure. */
   analysisFailureNotifiedAt?: number
+  /** First "will be deleted soon" warning for a local-only recording (auto-delete needs this). */
+  expiryWarnedAt?: number
+  /** Last-day "will be deleted" warning. */
+  expiryFinalWarnedAt?: number
   /** Upload queued but paused while OBS is recording. */
   pipelineDeferReason?: PipelineDeferReason | null
   /** True when an in-flight upload is archive-only (no analysis quota). */
@@ -470,6 +474,18 @@ export class RecordingsStore {
     rec.lastAnalysisFailureDiagnostics = meta?.failureDiagnostics ?? null
     rec.analysisFailureNotifiedAt = undefined
     // Keep jobId — cloud upload succeeded; needed for retry and support diagnostics.
+    this.persist()
+  }
+
+  markExpiryWarned(id: string, stage: 'first' | 'final', at = Date.now()): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return
+    if (stage === 'first') {
+      rec.expiryWarnedAt = at
+      rec.expiryFinalWarnedAt = undefined
+    } else {
+      rec.expiryFinalWarnedAt = at
+    }
     this.persist()
   }
 
