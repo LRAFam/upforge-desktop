@@ -40,6 +40,14 @@ export function storageLine(status: string, hasLocalFile: boolean, inCloud: bool
   return parts.filter(p => p.toLowerCase() !== s).join(' · ')
 }
 
+/** "Deletes from this PC in 3 days" for a local-only recording auto-delete will remove, or null. */
+export function localExpiryLine(localExpiresAt: number | null | undefined, now = Date.now()): string | null {
+  if (!localExpiresAt) return null
+  const days = Math.ceil((localExpiresAt - now) / (24 * 60 * 60 * 1000))
+  if (days <= 1) return 'Deletes from this PC within a day'
+  return `Deletes from this PC in ${days} days`
+}
+
 /** "Just now", "12m ago", "3h ago", "2d ago", then a short date. */
 export function relativeTime(ms: number, now = Date.now()): string {
   if (!ms) return ''

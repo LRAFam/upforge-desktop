@@ -15,7 +15,7 @@ import UfButton from '../UfButton.vue'
 import { deadlockRecordingHero, loadDeadlockHeroesOnce } from '../../../lib/deadlock-hero-names'
 import { deadlockReviewState } from './deadlock-review-row'
 import { gameLogo } from './game-logo'
-import { matchRowSummary, rowCloudAction, rowOpenAction, storageLine } from './match-row'
+import { localExpiryLine, matchRowSummary, rowCloudAction, rowOpenAction, storageLine } from './match-row'
 import { useReadyAnalyses } from '../../../composables/useReadyAnalyses'
 import { parseRetention, retentionLine } from '../../../lib/cloud-retention'
 import { useCloudRetention } from '../../../composables/useCloudRetention'
@@ -61,6 +61,8 @@ const storage = computed(() => storageLine(status.value, !!props.rec.hasLocalFil
 /** One status line ("Analysed · Cloud") so every row has the same height and baseline. */
 const statusText = computed(() => unavailable.value || [status.value, storage.value].filter(Boolean).join(' · '))
 const ufScore = computed(() => matchScore(props.analysis))
+/** Local-only recording that auto-delete will remove soon (warned by desktop notification too). */
+const expiryText = computed(() => localExpiryLine(props.rec.localExpiresAt))
 /** CS2: ADR / KAST from the demo on hover (the column only fits K/D/A). */
 const rowStatsTitle = computed(() => (props.analysis ? cs2StatItems(props.analysis).map(i => `${i.value} ${i.label}`).join(' · ') : ''))
 const mapLabel = computed(() => matchMapLabel(props.rec.game, props.rec.map))
@@ -158,7 +160,7 @@ async function startReview() {
       <span class="uf-t4 uf-trunc" :style="{ color: unavailable ? 'var(--uf-loss)' : 'var(--uf-muted)' }" :title="statusText">{{ statusText }}</span>
       <span v-if="hint" class="uf-t4 uf-trunc" style="color: var(--uf-gold)" :title="hint">{{ hint }}</span>
       <button v-else-if="cloudAction?.kind === 'keep'" type="button" class="uf-link uf-t4 uf-trunc uf-cloud" :class="{ 'is-warn': cloudAction.warn }" :title="cloudAction.detail ?? 'Keep it in the cloud or download a copy'" @click.stop="keepInCloud">{{ cloudAction.text }}</button>
-      <button v-else-if="cloudAction?.kind === 'save'" type="button" class="uf-link uf-t4 uf-trunc uf-cloud" :disabled="saving || busy" @click.stop="saveToCloud">{{ saving ? 'Saving to cloud…' : cloudAction.text }}</button>
+      <button v-else-if="cloudAction?.kind === 'save'" type="button" class="uf-link uf-t4 uf-trunc uf-cloud" :class="{ 'is-warn': !!expiryText }" :title="expiryText ? `${expiryText} — save to cloud or analyse to keep it. Change auto-delete in Settings → Recording.` : undefined" :disabled="saving || busy" @click.stop="saveToCloud">{{ saving ? 'Saving to cloud…' : expiryText ? `${expiryText} · Save to cloud` : cloudAction.text }}</button>
       <span v-else-if="cloudAction?.kind === 'removed'" class="uf-t4 uf-trunc" style="color: var(--uf-faint)">{{ cloudAction.text }}</span>
     </div>
     <div v-if="!selecting" class="uf-actions" @click.stop>
