@@ -80,6 +80,8 @@ export interface MatchReportView {
   positive: string | null
   /** True when the coach notes were left out because today's free notes are used up. */
   notesCapped: boolean
+  /** True when a coach note (AI headline) is on this report. */
+  hasCoachNote?: boolean
   facts: FactRow[]
   focusCheck: { label: string; hit: boolean } | null
   nextSteps: NextStep[]
@@ -179,6 +181,7 @@ export function matchReportView(res: MatchReportResponse): MatchReportView {
     subline: notes?.subline?.text ?? null,
     positive: notes?.positive?.text ?? null,
     notesCapped: !notes?.headline?.text && !!usage && usage.used >= usage.limit,
+    hasCoachNote: !!notes?.headline?.text,
     facts: matchReportFactRows(facts),
     focusCheck: res.focus_check && focus ? { label: focus.label, hit: res.focus_check.hit } : null,
     nextSteps: nextSteps.slice(0, 3),
