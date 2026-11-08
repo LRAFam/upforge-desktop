@@ -836,7 +836,7 @@
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
         </svg>
         <!-- analysing pulse -->
-        <svg v-else-if="demoStatus.status === 'analysing'" class="w-3 h-3 text-cyan-400 flex-shrink-0 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+        <svg v-else-if="demoStatus.status === 'analysing' || demoStatus.status === 'still_analysing'" class="w-3 h-3 text-cyan-400 flex-shrink-0 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
           <circle cx="12" cy="12" r="10"/>
         </svg>
         <!-- complete check -->
@@ -851,6 +851,7 @@
         <span v-if="demoStatus.status === 'uploading'" class="text-xs text-cyan-300/80">Replay uploading… {{ demoProgress }}%</span>
         <span v-else-if="demoStatus.status === 'downloading' || demoStatus.status === 'gc_lookup'" class="text-xs text-cyan-300/80">{{ demoDownloadLabel }}</span>
         <span v-else-if="demoStatus.status === 'analysing'" class="text-xs text-cyan-300/80">Replay analysing…</span>
+        <span v-else-if="demoStatus.status === 'still_analysing'" class="text-xs text-cyan-300/80">Still analysing. The result shows on the match when it’s ready.</span>
         <span v-else-if="demoStatus.status === 'complete'" class="text-xs text-cyan-300/80">Replay analysis ready</span>
         <span v-else-if="demoStatus.status === 'not-found'" class="text-xs text-cyan-700/80">Demo not found yet</span>
         <span v-else-if="demoStatus.status === 'error'" class="text-xs text-cyan-700/80">Replay upload failed</span>
