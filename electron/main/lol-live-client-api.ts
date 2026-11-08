@@ -383,6 +383,34 @@ export function buildMatchDataFromLolSnapshot(
   }
 }
 
+/** Subset of /liveclientdata/gamestats — a few hundred bytes vs allgamedata's full roster/events. */
+export interface LolLiveGameStats {
+  gameMode?: string
+  gameTime?: number
+  mapName?: string
+}
+
+function probeFromSnapshot(data: LolAllGameData): LolActiveMatchProbe {
+  return {
+    inMatch: isLolLiveMatchActive(data),
+    gameMode: normalizeLolGameMode(data.gameData?.gameMode),
+    mapName: data.gameData?.mapName ?? null,
+    gameTime: data.gameData?.gameTime ?? 0,
+  }
+}
+
+/** Liveness from gamestats: the game clock is running. (No roster/events — see probeLiveness.) */
+export function probeFromGameStats(stats: LolLiveGameStats): LolActiveMatchProbe {
+  const time = stats.gameTime
+  const gameTime = typeof time === 'number' && Number.isFinite(time) ? time : 0
+  return {
+    inMatch: gameTime > 0,
+    gameMode: normalizeLolGameMode(stats.gameMode),
+    mapName: stats.mapName ?? null,
+    gameTime,
+  }
+}
+
 /** Exported for unit tests — detect whether snapshot represents an active game. */
 export function isLolLiveMatchActive(data: LolAllGameData | null | undefined): boolean {
   if (!data?.gameData) return false
@@ -436,6 +464,8 @@ export class LoLLiveClientApi {
   private _seenLive = false
   private _missedPolls = 0
   private _lastSnapshot: LolAllGameData | null = null
+  /** Latest poller result (null data = poll failed) — probes reuse it instead of refetching. */
+  private _lastPoll: { data: LolAllGameData | null; at: number } | null = null
   private _recordingStartTime = Date.now()
   private _matchStartTime: number | null = null
   private _gameplayStartTime: number | null = null
@@ -450,15 +480,41 @@ export class LoLLiveClientApi {
     }
   }
 
-  async probeActiveMatch(): Promise<LolActiveMatchProbe | null> {
-    const data = await this.fetchAllGameData()
-    if (!data) return null
-    return {
-      inMatch: isLolLiveMatchActive(data),
-      gameMode: normalizeLolGameMode(data.gameData?.gameMode),
-      mapName: data.gameData?.mapName ?? null,
-      gameTime: data.gameData?.gameTime ?? 0,
+  async fetchGameStats(): Promise<LolLiveGameStats | null> {
+    try {
+      return await liveGet<LolLiveGameStats>('/liveclientdata/gamestats')
+    } catch {
+      return null
     }
+  }
+
+  /** Poller's latest result while a match is being tracked (≤ one poll interval old). */
+  private _polledResult(): { data: LolAllGameData | null } | null {
+    return this._active && this._lastPoll ? this._lastPoll : null
+  }
+
+  /**
+   * Full live-match probe (roster + GameEnd aware) — used to start recording.
+   * While the poller runs it reuses the poller's last snapshot instead of refetching.
+   */
+  async probeActiveMatch(): Promise<LolActiveMatchProbe | null> {
+    const polled = this._polledResult()
+    const data = polled ? polled.data : await this.fetchAllGameData()
+    if (!data) return null
+    return probeFromSnapshot(data)
+  }
+
+  /**
+   * Cheap liveness for the 2 s background match probe. Reuses the poller snapshot while
+   * tracking; otherwise reads /liveclientdata/gamestats instead of the full allgamedata.
+   * Without events it stays inMatch on the post-game screen until the client closes,
+   * which only holds background work slightly longer (never starts a recording).
+   */
+  async probeLiveness(): Promise<LolActiveMatchProbe | null> {
+    const polled = this._polledResult()
+    if (polled) return polled.data ? probeFromSnapshot(polled.data) : null
+    const stats = await this.fetchGameStats()
+    return stats ? probeFromGameStats(stats) : null
   }
 
   getLiveMatchContext(): LolLiveMatchContext | null {
@@ -486,6 +542,7 @@ export class LoLLiveClientApi {
     this._seenLive = false
     this._missedPolls = 0
     this._lastSnapshot = null
+    this._lastPoll = null
     this._matchStartTime = matchStartTime ?? Date.now()
     this._gameplayStartTime = this._matchStartTime
     this._gameClockZeroEpoch = null
@@ -533,6 +590,7 @@ export class LoLLiveClientApi {
     const generation = this._generation
     const data = await this.fetchAllGameData()
     if (!this._active || generation !== this._generation) return
+    this._lastPoll = { data, at: Date.now() }
     if (!data) {
       if (this._seenLive) {
         this._missedPolls++
