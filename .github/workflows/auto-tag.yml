@@ -1,17 +1,22 @@
 name: Auto Tag Release
 
-# Triggered on every push to main.
-# Reads package.json version — if that tag doesn't exist yet, creates it.
-# The new tag then triggers the Build Installers workflow to publish the release.
-# Workflow: bump version in package.json → push → tag auto-created → release builds.
+# Runs only after the CI workflow (ci.yml: type-check + unit tests on Linux and
+# Windows) finishes SUCCESSFULLY for a push to main. A red build never gets tagged,
+# so it can never auto-update to users.
+# Reads package.json version at the CI-tested commit — if that tag doesn't exist
+# yet, creates it on that exact commit and dispatches the Build Installers workflow.
+# Workflow: bump version in package.json → push → CI green → tag auto-created → release builds.
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches:
       - main
 
 jobs:
   auto-tag:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -19,6 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}  # the commit CI tested, not latest main
           fetch-depth: 0  # need full history to check existing tags
 
       - name: Read version from package.json
@@ -41,7 +47,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${{ steps.pkg.outputs.version }}"
+          git tag "${{ steps.pkg.outputs.version }}" "${{ github.event.workflow_run.head_sha }}"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "${{ steps.pkg.outputs.version }}"
           echo "✅ Created tag ${{ steps.pkg.outputs.version }}"
 
