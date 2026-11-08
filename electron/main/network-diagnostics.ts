@@ -13,6 +13,7 @@ import {
   type SupportLastMatchSnapshot,
   type SupportLolProbeSnapshot,
 } from './support-diagnostics'
+import { getApiBaseUrl } from './api-base'
 
 export { riotPdHostname } from './riot-pd-shard'
 export type { SupportDemoSnapshot, SupportLastMatchSnapshot, SupportLolProbeSnapshot }
@@ -130,7 +131,7 @@ export async function probeHost(hostname: string, role: HostRole): Promise<HostP
 export async function runNetworkDiagnostics(
   opts: RunNetworkDiagnosticsOptions,
 ): Promise<NetworkDiagnosticsSnapshot> {
-  const apiBase = opts.apiBase || process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+  const apiBase = opts.apiBase || getApiBaseUrl()
   const region = opts.region ?? null
   const hosts: HostProbe[] = []
 

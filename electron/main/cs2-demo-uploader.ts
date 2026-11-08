@@ -3,6 +3,7 @@ import http from 'http'
 import https from 'https'
 import path from 'path'
 import { AuthManager } from './auth-manager'
+import { getApiBaseUrl } from './api-base'
 
 export interface CS2DemoUploadOptions {
   demoPath: string
@@ -24,7 +25,7 @@ export class CS2DemoUploader {
    *   3. POST /api/cs2/demo/confirm  → confirm upload and start analysis
    */
   async upload(opts: CS2DemoUploadOptions): Promise<CS2DemoUploadResult> {
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
@@ -61,7 +62,7 @@ export class CS2DemoUploader {
 
   /** Poll the analysis status for a given job. */
   async pollStatus(jobId: string): Promise<{ status: string; error?: string | null }> {
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 

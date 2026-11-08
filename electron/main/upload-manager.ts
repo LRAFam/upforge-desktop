@@ -23,6 +23,7 @@ import {
   writeMultipartState,
   type MultipartResumeState,
 } from './multipart-upload-state'
+import { getApiBaseUrl } from './api-base'
 
 export interface UploadOptions {
   videoPath: string
@@ -334,7 +335,7 @@ export class UploadManager {
     timeline?: MatchData | null,
     coachingExtras?: CoachingSubmissionExtras,
   ): Promise<UploadResult> {
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
@@ -362,7 +363,7 @@ export class UploadManager {
 
   /** Re-queue analysis for a failed desktop submission (VOD already on S3). */
   async retrySubmission(jobId: string): Promise<void> {
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
@@ -402,7 +403,7 @@ export class UploadManager {
   private async _doUploadOnce(opts: UploadOptions, fullAttempt: number): Promise<UploadResult> {
     const generation = this._abortGeneration
     await backgroundWork.wait(() => this._checkCancelled(generation))
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
@@ -527,7 +528,7 @@ export class UploadManager {
   private async _doArchiveUpload(opts: UploadOptions): Promise<ArchiveUploadResult> {
     const generation = this._abortGeneration
     await backgroundWork.wait(() => this._checkCancelled(generation))
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
@@ -609,7 +610,7 @@ export class UploadManager {
     const match_data = prepareMatchDataForUpload(timeline, coachingExtras)
     if (!match_data) return
 
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const ctx = submissionContextFromTimeline(timeline, coachingExtras)
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/${jobId}/match-data`,
@@ -629,7 +630,7 @@ export class UploadManager {
   async presignDuelClips(jobId: string, momentIds: string[]): Promise<DuelClipPresign[]> {
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const response = await this._apiPost(
       `${apiUrl}/api/desktop-submissions/${jobId}/duel-clips/presign`,
       JSON.stringify({ moments: momentIds.map((moment_id) => ({ moment_id })) }),
@@ -661,7 +662,7 @@ export class UploadManager {
     const token = this.auth.getToken()
     if (!token || moments.length === 0) return
 
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/${jobId}/scout-moments`,
       JSON.stringify({ moments }),
@@ -1138,7 +1139,7 @@ export class UploadManager {
     job_id?: string
     failure_diagnostics?: Record<string, unknown> | null
   }> {
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 

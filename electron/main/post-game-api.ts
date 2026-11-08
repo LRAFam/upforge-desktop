@@ -9,6 +9,7 @@ import { reportError } from './error-reporter'
 import type { MatchData } from './riot-types'
 import { prepareMatchDataForUpload, submissionContextFromTimeline } from './match-data-payload'
 import type { CoachingSubmissionExtras } from './match-coaching-context'
+import { getApiBaseUrl } from './api-base'
 
 function loadHttpModule(url: URL) {
   return url.protocol === 'https:' ? import('https') : import('http')
@@ -44,7 +45,7 @@ export function requestPregameBrief(
     return
   }
 
-  const apiBase = apiUrl ?? process.env['VITE_API_URL'] ?? 'https://api.upforge.gg'
+  const apiBase = apiUrl ?? getApiBaseUrl()
   const params = new URLSearchParams()
   if (context?.matchId) params.set('match_id', context.matchId)
   if (context?.agent) params.set('agent', context.agent)
@@ -142,7 +143,7 @@ export async function requestPostGameDebrief(opts: PostGameDebriefOptions): Prom
     return
   }
 
-  const apiBase = apiUrl ?? process.env['VITE_API_URL'] ?? 'https://api.upforge.gg'
+  const apiBase = apiUrl ?? getApiBaseUrl()
   const ctx = submissionContextFromTimeline(timeline ?? null, coachingExtras)
   const body = JSON.stringify({
     manual: opts.manual === true,
