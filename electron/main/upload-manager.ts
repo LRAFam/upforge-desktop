@@ -67,6 +67,12 @@ const S3_UPLOAD_READ_HIGH_WATER_MARK = 1024 * 1024
 /** Parallel part uploads — lower concurrency is more reliable on home WiFi. */
 const S3_MULTIPART_CONCURRENCY = 2
 
+/**
+ * Keep-alive while one long S3 upload runs. The API cleans uploads with no activity for 3 h,
+ * and a single multipart/PUT upload sends it nothing else, so ping it every 10 min.
+ */
+const UPLOAD_HEARTBEAT_INTERVAL_MS = 10 * 60_000
+
 /** Shared HTTPS agent — keep-alive reduces TLS handshakes on multipart retries. */
 const s3UploadAgent = new https.Agent({ keepAlive: true, maxSockets: 4 })
 
@@ -427,6 +433,59 @@ export class UploadManager {
     // analysis, the user can resume polling from the next launch.
     savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game })
 
+    const stopHeartbeat = this._startUploadHeartbeat(job_id, token, generation)
+    try {
+      return await this._finishUploadOnce(opts, fullAttempt, presign, job_id, token, generation, apiUrl, totalBytes, stopHeartbeat)
+    } finally {
+      stopHeartbeat.stop()
+    }
+  }
+
+  /**
+   * Ping /heartbeat every 10 min until stopped or the upload is cancelled. Heartbeat
+   * failures are logged and ignored — they must never fail the upload.
+   */
+  private _startUploadHeartbeat(jobId: string, token: string, generation: number): {
+    stop: () => void
+    setProgress: (pct: number) => void
+  } {
+    let progress = 0
+    let stopped = false
+    const timer = setInterval(() => {
+      if (stopped) return
+      if (this._uploadAborted || generation !== this._abortGeneration) {
+        stopped = true
+        clearInterval(timer)
+        return
+      }
+      this._apiPostOnce(
+        `${getApiBaseUrl()}/api/desktop-submissions/${jobId}/heartbeat`,
+        JSON.stringify({ progress }),
+        token,
+      ).catch((err) => {
+        console.warn('[UploadManager] Upload heartbeat failed (ignored):', err instanceof Error ? err.message : err)
+      })
+    }, UPLOAD_HEARTBEAT_INTERVAL_MS)
+    timer.unref?.()
+    return {
+      stop: () => { stopped = true; clearInterval(timer) },
+      setProgress: (pct) => { progress = Math.max(0, Math.min(100, Math.round(pct))) },
+    }
+  }
+
+  private async _finishUploadOnce(
+    opts: UploadOptions,
+    fullAttempt: number,
+    presign: ReturnType<typeof parsePresignResponse>,
+    job_id: string,
+    token: string,
+    generation: number,
+    apiUrl: string,
+    totalBytes: number,
+    heartbeat: { setProgress: (pct: number) => void },
+  ): Promise<UploadResult> {
+    const onProgress = (pct: number) => { heartbeat.setProgress(pct); opts.onProgress(pct) }
+
     const completeExtras = () => opts.getCoachingExtras?.() ?? opts.coachingExtras
     const resolveDuelMoments = async (): Promise<DuelMomentManifest[] | undefined> => {
       const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, completeExtras())
@@ -473,7 +532,7 @@ export class UploadManager {
         totalBytes,
         presign.parts,
         presign.part_size,
-        opts.onProgress,
+        onProgress,
         concurrency,
         {
           recordingId: opts.recordingId ?? null,
@@ -482,7 +541,7 @@ export class UploadManager {
         },
       )
     } else if (presign.upload_url) {
-      await this._putToS3(presign.upload_url, opts.videoPath, totalBytes, opts.onProgress)
+      await this._putToS3(presign.upload_url, opts.videoPath, totalBytes, onProgress)
     } else {
       throw new Error('Presign response missing upload_url or multipart parts')
     }
