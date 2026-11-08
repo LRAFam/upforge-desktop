@@ -24,7 +24,7 @@ export {
 import { applySpatialEnrichment } from './spatial/enrich'
 import { resolveValorantGameMode } from './riot-queue-id'
 export { normalizeQueueId } from './riot-queue-id'
-import { isCombatPlayerKill } from './is-combat-kill'
+import { isCombatPlayerKill, matchesScoreboardDeaths } from './is-combat-kill'
 import { parsePlayerAbilitiesFromRoundStats } from './player-abilities'
 import { deriveMatchScore } from './match-score'
 import { riotStatsToAcs } from './combat-score'
@@ -2161,12 +2161,15 @@ export class RiotLocalApi {
 
         const warnings: string[] = []
         if (timeline.playerKills.length !== timeline.finalStats.kills) warnings.push('player_kill_event_count_mismatch')
-        if (timeline.playerDeaths.length !== timeline.finalStats.deaths) warnings.push('player_death_event_count_mismatch')
+        if (!matchesScoreboardDeaths(timeline.playerDeaths.length, timeline.playerDeaths, timeline.finalStats.deaths)) warnings.push('player_death_event_count_mismatch')
         if (timeline.roundSummaries.length) {
           const fields = ['kills', 'deaths', 'assists'] as const
-          if (fields.some((key) => timeline.roundSummaries.reduce((total, round) => (
-            total + (round.playerStats?.[key] ?? 0)
-          ), 0) !== timeline.finalStats![key])) warnings.push('player_round_totals_mismatch')
+          if (fields.some((key) => {
+            const total = timeline.roundSummaries.reduce((sum, round) => sum + (round.playerStats?.[key] ?? 0), 0)
+            return key === 'deaths'
+              ? !matchesScoreboardDeaths(total, timeline.playerDeaths, timeline.finalStats!.deaths)
+              : total !== timeline.finalStats![key]
+          })) warnings.push('player_round_totals_mismatch')
         }
         if (timeline.endTime == null) warnings.push('match_duration_missing')
         matches.push({ matchId: entry.matchId, gameStartTimeMs, fetchMs: Date.now() - started, timeline, warnings })

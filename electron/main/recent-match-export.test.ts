@@ -308,6 +308,34 @@ describe('saved coaching exports', () => {
     expect(() => serializeRecentMatch(t)).toThrow('coaching_validation_failed')
   })
 
+  it('does not block a match because Riot leaves spike deaths out of the death total', async () => {
+    // Prod jobs a1dffbb6 / 0a96c380: one spike death, Riot stats.deaths one lower than the kill list.
+    const { api, fetch } = setup()
+    const raw = details()
+    Object.assign(raw.players[0].stats, { deaths: 0 })
+    fetch.mockResolvedValue(raw)
+    const result = await api.fetchRecentMatchTimelines(1)
+    expect(result.matches[0].warnings).toEqual([])
+    const t = result.matches[0].timeline!
+    const upload = prepareMatchDataForUpload(t)!
+    expect(upload.dataQuality?.issues).toEqual([])
+    expect(upload.dataQuality?.status).toBe('verified_fields_only')
+    expect(upload.finalStats).toMatchObject({ kills: 1, deaths: 0 })
+    expect(upload.playerDeaths).toHaveLength(1)
+    expect(() => serializeRecentMatch(t)).not.toThrow()
+  })
+
+  it('still blocks a death count that differs by more than the spike deaths', async () => {
+    const { api, fetch } = setup()
+    const raw = details()
+    Object.assign(raw.players[0].stats, { deaths: 3 })
+    fetch.mockResolvedValue(raw)
+    const t = (await api.fetchRecentMatchTimelines(1)).matches[0].timeline!
+    const upload = prepareMatchDataForUpload(t)!
+    expect(upload.dataQuality?.status).toBe('blocked')
+    expect(upload.dataQuality?.issues).toContain('personal_event_count_mismatch')
+  })
+
   it('rejects incorrect event identities even when aggregate counts still match', async () => {
     const { api } = setup()
     const t = (await api.fetchRecentMatchTimelines(1)).matches[0].timeline!

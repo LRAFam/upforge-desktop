@@ -1,6 +1,7 @@
 import type { MatchData } from './riot-types'
 import type { UploadMatchData } from './match-data-payload'
 import { riotGameTime } from './riot-event-time'
+import { matchesScoreboardDeaths } from './is-combat-kill'
 
 type Row = Record<string, unknown>
 export type CoachingCapability = 'available' | 'partial' | 'unavailable' | 'not_applicable' | 'excluded'
@@ -97,7 +98,7 @@ export function enforceValorantCoachingQuality(data: UploadMatchData, timeline: 
   else if (!['kills', 'deaths', 'assists'].every(k => count(stats[k]) && data.finalStats?.[k as 'kills' | 'deaths' | 'assists'] === stats[k])) issues.push('scoreboard_mismatch')
   if (raw && Array.isArray(raw.kills)) {
     if (data.killEvents.length !== raw.kills.length) issues.push('event_count_mismatch')
-    if (data.playerKills.length !== stats?.kills || data.playerDeaths.length !== stats?.deaths) issues.push('personal_event_count_mismatch')
+    if (data.playerKills.length !== stats?.kills || !matchesScoreboardDeaths(data.playerDeaths.length, data.playerDeaths, stats?.deaths)) issues.push('personal_event_count_mismatch')
     if (data.killEvents.some(k => !nonnegative(k.timeSinceGameStartMillis) || k.timeSinceGameStartMillis === 0)) issues.push('kill_event_time_missing')
     if (data.playerKills.some(k => !sameId(k.killerPuuid, timeline.puuid)) || data.playerDeaths.some(k => !sameId(k.victimPuuid, timeline.puuid))) issues.push('personal_event_identity_mismatch')
     const key = (killer: unknown, victim: unknown, round: unknown, time: unknown) => JSON.stringify([String(killer).toLowerCase(), String(victim).toLowerCase(), round, time])
@@ -115,7 +116,10 @@ export function enforceValorantCoachingQuality(data: UploadMatchData, timeline: 
     }
     if (inconsistentEvent) issues.push('event_source_mismatch')
   } else issues.push('authoritative_events_missing')
-  if (data.roundSummaries.length && ['kills', 'deaths', 'assists'].some(k => data.roundSummaries.reduce((n, r) => n + (r.playerStats?.[k as 'kills' | 'deaths' | 'assists'] ?? 0), 0) !== stats?.[k])) issues.push('round_totals_mismatch')
+  if (data.roundSummaries.length && (['kills', 'deaths', 'assists'] as const).some(k => {
+    const total = data.roundSummaries.reduce((n, r) => n + (r.playerStats?.[k] ?? 0), 0)
+    return k === 'deaths' ? !matchesScoreboardDeaths(total, data.playerDeaths, stats?.deaths) : total !== stats?.[k]
+  })) issues.push('round_totals_mismatch')
 
   // Keep event.spatial and spatialSummary: trade/untraded flags and death callouts are derived from
   // Riot kill timing and player positions (spatial/enrich.ts) and are core coaching evidence.

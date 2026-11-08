@@ -46,3 +46,18 @@ export function isCombatPlayerKill(ev: CombatKillLike): boolean {
 
   return true
 }
+
+/**
+ * Riot's scoreboard `stats.deaths` leaves out spike-explosion deaths, but the kill list
+ * (and our playerDeaths) includes them. Accept either count so a spike death
+ * does not block the whole match (prod jobs a1dffbb6, 0a96c380).
+ */
+export function matchesScoreboardDeaths(
+  countedDeaths: number,
+  deathEvents: readonly CombatKillLike[],
+  scoreboardDeaths: unknown,
+): boolean {
+  if (countedDeaths === scoreboardDeaths) return true
+  const spikeDeaths = deathEvents.filter(isBombKill).length
+  return spikeDeaths > 0 && countedDeaths - spikeDeaths === scoreboardDeaths
+}
