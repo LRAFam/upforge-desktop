@@ -566,6 +566,7 @@ const api = {
       'game:client-changed',
       'app:warning',
       'app:activity-log',
+      'app:activity-entry',
       'app:activity-toast',
       'updater:checking',
       'updater:available',

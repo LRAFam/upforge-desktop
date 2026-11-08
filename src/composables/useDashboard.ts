@@ -52,6 +52,7 @@ import { POST_MATCH_COPY } from '../lib/post-match-copy'
 import { filterAnalysesForPrimaryGame } from '../lib/analysis-display'
 import { openAnalysisInApp } from '../lib/open-analysis-in-app'
 import { asSessionEnded, DEFAULT_TRAINER_DURATION, launchTrainer, sessionEndedMessage, TRAINER_LAUNCH_FAILED_MESSAGE } from '../lib/trainer-launch'
+import { appendActivityEntry } from '../lib/activity-log-append'
 
 export interface LolRecentMatch {
   match_id: string
@@ -1735,6 +1736,12 @@ function createDashboard(opts: DashboardOptions = {}) {
     }))
     ipcCleanup.push(window.api.on('app:activity-log', (...args: unknown[]) => {
       activityLog.value = args[0] as { time: number; message: string; game?: string }[]
+    }))
+    ipcCleanup.push(window.api.on('app:activity-entry', (...args: unknown[]) => {
+      activityLog.value = appendActivityEntry(
+        activityLog.value,
+        args[0] as { time: number; message: string; game?: string },
+      )
     }))
     ipcCleanup.push(window.api.on('post-game:demo-status', (...args: unknown[]) => {
       const payload = args[0] as { status?: string }
