@@ -44,5 +44,8 @@ export function lolFocusSubline(f: Focus): string {
   if (p.status === 'missed') return `Hit in ${p.hits} of ${p.games_played} games. A new focus starts with your next matches.`
   const left = Math.max(0, p.hits_required - p.hits)
   const games = Math.max(0, p.games_required - p.games_played)
-  return `Lately: ${lolFocusBaseline(f)}. Hit it in ${left} more of your next ${games} ${games === 1 ? 'game' : 'games'}.`
+  const ask = left >= games
+    ? (games === 1 ? 'Hit it in your next game.' : `Hit it in each of your next ${games} games.`)
+    : `Hit it in ${left} more of your next ${games} ${games === 1 ? 'game' : 'games'}.`
+  return `Lately: ${lolFocusBaseline(f)}. ${ask}`
 }
