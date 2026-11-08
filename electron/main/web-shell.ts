@@ -6,6 +6,7 @@
 import { BrowserWindow, Menu, shell, session } from 'electron'
 import { AuthManager } from './auth-manager'
 import { getFrontendBaseUrl } from './api-base'
+import { isSafeExternalUrl } from './renderer-trust'
 
 let shellWindow: BrowserWindow | null = null
 
@@ -20,6 +21,31 @@ function allowedHost(hostname: string, frontendOrigin: string): boolean {
   } catch {
     return hostname === 'upforge.gg' || hostname.endsWith('.upforge.gg')
   }
+}
+
+function frontendHost(frontendBase: string): string[] {
+  try {
+    return [new URL(frontendBase).hostname]
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Open a URL from the web shell in the system browser — https only (http only for
+ * the configured frontend host, i.e. local dev). Everything else is denied and logged.
+ */
+export function openExternalFromShell(
+  url: string,
+  frontendBase: string,
+  open: (url: string) => Promise<void> | void = (u) => shell.openExternal(u),
+): boolean {
+  if (!isSafeExternalUrl(url, frontendHost(frontendBase))) {
+    console.warn('[WebShell] Blocked external URL with disallowed scheme:', String(url).slice(0, 200))
+    return false
+  }
+  void Promise.resolve(open(url)).catch(() => {})
+  return true
 }
 
 async function injectAuthCookie(auth: AuthManager, frontendBase: string): Promise<boolean> {
@@ -66,7 +92,7 @@ function attachShellMenu(win: BrowserWindow, frontendBase: string): void {
           label: 'Open in Browser',
           click: () => {
             const url = win.webContents.getURL()
-            if (url) void shell.openExternal(url)
+            if (url) openExternalFromShell(url, frontendBase)
           },
         },
         { type: 'separator' },
@@ -262,10 +288,10 @@ export async function openWebShell(
         if (allowedHost(u.hostname, frontendBase)) {
           void shellWindow?.webContents.loadURL(url).catch(() => {})
         } else {
-          void shell.openExternal(url)
+          openExternalFromShell(url, frontendBase)
         }
       } catch {
-        void shell.openExternal(url)
+        openExternalFromShell(url, frontendBase)
       }
       return { action: 'deny' }
     })
@@ -275,7 +301,7 @@ export async function openWebShell(
         const u = new URL(url)
         if (!allowedHost(u.hostname, frontendBase)) {
           event.preventDefault()
-          void shell.openExternal(url)
+          openExternalFromShell(url, frontendBase)
         }
       } catch {
         event.preventDefault()

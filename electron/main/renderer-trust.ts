@@ -24,15 +24,27 @@ const ALLOWED_EXTERNAL_HOSTS = new Set([
   'discord.gg',
 ])
 
-export function isTrustedExternalUrl(target: string): boolean {
-  if (/[\u0000-\u001f\u007f]/.test(target)) return false
+/**
+ * Scheme guard for anything handed to shell.openExternal. Only https: (plus http:
+ * for an explicitly allowed host, e.g. the local dev frontend) is ever opened —
+ * file:, smb:, ms-msdt:, javascript:, custom protocol handlers etc. are refused.
+ */
+export function isSafeExternalUrl(target: string, httpAllowedHosts: readonly string[] = []): boolean {
+  if (typeof target !== 'string' || /[\u0000-\u001f\u007f]/.test(target)) return false
   try {
     const candidate = new URL(target)
-    return candidate.protocol === 'https:'
-      && candidate.username === ''
-      && candidate.password === ''
-      && ALLOWED_EXTERNAL_HOSTS.has(candidate.hostname.toLowerCase())
+    if (candidate.username !== '' || candidate.password !== '') return false
+    if (candidate.protocol === 'https:') return candidate.hostname !== ''
+    if (candidate.protocol === 'http:') {
+      return httpAllowedHosts.map(h => h.toLowerCase()).includes(candidate.hostname.toLowerCase())
+    }
+    return false
   } catch {
     return false
   }
+}
+
+export function isTrustedExternalUrl(target: string): boolean {
+  if (!isSafeExternalUrl(target)) return false
+  return ALLOWED_EXTERNAL_HOSTS.has(new URL(target).hostname.toLowerCase())
 }
