@@ -249,6 +249,8 @@ export interface AppSettings {
   notificationSound: boolean
   /** Show match status in Discord Rich Presence */
   discordRichPresence: boolean
+  /** Switch the game tab when a game starts and nothing is recording (default on) */
+  autoSwitchGameTab: boolean
   /** In-game hotkey feedback: notifications (default), overlay, or both */
   inGameFeedback: 'notifications' | 'overlay' | 'all'
   /** Auto-open the results page in the browser when analysis completes */

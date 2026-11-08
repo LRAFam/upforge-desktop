@@ -27,6 +27,15 @@ import { initProductActivity, trackProductActivity } from './product-activity'
 import { backgroundWork } from './background-work'
 import { BackgroundMatchState } from './background-match-state'
 import {
+  RECORDING_MAX_DURATION_CHECK_MS,
+  checkRecordingMaxDuration,
+  createSerialRunner,
+  isSupersededGameStop,
+  maxRecordingDurationMs,
+  resolveGameStartOwnership,
+} from './recording-ownership'
+import { RecordingSessionLog, resolveOrphanRecordingGame } from './recording-session-log'
+import {
   app,
   BrowserWindow,
   Tray,
@@ -749,6 +758,11 @@ function wireRecorderStatus(rec: OBSRecorder, label: string): void {
       }, 10_000)
     }
   }
+  rec.onStopGaveUp = (message) => {
+    log.warn(`[Main] ${label} recording could not stop after retries:`, message)
+    logActivity('Recording couldn\'t stop — restart OBS. UpForge will try again when the next game starts.')
+    notifyRecordingUx('Recording couldn\'t stop — restart OBS.', 'UpForge — Recording')
+  }
   rec.onRecoveredDuringMatch = () => {
     logActivity('OBS reconnected mid-match — recording continues')
     tray?.setToolTip('UpForge — Recording')
@@ -761,6 +775,14 @@ const clipExtractor = new ClipExtractor()
 const clipStore = new ClipStore()
 const captureOwnership = new CaptureOwnership()
 let activeCapture: { ownerId: number | null } | null = null
+/** Owned OBS sessions by game — orphan labels and game-switch decisions (card 232). */
+let recordingSessionLogInstance: RecordingSessionLog | null = null
+function recordingSessionLog(): RecordingSessionLog {
+  recordingSessionLogInstance ??= new RecordingSessionLog(join(app.getPath('userData'), 'recording-sessions.json'))
+  return recordingSessionLogInstance
+}
+/** Game that owns the current match flow (set on game-started). */
+let matchFlowGame: string | null = null
 let replayCaptureOwnerId: number | null = captureOwnership.get()
 let localMediaWork = 0
 let guestClaimInFlight = false
@@ -1575,7 +1597,7 @@ function syncPrimaryGameFromDetection(game: string): void {
   const detected = normalizePrimaryGame(game)
   const primary = normalizePrimaryGame(settingsManager.get().primaryGame)
   if (detected !== primary) {
-    console.log(
+    log.info(
       `[GameDetector] Tracking ${detected} — settings primary is ${primary} (not auto-switching)`,
     )
   }
@@ -1897,8 +1919,16 @@ function scanForOrphanedRecordings(force = false): number {
   if (orphans.length === 0) return 0
 
   const user = authManager.getUser()
+  const sessions = recordingSessionLog().list()
   for (const file of orphans) {
-    const orphanGame = normalizePrimaryGame(settingsManager.get().primaryGame)
+    // Label by the recording session that owned the file, not today's game tab (card 232).
+    let modifiedAtMs: number | null = null
+    try { modifiedAtMs = fs.statSync(file.path).mtimeMs } catch { /* unknown */ }
+    const orphanGame = normalizePrimaryGame(resolveOrphanRecordingGame(
+      { path: file.path, modifiedAtMs },
+      sessions,
+      normalizePrimaryGame(settingsManager.get().primaryGame),
+    ))
     const timing = inspectOrphanRecordingTiming(file.path)
     const canRecoverValorant = orphanGame === 'valorant' && timing.status === 'ok'
     const timeline = canRecoverValorant
@@ -3530,7 +3560,7 @@ function setupGameDetection(): void {
    */
   async function finalizeMatchOnce(game: string, source: string): Promise<boolean> {
     if (matchHandled) {
-      console.log(`[MatchEnd] Ignoring duplicate end signal (${source})`)
+      log.info(`[MatchEnd] Ignoring duplicate end signal (${source})`)
       return false
     }
     const captureNeverStarted = pendingRecordingStart?.game === game && !obsRecorder.isRecording()
@@ -3627,7 +3657,7 @@ function setupGameDetection(): void {
     })
     if (generation !== matchFlowGeneration || matchHandled) return
     if (stillLive) {
-      console.log(`[MatchEnd] Suppressing false end (${source}) — Valorant match still live`)
+      log.info(`[MatchEnd] Suppressing false end (${source}) — Valorant match still live`)
       logActivity('False match-end ignored — recording continues')
       riotLocalApi.clearSuppressedMatchEnd()
       riotLocalApi.onMatchEnded = () => {
@@ -3646,7 +3676,7 @@ function setupGameDetection(): void {
     const durationLabel = elapsedSec > 0
       ? `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`
       : 'unknown duration'
-    console.log(`[MatchEnd] ${source} — stopping recording (${elapsedSec}s captured)`)
+    log.info(`[MatchEnd] ${source} — stopping recording (${elapsedSec}s captured)`)
     logActivity(`Match ended (${source}) — stopping recording (${durationLabel})`)
     riotLocalApi.onMatchEnded = null
     lolLiveClientApi.onMatchEnded = null
@@ -3672,7 +3702,7 @@ function setupGameDetection(): void {
       const processRunning = await gameDetector.isMatchProcessRunning()
       if (decideValorantNextMatchRearm(processRunning) === 'reset_and_wait_for_process') {
         gameDetector.resetActiveGame(game)
-        console.log('[GameDetector] Valorant process ended — waiting for the next match process')
+        log.info('[GameDetector] Valorant process ended — waiting for the next match process')
         logActivity('Watching for next match...')
         return
       }
@@ -3687,7 +3717,7 @@ function setupGameDetection(): void {
             const coreActive = await riotLocalApi.isCoreGameSessionActive()
             // coreActive null = API flake — treat as still in match while Shipping is up.
             if (coreActive !== false) {
-              console.log('[GameDetector] Still INGAME — waiting for menus before re-arm')
+              log.info('[GameDetector] Still INGAME — waiting for menus before re-arm')
               logActivity('Still in match — waiting for post-game lobby before next recording')
               riotLocalApi.watchUntilMenus(
                 emitNextMatchWatch,
@@ -3698,7 +3728,7 @@ function setupGameDetection(): void {
           }
         } else if (await gameDetector.isMatchProcessRunning()) {
           // Can't read presence — don't spam re-arm while the game process is up.
-          console.log('[GameDetector] Riot auth unavailable — waiting for menus before re-arm')
+          log.info('[GameDetector] Riot auth unavailable — waiting for menus before re-arm')
           riotLocalApi.watchUntilMenus(
             emitNextMatchWatch,
             () => gameDetector.isMatchProcessRunning(),
@@ -3715,7 +3745,7 @@ function setupGameDetection(): void {
         }
       }
 
-      console.log('[GameDetector] Re-arming after skipped match — watching for next queue')
+      log.info('[GameDetector] Re-arming after skipped match — watching for next queue')
       logActivity('Watching for next match...')
       gameDetector.emit('game-started', game)
     }
@@ -3773,7 +3803,7 @@ function setupGameDetection(): void {
         if (game === 'cs2') resetSteamGsiSession()
         if (game === 'deadlock') resetDeadlockLogSession()
 
-        console.log(`[GameDetector] ${game} running — watching for next match`)
+        log.info(`[GameDetector] ${game} running — watching for next match`)
         logActivity(`${gameLabel(game)} detected — waiting for a live match to start recording`, game)
         gameDetector.rearmWatch(game)
         return
@@ -3784,11 +3814,16 @@ function setupGameDetection(): void {
   }
 
   let handleMatchEndRunning = false
-  async function handleMatchEnd(game: string, endSource = 'unknown', captureNeverStarted = false): Promise<void> {
-    if (handleMatchEndRunning) {
-      log.warn('[HandleMatchEnd] Re-entrant call blocked')
-      return
-    }
+  const runMatchEndSerially = createSerialRunner()
+  /**
+   * Serialised: a re-entrant call used to be dropped while matchHandled stayed true, leaving the
+   * newer match's OBS recording owned forever (card 232). Queue it behind the running one instead.
+   */
+  function handleMatchEnd(game: string, endSource = 'unknown', captureNeverStarted = false): Promise<void> {
+    if (handleMatchEndRunning) log.warn(`[HandleMatchEnd] Previous match end still running — queued ${game} (${endSource})`)
+    return runMatchEndSerially(() => handleMatchEndSerial(game, endSource, captureNeverStarted))
+  }
+  async function handleMatchEndSerial(game: string, endSource: string, captureNeverStarted: boolean): Promise<void> {
     handleMatchEndRunning = true
     localMediaWork++
     const ownerId = captureOwnerId()
@@ -3824,7 +3859,7 @@ function setupGameDetection(): void {
     let timeline: MatchData | null = null
     let pendingReplayPath: string | null = null
 
-    const [liveTimeline] = await Promise.all([
+    const [liveTimeline, stoppedPath] = await Promise.all([
       fetchLiveClientTimeline(game, {
         stopValorantTimeline: () => riotLocalApi.stop(),
         stopLolTimeline: () => lolLiveClientApi.stop(),
@@ -3834,6 +3869,13 @@ function setupGameDetection(): void {
         ? Promise.resolve(null)
         : obsRecorder.stop(),
     ])
+    if (!captureNeverStarted) {
+      if (obsRecorder.isRecording()) {
+        log.warn(`[MatchEnd] ${game} (${endSource}) — OBS stop not confirmed; recording still owned`)
+      } else {
+        recordingSessionLog().end(stoppedPath)
+      }
+    }
 
     if (obsRecorder.hasRecordingFailure() && !usesDemoReplay(game)) {
       const message = obsRecorder.getLastError() ?? 'OBS recording failed. Restart OBS before the next match.'
@@ -4113,7 +4155,7 @@ function setupGameDetection(): void {
     const MIN_FILE_SIZE_BYTES = MIN_RECORDING_FILE_BYTES
 
     if (durationForGate > 0 && durationForGate < MIN_DURATION_SECONDS) {
-      console.log(`[GameDetector] Recording too short (${durationForGate}s) — ignoring`)
+      log.info(`[GameDetector] Recording too short (${durationForGate}s) — ignoring`)
       logActivity(`Recording too short (${durationForGate}s) — discarded`)
       activeMatchTelemetry?.setDnf('too_short')
       activeMatchTelemetry?.setEndReason('too_short')
@@ -4733,22 +4775,50 @@ function setupGameDetection(): void {
     if (game === 'valorant' || game === 'lol') backgroundMatchState.observe(true)
     mainWindow?.webContents.send('game:status-changed', { game, active: true })
     abortBackgroundWorkOnGameStart()
-    if (await obsRecorder.releaseStaleMatchOwnership()) {
-      logActivity('Cleared stale recording state — ready for next match')
-    }
-    if (obsRecorder.isRecording()) {
-      console.log('[GameDetector] game-started ignored — capture already active')
+    // A different game starting while another game's recording is still owned saves the old
+    // session first; a finalise already in flight is awaited (card 232 same-poll race).
+    const ownership = await resolveGameStartOwnership({
+      game,
+      finalizeInFlight: () => matchFinalizeInFlight,
+      releaseStale: async () => {
+        const released = await obsRecorder.releaseStaleMatchOwnership()
+        if (released) logActivity('Cleared stale recording state — ready for next match')
+        return released
+      },
+      isRecording: () => obsRecorder.isRecording(),
+      recordingGame: () => recordingSessionLog().activeGame(),
+      matchHandled: () => matchHandled,
+      finalize: async (previousGame, source) => {
+        logActivity(`${gameLabel(game)} started — saving the ${gameLabel(previousGame)} recording first`, previousGame)
+        riotLocalApi.onMatchEnded = null
+        lolLiveClientApi.onMatchEnded = null
+        const didFinalize = await finalizeMatchOnce(previousGame, source)
+        if (didFinalize) {
+          endMatchPerformanceMode()
+          destroyOverlay()
+        }
+      },
+      retryStop: () => obsRecorder.stop(),
+      log,
+    })
+    if (ownership.action === 'ignore') {
+      if (obsRecorder.isRecording() && recordingSessionLog().activeGame() !== game) {
+        logActivity(`${gameLabel(game)} detected but the previous recording is still running in OBS — not recorded`, game)
+      }
       return
     }
+    // The renderer may have skipped the first event while the old game was still recording.
+    if (ownership.finalizedPrevious) mainWindow?.webContents.send('game:status-changed', { game, active: true })
     syncPrimaryGameFromDetection(game)
 
     activeCapture = { ownerId: captureOwnership.get() }
     replayCaptureOwnerId = activeCapture.ownerId
     const { isStale } = beginMatchFlow()
+    matchFlowGame = game
     if (!usesDemoReplay(game)) beginMatchPerformanceMode()
     matchDetectInFlightDepth++
     try {
-    console.log(`[GameDetector] ${game} started (flow #${matchFlowGeneration})`)
+    log.info(`[GameDetector] ${game} started (flow #${matchFlowGeneration})`)
     logActivity(`${gameLabel(game)} detected — waiting for match`)
     if (game === 'deadlock') deadlockSessionStartAt = Date.now()
     if (game === 'valorant') {
@@ -4896,7 +4966,7 @@ function setupGameDetection(): void {
           const now = Date.now()
           if (shouldLogUnknownProbe(lastUnknownProbeLogAt, now)) {
             lastUnknownProbeLogAt = now
-            console.warn('[GameDetector] CS2 process probe unknown (tasklist timeout/error) — not cancelling')
+            log.warn('[GameDetector] CS2 process probe unknown (tasklist timeout/error) — not cancelling')
           }
         } else if (processProbe === 'stopped') {
           processMissStreak++
@@ -4955,7 +5025,7 @@ function setupGameDetection(): void {
           const now = Date.now()
           if (shouldLogUnknownProbe(lastUnknownProbeLogAt, now)) {
             lastUnknownProbeLogAt = now
-            console.warn('[GameDetector] Deadlock process probe unknown (tasklist timeout/error) — not cancelling')
+            log.warn('[GameDetector] Deadlock process probe unknown (tasklist timeout/error) — not cancelling')
           }
         } else if (processProbe === 'stopped') {
           processMissStreak++
@@ -5025,7 +5095,7 @@ function setupGameDetection(): void {
           const now = Date.now()
           if (shouldLogUnknownProbe(lastUnknownProbeLogAt, now)) {
             lastUnknownProbeLogAt = now
-            console.warn('[GameDetector] LoL process probe unknown (tasklist timeout/error) — not cancelling')
+            log.warn('[GameDetector] LoL process probe unknown (tasklist timeout/error) — not cancelling')
           }
         } else if (processProbe === 'stopped') {
           processMissStreak++
@@ -5109,7 +5179,7 @@ function setupGameDetection(): void {
         if (processProbe === 'unknown') {
           if (shouldLogUnknownProbe(lastUnknownProbeLogAt, now)) {
             lastUnknownProbeLogAt = now
-            console.warn('[GameDetector] Valorant process probe unknown (tasklist timeout/error) — not cancelling')
+            log.warn('[GameDetector] Valorant process probe unknown (tasklist timeout/error) — not cancelling')
           }
           continue
         }
@@ -5122,7 +5192,7 @@ function setupGameDetection(): void {
           })
           if (decision.action === 'cancel') {
             matchWaitCancelReason = decision.reason
-            console.log(`[GameDetector] Match wait cancel: ${decision.reason}`)
+            log.info(`[GameDetector] Match wait cancel: ${decision.reason}`)
             cancelled = true
             break
           }
@@ -5131,7 +5201,7 @@ function setupGameDetection(): void {
             if (!loggedRiotKeepAlive) {
               loggedRiotKeepAlive = true
               logActivity('Game process briefly missing — Riot still in match, waiting')
-              console.log(`[GameDetector] ${decision.reason}`)
+              log.info(`[GameDetector] ${decision.reason}`)
             }
           }
           if (now - lastMilestoneAt >= MATCH_WAIT_MILESTONE_MS) {
@@ -5151,7 +5221,7 @@ function setupGameDetection(): void {
           if (!state?.sessionLoopState) {
             presenceNullStreak++
             if (shouldReauthAfterPresenceNulls(presenceNullStreak)) {
-              console.warn(`[GameDetector] Presence null ×${presenceNullStreak} — re-init Riot auth`)
+              log.warn(`[GameDetector] Presence null ×${presenceNullStreak} — re-init Riot auth`)
               await riotLocalApi.initAuth().catch(() => false)
               logActivity('Riot presence unavailable — refreshed client auth, still waiting')
             }
@@ -5228,7 +5298,7 @@ function setupGameDetection(): void {
           if (state?.sessionLoopState === 'INGAME') {
             // Replay viewer shows INGAME presence — do not record replays
             if (state.isReplay) {
-              console.log('[GameDetector] Replay detected (provisioningFlow=Replay) — skipping recording')
+              log.info('[GameDetector] Replay detected (provisioningFlow=Replay) — skipping recording')
               logActivity('Replay detected — recording skipped')
               notifyRecordingUx('Replay viewer detected — only live matches are recorded.')
               tray?.setToolTip(idleTooltip(game))
@@ -5257,7 +5327,7 @@ function setupGameDetection(): void {
             lastCoreGameCheckAt = now
             const coreActive = await riotLocalApi.isCoreGameSessionActive()
             if (coreActive === true) {
-              console.log('[GameDetector] core-game session active — treating as INGAME (presence fallback)')
+              log.info('[GameDetector] core-game session active — treating as INGAME (presence fallback)')
               matchStartTime = Date.now()
               if (!gameMode) {
                 const mode = await riotLocalApi.getGameMode()
@@ -5272,7 +5342,7 @@ function setupGameDetection(): void {
         } catch (err) {
           presenceNullStreak++
           if (shouldReauthAfterPresenceNulls(presenceNullStreak)) {
-            console.warn('[GameDetector] Presence poll error — re-init Riot auth:', err)
+            log.warn('[GameDetector] Presence poll error — re-init Riot auth:', err)
             await riotLocalApi.initAuth().catch(() => false)
             logActivity('Riot presence error — refreshed client auth, still waiting')
           }
@@ -5295,7 +5365,7 @@ function setupGameDetection(): void {
           const now = Date.now()
           if (shouldLogUnknownProbe(lastUnknownProbeLogAt, now)) {
             lastUnknownProbeLogAt = now
-            console.warn('[GameDetector] Valorant process probe unknown during 90s fallback — not cancelling')
+            log.warn('[GameDetector] Valorant process probe unknown during 90s fallback — not cancelling')
           }
           continue
         }
@@ -5321,7 +5391,7 @@ function setupGameDetection(): void {
 
     if (cancelled && matchWaitCancelReason) {
       logActivity(formatMatchWaitCancelActivity(matchWaitCancelReason))
-      console.log('[GameDetector] Match wait cancelled — no recording:', matchWaitCancelReason)
+      log.info('[GameDetector] Match wait cancelled — no recording:', matchWaitCancelReason)
       tray?.setToolTip(idleTooltip(game))
       if (gameNeedsLiveMatchWindow(game)) {
         gameDetector.resetActiveGame(game)
@@ -5332,7 +5402,7 @@ function setupGameDetection(): void {
 
     if (game === 'valorant' && cancelled) {
       logActivity(formatMatchWaitCancelActivity('left loading / game closed'))
-      console.log('[GameDetector] Match wait cancelled — no recording')
+      log.info('[GameDetector] Match wait cancelled — no recording')
       tray?.setToolTip(idleTooltip(game))
       return
     }
@@ -5342,7 +5412,7 @@ function setupGameDetection(): void {
     // causes "hallucinated" matches when the app is left idle for 25+ minutes.
     if (game === 'valorant' && authOk && matchStartTime === null) {
       logActivity('Presence timeout — no match started, returning to idle')
-      console.log('[GameDetector] Presence loop timed out without INGAME — not recording')
+      log.info('[GameDetector] Presence loop timed out without INGAME — not recording')
       tray?.setToolTip(idleTooltip(game))
       await rearmGameDetection(game)
       return
@@ -5350,7 +5420,7 @@ function setupGameDetection(): void {
 
     if (gameNeedsLiveMatchWindow(game) && cancelled) {
       logActivity(`${gameLabel(game)} closed before a match — watching for the game to reopen`)
-      console.log('[GameDetector] Game closed during match wait — re-arming detection')
+      log.info('[GameDetector] Game closed during match wait — re-arming detection')
       tray?.setToolTip(idleTooltip(game))
       gameDetector.resetActiveGame(game)
       await rearmGameDetection(game)
@@ -5359,7 +5429,7 @@ function setupGameDetection(): void {
 
     if (gameNeedsLiveMatchWindow(game) && matchStartTime === null) {
       logActivity('No match started — returning to idle')
-      console.log(`[GameDetector] ${game} match wait timed out without live match — not recording`)
+      log.info(`[GameDetector] ${game} match wait timed out without live match — not recording`)
       tray?.setToolTip(idleTooltip(game))
       await rearmGameDetection(game)
       return
@@ -5403,7 +5473,7 @@ function setupGameDetection(): void {
     }
 
     if (filterByMode && !modeConfident) {
-      console.log('[GameDetector] Skipping recording — queue mode unknown')
+      log.info('[GameDetector] Skipping recording — queue mode unknown')
       logActivity('Queue mode unknown — recording skipped (select all modes or wait for queue)')
       notifyRecordingUx(
         'Could not detect this queue type — recording skipped. Enable more modes in Settings or wait until the queue is identified.',
@@ -5414,7 +5484,7 @@ function setupGameDetection(): void {
     }
 
     if (isModeFilteredOut(recordedModes, gameMode, allRecordableModes)) {
-      console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (recordedModes=${recordedModes.join(',')})`)
+      log.info(`[GameDetector] Skipping recording — mode is ${gameMode} (recordedModes=${recordedModes.join(',')})`)
       logActivity(`Mode ${gameMode} not in recorded modes (${recordedModes.join(', ')}) — skipped`)
       notifyRecordingUx(
         `${gameMode} is not in your recorded modes — this match was not captured. Change modes in Settings → Recording.`,
@@ -5426,7 +5496,7 @@ function setupGameDetection(): void {
 
     if (abortIfStale(isStale, game)) return
     if (obsRecorder.isRecording()) {
-      console.log('[GameDetector] Match confirmed but capture already active — skipping duplicate start')
+      log.info('[GameDetector] Match confirmed but capture already active — skipping duplicate start')
       return
     }
     const capturePreparation = await obsRecorder.prepareMatchCapture(async () => {
@@ -5447,10 +5517,10 @@ function setupGameDetection(): void {
     const reclaimedExistingCapture = capturePreparation === 'reclaimed'
     if (capturePreparation !== 'idle') {
       if (reclaimedExistingCapture) {
-        console.log('[GameDetector] Reclaimed in-progress OBS recording — continuing same file')
+        log.info('[GameDetector] Reclaimed in-progress OBS recording — continuing same file')
         logActivity('Recovered in-progress recording — continuing capture')
       } else {
-        console.log('[GameDetector] OBS output active but not reclaimable — skipping duplicate start')
+        log.info('[GameDetector] OBS output active but not reclaimable — skipping duplicate start')
         return
       }
     }
@@ -5473,7 +5543,7 @@ function setupGameDetection(): void {
       if (riotSwitch.action === 'activate') {
         const activated = await authManager.activateRiotAccount(riotSwitch.accountId)
         if (!activated.ok) {
-          console.log(`[GameDetector] Riot account activate failed: ${activated.error ?? 'unknown'}`)
+          log.info(`[GameDetector] Riot account activate failed: ${activated.error ?? 'unknown'}`)
           logActivity('Could not switch active Riot account. Recording skipped.')
           notifyRecordingUx(
             'Could not switch to the in-game Riot account. Open Settings to manage linked accounts.',
@@ -5485,7 +5555,7 @@ function setupGameDetection(): void {
         }
         riotLocalApi.setLinkedAccountRegion(authManager.getUser()?.riot_region ?? null)
       } else if (riotSwitch.action === 'prompt_link') {
-        console.log(`[GameDetector] Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag}, prompting link`)
+        log.info(`[GameDetector] Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag}, prompting link`)
         logActivity(`Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag}. Link it before recording.`)
         notifyRecordingUx(
           'This Riot ID is not linked. Link it in Settings before recording, or confirm the link prompt.',
@@ -5496,7 +5566,7 @@ function setupGameDetection(): void {
         await rearmGameDetection(game, true)
         return
       } else if (riotSwitch.action === 'prompt_manage') {
-        console.log(`[GameDetector] Unknown Riot ID at account cap: ${riotSwitch.name}#${riotSwitch.tag}`)
+        log.info(`[GameDetector] Unknown Riot ID at account cap: ${riotSwitch.name}#${riotSwitch.tag}`)
         logActivity('Unknown Riot ID at account limit. Recording skipped.')
         notifyRecordingUx(
           'This Riot ID is not linked and you are at your account limit. Open Settings to switch or upgrade.',
@@ -5515,7 +5585,7 @@ function setupGameDetection(): void {
     }
 
     logActivity(`Match detected (${gameMode}${modeConfident ? '' : '?'}) — starting recording`)
-    console.log(`[GameDetector] Match confirmed! gameMode=${gameMode} confident=${modeConfident} matchStartTime=${matchStartTime}`)
+    log.info(`[GameDetector] Match confirmed! gameMode=${gameMode} confident=${modeConfident} matchStartTime=${matchStartTime}`)
     if (game === 'valorant') trackMatchDetected('valorant')
     beginMatchPerformanceMode({ holdPostMatch: true })
 
@@ -5664,6 +5734,8 @@ function setupGameDetection(): void {
         }
         currentRecordingStartTime = recStartTime
       }
+      if (currentRecordingStartTime != null) recordingSessionLog().begin(game, currentRecordingStartTime)
+      log.info(`[Recorder] ${game} recording started${reclaimedExistingCapture ? ' (reclaimed existing output)' : ''}`)
       // Push recording=true to the overlay immediately — don't wait for the poll cycle
       if (isInGameOverlayEnabled()) {
         sendOverlayData('overlay:data', { round: null, allyScore: null, enemyScore: null, yourCredits: null, enemyEstimate: null, recording: true })
@@ -5844,17 +5916,73 @@ function setupGameDetection(): void {
     }
   })
 
+  // Card 232 safety stop: a stranded recording ran 3.5 h as one League session. Past the
+  // per-game cap, save it when the game is gone or the live API reports no match.
+  let maxDurationCheckInFlight = false
+  const maxDurationTimer = setInterval(() => {
+    if (maxDurationCheckInFlight || matchFinalizeInFlight || !obsRecorder.isRecording()) return
+    const recordingGame = recordingSessionLog().activeGame()
+    const startedAt = obsRecorder.getRecordingStartedAt() ?? currentRecordingStartTime
+    if (!recordingGame || startedAt == null) return
+    maxDurationCheckInFlight = true
+    void checkRecordingMaxDuration({
+      game: recordingGame,
+      now: Date.now(),
+      recordingStartedAt: startedAt,
+      probeProcess: async (g) => (await gameDetector.probeGameProcess(g)) !== 'stopped',
+      probeLiveMatch: async (g) => {
+        if (g === 'lol') {
+          const probe = await lolLiveClientApi.probeActiveMatch()
+          return probe ? probe.inMatch : null
+        }
+        if (g === 'valorant') return isValorantMatchFlowActive()
+        if (g === 'cs2') return isGsiMatchEnded() ? false : isGsiMatchLive() ? true : null
+        if (g === 'deadlock') return isDeadlockMatchEnded() ? false : null
+        return null
+      },
+      finalize: async (g, source) => {
+        logActivity(`${gameLabel(g)} recording passed ${maxRecordingDurationMs(g) / 60_000} min with no live match — saving it`, g)
+        if (matchHandled) {
+          // The match already finalised; only the OBS stop is stranded.
+          await obsRecorder.stop()
+          return
+        }
+        riotLocalApi.onMatchEnded = null
+        lolLiveClientApi.onMatchEnded = null
+        const didFinalize = await finalizeMatchOnce(g, source)
+        if (!didFinalize) return
+        endMatchPerformanceMode()
+        destroyOverlay()
+        if (gameDetector.currentGame() === g) await rearmGameDetection(g)
+      },
+      log,
+    }).catch((err) => {
+      log.warn('[Recorder] Max-duration check failed:', err instanceof Error ? err.message : err)
+    }).finally(() => { maxDurationCheckInFlight = false })
+  }, RECORDING_MAX_DURATION_CHECK_MS)
+  maxDurationTimer.unref?.()
+
   gameDetector.on('game-stopped', async (game: string) => {
     if (overstepBridge?.isBusy()) return
-    console.log(`[GameDetector] ${game} stopped`)
+    log.info(`[GameDetector] ${game} stopped`)
     const processStillRunning = game === 'valorant'
       ? await gameDetector.isMatchProcessRunning()
       : await gameDetector.isGameProcessRunning(game)
     if (processStillRunning) {
-      console.log(`[GameDetector] game-stopped debounced — ${game} process still running`)
+      log.info(`[GameDetector] game-stopped debounced — ${game} process still running`)
       return
     }
     mainWindow?.webContents.send('game:status-changed', { game, active: false })
+    // A late stop for a game the flow already left (e.g. League exit after Valorant took over)
+    // must not clear the new game's match hooks or finalise its recording as this game.
+    if (isSupersededGameStop({
+      stoppedGame: game,
+      flowGame: matchFlowGame,
+      recordingGame: obsRecorder.isRecording() ? recordingSessionLog().activeGame() : null,
+    })) {
+      log.info(`[GameDetector] ${game} stopped — ignored, ${matchFlowGame} owns the current match flow`)
+      return
+    }
 
     if (game === 'deadlock') stopDeadlockLogWatcher()
     endMatchPerformanceMode()
@@ -5875,7 +6003,7 @@ function setupGameDetection(): void {
         if (!shouldAbortMatchWaitOnGameStopped(riotActive)) {
           // Process flake (common with exclusive fullscreen alt-tab) — keep waiting.
           gameDetector.reviveActiveGame(game)
-          console.log(
+          log.info(
             `[GameDetector] game-stopped ignored during match wait — Riot match flow=${riotActive}`,
           )
           logActivity('Game process blip during loading — still waiting for match')
@@ -5887,7 +6015,7 @@ function setupGameDetection(): void {
       waitingForMatch = false
       mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
       tray?.setToolTip(idleTooltip(game))
-      console.log('[GameDetector] Game quit before match — no recording to save')
+      log.info('[GameDetector] Game quit before match — no recording to save')
       if (gameNeedsLiveMatchWindow(game)) {
         gameDetector.resetActiveGame(game)
         if (rearmWatchInFlight !== game) void rearmGameDetection(game)
@@ -5939,14 +6067,14 @@ function setupGameDetection(): void {
         const riotActive = await isValorantMatchFlowActive()
         if (shouldSuppressFinalizeOnGameStopped(riotActive)) {
           gameDetector.reviveActiveGame(game)
-          console.log(
+          log.info(
             `[GameDetector] game-stopped ignored mid-record — Riot match flow=${riotActive}`,
           )
           logActivity('False match-end ignored — recording continues')
           return
         }
         if (riotActive === null) {
-          console.warn('[GameDetector] game-stopped with Riot unreachable — stopping recording')
+          log.warn('[GameDetector] game-stopped with Riot unreachable — stopping recording')
           endActivity = 'Game process ended (Riot status unclear) — stopping recording'
         }
       } catch { /* Riot unreachable and process gone — proceed with finalize */ }

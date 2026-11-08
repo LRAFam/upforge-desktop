@@ -119,6 +119,8 @@ export interface AppSettings {
   notificationSound: boolean
   /** Show match status in Discord Rich Presence (requires Discord desktop + activity sharing on) */
   discordRichPresence: boolean
+  /** Switch the game tab when a game's in-game process starts and nothing is recording (default on). */
+  autoSwitchGameTab: boolean
   /**
    * How in-game hotkey feedback is delivered.
    * - notifications: Windows toasts + beep (works in Valorant fullscreen)
@@ -252,6 +254,7 @@ const DEFAULTS: AppSettings = {
   fullMatchRecording: true,
   notificationSound: true,
   discordRichPresence: true,
+  autoSwitchGameTab: true,
   inGameFeedback: 'notifications',
   cachedEncoder: null,
   cachedUseDdagrab: null,

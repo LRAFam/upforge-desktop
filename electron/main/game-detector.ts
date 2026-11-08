@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events'
+import log from 'electron-log'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { isGsiMatchLive, isGsiReceiving } from './steam-gsi-server'
@@ -156,7 +157,7 @@ export class GameDetector extends EventEmitter {
       const stopped = this._activeGame
       this._activeGame = null
       this.emit('game-stopped', stopped)
-      console.log(`[GameDetector] ${stopped} stopped (primary game switched to ${normalized})`)
+      log.info(`[GameDetector] ${stopped} stopped (primary game switched to ${normalized})`)
     }
 
     if (this._polling) {
@@ -280,7 +281,7 @@ export class GameDetector extends EventEmitter {
           this._missedPollStreak = 0
           this._activeGame = null
           this.emit('game-stopped', active)
-          console.log(`[GameDetector] ${active} idle in menu — handing off to ${handoff}`)
+          log.info(`[GameDetector] ${active} idle in menu — handing off to ${handoff}`)
           this._activeGame = handoff
           this.emit('game-started', handoff)
           return
@@ -303,7 +304,7 @@ export class GameDetector extends EventEmitter {
         this._missedPollStreak = 0
         this._activeGame = null
         this.emit('game-stopped', active)
-        console.log(`[GameDetector] ${active} stopped`)
+        log.info(`[GameDetector] ${active} stopped`)
       }
 
       if (!runningGames.length) return
@@ -315,11 +316,11 @@ export class GameDetector extends EventEmitter {
       this._missedPollStreak = 0
       this.emit('game-started', next)
       if (runningGames.length > 1) {
-        console.log(
+        log.info(
           `[GameDetector] ${next} started (${runningGames.length} games running — tracking ${next} per primary/first-until-close)`,
         )
       } else {
-        console.log(`[GameDetector] ${next} started`)
+        log.info(`[GameDetector] ${next} started`)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

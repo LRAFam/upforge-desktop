@@ -377,3 +377,49 @@ describe('resolveLolMapName', () => {
     expect(resolveLolMapName(null)).toBe("Summoner's Rift")
   })
 })
+
+describe('LoLLiveClientApi match end', () => {
+  it('fires onMatchEnded once on a GameEnd event', async () => {
+    vi.useFakeTimers()
+    const api = new LoLLiveClientApi()
+    try {
+      const gameEnd = {
+        ...SAMPLE_SNAPSHOT,
+        events: { Events: [...SAMPLE_SNAPSHOT.events!.Events!, { EventID: 9, EventName: 'GameEnd', EventTime: 900, Result: 'Win' } as LolLiveGameEvent] },
+      }
+      vi.spyOn(api, 'fetchAllGameData').mockResolvedValueOnce(SAMPLE_SNAPSHOT).mockResolvedValue(gameEnd)
+      api.start(1000)
+      const ended = vi.fn(); api.onMatchEnded = ended
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(ended).toHaveBeenCalledOnce()
+    } finally { api.cancel(); vi.useRealTimers(); vi.restoreAllMocks() }
+  })
+
+  it('fires onMatchEnded after exactly 3 missed polls once the match was seen live', async () => {
+    vi.useFakeTimers()
+    const api = new LoLLiveClientApi()
+    try {
+      let calls = 0
+      vi.spyOn(api, 'fetchAllGameData').mockImplementation(async () => (++calls === 1 ? SAMPLE_SNAPSHOT : null))
+      api.start(1000)
+      const ended = vi.fn(); api.onMatchEnded = ended
+      await vi.advanceTimersByTimeAsync(1)
+      while (calls < 3) await vi.advanceTimersByTimeAsync(100)
+      expect(ended).not.toHaveBeenCalled()
+      while (calls < 4) await vi.advanceTimersByTimeAsync(100)
+      expect(ended).toHaveBeenCalledOnce()
+    } finally { api.cancel(); vi.useRealTimers(); vi.restoreAllMocks() }
+  })
+
+  it('does not end a match that was never seen live (loading screen)', async () => {
+    vi.useFakeTimers()
+    const api = new LoLLiveClientApi()
+    try {
+      vi.spyOn(api, 'fetchAllGameData').mockResolvedValue(null)
+      api.start(1000)
+      const ended = vi.fn(); api.onMatchEnded = ended
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(ended).not.toHaveBeenCalled()
+    } finally { api.cancel(); vi.useRealTimers(); vi.restoreAllMocks() }
+  })
+})
