@@ -178,7 +178,9 @@ describe('OBS recording completion', () => {
   it('does not release ownership when the status query fails', async () => {
     mock.call.mockRejectedValue(new Error('connection lost'))
     const rec = recorder()
-    expect(await rec.stop()).toBeNull()
+    const stopped = rec.stop()
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(await stopped).toBeNull()
     expect(rec.isRecording()).toBe(true)
     expect(await rec.releaseStaleMatchOwnership()).toBe(false)
   })
@@ -218,6 +220,9 @@ describe('OBS recording completion', () => {
     const stopped = rec.stop()
     expect(rec.stop()).toBe(stopped)
     await vi.advanceTimersByTimeAsync(16_000)
+    // Not confirmed idle — still owned while the stop is retried with backoff.
+    expect(rec.isRecording()).toBe(true)
+    await vi.advanceTimersByTimeAsync(130_000)
     expect(await stopped).toBeNull()
     expect(rec.isRecording()).toBe(true)
     expect(rec.hasRecordingFailure()).toBe(true)
@@ -256,14 +261,48 @@ describe('OBS recording completion', () => {
     expect(rec.onStatusChange).not.toHaveBeenCalledWith(false, undefined)
   })
 
-  it('bounds a hung stop request and keeps ownership', async () => {
-    mock.call.mockImplementation((method) => method === 'StopRecord' ? new Promise(() => {}) : Promise.resolve({ outputActive: true }))
+  it('retries a hung stop request with backoff and releases ownership once OBS confirms idle', async () => {
+    let active = true
+    let stopCalls = 0
+    mock.call.mockImplementation((method) => {
+      if (method === 'StopRecord') {
+        stopCalls++
+        if (stopCalls === 1) return new Promise(() => {})
+        active = false
+        return Promise.resolve({ outputPath: '/tmp/match.mp4' })
+      }
+      return Promise.resolve({ outputActive: active, outputBytes: 100 })
+    })
     const rec = recorder()
+    const gaveUp = vi.fn()
+    rec.onStopGaveUp = gaveUp
     const stopped = rec.stop()
     await vi.advanceTimersByTimeAsync(6000)
+    // First attempt timed out: still owned, no failure surfaced yet, retry pending.
+    expect(rec.isRecording()).toBe(true)
+    expect(rec.hasRecordingFailure()).toBe(false)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(await stopped).toBe('/tmp/match.mp4')
+    expect(stopCalls).toBe(2)
+    expect(rec.isRecording()).toBe(false)
+    expect(rec.hasRecordingFailure()).toBe(false)
+    expect(gaveUp).not.toHaveBeenCalled()
+  })
+
+  it('bounds a permanently hung stop request, keeps ownership and reports the give-up', async () => {
+    mock.call.mockImplementation((method) => method === 'StopRecord' ? new Promise(() => {}) : Promise.resolve({ outputActive: true }))
+    const rec = recorder()
+    const gaveUp = vi.fn()
+    rec.onStopGaveUp = gaveUp
+    const stopped = rec.stop()
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(gaveUp).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(120_000)
     expect(await stopped).toBeNull()
+    expect(mock.call.mock.calls.filter(([m]) => m === 'StopRecord')).toHaveLength(4)
     expect(rec.isRecording()).toBe(true)
     expect(rec.getLastError()).toMatch(/timed out/)
+    expect(gaveUp).toHaveBeenCalledOnce()
   })
 })
 
