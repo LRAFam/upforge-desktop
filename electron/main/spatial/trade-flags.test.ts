@@ -9,6 +9,7 @@ import {
   isUntradedDeath,
   tradesMeasurable,
 } from './trade-flags'
+import goldenJson from '../__fixtures__/trade-rule-golden.json'
 
 describe('trade flags', () => {
   const allies = new Set(['player', 'ally1', 'ally2'])
@@ -73,9 +74,11 @@ describe('trade flags', () => {
     expect(isUntradedDeath({ alliesNearby: 0, alliesAlive: 0, traded: false })).toBe(false)
     expect(isUntradedDeath({ alliesNearby: 0, alliesAlive: 1, traded: false })).toBe(true)
     expect(isUntradedDeath({ alliesNearby: 0, alliesAlive: 1, traded: true })).toBe(false)
+    // Trade not measured: unknown, never "untraded".
+    expect(isUntradedDeath({ alliesNearby: 0, alliesAlive: 1 })).toBe(false)
   })
 
-  it('marks traded when ally kills nearby enemy (proximity fallback)', () => {
+  it('does not mark traded when an ally kills a different enemy near the body (no radius shortcut)', () => {
     const death = {
       videoOffsetMs: 5000,
       round: 0,
@@ -91,7 +94,7 @@ describe('trade flags', () => {
         spatial: { victimWorld: { x: 500, y: 0 } },
       },
     ]
-    expect(deathWasTraded(death, kills, allies)).toBe(true)
+    expect(deathWasTraded(death, kills, allies)).toBe(false)
   })
 
   it('treats trades as unmeasured when the kill list only has the player\'s own events', () => {
@@ -119,6 +122,46 @@ describe('trade window per game', () => {
 
   it('judges a 4.5 s trade by the game window', () => {
     expect(deathWasTraded(death, lateTrade, allies)).toBe(false)
-    expect(deathWasTraded(death, lateTrade, allies, 2500, tradeWindowMs('cs2'))).toBe(true)
+    expect(deathWasTraded(death, lateTrade, allies, tradeWindowMs('cs2'))).toBe(true)
   })
+})
+
+// Shared cross-repo golden (same file in upforge-frontend and upforge-api tests), generated from the
+// AI service branch card-56-210-trade-claims (services/trade_claims.py). All repos give identical counts.
+type GoldenCase = {
+  id: string
+  own: string
+  teams: Record<string, string>
+  kills: Array<[number, number, string, string]>
+  expect: { traded: number[]; untraded: number[]; last_alive: number[] }
+}
+const golden = goldenJson as unknown as { rule: { valorant_window_ms: number }; cases: GoldenCase[] }
+
+describe('shared trade golden (AI service card-56-210)', () => {
+  it('uses the AI service window', () => {
+    expect(TRADE_AFTER_DEATH_MS).toBe(golden.rule.valorant_window_ms)
+  })
+
+  for (const c of golden.cases) {
+    it(c.id, () => {
+      const team = c.teams[c.own]
+      const allyPuids = new Set(Object.keys(c.teams).filter(p => c.teams[p] === team))
+      const events = c.kills.map(([round, t, killerPuuid, victimPuuid]) => ({
+        round, videoOffsetMs: t, killerPuuid, victimPuuid,
+        // Positions next to the body: a radius shortcut would wrongly call these trades.
+        spatial: { victimWorld: { x: 0, y: 0 } },
+      }))
+      const got = { traded: [] as number[], untraded: [] as number[], last_alive: [] as number[] }
+      for (const death of events.filter(e => e.victimPuuid === c.own)) {
+        const sameRound = events.filter(e => e.round === death.round)
+        const alive = countAlliesAliveAtDeath(sameRound, sameRound.indexOf(death), c.own, allyPuids)
+        const spatial = { alliesAlive: alive, traded: deathWasTraded(death, events, allyPuids) }
+        const n = death.round + 1
+        if (alive === 0) got.last_alive.push(n)
+        else if (isUntradedDeath(spatial)) got.untraded.push(n)
+        else if (spatial.traded) got.traded.push(n)
+      }
+      expect(got).toEqual(c.expect)
+    })
+  }
 })
