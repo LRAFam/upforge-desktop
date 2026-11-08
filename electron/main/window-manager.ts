@@ -11,7 +11,7 @@ import log from 'electron-log'
 import { ClipExtractor } from './clip-extractor'
 import { openPathSafe } from './shell-open'
 import { trackUpgradeClicked } from './funnel-events'
-import { isTrustedRendererUrl } from './renderer-trust'
+import { isSafeExternalUrl, isTrustedRendererUrl } from './renderer-trust'
 import { lockDownWindowNavigation } from './window-security'
 import {
   DEFAULT_APP_LAYOUT,
@@ -31,13 +31,13 @@ function attachExternalLinkHandler(win: BrowserWindow, source: string): void {
     if (/\/pricing|\/checkout|subscription=/i.test(url)) {
       void trackUpgradeClicked(source)
     }
-    if (/^https?:/i.test(url)) void shell.openExternal(url)
+    if (isSafeExternalUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
   const guardNavigation = (event: Electron.Event, url: string) => {
     if (isTrustedRendererUrl(url)) return
     event.preventDefault()
-    if (/^https?:/i.test(url)) void shell.openExternal(url)
+    if (isSafeExternalUrl(url)) void shell.openExternal(url)
     log.warn(`[WindowSecurity] Blocked untrusted navigation from ${source}`)
   }
   win.webContents.on('will-navigate', guardNavigation)

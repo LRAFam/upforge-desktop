@@ -7535,7 +7535,7 @@ async function startApp(): Promise<void> {
   ipcMain.handle('valorant-replay:get', async (_event, args: { matchId?: string }) =>
     fetchViewerReplay(String(args?.matchId ?? ''), authManager.getToken()))
 
-  ipcMain.handle('dev:get-diagnostics', async () => {
+  ipcMain.handle('dev:get-diagnostics', devOnly(canUseDevTools, 'dev:get-diagnostics', async () => {
     const analysisPipeline = await buildAnalysisPipelineDiagnostics({
       uploadManager,
       recordingsStore,
@@ -7585,7 +7585,7 @@ async function startApp(): Promise<void> {
       analysisPipeline,
       activityLog: activityLog.slice(),
     }
-  })
+  }))
 
   setupGameDataCaptureHandlers(ipcMain)
 

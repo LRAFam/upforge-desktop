@@ -198,6 +198,16 @@ describe('openWebShell — links inside the page', () => {
     expect(h.openExternal).toHaveBeenCalledWith('https://discord.gg/upforge')
   })
 
+  it('a server redirect to another site is stopped too (will-redirect)', async () => {
+    const wc = await openShell()
+    const event = { preventDefault: vi.fn() }
+    wc.emit('will-redirect', event, 'https://evil.example/phish')
+    expect(event.preventDefault).toHaveBeenCalled()
+    const inSite = { preventDefault: vi.fn() }
+    wc.emit('will-redirect', inSite, 'https://upforge.gg/login')
+    expect(inSite.preventDefault).not.toHaveBeenCalled()
+  })
+
   it.each(['file:///C:/Windows/System32/calc.exe', 'ms-msdt:/id PCWDiagnostic', 'not a url'])(
     'navigation to %s is stopped and never opened',
     async (url) => {

@@ -48,6 +48,7 @@ describe('index.ts registration', () => {
     'debug:poc-open-folder',
     'debug:poc-latest-report',
     'debug:probe-lol-lcu',
+    'dev:get-diagnostics',
   ]
   it.each(gated)('wraps %s in the developer guard', (channel) => {
     expect(source).toContain(`ipcMain.handle('${channel}', devOnly(canUseDevTools, '${channel}'`)

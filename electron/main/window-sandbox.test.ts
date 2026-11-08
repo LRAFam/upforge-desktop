@@ -72,6 +72,14 @@ describe('BrowserWindow sandboxing (card 37)', () => {
   })
 })
 
+describe('main window external links (card 36 follow-up)', () => {
+  it('only hands safe https links to the OS browser', () => {
+    const manager = readFileSync(join(ELECTRON_DIR, 'main/window-manager.ts'), 'utf8')
+    expect(manager).not.toMatch(/https\?:\/i\.test\(url\)\) void shell\.openExternal/)
+    expect(manager).toMatch(/isSafeExternalUrl\(url\)\) void shell\.openExternal\(url\)/)
+  })
+})
+
 describe('lockDownWindowNavigation', () => {
   function fakeWindow() {
     const listeners: Record<string, (event: { preventDefault: () => void }, url: string) => void> = {}

@@ -289,7 +289,8 @@ export async function openWebShell(
       return { action: 'deny' }
     })
 
-    shellWindow.webContents.on('will-navigate', (event, url) => {
+    // Guard server redirects too, or a 302 to another host would load inside the shell.
+    const guardShellNavigation = (event: Electron.Event, url: string): void => {
       try {
         const u = new URL(url)
         if (!allowedHost(u.hostname, frontendBase)) {
@@ -299,7 +300,9 @@ export async function openWebShell(
       } catch {
         event.preventDefault()
       }
-    })
+    }
+    shellWindow.webContents.on('will-navigate', guardShellNavigation)
+    shellWindow.webContents.on('will-redirect', guardShellNavigation)
 
     shellWindow.on('ready-to-show', () => {
       shellWindow?.show()
