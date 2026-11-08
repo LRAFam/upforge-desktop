@@ -165,4 +165,53 @@ describe('applyObsRecordingSettings replay configuration', () => {
     expect(call).not.toHaveBeenCalled()
     expect(fs.readFileSync(path.join(root, 'users'), 'utf8')).toBe('an existing file')
   })
+
+  function profileWrites(call: ReturnType<typeof vi.fn>): Array<[string, string, string]> {
+    return call.mock.calls
+      .filter(([name]) => name === 'SetProfileParameter')
+      .map(([, args]) => [args.parameterCategory, args.parameterName, args.parameterValue])
+  }
+
+  function simpleObs() {
+    return vi.fn(async (name: string, args?: Record<string, unknown>) => {
+      if (name === 'GetProfileParameter') {
+        if (args?.parameterName === 'Mode') return { parameterValue: 'Simple' }
+        return { parameterValue: null }
+      }
+      if (name === 'GetVideoSettings') return { outputWidth: 1920, outputHeight: 1080 }
+      return {}
+    })
+  }
+
+  it('writes the detected hardware encoder and preset bitrate into the profile', async () => {
+    const call = simpleObs()
+    await applyObsRecordingSettings({ call } as never, {
+      quality: '1080p', bitrate: 10, fps: 60, manageObsVideo: false, audioEnabled: true, savePath, captureMonitor: 'auto',
+    }, '31.0.0', {
+      detectEncoders: async () => ({ available: process.platform === 'darwin' ? ['apple_h264'] : ['nvenc', 'qsv'], source: 'obs-log' }),
+    })
+    const writes = profileWrites(call)
+    const expected = process.platform === 'darwin' ? 'apple_h264' : process.platform === 'win32' ? 'nvenc' : 'x264'
+    expect(writes).toContainEqual(['SimpleOutput', 'RecEncoder', expected])
+    expect(writes).toContainEqual(['SimpleOutput', 'StreamEncoder', expected])
+    expect(writes).toContainEqual(['SimpleOutput', 'RecQuality', 'Stream'])
+    expect(writes).toContainEqual(['SimpleOutput', 'VBitrate', '10000'])
+    expect(writes).toContainEqual(['Stream1', 'IgnoreRecommended', 'true'])
+    expect(writes).not.toContainEqual(['SimpleOutput', 'RecQuality', 'Small'])
+  })
+
+  it.each([
+    ['returns null', async () => null],
+    ['throws', async () => { throw new Error('boom') }],
+  ])('keeps the previous Small-quality behaviour when detection %s', async (_label, detectEncoders) => {
+    const call = simpleObs()
+    const result = await applyObsRecordingSettings({ call } as never, {
+      quality: '720p', bitrate: 5, fps: 30, manageObsVideo: false, audioEnabled: true, savePath, captureMonitor: 'auto',
+    }, '31.0.0', { detectEncoders })
+    const writes = profileWrites(call)
+    expect(writes).toContainEqual(['SimpleOutput', 'RecQuality', 'Small'])
+    expect(writes.some(([, key]) => key === 'RecEncoder' || key === 'VBitrate')).toBe(false)
+    expect(result.blocking).toBe(false)
+  })
 })
+
