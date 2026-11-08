@@ -7735,7 +7735,7 @@ async function startApp(): Promise<void> {
       ? await authManager.getApi().post('/api/cs2/match-report/notes', { match_key: matchId, facts }, { validateStatus: () => true, timeout: 90000 }).catch(() => null)
       : await authManager.getApi().post(`/api/${game}/match-report/${matchId}/notes`, {}, { validateStatus: () => true, timeout: 90000 }).catch(() => null)
     if (r?.status !== 200 || !r.data?.success) return { ok: false, error: r?.status === 404 ? 'not_found' : 'unavailable' }
-    return { ok: true, notes: r.data.notes ?? null, notes_source: r.data.notes_source ?? null, capped: !!r.data.capped }
+    return { ok: true, notes: r.data.notes ?? null, notes_source: r.data.notes_source ?? null, capped: !!r.data.capped, notes_status: r.data.notes_status ?? null }
   })
   // Starting report: the first-join AI read of the player's last matches, one per game (stored by the API).
   const STARTING_GAMES = ['valorant', 'lol', 'deadlock', 'cs2'] as const
