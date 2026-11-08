@@ -21,7 +21,7 @@ import {
   type Cs2ReportTimeline, type DeadlockReportResponse, type LolReportResponse, type ReportGame,
 } from '../../lib/match-report-games'
 import { readCache, writeCache } from '../../lib/stale-cache'
-import { createReportPoller, REPORT_RETRY } from '../../lib/report-poller'
+import { createReportPoller, NOTES_PENDING, REPORT_RETRY } from '../../lib/report-poller'
 import UfRoundsLine from '../../components/v3/UfRoundsLine.vue'
 import ScoreWhyV3 from '../../components/v3/score/ScoreWhyV3.vue'
 import { matchScore, scoreToneColor } from '../../lib/upforge-score'
@@ -70,17 +70,33 @@ async function fetchReport(g: ReportGame, id: string): Promise<Loaded | null> {
   return res.ok ? { ok: true, state: { kind: 'ready', view: matchReportView(res.report) } } : res
 }
 
-/** AI coach notes arrive after the facts (one call, stored by the API, shared daily cap). */
+/**
+ * AI coach notes arrive after the facts (one call, stored by the API, shared daily cap). The API queues
+ * them and answers notes_status "pending" at first, so the page asks again for ~2 minutes until they're in.
+ */
 const notesLoading = ref(false)
+let notesAsk: (() => Promise<boolean>) | null = null
+const notesPoller = createReportPoller(NOTES_PENDING, () => notesAsk?.() ?? Promise.resolve(true))
+const notesWaiting = computed(() => notesLoading.value || notesPoller.active.value)
 async function loadNotes(g: 'lol' | 'deadlock' | 'cs2', id: string, facts: unknown): Promise<void> {
+  notesPoller.stop()
   if (g === 'cs2' && !facts) return
+  /** Returns true when there's nothing left to wait for. */
+  const ask = async (): Promise<boolean> => {
+    const res = await window.api?.app?.getGameMatchNotes?.(g, id, facts).catch(() => null)
+    if (!res?.ok || id !== matchId.value || g !== game.value || state.value?.kind !== 'ready') return true
+    const pending = res.notes_status === 'pending' && !res.notes
+    if (pending) return false
+    const next = { kind: 'ready' as const, view: applyGameNotes(state.value.view, res as GameNotesResult) }
+    state.value = next
+    writeCache(`match-report:${g}:${id}`, next)
+    return true
+  }
+  notesAsk = ask
   notesLoading.value = true
-  const res = await window.api?.app?.getGameMatchNotes?.(g, id, facts).catch(() => null)
+  const done = await ask()
   notesLoading.value = false
-  if (!res?.ok || id !== matchId.value || g !== game.value || state.value?.kind !== 'ready') return
-  const next = { kind: 'ready' as const, view: applyGameNotes(state.value.view, res as GameNotesResult) }
-  state.value = next
-  writeCache(`match-report:${g}:${id}`, next)
+  if (!done && notesAsk === ask) notesPoller.start()
 }
 
 /**
@@ -93,6 +109,7 @@ async function load(quiet = false): Promise<boolean> {
   const key = `match-report:${g}:${id}`
   if (!quiet) {
     reportPoller.stop()
+    notesPoller.stop()
     const cached = readCache<MatchReportState>(key)
     state.value = cached?.value ?? null
     needsDemo.value = false
@@ -202,7 +219,7 @@ onMounted(() => {
     if (u.state === 'done') void loadCoachFlow()
   }) ?? null
 })
-onBeforeUnmount(() => { stopUpdates?.(); reportPoller.stop() })
+onBeforeUnmount(() => { stopUpdates?.(); reportPoller.stop(); notesPoller.stop() })
 watch(matchId, () => { moments.value = []; flowState.value = null; void loadCoachFlow() })
 
 // Practice opens on this report's drill ("Do this next"), not a generic page.
@@ -265,7 +282,7 @@ function back(): void { if (window.history.length > 1) router.back(); else route
           <ul v-if="view.evidence?.length" class="mr3-evidence">
             <li v-for="(line, i) in view.evidence" :key="i" class="uf-t3">{{ line }}</li>
           </ul>
-          <p v-else-if="notesLoading && !isValorant" class="uf-t4">Your coach is reading this match…</p>
+          <p v-else-if="notesWaiting && !isValorant" class="uf-t4">Your coach is reading this match…</p>
           <p v-if="view.isAlt" class="uf-t4">Played on an alt account: coached, not counted for your focus.</p>
         </section>
 

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createReportPoller, REPORT_RETRY } from './report-poller'
+import { createReportPoller, NOTES_PENDING, REPORT_RETRY } from './report-poller'
 
 describe('createReportPoller', () => {
   beforeEach(() => { vi.useFakeTimers() })
@@ -58,5 +58,44 @@ describe('MatchReportV3 no-report state', () => {
   })
   it('stops checking when the page closes', () => {
     expect(sfc).toMatch(/onBeforeUnmount\(\(\) => \{[^\n]*reportPoller\.stop\(\)/)
+  })
+})
+
+describe('NOTES_PENDING (coach notes still being written)', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('checks soon (5 s) and gives up after about 2 minutes', async () => {
+    const run = vi.fn(async () => false)
+    const p = createReportPoller(NOTES_PENDING, run)
+    p.start()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(run).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(p.active.value).toBe(false)
+    const total = NOTES_PENDING.delaysMs!.reduce((a, b) => a + b, 0)
+    expect(total).toBeGreaterThanOrEqual(110_000)
+    expect(total).toBeLessThanOrEqual(130_000)
+  })
+
+  it('stays under the API notes throttle (30 requests an hour per game)', () => {
+    expect(NOTES_PENDING.delaysMs!.length).toBeLessThanOrEqual(12)
+  })
+})
+
+describe('match-report:game-notes IPC', () => {
+  const main = readFileSync(new URL('../../electron/main/index.ts', import.meta.url), 'utf8')
+  it('passes notes_status through so the page can tell "pending" from "no notes"', () => {
+    const start = main.indexOf("ipcMain.handle('match-report:game-notes'")
+    const block = main.slice(start, main.indexOf('\n  })', start))
+    expect(block).toMatch(/notes_status:/)
+  })
+})
+
+describe('MatchReportV3 pending notes', () => {
+  const sfc = readFileSync(new URL('../views/v3/MatchReportV3.vue', import.meta.url), 'utf8')
+  it('polls while notes are pending and stops on unmount', () => {
+    expect(sfc).toMatch(/notes_status === 'pending'/)
+    expect(sfc).toMatch(/onBeforeUnmount\(\(\) => \{[^\n]*notesPoller\.stop\(\)/)
   })
 })
