@@ -3,7 +3,7 @@
  * UI v3 title bar: brand mark, game switcher (one accent at a time, always with the logo),
  * recording/OBS status and the account. Draggable; window controls on Windows only.
  */
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
 import AccountSwitcherV3 from './accounts/AccountSwitcherV3.vue'
 import { useRoute } from 'vue-router'
@@ -14,8 +14,9 @@ import upforgeIcon from '../../assets/upforge-icon.webp'
 import { titleBarGames } from './games/display-names'
 import PlayerAvatar from './identity/PlayerAvatar.vue'
 import type { PlayerIdentity } from '../../lib/player-identity'
+import { gameTabToAutoSwitch } from '../../lib/game-tab-auto-switch'
 
-defineProps<{
+const props = defineProps<{
   isMac: boolean
   showWindowControls: boolean
   recording: boolean
@@ -36,6 +37,21 @@ const route = useRoute()
 // Same-size square marks (src/assets/games), one selected state: full colour + the game's accent underline.
 const games = titleBarGames()
 function pick(id: PrimaryGame): void { if (primaryGame.value !== id) void setPrimaryGame(id) }
+
+// Follow the game you just launched (in-game process only, never while recording). Setting: autoSwitchGameTab.
+let offGameStatus: (() => void) | null = null
+onMounted(() => {
+  if (!window.api?.on) return
+  offGameStatus = window.api.on('game:status-changed', async (event: unknown) => {
+    const state = () => ({ event, current: primaryGame.value, recording: props.recording, onboarding: route.path.startsWith('/onboarding') })
+    if (!gameTabToAutoSwitch({ ...state(), enabled: true })) return
+    const enabled = await window.api.settings.get().then((s) => s.autoSwitchGameTab !== false, () => true)
+    // Re-check after the settings read: a recording may have started meanwhile.
+    const next = gameTabToAutoSwitch({ ...state(), enabled })
+    if (next) void setPrimaryGame(next)
+  })
+})
+onBeforeUnmount(() => { offGameStatus?.() })
 </script>
 
 <template>

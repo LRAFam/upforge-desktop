@@ -495,6 +495,7 @@ function createSettings() {
     fullMatchRecording: true,
     notificationSound: true,
     discordRichPresence: true,
+    autoSwitchGameTab: true,
     inGameFeedback: 'notifications',
     cachedEncoder: null,
     cachedUseDdagrab: null,
@@ -578,12 +579,13 @@ function createSettings() {
     return [] as string[]
   })
   
-  const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence'>; label: string; hint: string | null }> = [
+  const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence' | 'autoSwitchGameTab'>; label: string; hint: string | null }> = [
     { key: 'launchOnStartup', label: 'Launch on startup', hint: null },
     { key: 'autoDelete', label: 'Auto-delete after analysis', hint: 'Removes the local file once coaching finishes successfully — kept on failure for review and retry' },
     { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Upload and run AI coaching automatically when a match ends (uses your shared analysis pool across all games)' },
     { key: 'autoOpenBrowser', label: 'Also open results on the website', hint: 'Results always open here in the app. Turn on to also open upforge.gg when an analysis finishes' },
     { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound for F8/F9 hotkey actions' },
+    { key: 'autoSwitchGameTab', label: 'Switch game tab when a game starts', hint: 'Only when nothing is recording — a running recording keeps its game' },
     { key: 'discordRichPresence', label: 'Show status in Discord', hint: 'Advertises UpForge on your profile. Buttons only appear when someone else opens your full profile — not on your own.' },
   ]
   
@@ -870,7 +872,7 @@ function createSettings() {
     showSaved()
   }
   
-  function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence'>): void {
+  function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence' | 'autoSwitchGameTab'>): void {
     settings[key] = !settings[key]
     if (key === 'autoAnalyse') settings.autoAnalyseConsentVersion = 1
     debouncedSave()
