@@ -9,6 +9,7 @@ vi.mock('./deadlock-steam-cache', () => ({
   getResolvedSteamHttpCacheDir: vi.fn(() => null),
   logSteamCacheDiagnostics: vi.fn(),
   mergeSalts: vi.fn((prev, next) => ({ ...prev, ...next })),
+  resetSteamHttpCacheScanState: vi.fn(),
   resolveSteamHttpCacheDir: vi.fn(async () => null),
   scanChangedSteamHttpCacheEntry: vi.fn(() => []),
   scanSteamHttpCache: vi.fn(async () => []),
@@ -20,7 +21,9 @@ vi.mock('./deadlock-paths', () => ({
 }))
 
 import {
+  DEADLOCK_CACHE_LIVE_SCAN_MS,
   DEADLOCK_CACHE_POLL_MS,
+  isDeadlockCacheScanDue,
   isDeadlockReadyToRecord,
   nextDeadlockCacheScanAt,
   noteDeadlockWaitStarted,
@@ -42,6 +45,53 @@ describe('deadlock match readiness', () => {
 
   it('uses a low-overhead cache polling cadence', () => {
     expect(DEADLOCK_CACHE_POLL_MS).toBe(10_000)
+    expect(DEADLOCK_CACHE_LIVE_SCAN_MS).toBe(60_000)
+  })
+
+  it('only runs the cache safety-net scan every 60 s while a match is live and the watcher is up', () => {
+    const base = { now: 100_000, lastScanRanAt: 90_000 }
+    expect(isDeadlockCacheScanDue({ ...base, matchLive: false, watcherActive: true })).toBe(true)
+    expect(isDeadlockCacheScanDue({ ...base, matchLive: true, watcherActive: false })).toBe(true)
+    expect(isDeadlockCacheScanDue({ ...base, matchLive: true, watcherActive: true })).toBe(false)
+    expect(isDeadlockCacheScanDue({ ...base, matchLive: true, watcherActive: true, force: true })).toBe(true)
+    expect(isDeadlockCacheScanDue({ now: 150_000, lastScanRanAt: 90_000, matchLive: true, watcherActive: true })).toBe(true)
+    expect(isDeadlockCacheScanDue({ now: 100_000, lastScanRanAt: 0, matchLive: true, watcherActive: true })).toBe(true)
+  })
+
+  it('scans the cache every 10 s before a match, then every 60 s once live (watcher primary)', async () => {
+    vi.useFakeTimers()
+    const watcher = { close: vi.fn(), on: vi.fn().mockReturnThis() } as unknown as fs.FSWatcher
+    vi.spyOn(fs, 'watch').mockImplementation((() => watcher) as unknown as typeof fs.watch)
+    vi.mocked(resolveSteamHttpCacheDir).mockResolvedValue('C:\\Steam\\appcache\\httpcache')
+    vi.mocked(scanSteamHttpCache).mockClear()
+
+    noteDeadlockWaitStarted()
+    startDeadlockLogWatcher()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(scanSteamHttpCache).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(scanSteamHttpCache).mock.calls[0]![1]).toEqual({ skipUnchangedDirs: expect.any(Boolean) })
+
+    // Not live yet: every 10 s tick scans.
+    await vi.advanceTimersByTimeAsync(DEADLOCK_CACHE_POLL_MS)
+    expect(scanSteamHttpCache).toHaveBeenCalledTimes(2)
+
+    vi.mocked(scanSteamHttpCache).mockResolvedValueOnce([{
+      matchId: 404, clusterId: 1, metadataSalt: 9, replaySalt: null,
+      sourcePath: '/cache/c', url: 'http://replay1.valve.net/1422450/404_9.meta.bz2',
+    }])
+    await vi.advanceTimersByTimeAsync(DEADLOCK_CACHE_POLL_MS)
+    expect(scanSteamHttpCache).toHaveBeenCalledTimes(3)
+    expect(isDeadlockReadyToRecord()).toBe(true)
+    expect(vi.mocked(scanSteamHttpCache).mock.calls[2]![1]).toEqual({ skipUnchangedDirs: true })
+
+    // Live: five more 10 s ticks (50 s) → no scan; the 60 s mark → one scan.
+    await vi.advanceTimersByTimeAsync(5 * DEADLOCK_CACHE_POLL_MS)
+    expect(scanSteamHttpCache).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(DEADLOCK_CACHE_POLL_MS)
+    expect(scanSteamHttpCache).toHaveBeenCalledTimes(4)
+
+    stopDeadlockLogWatcher()
+    vi.useRealTimers()
   })
 
   beforeEach(() => {

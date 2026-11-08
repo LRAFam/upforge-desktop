@@ -164,6 +164,16 @@ function extractValveUrlsFromBuffer(data: Buffer): string[] {
   return urls
 }
 
+function hitsFromBuffer(buf: Buffer, filePath: string): DeadlockCacheScanHit[] {
+  const hits: DeadlockCacheScanHit[] = []
+  for (const url of extractValveUrlsFromBuffer(buf)) {
+    const salts = parseDeadlockValveUrl(url)
+    if (!salts) continue
+    hits.push({ ...salts, sourcePath: filePath, url })
+  }
+  return hits
+}
+
 /** Scan one Steam httpcache file for Deadlock replay URLs. */
 export function scanHttpCacheFile(filePath: string): DeadlockCacheScanHit[] {
   let fd: number | null = null
@@ -175,19 +185,33 @@ export function scanHttpCacheFile(filePath: string): DeadlockCacheScanHit[] {
 
     const buf = Buffer.alloc(readLen)
     fs.readSync(fd, buf, 0, readLen, 0)
-
-    const hits: DeadlockCacheScanHit[] = []
-    for (const url of extractValveUrlsFromBuffer(buf)) {
-      const salts = parseDeadlockValveUrl(url)
-      if (!salts) continue
-      hits.push({ ...salts, sourcePath: filePath, url })
-    }
-    return hits
+    return hitsFromBuffer(buf, filePath)
   } catch {
     return []
   } finally {
     if (fd != null) {
       try { fs.closeSync(fd) } catch { /* ignore */ }
+    }
+  }
+}
+
+/** Async twin of scanHttpCacheFile — used by the periodic safety-net scan (never blocks the main loop). */
+export async function scanHttpCacheFileAsync(filePath: string, knownSize?: number): Promise<DeadlockCacheScanHit[]> {
+  let fh: fs.promises.FileHandle | null = null
+  try {
+    fh = await fs.promises.open(filePath, 'r')
+    const size = knownSize ?? (await fh.stat()).size
+    const readLen = Math.min(size, MAX_BYTES_TO_READ)
+    if (readLen <= 0) return []
+
+    const buf = Buffer.alloc(readLen)
+    const { bytesRead } = await fh.read(buf, 0, readLen, 0)
+    return hitsFromBuffer(bytesRead < readLen ? buf.subarray(0, bytesRead) : buf, filePath)
+  } catch {
+    return []
+  } finally {
+    if (fh) {
+      try { await fh.close() } catch { /* ignore */ }
     }
   }
 }
@@ -216,37 +240,101 @@ export function scanChangedSteamHttpCacheEntry(
   return scanHttpCacheFile(candidate)
 }
 
-function walkCacheDir(dir: string, results: DeadlockCacheScanHit[], notBeforeMtimeMs: number): void {
-  let entries: fs.Dirent[]
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true })
-  } catch {
-    return
+interface DirScanRecord {
+  mtimeMs: number
+  childDirs: string[]
+}
+
+/**
+ * Directory mtime + subdirectory list from the previous safety-net scan. A directory whose mtime
+ * has not moved gained/lost no entries, so its files are skipped (the fs.watch watcher reports
+ * in-place writes); its known subdirectories are still checked.
+ */
+const dirScanState = new Map<string, DirScanRecord>()
+
+/** Forget remembered directory mtimes (new Deadlock session → next scan walks everything). */
+export function resetSteamHttpCacheScanState(): void {
+  dirScanState.clear()
+}
+
+export interface SteamHttpCacheScanOptions {
+  /** Skip listing directories whose mtime is unchanged since the last scan. */
+  skipUnchangedDirs?: boolean
+  /** Cache directory override (tests); defaults to the resolved Steam httpcache. */
+  cacheDir?: string
+}
+
+async function walkCacheDirAsync(
+  dir: string,
+  dirMtimeMs: number,
+  results: DeadlockCacheScanHit[],
+  notBeforeMtimeMs: number,
+  skipUnchanged: boolean,
+): Promise<void> {
+  const prev = dirScanState.get(dir)
+  const unchanged = skipUnchanged
+    && prev != null
+    && prev.mtimeMs === dirMtimeMs
+    && dirMtimeMs < notBeforeMtimeMs
+
+  let childDirs: string[]
+  if (unchanged) {
+    childDirs = prev.childDirs
+  } else {
+    let entries: fs.Dirent[]
+    try {
+      entries = await fs.promises.readdir(dir, { withFileTypes: true })
+    } catch {
+      dirScanState.delete(dir)
+      return
+    }
+    childDirs = []
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        childDirs.push(full)
+        continue
+      }
+      if (!entry.isFile()) continue
+      try {
+        const stat = await fs.promises.stat(full)
+        if (stat.mtimeMs < notBeforeMtimeMs) continue
+        results.push(...await scanHttpCacheFileAsync(full, stat.size))
+      } catch { /* skip */ }
+    }
+    dirScanState.set(dir, { mtimeMs: dirMtimeMs, childDirs })
   }
 
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) {
-      walkCacheDir(full, results, notBeforeMtimeMs)
+  for (const child of childDirs) {
+    let childMtime: number
+    try {
+      const st = await fs.promises.stat(child)
+      if (!st.isDirectory()) continue
+      childMtime = st.mtimeMs
+    } catch {
+      dirScanState.delete(child)
       continue
     }
-    if (!entry.isFile()) continue
-
-    try {
-      const stat = fs.statSync(full)
-      if (stat.mtimeMs < notBeforeMtimeMs) continue
-      results.push(...scanHttpCacheFile(full))
-    } catch { /* skip */ }
+    await walkCacheDirAsync(child, childMtime, results, notBeforeMtimeMs, skipUnchanged)
   }
 }
 
-/** Scan httpcache for Deadlock URLs modified after `notBeforeMs`. */
-export async function scanSteamHttpCache(notBeforeMs: number): Promise<DeadlockCacheScanHit[]> {
-  const cacheDir = await resolveSteamHttpCacheDir()
+/** Scan httpcache for Deadlock URLs modified after `notBeforeMs` (async fs only). */
+export async function scanSteamHttpCache(
+  notBeforeMs: number,
+  opts: SteamHttpCacheScanOptions = {},
+): Promise<DeadlockCacheScanHit[]> {
+  const cacheDir = opts.cacheDir ?? await resolveSteamHttpCacheDir()
   if (!cacheDir) return []
 
+  let rootMtime: number
+  try {
+    rootMtime = (await fs.promises.stat(cacheDir)).mtimeMs
+  } catch {
+    return []
+  }
   const results: DeadlockCacheScanHit[] = []
-  walkCacheDir(cacheDir, results, notBeforeMs)
+  await walkCacheDirAsync(cacheDir, rootMtime, results, notBeforeMs, opts.skipUnchangedDirs === true)
   return results
 }
 

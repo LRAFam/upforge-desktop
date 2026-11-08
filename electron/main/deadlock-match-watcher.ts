@@ -14,6 +14,7 @@ import {
   getResolvedSteamHttpCacheDir,
   logSteamCacheDiagnostics,
   mergeSalts,
+  resetSteamHttpCacheScanState,
   resolveSteamHttpCacheDir,
   scanChangedSteamHttpCacheEntry,
   scanSteamHttpCache,
@@ -29,6 +30,11 @@ import { getGameDataCapture } from './game-data-capture'
 type DeadlockPhase = 'idle' | 'waiting' | 'in_match' | 'post_match'
 
 export const DEADLOCK_CACHE_POLL_MS = 10_000
+/**
+ * While a match is live and the fs.watch watcher is up, the httpcache safety-net scan only runs
+ * this often (the watcher reports cache writes immediately). Replay-folder polling stays at 10 s.
+ */
+export const DEADLOCK_CACHE_LIVE_SCAN_MS = 60_000
 const REPLAY_STABLE_MS = 20_000
 const MIN_PARTIAL_BYTES = 1024
 
@@ -38,7 +44,11 @@ let watchedSteamCacheDir: string | null = null
 let sessionStartAt = 0
 let waitStartedAt = 0
 let lastCacheScanAt = 0
+/** Wall-clock time the last safety-net cache scan ran (0 = never this session). */
+let lastCacheScanRanAt = 0
 let lastActivityAt = 0
+let pollInFlight: Promise<void> | null = null
+let pollQueued = false
 
 let phase: DeadlockPhase = 'idle'
 let activeMatchId: number | null = null
@@ -72,6 +82,8 @@ export function resetDeadlockLogSession(): void {
   sessionStartAt = Date.now()
   waitStartedAt = sessionStartAt
   lastCacheScanAt = sessionStartAt - 60_000
+  lastCacheScanRanAt = 0
+  resetSteamHttpCacheScanState()
   resetState()
   knownMatchIds.clear()
   saltsByMatch.clear()
@@ -134,19 +146,18 @@ function applyCacheSalts(salts: DeadlockMatchSalts): void {
   }
 }
 
-function pollPartialReplays(dirs: string[]): void {
+async function pollPartialReplays(dirs: string[]): Promise<void> {
   const notBefore = sessionStartAt
   let newest: { path: string; size: number; mtimeMs: number } | null = null
 
   for (const dir of dirs) {
-    if (!fs.existsSync(dir)) continue
     try {
-      for (const entry of fs.readdirSync(dir)) {
+      for (const entry of await fs.promises.readdir(dir)) {
         const lower = entry.toLowerCase()
         if (!lower.endsWith('.dem.partial') && !lower.endsWith('.dem')) continue
         const fullPath = path.join(dir, entry)
         try {
-          const stat = fs.statSync(fullPath)
+          const stat = await fs.promises.stat(fullPath)
           if (stat.mtimeMs < notBefore || stat.size < MIN_PARTIAL_BYTES) continue
           if (!newest || stat.mtimeMs > newest.mtimeMs) {
             newest = { path: fullPath, size: stat.size, mtimeMs: stat.mtimeMs }
@@ -199,18 +210,60 @@ async function refreshReplayDirsIfStale(): Promise<string[]> {
   return cachedReplayDirs
 }
 
-async function pollOnce(): Promise<void> {
+/**
+ * Is the httpcache safety-net scan due? Every tick (10 s) unless a match is live and the
+ * filesystem watcher is running — then every DEADLOCK_CACHE_LIVE_SCAN_MS.
+ */
+export function isDeadlockCacheScanDue(opts: {
+  now: number
+  lastScanRanAt: number
+  matchLive: boolean
+  watcherActive: boolean
+  force?: boolean
+}): boolean {
+  if (opts.force || !opts.lastScanRanAt) return true
+  if (!opts.matchLive || !opts.watcherActive) return true
+  return opts.now - opts.lastScanRanAt >= DEADLOCK_CACHE_LIVE_SCAN_MS
+}
+
+/** One poll at a time; a request during a poll runs once more right after it. */
+function pollOnce(force = false): Promise<void> {
+  if (pollInFlight) {
+    if (force) pollQueued = true
+    return pollInFlight
+  }
+  pollInFlight = runPoll(force).finally(() => {
+    pollInFlight = null
+    if (pollQueued) {
+      pollQueued = false
+      void pollOnce(true)
+    }
+  })
+  return pollInFlight
+}
+
+async function runPoll(force: boolean): Promise<void> {
   // Retry watcher setup after transient Steam/cache discovery failures.
   if (!steamCacheWatcher) void startSteamCacheWatcher()
 
   const scanStartedAt = Date.now()
-  const notBefore = Math.max(sessionStartAt, lastCacheScanAt)
-  const hits = await scanSteamHttpCache(notBefore)
-  lastCacheScanAt = nextDeadlockCacheScanAt(lastCacheScanAt, scanStartedAt)
-  for (const hit of hits) applyCacheSalts(hit)
+  const watcherActive = steamCacheWatcher != null
+  if (isDeadlockCacheScanDue({
+    now: scanStartedAt,
+    lastScanRanAt: lastCacheScanRanAt,
+    matchLive: isDeadlockMatchLive(),
+    watcherActive,
+    force,
+  })) {
+    const notBefore = Math.max(sessionStartAt, lastCacheScanAt)
+    const hits = await scanSteamHttpCache(notBefore, { skipUnchangedDirs: watcherActive })
+    lastCacheScanAt = nextDeadlockCacheScanAt(lastCacheScanAt, scanStartedAt)
+    lastCacheScanRanAt = scanStartedAt
+    for (const hit of hits) applyCacheSalts(hit)
+  }
 
   const replayDirs = await refreshReplayDirsIfStale()
-  pollPartialReplays(replayDirs.length ? replayDirs : getDeadlockReplayDirsSync())
+  await pollPartialReplays(replayDirs.length ? replayDirs : getDeadlockReplayDirsSync())
 }
 
 async function startSteamCacheWatcher(): Promise<void> {
@@ -223,7 +276,7 @@ async function startSteamCacheWatcher(): Promise<void> {
       { recursive: true, persistent: false },
       (_eventType, filename) => {
         if (!filename) {
-          void pollOnce()
+          void pollOnce(true)
           return
         }
         const hits = scanChangedSteamHttpCacheEntry(cacheDir, filename.toString())
