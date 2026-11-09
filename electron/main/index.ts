@@ -37,9 +37,10 @@ import {
   createSerialRunner,
   isSupersededGameStop,
   maxRecordingDurationMs,
+  recordingOwnerGame,
   resolveGameStartOwnership,
 } from './recording-ownership'
-import { RecordingSessionLog, resolveOrphanRecordingGame } from './recording-session-log'
+import { RecordingSessionLog, canScanForOrphanRecordings, resolveOrphanRecordingGame } from './recording-session-log'
 import { StartupFailureSummary, fileSeenStore } from './startup-failure-summary'
 import {
   app,
@@ -792,6 +793,14 @@ function recordingSessionLog(): RecordingSessionLog {
 }
 /** Game that owns the current match flow (set on game-started). */
 let matchFlowGame: string | null = null
+/** Game of the recording UpForge owns right now — detection only, never the selected game tab. */
+function currentRecordingOwnerGame(): string | null {
+  return recordingOwnerGame({
+    sessionGame: recordingSessionLog().activeGame(),
+    flowGame: matchFlowGame,
+    detectedGame: gameDetector.currentGame(),
+  })
+}
 let replayCaptureOwnerId: number | null = captureOwnership.get()
 let localMediaWork = 0
 let guestClaimInFlight = false
@@ -836,6 +845,7 @@ obsRecorder.onReplayClipSaved = (clipPath, trigger, meta) => {
   const clipStartMs = momentOffsetMs != null
     ? Math.max(0, momentOffsetMs - Math.round(durationSeconds * 1000))
     : null
+  const replayGame = currentRecordingOwnerGame()
   const rec = clipStore.forUser(replayCaptureOwnerId).add({
     path: clipPath,
     thumbPath: null,
@@ -850,7 +860,8 @@ obsRecorder.onReplayClipSaved = (clipPath, trigger, meta) => {
     gameMode: live.gameMode,
     weapon: null,
     abilitySlot: null,
-    game: normalizePrimaryGame(gameDetector.currentGame() ?? trackedPrimaryGame),
+    // Replay buffer runs only during a detected match; label by that, never by the game tab.
+    game: replayGame ? normalizePrimaryGame(replayGame) : null,
     momentOffsetMs,
     clipStartMs,
   })
@@ -1918,10 +1929,15 @@ function linkedRiotFromAuth() {
 }
 
 /** Pick up recent local MP4s that never made it into recordings.json (e.g. post-game window closed early). */
-function scanForOrphanedRecordings(force = false): number {
+function scanForOrphanedRecordings(force = false, opts: { fromMatchEnd?: boolean } = {}): number {
   if (!settingsManager || !recordingsStore) return 0
-  // A growing OBS file is not an orphan yet. It will be eligible after recording stops.
-  if (obsRecorder.isRecording()) return 0
+  // A growing OBS file is not an orphan yet, and a match end still saving its file registers it
+  // itself (importing it here first made a duplicate row labelled with a guessed game).
+  if (!canScanForOrphanRecordings({
+    recording: obsRecorder.isRecording(),
+    matchEndInFlight: matchFinalizeInFlight !== null,
+    fromMatchEnd: opts.fromMatchEnd,
+  })) return 0
   if (orphanedRecordingsScanned && !force) return 0
   orphanedRecordingsScanned = true
 
@@ -1946,14 +1962,11 @@ function scanForOrphanedRecordings(force = false): number {
   const user = authManager.getUser()
   const sessions = recordingSessionLog().list()
   for (const file of orphans) {
-    // Label by the recording session that owned the file, not today's game tab (card 232).
+    // Label by the recording session that owned the file; no session → 'unknown'. Never the
+    // selected game tab (3.4.x: CS2 files imported under the Valorant tab became Valorant matches).
     let modifiedAtMs: number | null = null
     try { modifiedAtMs = fs.statSync(file.path).mtimeMs } catch { /* unknown */ }
-    const orphanGame = normalizePrimaryGame(resolveOrphanRecordingGame(
-      { path: file.path, modifiedAtMs },
-      sessions,
-      normalizePrimaryGame(settingsManager.get().primaryGame),
-    ))
+    const orphanGame = resolveOrphanRecordingGame({ path: file.path, modifiedAtMs }, sessions)
     const timing = inspectOrphanRecordingTiming(file.path)
     const canRecoverValorant = orphanGame === 'valorant' && timing.status === 'ok'
     const timeline = canRecoverValorant
@@ -3614,16 +3627,20 @@ function setupGameDetection(): void {
   }
 
   async function finalizeAfterObsProcessDeathImpl(): Promise<void> {
-    const game = normalizePrimaryGame(gameDetector.currentGame() ?? trackedPrimaryGame)
-    logActivity('OBS process exited — reclaiming recording file if present')
+    // The game whose recording OBS was writing — never the selected game tab.
+    const ownerGame = currentRecordingOwnerGame()
+    logActivity('OBS process exited — reclaiming recording file if present', ownerGame ?? undefined)
 
     if (matchFinalizeInFlight) {
       await matchFinalizeInFlight
-    } else if (!matchHandled) {
-      const didFinalize = await finalizeMatchOnce(game, 'obs-process-death')
+    } else if (!matchHandled && !ownerGame) {
+      // No detected game owns a recording: the file is left for orphan import (labelled by session).
+      log.warn('[OBS] Process exited with no detected game owning a recording — nothing to finalise')
+    } else if (!matchHandled && ownerGame) {
+      const didFinalize = await finalizeMatchOnce(ownerGame, 'obs-process-death')
       if (!didFinalize) return
       endMatchPerformanceMode()
-      if (game === 'deadlock') void refreshDeadlockProfile(true)
+      if (ownerGame === 'deadlock') void refreshDeadlockProfile(true)
       destroyOverlay()
     }
 
@@ -4359,7 +4376,7 @@ function setupGameDetection(): void {
       )
 
       if (!ready) {
-        scanForOrphanedRecordings(true)
+        scanForOrphanedRecordings(true, { fromMatchEnd: true })
         const backend = getRecordingBackendForStatus()
         const errorMsg = formatRecordingFailure(backend, obsRecorder.getLastError())
         logActivity('Recording file not found at expected path — check save folder in Settings')
@@ -7246,6 +7263,7 @@ async function startApp(): Promise<void> {
   },
   (jobId: string) => recordingsStore?.getPathByJobId(jobId) ?? null,
   () => obsStartupTask,
+  currentRecordingOwnerGame,
   )
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager, recordingsStore, settingsManager)

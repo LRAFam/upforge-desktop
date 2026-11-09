@@ -163,6 +163,19 @@ export function isSupersededGameStop(input: {
 }
 
 /**
+ * Game a manual stop, an OBS-death finalise or a replay clip belongs to: the recording UpForge
+ * owns, else the current match flow, else the detected process. Null when none — callers must
+ * not fall back to Valorant or the selected game tab (settings.primaryGame).
+ */
+export function recordingOwnerGame(input: {
+  sessionGame: string | null
+  flowGame: string | null
+  detectedGame: string | null
+}): string | null {
+  return input.sessionGame ?? input.flowGame ?? input.detectedGame ?? null
+}
+
+/**
  * Serialise async work: a second call waits for the first instead of being dropped.
  * Used for handleMatchEnd so a re-entrant finalise can never leave OBS owned.
  */
