@@ -566,6 +566,7 @@ const api = {
       'game:client-changed',
       'app:warning',
       'app:activity-log',
+      'app:activity-entry',
       'app:activity-toast',
       'updater:checking',
       'updater:available',
@@ -606,6 +607,7 @@ const api = {
       'post-game:demo-download-progress',
       'deadlock:upload-progress',
       'spatial:population-updated',
+      'account:billing-refreshed',
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

@@ -1,7 +1,7 @@
 <template>
   <div
     class="product-shell relative h-screen bg-[#111111] text-white flex flex-col overflow-hidden select-none"
-    :class="{ 'login-shell': route.path === '/login', 'ui-v3 uf-grain': uiV3 }"
+    :class="{ 'login-shell': route.path === '/login', 'ui-v3 uf-grain': uiV3, 'uf-still': !windowAttention }"
     :style="cssVars"
   >
     <!-- Subtle branded background texture -->
@@ -292,6 +292,7 @@
 import TitleBarV3 from './components/v3/TitleBarV3.vue'
 import SidebarV3 from './components/v3/SidebarV3.vue'
 import { uiV3 } from './lib/ui-v3'
+import { useWindowAttention } from './lib/window-attention'
 import { openWebFeature } from './lib/web-explore-links'
 import { deepLinkRoute } from './lib/deep-link-route'
 import { openAnalysisInApp, openDeepLinkAnalysis } from './lib/open-analysis-in-app'
@@ -490,6 +491,21 @@ const appUpdateVersion = ref<string | undefined>(undefined)
 const appUpdatePercent = ref(0)
 const updateLine = computed(() => updateBannerLine(appUpdatePhase.value, appUpdateVersion.value, appUpdatePercent.value))
 let statusInterval: ReturnType<typeof setInterval> | null = null
+// Focused + visible. While false (usually: the game has focus) background ticks skip and the
+// v3 shell's infinite animations pause (`uf-still`), so a visible-but-unfocused window draws nothing.
+const windowAttention = useWindowAttention()
+async function refreshShellStatus(): Promise<void> {
+  try {
+    const s = await window.api.app.getStatus()
+    status.value = s
+    if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
+    if (s.user?.name) userName.value = s.user.name
+    if (s.user?.is_admin) isAdmin.value = true
+  } catch { /* ignore */ }
+}
+watch(windowAttention, (looking) => {
+  if (looking && statusInterval) void refreshShellStatus()
+})
 let navBusyTimer: ReturnType<typeof setTimeout> | null = null
 let lastClipSummaryAt = 0
 
@@ -752,15 +768,11 @@ onMounted(async () => {
     applyFromSettings(s)
   })
   ;(window as Window & { _settingsCleanup?: () => void })._settingsCleanup = settingsCleanup
-  statusInterval = setInterval(async () => {
-    if (document.hidden) return // skip while game is running fullscreen
-    try {
-      const s = await api.app.getStatus()
-      status.value = s
-      if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
-      if (s.user?.name) userName.value = s.user.name
-      if (s.user?.is_admin) isAdmin.value = true
-    } catch { /* ignore */ }
+  statusInterval = setInterval(() => {
+    // Skip while the player is in the game (window unfocused or hidden, not only fullscreen);
+    // the watch on windowAttention below refreshes as soon as they're back.
+    if (!windowAttention.value) return
+    void refreshShellStatus()
   }, 5000)
 
   const clipsCleanup = api.on('clips:new', async (...args: unknown[]) => {

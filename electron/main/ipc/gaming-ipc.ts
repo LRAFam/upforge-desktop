@@ -9,7 +9,7 @@ import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
 import { AuthManager } from '../auth-manager'
-import { getFrontendBaseUrl } from '../api-base'
+import { getApiBaseUrl, getFrontendBaseUrl } from '../api-base'
 import { GameDetector } from '../game-detector'
 import { SettingsManager } from '../settings-manager'
 import { openPathSafe } from '../shell-open'
@@ -37,7 +37,7 @@ export function setupGamingHandlers(
   performanceManager?: PerformanceManager,
   trainerBridge?: TrainerBridge,
 ): void {
-  const apiBase = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+  const apiBase = getApiBaseUrl()
 
   // ── Performance ───────────────────────────────────────────────────────────
 

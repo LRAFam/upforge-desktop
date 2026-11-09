@@ -9,7 +9,7 @@ import SettingsSection from './SettingsSection.vue'
 import SettingsStatusStrip from './SettingsStatusStrip.vue'
 import SettingsToggle from './SettingsToggle.vue'
 import type { StatusItem } from './SettingsStatusStrip.vue'
-import { localStorageLine } from '../v3/settings/settings-display'
+import { localStorageLine, untrackedCountdownLine } from '../v3/settings/settings-display'
 
 const router = useRouter()
 
@@ -58,7 +58,7 @@ const modeHint = computed(() => {
     return "Only selected modes are recorded. Summoner's Rift covers ranked, normals and Swiftplay."
   }
   if (settings.primaryGame === 'deadlock') {
-    return 'Deadlock matchmaking is treated as Ranked until Steam exposes more queue types. Uncheck Ranked to skip all auto-recording.'
+    return 'Every Deadlock match is recorded. The queue (Ranked, Standard, Street Brawl…) is read after the match, and only Ranked counts toward Progress. Uncheck to skip all auto-recording.'
   }
   return 'Only selected modes are recorded. If none are selected, nothing is recorded.'
 })
@@ -220,6 +220,7 @@ const statusItems = computed<StatusItem[]>(() => {
             Remove {{ storageBreakdown.orphanCount }} untracked file{{ storageBreakdown.orphanCount === 1 ? '' : 's' }} ({{ formatBytes(storageBreakdown.orphanBytes) }})
           </button>
         </div>
+        <p v-if="storageBreakdown.orphanScheduledCount > 0 && storageBreakdown.orphanDeleteAt" class="uf-note is-warn">{{ untrackedCountdownLine(storageBreakdown, formatBytes) }}</p>
         <p v-if="storageBreakdown.legacyDuplicateBytes > 0" class="uf-t4">Legacy duplicate recordings ({{ formatBytes(storageBreakdown.legacyDuplicateBytes) }}) are removed automatically on launch.</p>
         <p v-if="storageMessage" class="uf-note" :class="storageMessageError ? 'is-bad' : 'is-ok'">{{ storageMessage }}</p>
       </div>

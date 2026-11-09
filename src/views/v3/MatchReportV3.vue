@@ -21,6 +21,8 @@ import {
   type Cs2ReportTimeline, type DeadlockReportResponse, type LolReportResponse, type ReportGame,
 } from '../../lib/match-report-games'
 import { readCache, writeCache } from '../../lib/stale-cache'
+import { createReportPoller, NOTES_PENDING, REPORT_RETRY } from '../../lib/report-poller'
+import { coachNoteLine } from '../../lib/coach-note-line'
 import UfRoundsLine from '../../components/v3/UfRoundsLine.vue'
 import ScoreWhyV3 from '../../components/v3/score/ScoreWhyV3.vue'
 import { matchScore, scoreToneColor } from '../../lib/upforge-score'
@@ -69,39 +71,93 @@ async function fetchReport(g: ReportGame, id: string): Promise<Loaded | null> {
   return res.ok ? { ok: true, state: { kind: 'ready', view: matchReportView(res.report) } } : res
 }
 
-/** AI coach notes arrive after the facts (one call, stored by the API, shared daily cap). */
+/**
+ * AI coach notes arrive after the facts (one call, stored by the API, shared daily cap). The API queues
+ * them and answers notes_status "pending" at first, so the page asks again for ~2 minutes until they're in.
+ */
 const notesLoading = ref(false)
+let notesAsk: (() => Promise<boolean>) | null = null
+const notesPoller = createReportPoller(NOTES_PENDING, () => notesAsk?.() ?? Promise.resolve(true))
+const notesWaiting = computed(() => notesLoading.value || notesPoller.active.value)
+/** The notes call failed, or the notes were still being written when the checks ran out. */
+const notesFailed = ref(false)
+let notesStillPending = false
+let lastNotes: { g: 'lol' | 'deadlock' | 'cs2'; id: string; facts: unknown } | null = null
+watch(notesWaiting, (waiting) => { if (!waiting && notesStillPending) notesFailed.value = true })
 async function loadNotes(g: 'lol' | 'deadlock' | 'cs2', id: string, facts: unknown): Promise<void> {
+  notesPoller.stop()
+  notesFailed.value = false
+  notesStillPending = false
   if (g === 'cs2' && !facts) return
+  lastNotes = { g, id, facts }
+  /** Returns true when there's nothing left to wait for. */
+  const ask = async (): Promise<boolean> => {
+    const res = await window.api?.app?.getGameMatchNotes?.(g, id, facts).catch(() => null)
+    if (id !== matchId.value || g !== game.value || state.value?.kind !== 'ready') return true
+    if (!res?.ok) {
+      notesStillPending = false
+      notesFailed.value = true
+      return true
+    }
+    const pending = res.notes_status === 'pending' && !res.notes
+    notesStillPending = pending
+    if (pending) return false
+    const next = { kind: 'ready' as const, view: applyGameNotes(state.value.view, res as GameNotesResult) }
+    state.value = next
+    writeCache(`match-report:${g}:${id}`, next)
+    return true
+  }
+  notesAsk = ask
   notesLoading.value = true
-  const res = await window.api?.app?.getGameMatchNotes?.(g, id, facts).catch(() => null)
+  const done = await ask()
   notesLoading.value = false
-  if (!res?.ok || id !== matchId.value || g !== game.value || state.value?.kind !== 'ready') return
-  const next = { kind: 'ready' as const, view: applyGameNotes(state.value.view, res as GameNotesResult) }
-  state.value = next
-  writeCache(`match-report:${g}:${id}`, next)
+  if (!done && notesAsk === ask) notesPoller.start()
+}
+function retryNotes(): void {
+  const n = lastNotes
+  if (n && n.id === matchId.value && n.g === game.value) void loadNotes(n.g, n.id, n.facts)
 }
 
-async function load(): Promise<void> {
+/**
+ * `quiet` re-checks (the "no report yet" poll) keep the page as it is instead of flashing the skeleton.
+ * Returns true when there is nothing left to wait for (report ready, or a state polling can't fix).
+ */
+async function load(quiet = false): Promise<boolean> {
   const id = matchId.value
   const g = game.value
   const key = `match-report:${g}:${id}`
-  const cached = readCache<MatchReportState>(key)
-  state.value = cached?.value ?? null
-  needsDemo.value = false
+  if (!quiet) {
+    reportPoller.stop()
+    notesPoller.stop()
+    notesFailed.value = false
+    notesStillPending = false
+    const cached = readCache<MatchReportState>(key)
+    state.value = cached?.value ?? null
+    needsDemo.value = false
+  }
   const res = await fetchReport(g, id)
-  if (id !== matchId.value || g !== game.value) return
-  if (!res) { if (!state.value) state.value = { kind: 'error' }; return }
-  if (res.ok) {
+  if (id !== matchId.value || g !== game.value) return true
+  if (!res) { if (!state.value) state.value = { kind: 'error' } }
+  else if (res.ok) {
     state.value = res.state
     writeCache(key, res.state)
   } else if (!state.value || state.value.kind !== 'ready') {
     needsDemo.value = res.error === 'needs_demo'
     state.value = res.error === 'not_found' || res.error === 'needs_demo' ? { kind: 'not_found' } : { kind: 'error' }
   }
+  const waiting = canWaitForReport()
+  if (!quiet && waiting) reportPoller.start()
+  return !waiting
 }
-onMounted(load)
-watch([matchId, game], load)
+/** "No report yet" can fix itself (the API builds it, the demo gets parsed); a missing CS2 recording can't. */
+function canWaitForReport(): boolean {
+  return state.value?.kind === 'not_found' && !(game.value === 'cs2' && !needsDemo.value)
+}
+const reportPoller = createReportPoller(REPORT_RETRY, () => load(true))
+const reportChecking = reportPoller.active
+function retry(): void { void load() }
+onMounted(() => { void load() })
+watch([matchId, game], () => { void load() })
 
 /**
  * Valorant: when the match's recording is on this PC, its timeline (round summaries, every kill,
@@ -135,6 +191,19 @@ const notFoundText = computed(() => {
 })
 
 const view = computed(() => (state.value?.kind === 'ready' ? state.value.view : null))
+/** Line under the headline about the coach note (Valorant notes come with the report, so never "loading"). */
+const noteLine = computed(() => {
+  const v = view.value
+  if (!v) return null
+  const otherGame = (v.game ?? 'valorant') !== 'valorant'
+  return coachNoteLine({
+    hasCoachNote: !!v.hasCoachNote,
+    recurrence: !!v.recurrence,
+    notesCapped: v.notesCapped,
+    waiting: otherGame && notesWaiting.value,
+    failed: otherGame && notesFailed.value,
+  })
+})
 /** Stats-based UpForge score only: this report has no coach rating to fall back to. */
 const ufScore = computed(() => {
   const s = matchScore({ upforge_score: view.value?.upforgeScore })
@@ -184,7 +253,7 @@ onMounted(() => {
     if (u.state === 'done') void loadCoachFlow()
   }) ?? null
 })
-onBeforeUnmount(() => { stopUpdates?.() })
+onBeforeUnmount(() => { stopUpdates?.(); reportPoller.stop(); notesPoller.stop() })
 watch(matchId, () => { moments.value = []; flowState.value = null; void loadCoachFlow() })
 
 // Practice opens on this report's drill ("Do this next"), not a generic page.
@@ -208,8 +277,9 @@ function back(): void { if (window.history.length > 1) router.back(); else route
       <span class="uf-label">Match report</span>
       <h1 class="uf-d3">{{ needsDemo ? 'This report needs the demo' : state.kind === 'not_found' ? 'No report for this match yet' : 'Couldn’t load this report' }}</h1>
       <p class="uf-t2">{{ state.kind === 'not_found' ? notFoundText : 'Check your connection and try again.' }}</p>
+      <p v-if="reportChecking" class="uf-t4" aria-live="polite">Checking again every 30 seconds.</p>
       <div class="mr3-actions">
-        <UfButton v-if="state.kind === 'error'" variant="primary" @click="load">Try again</UfButton>
+        <UfButton variant="primary" @click="retry">Try again</UfButton>
         <UfButton variant="secondary" @click="back">Back</UfButton>
       </div>
     </div>
@@ -239,14 +309,15 @@ function back(): void { if (window.history.length > 1) router.back(); else route
         <section class="mr3-coach">
           <span class="uf-label">{{ view.headlineLabel ?? 'What decided it' }}</span>
           <p v-if="view.headline" class="uf-t1">{{ view.headline }}</p>
-          <p v-if="view.recurrence" class="uf-t4 mr3-recur" :class="`mr3-recur--${view.recurrence.tone}`">{{ view.recurrence.text }}</p>
-          <p v-else-if="view.notesCapped" class="uf-t2">Today’s free coach notes are used. The facts below are still yours, and notes come back tomorrow.</p>
-          <p v-else class="uf-t2">No coach note for this match. The facts below come straight from your match data.</p>
+          <p v-if="noteLine === 'recurrence' && view.recurrence" class="uf-t4 mr3-recur" :class="`mr3-recur--${view.recurrence.tone}`">{{ view.recurrence.text }}</p>
+          <p v-else-if="noteLine === 'capped'" class="uf-t2">Today’s free coach notes are used. The facts below are still yours, and notes come back tomorrow.</p>
+          <p v-else-if="noteLine === 'loading'" class="uf-t4" aria-live="polite">Your coach is reading this match…</p>
+          <p v-else-if="noteLine === 'failed'" class="uf-t2" aria-live="polite">The coach note didn’t load. <button type="button" class="uf-link" @click="retryNotes">Try again</button></p>
+          <p v-else-if="noteLine === 'none'" class="uf-t2">No coach note for this match. The facts below come straight from your match data.</p>
           <p v-if="view.subline" class="uf-t2">{{ view.subline }}</p>
           <ul v-if="view.evidence?.length" class="mr3-evidence">
             <li v-for="(line, i) in view.evidence" :key="i" class="uf-t3">{{ line }}</li>
           </ul>
-          <p v-else-if="notesLoading && !isValorant" class="uf-t4">Your coach is reading this match…</p>
           <p v-if="view.isAlt" class="uf-t4">Played on an alt account: coached, not counted for your focus.</p>
         </section>
 

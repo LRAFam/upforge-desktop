@@ -121,10 +121,9 @@ export function setupMediaHandlers(
   ipcMain.handle('recorder:stop', async () => {
     const recorder = getActiveRecorder()
     if (!recorder.isRecording()) return { ok: false, reason: 'not_recording' }
-    if (endMatchRecording) {
-      const game = getCurrentGame?.() ?? 'valorant'
-      return endMatchRecording(game)
-    }
+    // The game that owns the recording; with none, only stop OBS — never finish it as Valorant.
+    const game = getCurrentGame?.() ?? null
+    if (endMatchRecording && game) return endMatchRecording(game)
     try {
       await recorder.stop()
       return { ok: true }

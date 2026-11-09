@@ -12,6 +12,7 @@ import type { LolRankPayload } from '../../../lib/lol-progress'
 import type { Focus } from '../../../lib/focus'
 import { lolIdentity } from '../../../lib/lol-display'
 import { openLolAnalysisInApp } from '../../../lib/open-analysis-in-app'
+import { inMatchPollGuard } from '../../../lib/in-match-poll-pause'
 import type { LolRecentResult } from '../../../lib/lol-recent'
 
 /** Recent games with Riot's error state; older preloads only have the plain list. */
@@ -229,7 +230,7 @@ export function useGameData(game: Readonly<Ref<PrimaryGame>>) {
       deadlock.uploads[p.demoPath] = { ...prev, busy: true, status: 'uploading', pct: p.pct ?? 0 }
     })
     // The old Deadlock panel refreshed stats every 3 minutes; keep that, Deadlock only.
-    timer = setInterval(() => { if (game.value === 'deadlock') void load(true) }, 3 * 60 * 1000)
+    timer = setInterval(inMatchPollGuard('games-deadlock-refresh', () => { if (game.value === 'deadlock') void load(true) }), 3 * 60 * 1000)
   })
   onUnmounted(() => {
     offRefresh?.()

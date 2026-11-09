@@ -87,7 +87,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useLifetime } from '../composables/useLifetime'
 import DemoAttachGuide from './DemoAttachGuide.vue'
 
 interface DemFile {
@@ -113,8 +114,7 @@ const result = ref<{ files: DemFile[]; dir: string; exists: boolean }>({
 })
 const uploads = ref<Record<string, UploadState>>({})
 
-let progressCleanup: (() => void) | null = null
-let refreshCleanup: (() => void) | null = null
+const life = useLifetime() // listeners registered after an await stop with this view
 
 async function refreshList() {
   loading.value = true
@@ -124,18 +124,13 @@ async function refreshList() {
 
 onMounted(async () => {
   await refreshList()
-  progressCleanup = window.api.on('deadlock:upload-progress', (...args: unknown[]) => {
+  life.own(window.api.on('deadlock:upload-progress', (...args: unknown[]) => {
     const payload = args[0] as { demoPath?: string; pct?: number }
     if (!payload?.demoPath) return
     const prev = uploads.value[payload.demoPath] ?? { busy: true, status: 'uploading', pct: 0 }
     uploads.value[payload.demoPath] = { ...prev, busy: true, status: 'uploading', pct: payload.pct ?? 0 }
-  })
-  refreshCleanup = window.api.on('dashboard:refresh', () => { void refreshList() })
-})
-
-onUnmounted(() => {
-  progressCleanup?.()
-  refreshCleanup?.()
+  }))
+  life.own(window.api.on('dashboard:refresh', () => { void refreshList() }))
 })
 
 function uploadState(path: string): UploadState | undefined {

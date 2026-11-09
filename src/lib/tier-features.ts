@@ -1,3 +1,5 @@
+import { readArchiveQuota, type ArchiveRetentionStats } from './archive-retention-hint'
+
 /** Platform admin — DB flag and/or effective admin tier from the API. */
 export function isPlatformAdmin(
   tier: string | null | undefined,
@@ -29,19 +31,14 @@ export function hasAnalysisQuotaRemaining(
   return stats.total < stats.limit || (stats.purchased ?? 0) > 0
 }
 
-export interface ArchiveQuotaStats {
-  count: number
-  limit: number | null
-  remaining: number | null
-}
-
 /** Whether the user can save another VOD to cloud without analysis. */
 export function hasArchiveQuotaRemaining(
-  stats: ArchiveQuotaStats | null | undefined,
+  stats: ArchiveRetentionStats | null | undefined,
   tier?: string | null,
   isAdmin?: boolean | null,
 ): boolean {
   if (isPlatformAdmin(tier, isAdmin)) return true
-  if (!stats || stats.limit == null) return true
-  return (stats.remaining ?? 0) > 0
+  const { limit, remaining } = readArchiveQuota(stats)
+  if (limit == null) return true
+  return (remaining ?? 0) > 0
 }

@@ -38,6 +38,11 @@ const TTL_MS = 6 * 60 * 60 * 1000
 let bundled: BundledPopulationFile | null = null
 const apiCache = new Map<string, { pack: PopulationMapPack; fetchedAt: number }>()
 let inflight = new Map<string, Promise<PopulationMapPack | null>>()
+/**
+ * The UpForge API has no /api/spatial/population route yet. After the first 404, stop asking for the
+ * rest of the session (bundled data is used) instead of logging a 404 for every match and map.
+ */
+let populationEndpointMissing = false
 
 function loadBundled(): BundledPopulationFile {
   if (!bundled) {
@@ -217,7 +222,7 @@ export async function refreshPopulationFromApi(
   api: AxiosInstance | null,
 ): Promise<PopulationMapPack | null> {
   const key = normalizeMapKey(mapName)
-  if (!key || !api) return getPopulationPack(mapName)
+  if (!key || !api || populationEndpointMissing) return getPopulationPack(mapName)
 
   const cached = apiCache.get(key)
   if (cached && Date.now() - cached.fetchedAt < TTL_MS) {
@@ -240,6 +245,11 @@ export async function refreshPopulationFromApi(
         return mergePacks(mapPack(mapName), pack)
       }
     } catch (err: unknown) {
+      if ((err as { response?: { status?: number } } | null)?.response?.status === 404) {
+        populationEndpointMissing = true
+        log.info('[Spatial] Population API not available (404); using bundled data for this session')
+        return getPopulationPack(mapName)
+      }
       const msg = err instanceof Error ? err.message : String(err)
       log.debug(`[Spatial] Population API unavailable for ${key}: ${msg}`)
     }
@@ -256,6 +266,7 @@ export async function refreshPopulationFromApi(
 
 export function clearPopulationApiCache(): void {
   apiCache.clear()
+  populationEndpointMissing = false
 }
 
 export function hasLivePopulationData(mapName: string | null | undefined): boolean {

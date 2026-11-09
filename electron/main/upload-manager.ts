@@ -23,6 +23,7 @@ import {
   writeMultipartState,
   type MultipartResumeState,
 } from './multipart-upload-state'
+import { getApiBaseUrl } from './api-base'
 
 export interface UploadOptions {
   videoPath: string
@@ -65,6 +66,12 @@ const S3_UPLOAD_READ_HIGH_WATER_MARK = 1024 * 1024
 
 /** Parallel part uploads — lower concurrency is more reliable on home WiFi. */
 const S3_MULTIPART_CONCURRENCY = 2
+
+/**
+ * Keep-alive while one long S3 upload runs. The API cleans uploads with no activity for 3 h,
+ * and a single multipart/PUT upload sends it nothing else, so ping it every 10 min.
+ */
+const UPLOAD_HEARTBEAT_INTERVAL_MS = 10 * 60_000
 
 /** Shared HTTPS agent — keep-alive reduces TLS handshakes on multipart retries. */
 const s3UploadAgent = new https.Agent({ keepAlive: true, maxSockets: 4 })
@@ -334,7 +341,7 @@ export class UploadManager {
     timeline?: MatchData | null,
     coachingExtras?: CoachingSubmissionExtras,
   ): Promise<UploadResult> {
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
@@ -362,7 +369,7 @@ export class UploadManager {
 
   /** Re-queue analysis for a failed desktop submission (VOD already on S3). */
   async retrySubmission(jobId: string): Promise<void> {
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
@@ -402,7 +409,7 @@ export class UploadManager {
   private async _doUploadOnce(opts: UploadOptions, fullAttempt: number): Promise<UploadResult> {
     const generation = this._abortGeneration
     await backgroundWork.wait(() => this._checkCancelled(generation))
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
@@ -425,6 +432,59 @@ export class UploadManager {
     // Persist job_id immediately — if the app crashes during upload or
     // analysis, the user can resume polling from the next launch.
     savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game })
+
+    const stopHeartbeat = this._startUploadHeartbeat(job_id, token, generation)
+    try {
+      return await this._finishUploadOnce(opts, fullAttempt, presign, job_id, token, generation, apiUrl, totalBytes, stopHeartbeat)
+    } finally {
+      stopHeartbeat.stop()
+    }
+  }
+
+  /**
+   * Ping /heartbeat every 10 min until stopped or the upload is cancelled. Heartbeat
+   * failures are logged and ignored — they must never fail the upload.
+   */
+  private _startUploadHeartbeat(jobId: string, token: string, generation: number): {
+    stop: () => void
+    setProgress: (pct: number) => void
+  } {
+    let progress = 0
+    let stopped = false
+    const timer = setInterval(() => {
+      if (stopped) return
+      if (this._uploadAborted || generation !== this._abortGeneration) {
+        stopped = true
+        clearInterval(timer)
+        return
+      }
+      this._apiPostOnce(
+        `${getApiBaseUrl()}/api/desktop-submissions/${jobId}/heartbeat`,
+        JSON.stringify({ progress }),
+        token,
+      ).catch((err) => {
+        console.warn('[UploadManager] Upload heartbeat failed (ignored):', err instanceof Error ? err.message : err)
+      })
+    }, UPLOAD_HEARTBEAT_INTERVAL_MS)
+    timer.unref?.()
+    return {
+      stop: () => { stopped = true; clearInterval(timer) },
+      setProgress: (pct) => { progress = Math.max(0, Math.min(100, Math.round(pct))) },
+    }
+  }
+
+  private async _finishUploadOnce(
+    opts: UploadOptions,
+    fullAttempt: number,
+    presign: ReturnType<typeof parsePresignResponse>,
+    job_id: string,
+    token: string,
+    generation: number,
+    apiUrl: string,
+    totalBytes: number,
+    heartbeat: { setProgress: (pct: number) => void },
+  ): Promise<UploadResult> {
+    const onProgress = (pct: number) => { heartbeat.setProgress(pct); opts.onProgress(pct) }
 
     const completeExtras = () => opts.getCoachingExtras?.() ?? opts.coachingExtras
     const resolveDuelMoments = async (): Promise<DuelMomentManifest[] | undefined> => {
@@ -472,7 +532,7 @@ export class UploadManager {
         totalBytes,
         presign.parts,
         presign.part_size,
-        opts.onProgress,
+        onProgress,
         concurrency,
         {
           recordingId: opts.recordingId ?? null,
@@ -481,7 +541,7 @@ export class UploadManager {
         },
       )
     } else if (presign.upload_url) {
-      await this._putToS3(presign.upload_url, opts.videoPath, totalBytes, opts.onProgress)
+      await this._putToS3(presign.upload_url, opts.videoPath, totalBytes, onProgress)
     } else {
       throw new Error('Presign response missing upload_url or multipart parts')
     }
@@ -527,7 +587,7 @@ export class UploadManager {
   private async _doArchiveUpload(opts: UploadOptions): Promise<ArchiveUploadResult> {
     const generation = this._abortGeneration
     await backgroundWork.wait(() => this._checkCancelled(generation))
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
@@ -609,7 +669,7 @@ export class UploadManager {
     const match_data = prepareMatchDataForUpload(timeline, coachingExtras)
     if (!match_data) return
 
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const ctx = submissionContextFromTimeline(timeline, coachingExtras)
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/${jobId}/match-data`,
@@ -629,7 +689,7 @@ export class UploadManager {
   async presignDuelClips(jobId: string, momentIds: string[]): Promise<DuelClipPresign[]> {
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const response = await this._apiPost(
       `${apiUrl}/api/desktop-submissions/${jobId}/duel-clips/presign`,
       JSON.stringify({ moments: momentIds.map((moment_id) => ({ moment_id })) }),
@@ -661,7 +721,7 @@ export class UploadManager {
     const token = this.auth.getToken()
     if (!token || moments.length === 0) return
 
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/${jobId}/scout-moments`,
       JSON.stringify({ moments }),
@@ -1138,7 +1198,7 @@ export class UploadManager {
     job_id?: string
     failure_diagnostics?: Record<string, unknown> | null
   }> {
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 

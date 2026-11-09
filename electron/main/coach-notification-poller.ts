@@ -6,6 +6,7 @@ import type { AuthManager } from './auth-manager'
 import { getFrontendBaseUrl } from './api-base'
 import { showAppNotification } from './app-notifications'
 import { toInboxSnapshot, type InboxSnapshot } from '../../src/components/v3/shell/notification-inbox'
+import { matchPollPause } from './poll-pause'
 
 // 90 s = 40 calls/hour: the API allows 60/hour for the notifications list, so startup + manual opens stay under it.
 const POLL_INTERVAL_MS = 90 * 1000
@@ -232,9 +233,10 @@ export function startCoachNotificationPoller(deps: PollerDeps): void {
   if (!deps.authManager.isAuthenticated()) return
 
   void pollOnce(deps)
-  pollTimer = setInterval(() => {
+  // Not needed mid-match; a skipped poll runs once when the match ends.
+  pollTimer = setInterval(matchPollPause.guard('coach-notifications', () => {
     void pollOnce(deps)
-  }, POLL_INTERVAL_MS)
+  }), POLL_INTERVAL_MS)
 }
 
 export function stopCoachNotificationPoller(): void {

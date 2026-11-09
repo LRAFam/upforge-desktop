@@ -48,8 +48,9 @@ const AGENT_UUID_TO_NAME: Record<string, string> = {
  * valorant-api.com names, else the UUID unchanged (a later call resolves it once fetched).
  */
 export function resolveAgentName(characterId: string | null | undefined): string | null {
-  if (!characterId) return null
-  return AGENT_UUID_TO_NAME[characterId.toLowerCase()] ?? fallbackAgentName(characterId) ?? characterId
+  const id = characterId?.trim()
+  if (!id) return null
+  return AGENT_UUID_TO_NAME[id.toLowerCase()] ?? fallbackAgentName(id) ?? id
 }
 
 /**
@@ -205,13 +206,27 @@ const MAP_CODENAME_TO_NAME: Record<string, string> = {
   // Range
   range: 'The Range',
   rangev2: 'The Range',
+  // Other modes (valorant-api /v1/maps, checked 2026-11-09)
+  abilitydraft: 'Gauntlet',
+  skirmish_a: 'Skirmish A',
+  skirmish_b: 'Skirmish B',
+  skirmish_c: 'Skirmish C',
+  skirmish_d: 'Skirmish D',
+  skirmish_e: 'Skirmish E',
+  npev2: 'Basic Training',
+}
+
+/** "HURM_Frost" → "HURM Frost": a map newer than this build and the fetched names stays readable. */
+function readableMapCodename(segment: string): string {
+  return segment.replace(/_+/g, ' ').trim() || segment
 }
 
 /** Resolve a Riot map ID (full path or last segment) to a display name. */
 export function resolveMapName(mapId: string | null | undefined): string | null {
-  if (!mapId) return null
-  const segment = mapId.split('/').filter(Boolean).pop() ?? mapId
-  return MAP_CODENAME_TO_NAME[segment.toLowerCase()] ?? fallbackMapName(segment) ?? segment
+  const id = mapId?.trim()
+  if (!id) return null
+  const segment = id.split('/').filter(Boolean).pop() ?? id
+  return MAP_CODENAME_TO_NAME[segment.toLowerCase()] ?? fallbackMapName(segment) ?? readableMapCodename(segment)
 }
 
 /** Convert a Riot competitive tier number to a human-readable rank string. */

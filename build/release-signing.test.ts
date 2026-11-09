@@ -1,8 +1,10 @@
 // Guards the rule "every Windows release is signed once a signing provider is connected".
 // If this fails, read docs/releases/WINDOWS-SIGNING.md before changing the test.
-import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 const root = resolve(__dirname, '..')
@@ -15,6 +17,41 @@ function stepBlock(name: string): string {
   expect(start, `workflow step "${name}" is missing`).toBeGreaterThan(-1)
   const next = workflow.indexOf('\n      - name:', start + 1)
   return workflow.slice(start, next === -1 ? undefined : next)
+}
+
+// Runs the bash `run:` script of the Prepare step with the given step env.
+function runPrepare(env: Record<string, string>) {
+  const block = stepBlock('Prepare Windows code signing (tag)')
+  const lines = block.split('\n')
+  const start = lines.findIndex(l => /^\s+run: \|\s*$/.test(l))
+  expect(start, 'Prepare step has no run block').toBeGreaterThan(-1)
+  const body = lines.slice(start + 1)
+  const indent = body.find(l => l.trim())!.match(/^\s*/)![0].length
+  const script = body.map(l => l.slice(indent)).join('\n')
+  const dir = mkdtempSync(join(tmpdir(), 'signing-'))
+  const output = join(dir, 'out')
+  try {
+    const res = spawnSync('bash', ['-e', '-c', script], {
+      env: {
+        PATH: process.env.PATH,
+        GITHUB_OUTPUT: output,
+        PROVIDER: '',
+        PUBLISHER: '',
+        HAS_AZURE: 'false',
+        HAS_SSLCOM: 'false',
+        HAS_ANY_SIGNING_SETTING: 'false',
+        ...env,
+      },
+      encoding: 'utf8',
+    })
+    let out = ''
+    try {
+      out = readFileSync(output, 'utf8')
+    } catch {}
+    return { status: res.status, stdout: res.stdout + res.stderr, output: out }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 }
 
 function loadReleaseConfig(env: Record<string, string>) {
@@ -58,6 +95,51 @@ describe('release workflow signing rule', () => {
 
   it('only publishes after the Windows build job (and its signature check) succeeds', () => {
     expect(workflow).toMatch(/publish-release:\s*\n\s*needs: \[build-win, build-mac\]/)
+  })
+
+  it('passes the Prepare step a flag for any signing setting being present', () => {
+    const prepare = stepBlock('Prepare Windows code signing (tag)')
+    const line = prepare.split('\n').find(l => l.includes('HAS_ANY_SIGNING_SETTING:')) ?? ''
+    for (const name of [
+      'vars.WIN_SIGNING_PUBLISHER',
+      'vars.AZURE_SIGNING_ENDPOINT',
+      'secrets.AZURE_CLIENT_SECRET',
+      'vars.SSLCOM_CODESIGNTOOL_URL',
+      'secrets.ES_USERNAME',
+      'secrets.ES_TOTP_SECRET',
+    ]) {
+      expect(line, `HAS_ANY_SIGNING_SETTING must include ${name}`).toContain(name)
+    }
+  })
+
+  it('warns (but builds) when no signing is set up at all', () => {
+    const res = runPrepare({})
+    expect(res.status).toBe(0)
+    expect(res.output).toContain('required=false')
+    expect(res.stdout).toContain('Unsigned Windows release')
+  })
+
+  it('fails when signing settings exist but WIN_SIGNING_PROVIDER is empty', () => {
+    const res = runPrepare({ HAS_ANY_SIGNING_SETTING: 'true' })
+    expect(res.status).not.toBe(0)
+    expect(res.stdout).toContain('WIN_SIGNING_PROVIDER')
+    expect(res.output).not.toContain('required=false')
+  })
+
+  it('fails when a provider is chosen but its secrets are missing', () => {
+    const res = runPrepare({ PROVIDER: 'azure', PUBLISHER: 'UpForge Ltd', HAS_ANY_SIGNING_SETTING: 'true' })
+    expect(res.status).not.toBe(0)
+  })
+
+  it('requires signing when a provider is fully configured', () => {
+    const res = runPrepare({
+      PROVIDER: 'sslcom',
+      PUBLISHER: 'UpForge Ltd',
+      HAS_SSLCOM: 'true',
+      HAS_ANY_SIGNING_SETTING: 'true',
+    })
+    expect(res.status).toBe(0)
+    expect(res.output).toContain('required=true')
   })
 
   it('marks signing as required whenever a provider is configured', () => {

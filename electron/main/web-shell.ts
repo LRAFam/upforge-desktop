@@ -1,17 +1,17 @@
 /**
  * In-app web shell — loads upforge.gg pages inside a dedicated BrowserWindow
- * with the desktop Sanctum token injected as the web auth_token cookie.
+ * with its own web-shell Sanctum token (see web-shell-session.ts) as the web auth_token cookie.
  */
 
+import { WEB_SHELL_PARTITION, applyWebShellCookie, noteShellApiResponse } from './web-shell-session'
+import { getApiBaseUrl } from './api-base'
 import { BrowserWindow, Menu, shell, session } from 'electron'
 import { AuthManager } from './auth-manager'
 import { getFrontendBaseUrl } from './api-base'
+import { isSafeExternalUrl } from './renderer-trust'
 
 let shellWindow: BrowserWindow | null = null
-
-function encodeAuthCookie(token: string): string {
-  return 'b64.' + Buffer.from(token, 'utf8').toString('base64')
-}
+let watchingShellApi = false
 
 function allowedHost(hostname: string, frontendOrigin: string): boolean {
   try {
@@ -22,25 +22,44 @@ function allowedHost(hostname: string, frontendOrigin: string): boolean {
   }
 }
 
+function frontendHost(frontendBase: string): string[] {
+  try {
+    return [new URL(frontendBase).hostname]
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Open a URL from the web shell in the system browser — https only (http only for
+ * the configured frontend host, i.e. local dev). Everything else is denied and logged.
+ */
+export function openExternalFromShell(
+  url: string,
+  frontendBase: string,
+  open: (url: string) => Promise<void> | void = (u) => shell.openExternal(u),
+): boolean {
+  if (!isSafeExternalUrl(url, frontendHost(frontendBase))) {
+    console.warn('[WebShell] Blocked external URL with disallowed scheme:', String(url).slice(0, 200))
+    return false
+  }
+  void Promise.resolve(open(url)).catch(() => {})
+  return true
+}
+
 async function injectAuthCookie(auth: AuthManager, frontendBase: string): Promise<boolean> {
-  const token = auth.getToken()
-  if (!token) return false
-
-  const ses = session.fromPartition('persist:upforge-web')
-  const url = frontendBase.replace(/\/$/, '')
-  const secure = url.startsWith('https://')
-
-  await ses.cookies.set({
-    url,
-    name: 'auth_token',
-    value: encodeAuthCookie(token),
-    path: '/',
-    secure,
-    httpOnly: false,
-    sameSite: 'lax',
-    expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30,
-  })
-
+  // The shell gets its OWN web-shell token, never the desktop token (a website logout deletes the
+  // token it holds). Its API replies are watched so a 401 re-mints on the next open.
+  if (!auth.getToken()) return false
+  if (!watchingShellApi) {
+    watchingShellApi = true
+    session.fromPartition(WEB_SHELL_PARTITION).webRequest.onCompleted(
+      { urls: [`${getApiBaseUrl()}/*`] },
+      (details) => noteShellApiResponse(details.statusCode),
+    )
+  }
+  // Signed out on failure (logged there): the page still opens, just without a session.
+  await applyWebShellCookie(auth, frontendBase)
   return true
 }
 
@@ -66,7 +85,7 @@ function attachShellMenu(win: BrowserWindow, frontendBase: string): void {
           label: 'Open in Browser',
           click: () => {
             const url = win.webContents.getURL()
-            if (url) void shell.openExternal(url)
+            if (url) openExternalFromShell(url, frontendBase)
           },
         },
         { type: 'separator' },
@@ -262,25 +281,28 @@ export async function openWebShell(
         if (allowedHost(u.hostname, frontendBase)) {
           void shellWindow?.webContents.loadURL(url).catch(() => {})
         } else {
-          void shell.openExternal(url)
+          openExternalFromShell(url, frontendBase)
         }
       } catch {
-        void shell.openExternal(url)
+        openExternalFromShell(url, frontendBase)
       }
       return { action: 'deny' }
     })
 
-    shellWindow.webContents.on('will-navigate', (event, url) => {
+    // Guard server redirects too, or a 302 to another host would load inside the shell.
+    const guardShellNavigation = (event: Electron.Event, url: string): void => {
       try {
         const u = new URL(url)
         if (!allowedHost(u.hostname, frontendBase)) {
           event.preventDefault()
-          void shell.openExternal(url)
+          openExternalFromShell(url, frontendBase)
         }
       } catch {
         event.preventDefault()
       }
-    })
+    }
+    shellWindow.webContents.on('will-navigate', guardShellNavigation)
+    shellWindow.webContents.on('will-redirect', guardShellNavigation)
 
     shellWindow.on('ready-to-show', () => {
       shellWindow?.show()

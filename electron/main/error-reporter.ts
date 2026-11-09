@@ -14,9 +14,11 @@ import type { AuthManager } from './auth-manager'
 import { isBenignObsWebSocketError } from './obs-errors'
 import { redactSensitiveString, redactSensitiveValue } from './error-redaction'
 import { recentErrorActivity } from './error-activity'
+import { ERROR_REPORTING_KEY } from './error-reporting-key'
+import { getApiBaseUrl } from './api-base'
 
-const API_URL = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
-const ERROR_KEY = process.env['VITE_ERROR_REPORTING_KEY'] || ''
+const API_URL = getApiBaseUrl()
+const ERROR_KEY = ERROR_REPORTING_KEY
 
 // Session-level deduplication
 const reportedThisSession = new Set<string>()

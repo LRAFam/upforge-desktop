@@ -16,6 +16,7 @@ import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { BADGE_PREVIEW_ITEMS, getBadgeIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
 import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../lib/billing'
 import { uiV3 } from '../lib/ui-v3'
+import { readArchiveQuota } from '../lib/archive-retention-hint'
 import { usePrimaryGame } from './usePrimaryGame'
 import { cs2AccountHint, cs2SteamNameToShow, followSelectedGame } from '../components/settings/settings-game'
 
@@ -109,6 +110,9 @@ function createSettings() {
     cloudBackedBytes: 0,
     orphanCount: 0,
     orphanBytes: 0,
+    orphanScheduledCount: 0,
+    orphanScheduledBytes: 0,
+    orphanDeleteAt: null as number | null,
     legacyDuplicateBytes: 0,
   })
   const storageEstimate = ref<{
@@ -495,6 +499,7 @@ function createSettings() {
     fullMatchRecording: true,
     notificationSound: true,
     discordRichPresence: true,
+    autoSwitchGameTab: true,
     inGameFeedback: 'notifications',
     cachedEncoder: null,
     cachedUseDdagrab: null,
@@ -564,7 +569,8 @@ function createSettings() {
       { value: 'DEATHMATCH', label: 'Deathmatch', hint: '' },
     ],
     deadlock: [
-      { value: 'COMPETITIVE', label: 'Ranked', hint: 'Only detectable mode today' },
+      // One switch: the queue is only known after the match, so it can't filter before recording.
+      { value: 'COMPETITIVE', label: 'All matches', hint: 'Ranked, Standard, Street Brawl, bots and lobbies' },
     ],
   }
 
@@ -578,12 +584,13 @@ function createSettings() {
     return [] as string[]
   })
   
-  const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence'>; label: string; hint: string | null }> = [
+  const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence' | 'autoSwitchGameTab'>; label: string; hint: string | null }> = [
     { key: 'launchOnStartup', label: 'Launch on startup', hint: null },
     { key: 'autoDelete', label: 'Auto-delete after analysis', hint: 'Removes the local file once coaching finishes successfully — kept on failure for review and retry' },
     { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Upload and run AI coaching automatically when a match ends (uses your shared analysis pool across all games)' },
     { key: 'autoOpenBrowser', label: 'Also open results on the website', hint: 'Results always open here in the app. Turn on to also open upforge.gg when an analysis finishes' },
     { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound for F8/F9 hotkey actions' },
+    { key: 'autoSwitchGameTab', label: 'Switch game tab when a game starts', hint: 'Only when nothing is recording — a running recording keeps its game' },
     { key: 'discordRichPresence', label: 'Show status in Discord', hint: 'Advertises UpForge on your profile. Buttons only appear when someone else opens your full profile — not on your own.' },
   ]
   
@@ -870,7 +877,7 @@ function createSettings() {
     showSaved()
   }
   
-  function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence'>): void {
+  function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence' | 'autoSwitchGameTab'>): void {
     settings[key] = !settings[key]
     if (key === 'autoAnalyse') settings.autoAnalyseConsentVersion = 1
     debouncedSave()
@@ -1284,6 +1291,11 @@ function createSettings() {
       })
       subscribe('recordings:updated', () => { void loadStorageUsage() })
       subscribe('dashboard:refresh', () => { void loadDeadlockLink() })
+      // Back from browser checkout: show the new plan without a restart.
+      subscribe('account:billing-refreshed', (...args: unknown[]) => {
+        const fresh = args[0] as UserWithUsage | null
+        if (fresh) user.value = { ...(user.value ?? fresh), ...fresh }
+      })
     } catch (err) {
       console.error('[Settings] Failed to load status:', err)
       try {
@@ -1305,6 +1317,7 @@ function createSettings() {
     try {
       const prof = earlyProfile ? await earlyProfile : await window.api.profile.get()
       if (prof?.user) {
+        const archiveQuota = readArchiveQuota(prof.user.archive_stats)
         user.value = {
           ...user.value,
           name: prof.user.name,
@@ -1320,9 +1333,9 @@ function createSettings() {
             ?? null,
           analyses_used: prof.user.analysis_stats?.total,
           analyses_limit: prof.user.analysis_stats?.limit,
-          archive_count: prof.user.archive_stats?.count,
-          archive_limit: prof.user.archive_stats?.limit ?? null,
-          archive_remaining: prof.user.archive_stats?.remaining ?? null,
+          archive_count: archiveQuota.count,
+          archive_limit: archiveQuota.limit,
+          archive_remaining: archiveQuota.remaining,
           archive_retention_days: prof.user.archive_stats?.retention_days ?? null,
           stripe_subscription_status: prof.user.stripe_subscription_status ?? null,
           discord_username: prof.user.discord_username ?? user.value?.discord_username ?? null,

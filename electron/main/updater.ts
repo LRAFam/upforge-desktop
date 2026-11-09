@@ -125,7 +125,22 @@ export function startPeriodicUpdateChecks(): void {
   }, PERIODIC_UPDATE_INTERVAL_MS)
 }
 
+type InstallGate = (proceed: () => void) => void
+let installGate: InstallGate | null = null
+/** Confirm before an in-app install cuts off a recording/upload (wired to the quit guard). */
+export function setInstallGate(gate: InstallGate | null): void {
+  installGate = gate
+}
+
 export function installUpdate(beforeQuit?: () => void): void {
+  if (installGate) {
+    installGate(() => runInstall(beforeQuit))
+    return
+  }
+  runInstall(beforeQuit)
+}
+
+function runInstall(beforeQuit?: () => void): void {
   beforeQuit?.()
   BrowserWindow.getAllWindows().forEach(win => {
     try { if (!win.isDestroyed()) win.destroy() } catch { /* ignore */ }

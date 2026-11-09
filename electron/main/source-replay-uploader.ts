@@ -4,6 +4,7 @@ import https from 'https'
 import path from 'path'
 import { AuthManager } from './auth-manager'
 import type { SourceGame } from './source-replay-finder'
+import { getApiBaseUrl } from './api-base'
 
 export interface SourceReplayUploadOptions {
   game: SourceGame
@@ -31,7 +32,7 @@ export class SourceReplayUploader {
   constructor(private auth: AuthManager) {}
 
   async upload(opts: SourceReplayUploadOptions): Promise<SourceReplayUploadResult> {
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
@@ -82,7 +83,7 @@ export class SourceReplayUploader {
   }
 
   async pollStatus(game: SourceGame, jobId: string): Promise<{ status: string; error?: string | null }> {
-    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 

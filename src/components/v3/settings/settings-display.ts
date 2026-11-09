@@ -107,6 +107,19 @@ export function localStorageLine(bytes: number, freeLabel: string | null, format
   return freeLabel ? `${used} · ${freeLabel} free` : used
 }
 
+/** "2 untracked files (1.2 GB) will be deleted in 5 days …" — the visible countdown before auto-removal. */
+export function untrackedCountdownLine(
+  b: { orphanScheduledCount: number; orphanScheduledBytes: number; orphanDeleteAt: number | null },
+  formatBytes: (n: number) => string,
+  now = Date.now(),
+): string {
+  if (b.orphanScheduledCount <= 0 || b.orphanDeleteAt == null) return ''
+  const days = Math.max(0, Math.ceil((b.orphanDeleteAt - now) / (24 * 60 * 60 * 1000)))
+  const when = days <= 1 ? 'within a day' : `in ${days} days`
+  const what = b.orphanScheduledCount === 1 ? '1 untracked file' : `${b.orphanScheduledCount} untracked files`
+  return `${what} (${formatBytes(b.orphanScheduledBytes)}) will be deleted ${when} by auto-delete. Move ${b.orphanScheduledCount === 1 ? 'it' : 'them'} out of the recordings folder to keep ${b.orphanScheduledCount === 1 ? 'it' : 'them'}.`
+}
+
 // ── Report purchase ──────────────────────────────────────────────────────────
 
 /** Buying report credits only makes sense when the plan has a cap; unlimited plans (and admins) never see it. */

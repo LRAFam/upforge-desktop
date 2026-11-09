@@ -10,4 +10,11 @@ describe('mapDeadlockToAnalysisItem', () => {
     expect(item.overall_score).toBe(65)
     expect(item.won).toBe(true)
   })
+
+  it('keeps the match queue from the API (null when unknown)', () => {
+    const base = { id: 1, job_id: 'j', status: 'completed', hero: 'Haze', player_name: null, match_result: 'win',
+      duration_minutes: 30, overall_rating: 6.5, kd_ratio: 2, kills: 10, deaths: 5, assists: 8 }
+    expect(mapDeadlockToAnalysisItem({ ...base, queue: 'street_brawl' } as Parameters<typeof mapDeadlockToAnalysisItem>[0]).queue).toBe('street_brawl')
+    expect(mapDeadlockToAnalysisItem(base as Parameters<typeof mapDeadlockToAnalysisItem>[0]).queue).toBeNull()
+  })
 })

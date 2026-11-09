@@ -139,12 +139,40 @@ describe('server rejections', () => {
     expect(fs.existsSync(path.join(env.dir, 'auth-user.json'))).toBe(false)
   })
 
-  it('a 403 on the user endpoint signs out with its own reason', async () => {
+  it('an Unauthenticated 403 on the user endpoint signs out with its own reason', async () => {
     const { auth, expired } = await signedIn()
-    routes['/api/user'] = { status: 403 }
+    routes['/api/user'] = { status: 403, data: { message: 'Unauthenticated.' } }
     expect(await auth.fetchUser()).toBeNull()
     expect(expired).toHaveBeenCalledTimes(1)
     expect(readSignOutEvents(env.dir).map(e => e.reason)).toEqual(['user_403'])
+  })
+
+  it('any other 403 on the user endpoint (WAF, CDN, policy) keeps the session', async () => {
+    const { auth, expired } = await signedIn()
+    routes['/api/user'] = { status: 403, data: '<html>Forbidden</html>' }
+    await auth.fetchUser()
+    expect(auth.isAuthenticated()).toBe(true)
+    expect(auth.getToken()).toBe(TOKEN)
+    expect(tokenFileExists()).toBe(true)
+    expect(expired).not.toHaveBeenCalled()
+    expect(readSignOutEvents(env.dir)).toEqual([])
+  })
+
+  it('a 401 on the user endpoint still signs out', async () => {
+    const { auth, expired } = await signedIn()
+    routes['/api/user'] = { status: 401, data: { message: 'Unauthenticated.' } }
+    expect(await auth.fetchUser()).toBeNull()
+    expect(auth.isAuthenticated()).toBe(false)
+    expect(expired).toHaveBeenCalledTimes(1)
+    expect(readSignOutEvents(env.dir).map(e => e.reason)).toEqual(['http_401'])
+  })
+
+  it('ending the session runs the session-ended hook (web shell cleanup) on logout and on expiry', async () => {
+    const { auth } = await signedIn()
+    const ended = vi.fn()
+    auth.onSessionEnded = ended
+    await auth.logout()
+    expect(ended).toHaveBeenCalledTimes(1)
   })
 
   it('signing out yourself is recorded but does not raise the expired-session alert', async () => {

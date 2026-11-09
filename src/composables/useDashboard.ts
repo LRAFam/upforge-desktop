@@ -9,6 +9,8 @@ import { formatGameMode, getRankIconUrl } from '../lib/valorant'
 import { getMasteryIconUrl } from '../lib/rank-assets'
 import { hasAnalysisQuotaRemaining, hasArchiveQuotaRemaining, isPlatformAdmin } from '../lib/tier-features'
 import { useAchievements } from './useAchievements'
+import { useLifetime } from './useLifetime'
+import { useWindowAttention, windowIsBackground } from '../lib/window-attention'
 import type { CarouselPanel } from '../components/PanelCarousel.vue'
 import type { SkillProfileSnapshot } from '../lib/skill-profile'
 import { buildSessionReview } from '../lib/session-review'
@@ -51,7 +53,9 @@ import {
 import { POST_MATCH_COPY } from '../lib/post-match-copy'
 import { filterAnalysesForPrimaryGame } from '../lib/analysis-display'
 import { openAnalysisInApp } from '../lib/open-analysis-in-app'
+import { freeArchiveRetentionHint, readArchiveQuota } from '../lib/archive-retention-hint'
 import { asSessionEnded, DEFAULT_TRAINER_DURATION, launchTrainer, sessionEndedMessage, TRAINER_LAUNCH_FAILED_MESSAGE } from '../lib/trainer-launch'
+import { appendActivityEntry } from '../lib/activity-log-append'
 
 export interface LolRecentMatch {
   match_id: string
@@ -592,10 +596,12 @@ function createDashboard(opts: DashboardOptions = {}) {
     return Math.min(100, Math.round((stats.total / stats.limit) * 100))
   })
 
+  const archiveQuota = computed(() => readArchiveQuota(profile.value?.user?.archive_stats))
+
   const archiveQuotaPercent = computed(() => {
-    const stats = profile.value?.user?.archive_stats
-    if (!stats?.limit || isAdmin.value) return 0
-    return Math.min(100, Math.round((stats.count / stats.limit) * 100))
+    const { count, limit } = archiveQuota.value
+    if (!limit || isAdmin.value) return 0
+    return Math.min(100, Math.round((count / limit) * 100))
   })
 
   /** Free-tier cloud keep nudge — shown when user already has ≥1 archived VOD. */
@@ -604,12 +610,7 @@ function createDashboard(opts: DashboardOptions = {}) {
     if (archiveRetentionDismissed.value || isAdmin.value) return null
     const u = profile.value?.user
     if (!u || u.tier !== 'free') return null
-    const stats = u.archive_stats
-    if (!stats || (stats.count ?? 0) < 1) return null
-    const days = stats.retention_days
-    const max = stats.limit
-    if (days == null || max == null) return null
-    return `Free keeps cloud VODs for ${days} days (${max} max). Plus keeps them 90 days.`
+    return freeArchiveRetentionHint(u.archive_stats, { requireSaved: true })
   })
   function dismissArchiveRetentionNudge() {
     archiveRetentionDismissed.value = true
@@ -668,8 +669,10 @@ function createDashboard(opts: DashboardOptions = {}) {
     return formatGameMode(mode)
   }
 
-  let pollInterval: ReturnType<typeof setInterval>
-  let durationInterval: ReturnType<typeof setInterval>
+  // Timers and IPC listeners started after onMounted's awaits stop with this Home, even when it
+  // unmounts mid-init (RouterView re-key at startup, a quick click away). See useLifetime.
+  const life = useLifetime()
+  const attention = useWindowAttention()
 
   function formatEntryDate(dateStr: string): string {
     try {
@@ -1648,8 +1651,9 @@ function createDashboard(opts: DashboardOptions = {}) {
       if (newAchs.length) window.__ufAchievementUnlocked?.(newAchs)
     }
 
-    pollInterval = setInterval(async () => {
-      if (document.hidden) return
+    // Unmounted while the calls above were in flight: start nothing.
+    if (life.ended) return
+    async function refreshStatus() {
       try {
         const s = await window.api.app.getStatus()
         const wasRecording = status.value.recording
@@ -1667,30 +1671,36 @@ function createDashboard(opts: DashboardOptions = {}) {
         if (s.recording && !wasRecording) recordingStartedAt.value = Date.now()
         if (!s.recording) { recordingStartedAt.value = null; stopping.value = false }
       } catch { /* ignore */ }
-    }, 5000)
+    }
+    // Background ticks pause while the player is in the game (window unfocused or hidden):
+    // recording changes still arrive as events, and both catch up the moment the window is back.
+    life.interval(() => { if (!windowIsBackground()) void refreshStatus() }, 5000)
+    life.interval(() => { if (!windowIsBackground()) updateRecordingElapsed() }, 1000)
+    life.own(watch(attention, (looking) => {
+      if (!looking) return
+      updateRecordingElapsed()
+      void refreshStatus()
+    }))
 
-    durationInterval = setInterval(updateRecordingElapsed, 1000)
-
-    const ipcCleanup: (() => void)[] = []
-    ipcCleanup.push(window.api.on('settings:changed', (...args: unknown[]) => {
+    life.own(window.api.on('settings:changed', (...args: unknown[]) => {
       const s = args[0] as { primaryGame?: string } | undefined
       if (!s) return
       // Analyses reload via watch(primaryGame). Do not gate on prevGame here:
       // setPrimaryGame may update the ref before this IPC event arrives.
       applyFromSettings(s)
     }))
-    ipcCleanup.push(window.api.on('dashboard:refresh', async () => {
+    life.own(window.api.on('dashboard:refresh', async () => {
       invalidateGameAnalysesCache(primaryGame.value)
       await refreshProfile()
       await loadSkillProfileFromSettings()
       await loadAnalyses()
     }))
-    ipcCleanup.push(window.api.on('dashboard:last-insight', (...args: unknown[]) => {
+    life.own(window.api.on('dashboard:last-insight', (...args: unknown[]) => {
       savedLastInsight.value = args[0] as LastInsight | null
     }))
     // Single-flight: a burst of updates after a match must not stack parallel full-list fetches.
-    ipcCleanup.push(window.api.on('recordings:updated', singleFlight(loadPendingRecordings)))
-    ipcCleanup.push(window.api.on('dashboard:upload-progress', (...args: unknown[]) => {
+    life.own(window.api.on('recordings:updated', singleFlight(loadPendingRecordings)))
+    life.own(window.api.on('dashboard:upload-progress', (...args: unknown[]) => {
       const data = args[0] as { recordingId: string; progress: number }
       if (!data?.recordingId) return
       uploadProgressByRecordingId.value = { ...uploadProgressByRecordingId.value, [data.recordingId]: data.progress }
@@ -1699,7 +1709,7 @@ function createDashboard(opts: DashboardOptions = {}) {
         sessionStorage.setItem(BACKGROUND_BANNER_KEY, '1')
       }
     }))
-    ipcCleanup.push(window.api.on('dashboard:analysis-progress', (...args: unknown[]) => {
+    life.own(window.api.on('dashboard:analysis-progress', (...args: unknown[]) => {
       const data = args[0] as { jobId?: string; progress?: number; current_step?: string | null }
       if (!data?.jobId) {
         schedulePendingReload()
@@ -1721,7 +1731,7 @@ function createDashboard(opts: DashboardOptions = {}) {
           : r,
       )
     }))
-    ipcCleanup.push(window.api.on('dashboard:analysis-failed', (...args: unknown[]) => {
+    life.own(window.api.on('dashboard:analysis-failed', (...args: unknown[]) => {
       const data = args[0] as AnalysisErrorPayload
       if (!data?.message) return
       analysisFailure.value = data
@@ -1733,40 +1743,46 @@ function createDashboard(opts: DashboardOptions = {}) {
       }, 20_000)
       void loadPendingRecordings()
     }))
-    ipcCleanup.push(window.api.on('app:activity-log', (...args: unknown[]) => {
+    life.own(window.api.on('app:activity-log', (...args: unknown[]) => {
       activityLog.value = args[0] as { time: number; message: string; game?: string }[]
     }))
-    ipcCleanup.push(window.api.on('post-game:demo-status', (...args: unknown[]) => {
+    life.own(window.api.on('app:activity-entry', (...args: unknown[]) => {
+      activityLog.value = appendActivityEntry(
+        activityLog.value,
+        args[0] as { time: number; message: string; game?: string },
+      )
+    }))
+    life.own(window.api.on('post-game:demo-status', (...args: unknown[]) => {
       const payload = args[0] as { status?: string }
       if (payload?.status === 'complete' && isDeadlock.value) void loadAnalyses()
     }))
-    ipcCleanup.push(window.api.on('post-game:demo-download-progress', (...args: unknown[]) => {
+    life.own(window.api.on('post-game:demo-download-progress', (...args: unknown[]) => {
       demoDownloadProgress.value = (args[0] as DemoDownloadProgress | null) ?? null
     }))
-    ipcCleanup.push(window.api.on('app:activity-toast', (...args: unknown[]) => {
+    life.own(window.api.on('app:activity-toast', (...args: unknown[]) => {
       const data = args[0] as { message?: string }
       if (!data?.message) return
       showActivityToast(data.message)
     }))
-    ipcCleanup.push(window.api.on('trainer:session-ended', (...args: unknown[]) => {
+    life.own(window.api.on('trainer:session-ended', (...args: unknown[]) => {
       const message = sessionEndedMessage(asSessionEnded(args[0]))
       if (message) showActivityToast(message)
     }))
     // 'dashboard:open-latest-analysis' (the "Coaching ready" notification) is handled app-wide in App.vue,
     // so it opens the in-app result from any screen.
-    ipcCleanup.push(window.api.on('dashboard:analyse-recording', (...args: unknown[]) => {
+    life.own(window.api.on('dashboard:analyse-recording', (...args: unknown[]) => {
       const data = args[0] as { id?: string }
       if (data?.id) void analyseRecording(data.id)
     }))
-    ipcCleanup.push(window.api.on('app:ffmpeg-status', (...args: unknown[]) => {
+    life.own(window.api.on('app:ffmpeg-status', (...args: unknown[]) => {
       const data = args[0] as { ok: boolean }
       status.value = { ...status.value, ffmpegOk: data.ok }
     }))
-    ipcCleanup.push(window.api.on('obs:connection-changed', (...args: unknown[]) => {
+    life.own(window.api.on('obs:connection-changed', (...args: unknown[]) => {
       const data = args[0] as { connected?: boolean }
       if (typeof data?.connected === 'boolean') status.value = { ...status.value, obsConnected: data.connected }
     }))
-    ipcCleanup.push(window.api.on('recording:status-changed', (...args: unknown[]) => {
+    life.own(window.api.on('recording:status-changed', (...args: unknown[]) => {
       const data = args[0] as { recording: boolean; error: string | null }
       const wasRecording = status.value.recording
       status.value = { ...status.value, recording: data.recording, recordingStarting: false }
@@ -1777,11 +1793,11 @@ function createDashboard(opts: DashboardOptions = {}) {
         setTimeout(() => { warning.value = null }, 15000)
       }
     }))
-    ipcCleanup.push(window.api.on('recording:starting', (...args: unknown[]) => {
+    life.own(window.api.on('recording:starting', (...args: unknown[]) => {
       const data = args[0] as { starting: boolean }
       status.value = { ...status.value, recordingStarting: data.starting }
     }))
-    ipcCleanup.push(window.api.on('app:warning', (...args: unknown[]) => {
+    life.own(window.api.on('app:warning', (...args: unknown[]) => {
       const data = args[0] as { message: string; actionLabel?: string; actionRoute?: string }
       warning.value = data.message
       warningAction.value = data.actionLabel && data.actionRoute
@@ -1789,15 +1805,15 @@ function createDashboard(opts: DashboardOptions = {}) {
         : null
       setTimeout(() => { warning.value = null; warningAction.value = null }, 15000)
     }))
-    ipcCleanup.push(window.api.on('analysis:timeout', () => {
+    life.own(window.api.on('analysis:timeout', () => {
       warning.value = 'Clip analysis timed out — please try re-submitting from the Clips tab.'
       setTimeout(() => { warning.value = null }, 12000)
     }))
-    ipcCleanup.push(window.api.on('recording:waiting-for-match', (...args: unknown[]) => {
+    life.own(window.api.on('recording:waiting-for-match', (...args: unknown[]) => {
       const data = args[0] as { waiting: boolean }
       status.value = { ...status.value, waitingForMatch: data.waiting }
     }))
-    ipcCleanup.push(window.api.on('auth:session-expired', async () => {
+    life.own(window.api.on('auth:session-expired', async () => {
       try {
         const settings = await window.api.settings.get()
         router.push(resolveUnauthenticatedRoute(settings))
@@ -1805,7 +1821,7 @@ function createDashboard(opts: DashboardOptions = {}) {
         router.push('/login')
       }
     }))
-    ipcCleanup.push(window.api.on('app:hotkey-status', (...args: unknown[]) => {
+    life.own(window.api.on('app:hotkey-status', (...args: unknown[]) => {
       const data = args[0] as { saveClipRegistered: boolean }
       if (!data.saveClipRegistered) {
         const hk = hotkeys.value['save-clip'] || 'F9'
@@ -1813,19 +1829,13 @@ function createDashboard(opts: DashboardOptions = {}) {
         setTimeout(() => { warning.value = null }, 15000)
       }
     }))
-    ;(window as Window & { _dashboardIpcCleanup?: (() => void)[] })._dashboardIpcCleanup = ipcCleanup
     primaryGameWatchReady.value = true
   })
 
   onUnmounted(() => {
     primaryGameWatchReady.value = false
-    clearInterval(pollInterval)
-    clearInterval(durationInterval)
     recordingStartedAt.value = null
     recordingElapsed.value = ''
-    const cleanup = (window as Window & { _dashboardIpcCleanup?: (() => void)[] })._dashboardIpcCleanup
-    cleanup?.forEach(fn => fn())
-    delete (window as Window & { _dashboardIpcCleanup?: (() => void)[] })._dashboardIpcCleanup
   })
 
   return {
@@ -1927,6 +1937,7 @@ function createDashboard(opts: DashboardOptions = {}) {
     quotaLowWarning,
     groupedAnalyses,
     quotaPercent,
+    archiveQuota,
     archiveQuotaPercent,
     avgScore,
     scoreTrend,

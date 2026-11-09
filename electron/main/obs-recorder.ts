@@ -191,6 +191,8 @@ export class OBSRecorder {
   onRecoveredDuringMatch?: () => void
   /** Fired once when OBS process exits while match-owned (not mere WS drop). */
   onObsProcessDiedDuringMatch?: () => void
+  /** Every stop retry failed while OBS may still be recording — ownership is kept. */
+  onStopGaveUp?: (message: string) => void
 
   /** Suppress ConnectionClosed while we intentionally tear down before reconnecting. */
   private _suppressConnectionEvents = false
@@ -1402,16 +1404,59 @@ export class OBSRecorder {
       // A queued match does not own an onboarding check's output.
       if (!this._matchOwnedRecording && !this._recording) return Promise.resolve(null)
     }
-    return this._requestStop()
+    return this._requestStop(false, true)
   }
 
-  private _requestStop(suppressStoppedStatus = false): Promise<string | null> {
+  /** `retry`: keep retrying (match end / watchdog). Start-path cleanup fails fast instead. */
+  private _requestStop(suppressStoppedStatus = false, retry = false): Promise<string | null> {
     if (this._stopInFlight) return this._stopInFlight
-    this._stopInFlight = this._stopRecording(undefined, suppressStoppedStatus).finally(() => { this._stopInFlight = null })
+    this._stopInFlight = (retry
+      ? this._stopWithRetry(suppressStoppedStatus)
+      : this._stopRecording(undefined, suppressStoppedStatus)
+    ).finally(() => { this._stopInFlight = null })
     return this._stopInFlight
   }
 
+  /** Backoff between stop attempts while OBS has not confirmed idle (card 232). */
+  static readonly STOP_RETRY_DELAYS_MS: readonly number[] = [5_000, 15_000, 45_000]
+
+  /**
+   * A single timed-out StopRecord used to strand ownership for hours. Retry while UpForge
+   * still owns the output; ownership is released only once OBS confirms idle.
+   */
+  private async _stopWithRetry(suppressStoppedStatus: boolean): Promise<string | null> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this._stopAttempt(undefined, suppressStoppedStatus)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        const delay = OBSRecorder.STOP_RETRY_DELAYS_MS[attempt]
+        // Ownership already released (e.g. file finalisation failed): nothing to retry.
+        if (!this._matchOwnedRecording || delay === undefined) {
+          this._markRecordingFailure(message, 'stop')
+          if (this._matchOwnedRecording) {
+            log.warn(`[OBSRecorder] Giving up on stop after ${attempt + 1} attempts — OBS may still be recording: ${message}`)
+            this.onStopGaveUp?.(message)
+          }
+          return null
+        }
+        log.warn(`[OBSRecorder] Stop attempt ${attempt + 1} failed (${message}) — retrying in ${delay / 1000}s`)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+  }
+
   private async _stopRecording(shutdownRequest?: Promise<{ outputPath?: string }>, suppressStoppedStatus = false): Promise<string | null> {
+    try {
+      return await this._stopAttempt(shutdownRequest, suppressStoppedStatus)
+    } catch (err) {
+      this._markRecordingFailure(err instanceof Error ? err.message : String(err), 'stop')
+      return null
+    }
+  }
+
+  /** One stop attempt; throws on failure without marking the recording failed. */
+  private async _stopAttempt(shutdownRequest?: Promise<{ outputPath?: string }>, suppressStoppedStatus = false): Promise<string | null> {
     this._stopProgressWatch()
     this._stopReconnectLoop()
     if (this._recordInactiveSettleTimer) {
@@ -1419,47 +1464,42 @@ export class OBSRecorder {
       this._recordInactiveSettleTimer = null
     }
     this._stopLiveKillPoll()
-    try {
-      if (shutdownRequest) {
-        const response = await withTimeout(shutdownRequest, 5000, 'OBS stop request timed out. Restart OBS.')
+    if (shutdownRequest) {
+      const response = await withTimeout(shutdownRequest, 5000, 'OBS stop request timed out. Restart OBS.')
+      if (response.outputPath) this._outputPath = response.outputPath
+    }
+    if (!this._connected) {
+      const result = await withTimeout(this.connect(), 5000, 'OBS reconnect timed out')
+      if (!result.ok) throw new Error('Cannot reach OBS to confirm recording stopped. Restart OBS.')
+    }
+    if (this._clipsOnlySession) {
+      if (!shutdownRequest) await withTimeout(this._obs.call('StopReplayBuffer'), 5000, 'OBS replay buffer stop timed out')
+      await waitForRecordingStopped(() => this._obs.call('GetReplayBufferStatus'))
+      this._replayBufferActive = false
+      this._outputPath = null
+    } else {
+      const status = await withTimeout(this._obs.call('GetRecordStatus'), 3000, 'OBS recording status timed out')
+      if (status.outputActive && !shutdownRequest) {
+        const response = await withTimeout(this._obs.call('StopRecord'), 5000, 'OBS stop request timed out. Restart OBS.')
         if (response.outputPath) this._outputPath = response.outputPath
       }
-      if (!this._connected) {
-        const result = await withTimeout(this.connect(), 5000, 'OBS reconnect timed out')
-        if (!result.ok) throw new Error('Cannot reach OBS to confirm recording stopped. Restart OBS.')
-      }
-      if (this._clipsOnlySession) {
-        if (!shutdownRequest) await withTimeout(this._obs.call('StopReplayBuffer'), 5000, 'OBS replay buffer stop timed out')
-        await waitForRecordingStopped(() => this._obs.call('GetReplayBufferStatus'))
-        this._replayBufferActive = false
-        this._outputPath = null
-      } else {
-        const status = await withTimeout(this._obs.call('GetRecordStatus'), 3000, 'OBS recording status timed out')
-        if (status.outputActive && !shutdownRequest) {
-          const response = await withTimeout(this._obs.call('StopRecord'), 5000, 'OBS stop request timed out. Restart OBS.')
-          if (response.outputPath) this._outputPath = response.outputPath
-        }
-        await waitForRecordingStopped(() => this._obs.call('GetRecordStatus'))
-      }
-      // It is now safe to release ownership. File finalization is a separate success condition.
-      this._recording = false
-      this._matchOwnedRecording = false
-      this._startedAt = null
-      this._clipsOnlySession = false
-      this._disconnectedDuringRecording = false
-      this._noteRecordingStopped()
-      if (this._outputPath) await this._waitForRecordingFile(this._outputPath)
-      // A capture failure already sent the stopped state and its error. Successful
-      // cleanup must not report that same failure again as a separate stop error.
-      if (!this._recordingFailure && !suppressStoppedStatus) {
-        this.onStatusChange?.(false, undefined, this._verifyingStart ? 'start' : 'stop')
-      }
-      log.info('[OBSRecorder] Recording stop confirmed. Output:', this._outputPath)
-      return this._outputPath
-    } catch (err) {
-      this._markRecordingFailure(err instanceof Error ? err.message : String(err), 'stop')
-      return null
+      await waitForRecordingStopped(() => this._obs.call('GetRecordStatus'))
     }
+    // It is now safe to release ownership. File finalization is a separate success condition.
+    this._recording = false
+    this._matchOwnedRecording = false
+    this._startedAt = null
+    this._clipsOnlySession = false
+    this._disconnectedDuringRecording = false
+    this._noteRecordingStopped()
+    if (this._outputPath) await this._waitForRecordingFile(this._outputPath)
+    // A capture failure already sent the stopped state and its error. Successful
+    // cleanup must not report that same failure again as a separate stop error.
+    if (!this._recordingFailure && !suppressStoppedStatus) {
+      this.onStatusChange?.(false, undefined, this._verifyingStart ? 'start' : 'stop')
+    }
+    log.info('[OBSRecorder] Recording stop confirmed. Output:', this._outputPath)
+    return this._outputPath
   }
 
   forceStop(): void {

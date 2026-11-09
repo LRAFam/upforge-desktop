@@ -276,6 +276,7 @@ export function applyGameNotes(view: MatchReportView, res: GameNotesResult | nul
     evidence,
     nextSteps: action ? [{ text: action, drillMetric: null }, ...view.nextSteps].slice(0, 3) : view.nextSteps,
     notesCapped: false,
+    hasCoachNote: true,
   }
 }
 

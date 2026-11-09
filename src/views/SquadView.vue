@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { inMatchPollGuard } from '../lib/in-match-poll-pause'
 import SquadBriefingHero from '../components/squad/SquadBriefingHero.vue'
 import SquadStatsStrip from '../components/squad/SquadStatsStrip.vue'
 import SquadLineupRow from '../components/squad/SquadLineupRow.vue'
@@ -307,9 +308,9 @@ onMounted(() => {
   if (uiV3.value) void loadV3()
   else load()
   // refresh() already calls syncPresence() — don't double up every 30s.
-  pollTimer = setInterval(() => {
+  pollTimer = setInterval(inMatchPollGuard('squad-view', () => {
     refresh()
-  }, 30000)
+  }), 30000)
 })
 
 onUnmounted(() => {

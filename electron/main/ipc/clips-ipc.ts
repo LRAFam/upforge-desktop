@@ -25,6 +25,7 @@ import { buildClipUploadPayload, resolveClipTimeline } from '../clip-coaching-co
 import { buildCoachingSubmissionExtras } from '../match-coaching-context'
 import { exportMatchRecap } from '../recap-export'
 import { hasProAccess } from '../subscription'
+import { getApiBaseUrl } from '../api-base'
 
 export function setupClipHandlers(
   ipcMain: IpcMain,
@@ -35,7 +36,7 @@ export function setupClipHandlers(
   recordingsStore?: RecordingsStore,
   settingsManager?: SettingsManager,
 ): void {
-  const apiBase = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+  const apiBase = getApiBaseUrl()
 
   function clipTimeline(clip: import('../clip-store').ClipRecord) {
     if (!recordingsStore) return null

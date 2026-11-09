@@ -14,12 +14,18 @@ const RANKED: Record<string, ReadonlySet<string>> = {
   valorant: new Set(['COMPETITIVE', 'PREMIER']),
   cs2: new Set(['COMPETITIVE', 'PREMIER']),
   lol: new Set(['RANKED_SOLO', 'RANKED_FLEX']),
+  // Deadlock recordings start as the COMPETITIVE placeholder (unknown → counted) and get their real
+  // queue from match metadata after the match (electron/main/deadlock-recording-hero.ts).
+  deadlock: new Set(['RANKED']),
 }
 
 const UNRANKED: Record<string, ReadonlySet<string>> = {
   valorant: new Set(['CLASSIC', 'UNRATED', 'SWIFTPLAY', 'SPIKERUSH', 'DEATHMATCH', 'TEAMDEATHMATCH', 'SNOWBALL', 'SHOOTING_RANGE', 'RANGEV2', 'CUSTOM', 'NEWMAP', 'ONEFA', 'GGTEAM']),
   cs2: new Set(['WINGMAN', 'CASUAL', 'DEATHMATCH', 'ARMS_RACE', 'GUNGAME', 'DEMOLITION', 'RETAKES', 'CUSTOM', 'TRAINING', 'SKIRMISH']),
   lol: new Set(['ARAM', 'ARENA', 'CUSTOM', 'NORMAL_DRAFT', 'NORMAL_BLIND', 'SWIFTPLAY']),
+  // Mirrors the API's GameQueue: Standard matchmaking, Street Brawl, bots, lobbies, Hero Labs… never move ranked stats.
+  deadlock: new Set(['UNRANKED', 'STANDARD', 'STREET_BRAWL', 'PRIVATE_LOBBY', 'COOP_BOT', 'HERO_LABS', 'TUTORIAL',
+    'SERVER_TEST', 'NEW_PLAYER_PLACEMENT', 'SANDBOX']),
 }
 
 function modeKey(mode: string | null | undefined): string | null {
@@ -29,7 +35,7 @@ function modeKey(mode: string | null | undefined): string | null {
 
 /**
  * 'ranked' / 'unranked' when the mode says so; null when we cannot tell (no mode, League's CLASSIC
- * which covers ranked and normals, Deadlock). Callers treat null as "count it" so nothing silently
+ * which covers ranked and normals, Deadlock's COMPETITIVE placeholder before match metadata arrives). Callers treat null as "count it" so nothing silently
  * disappears from Progress.
  */
 export function queueTypeFor(game: string | null | undefined, mode: string | null | undefined): QueueType | null {
@@ -44,6 +50,19 @@ export function queueTypeFor(game: string | null | undefined, mode: string | nul
 /** Main-mode stats (Progress, win rate, UpForge score baselines, focus checks) skip unranked modes. */
 export function countsTowardProgress(game: string | null | undefined, mode: string | null | undefined): boolean {
   return queueTypeFor(game, mode) !== 'unranked'
+}
+
+/**
+ * Same rule for an analysis row. Deadlock analyses all carry game_mode 'DEADLOCK' (a game marker), so
+ * their queue comes from the API's `queue` (ranked · standard · street_brawl · other, from match
+ * metadata). Unknown queues still count, like every other game.
+ */
+export function analysisCountsTowardProgress(
+  game: string | null | undefined,
+  a: { game_mode?: string | null; queue?: string | null },
+): boolean {
+  if ((game ?? '').toLowerCase() === 'deadlock' && a.queue) return a.queue === 'ranked'
+  return countsTowardProgress(game, a.game_mode)
 }
 
 const MODE_NAMES: Record<string, string> = {
@@ -69,14 +88,28 @@ const MODE_NAMES: Record<string, string> = {
   RANGEV2: 'The Range',
 }
 
+const DEADLOCK_MODE_LABELS: Record<string, string> = {
+  RANKED: 'Ranked',
+  UNRANKED: 'Standard · Unranked',
+  STANDARD: 'Standard · Unranked',
+  STREET_BRAWL: 'Street Brawl · Unranked',
+  PRIVATE_LOBBY: 'Private lobby',
+  COOP_BOT: 'Bot match',
+  HERO_LABS: 'Hero Labs',
+  TUTORIAL: 'Tutorial',
+  NEW_PLAYER_PLACEMENT: 'Placement',
+}
+
 /**
- * Row / header label for CS2 and Valorant: "Premier · Ranked", "Deathmatch · Unranked",
- * "Wingman · 2v2". Empty when the mode is unknown or the game is not CS2 / Valorant.
+ * Row / header label for CS2, Valorant and Deadlock: "Premier · Ranked", "Deathmatch · Unranked",
+ * "Wingman · 2v2", "Street Brawl · Unranked". Empty when the mode is unknown (incl. Deadlock's
+ * COMPETITIVE placeholder) or the game is League.
  */
 export function modeQueueLabel(game: string | null | undefined, mode: string | null | undefined): string {
   const key = modeKey(mode)
   const g = (game ?? '').toLowerCase()
-  // League / Deadlock modes keep their existing labels (formatGameMode); only these two split queues here.
+  if (key && g === 'deadlock') return DEADLOCK_MODE_LABELS[key] ?? ''
+  // League modes keep their existing labels (formatGameMode); only these split queues here.
   if (!key || (g !== 'cs2' && g !== 'valorant')) return ''
   const name = MODE_NAMES[key] ?? key.toLowerCase().split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
   const queue = queueTypeFor(game, key)

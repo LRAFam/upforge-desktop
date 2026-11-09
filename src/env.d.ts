@@ -249,6 +249,8 @@ export interface AppSettings {
   notificationSound: boolean
   /** Show match status in Discord Rich Presence */
   discordRichPresence: boolean
+  /** Switch the game tab when a game starts and nothing is recording (default on) */
+  autoSwitchGameTab: boolean
   /** In-game hotkey feedback: notifications (default), overlay, or both */
   inGameFeedback: 'notifications' | 'overlay' | 'all'
   /** Auto-open the results page in the browser when analysis completes */
@@ -383,6 +385,8 @@ export interface PendingRecording {
   hasLocalFile?: boolean
   /** Present on recordings:get — full VOD uploaded to S3. */
   cloudUploaded?: boolean
+  /** Present on recordings:get / list-all — when auto-delete removes this local-only recording (warned first), else null. */
+  localExpiresAt?: number | null
   analysisReadiness?: {
     ready: boolean
     state: 'ready' | 'syncing' | 'waiting_match_data' | 'no_deaths' | 'unavailable' | 'file_missing' | 'finalizing' | 'mode_unsupported' | 'file_unreadable'
@@ -554,11 +558,22 @@ export interface ProfileData {
       subscription_ends_at?: string | null
     }
     archive_stats?: {
-      count: number
-      limit: number | null
-      remaining: number | null
+      count?: number
+      limit?: number | null
+      remaining?: number | null
       retention_days: number | null
       storage_bytes_used: number
+      /** API sends these names; count/limit/remaining are older ones. */
+      archived_count?: number
+      archived_limit?: number | null
+      archived_remaining?: number | null
+      /** How long Plus really keeps cloud videos (server config). Missing on older APIs. */
+      plus_retention?: {
+        tier?: string
+        name?: string
+        keep_days: number | null
+        keeps_while_subscribed: boolean
+      }
     }
     forge_rank?: ForgeRankInfo
   }
@@ -605,6 +620,8 @@ export interface ClipRecord {
 
 export interface AnalysisItem {
   id: number
+  /** Deadlock only: ranked · standard · street_brawl · other (game_mode is the 'DEADLOCK' marker). */
+  queue?: string | null
   /** When the match was played (API `played_at`); null when unknown. Prefer it over created_at for dates. */
   played_at?: string | null
   /** Riot/Valve match id when the API knows it (League links stats coaching by it). */
@@ -681,6 +698,8 @@ export interface DeadlockAnalysisItem {
   kills: number | null
   deaths: number | null
   assists: number | null
+  /** ranked · standard · street_brawl · other, from match metadata (API 9 Nov 2026+); null when unknown. */
+  queue?: string | null
   created_at: string
   completed_at: string | null
 }
@@ -923,7 +942,7 @@ declare global {
         getFocus: () => Promise<import('./lib/focus').FocusResponse | null>
         getMatchReport: (matchId: string) => Promise<{ ok: true; report: import('./lib/match-report').MatchReportResponse } | { ok: false; error: string }>
         getGameMatchReport: (game: 'lol' | 'deadlock', matchId: string) => Promise<{ ok: true; report: unknown } | { ok: false; error: string }>
-        getGameMatchNotes: (game: 'lol' | 'deadlock' | 'cs2', matchId: string, facts?: unknown) => Promise<{ ok: true; notes: unknown; notes_source: string | null; capped: boolean } | { ok: false; error: string }>
+        getGameMatchNotes: (game: 'lol' | 'deadlock' | 'cs2', matchId: string, facts?: unknown) => Promise<{ ok: true; notes: unknown; notes_source: string | null; capped: boolean; notes_status?: 'ready' | 'pending' | 'capped' | 'none' | null } | { ok: false; error: string }>
         getStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: true; report: import('./lib/starting-report').StartingReportResponse } | { ok: false; error: string }>
         generateStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: true; report: import('./lib/starting-report').StartingReportResponse } | { ok: false; error: string }>
         dismissStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: boolean }>
@@ -1387,6 +1406,9 @@ declare global {
           cloudBackedBytes: number
           orphanCount: number
           orphanBytes: number
+          orphanScheduledCount: number
+          orphanScheduledBytes: number
+          orphanDeleteAt: number | null
           legacyDuplicateBytes: number
         }>
         purgeCloudBacked: () => Promise<{ freedBytes: number; removed: number; skipped: number }>

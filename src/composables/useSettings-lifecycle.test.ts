@@ -38,7 +38,7 @@ describe('Settings IPC lifecycle', () => {
     for (let visit = 0; visit < 3; visit++) {
       provideSettings()
       await lifecycle.mounts.at(-1)!()
-      expect(count()).toBe(11)
+      expect(count()).toBe(12)
       lifecycle.unmounts.at(-1)!()
       expect(count()).toBe(0)
     }

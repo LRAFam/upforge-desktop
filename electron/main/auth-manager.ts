@@ -9,6 +9,7 @@ import { normalizeToAcs } from './combat-score'
 import { getApiBaseUrl } from './api-base'
 import { resolveMaxValorantAccounts } from './valorant-account-cap'
 import { normalizeLolRecent, type LolRecentResult } from '../../src/lib/lol-recent'
+import { normalizeArchiveStats, type NormalizedArchiveStats } from '../../src/lib/archive-retention-hint'
 import {
   clearCachedUser, clearTokenMeta, desktopDeviceName, loadCachedUser, markTokenIssued, queueSignOutEvent,
   readInstallId, saveCachedUser, takeSignOutEvents, tokenAgeDays, type SignOutEvent, type SignOutReason,
@@ -89,9 +90,17 @@ function appVersion(): string | undefined {
   try { return app.getVersion() } catch { return undefined }
 }
 
-/** Only an explicit 401/403 means the token is no longer valid; timeouts and 5xx are not a sign-out. */
-export function sessionRejected(status: number | undefined): boolean {
-  return status === 401 || status === 403
+/** Laravel's reply when the token is not accepted: `{"message":"Unauthenticated."}`. */
+function isUnauthenticatedBody(data: unknown): boolean {
+  return !!data && typeof data === 'object' && (data as { message?: unknown }).message === 'Unauthenticated.'
+}
+
+/**
+ * Only the server rejecting the token is a sign-out: any 401, or a 403 carrying Laravel's
+ * Unauthenticated body. Other 403s (WAF/CDN/policy), timeouts and 5xx keep the session.
+ */
+export function sessionRejected(status: number | undefined, data?: unknown): boolean {
+  return status === 401 || (status === 403 && isUnauthenticatedBody(data))
 }
 
 /** Coach notes: the API's own message when it explains the refusal, else a plain fallback. */
@@ -223,13 +232,7 @@ export interface ProfileData {
     lol_platform?: string | null
     discord_username: string | null
     analysis_stats: { purchased?: number; total: number; limit: number | null; subscription_ends_at?: string | null }
-    archive_stats?: {
-      count: number
-      limit: number | null
-      remaining: number | null
-      retention_days: number | null
-      storage_bytes_used: number
-    }
+    archive_stats?: NormalizedArchiveStats
   }
   latest_stats: ValorantStats | null
 }
@@ -281,6 +284,8 @@ export class AuthManager {
   private _api: AxiosInstance
   /** Called when the server rejects the session (401/403) — use to force logout in the UI. */
   onSessionExpired?: () => void
+  /** Called whenever a session ends (sign-out or expiry) — e.g. clear the embedded website's session. */
+  onSessionEnded?: () => void
   /** False while running on the cached user because the server could not be reached. */
   private _userFresh = false
   private _refreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -389,6 +394,7 @@ export class AuthManager {
     delete this._api.defaults.headers.common['Authorization']
     clearToken()
     clearCachedUser(userDataDir())
+    try { this.onSessionEnded?.() } catch (err) { log.warn('[Auth] session-ended hook failed:', (err as Error)?.message) }
     if (notify) this.onSessionExpired?.()
   }
 
@@ -485,7 +491,8 @@ export class AuthManager {
       const status = (err as { status?: number; response?: { status?: number } })?.status
         ?? (err as { response?: { status?: number } })?.response?.status
       const code = (err as { code?: string })?.code
-      if (!sessionRejected(status)) {
+      const body = (err as { response?: { data?: unknown } })?.response?.data
+      if (!sessionRejected(status, body)) {
         // Slow or offline network: keep the session. On launch there is no user yet, so use the last
         // signed-in user from disk and keep retrying in the background.
         if (!this._user && this._token) {
@@ -537,7 +544,7 @@ export class AuthManager {
       const stats = p.user?.analysis_stats ?? {}
       if (!Number.isFinite(stats.free_analyses_used) || stats.free_analyses_used < 0
         || !(stats.monthly_free_analyses === null || (Number.isFinite(stats.monthly_free_analyses) && stats.monthly_free_analyses >= 0))) return null
-      const archiveRaw = p.user?.archive_stats ?? {}
+      const archiveRaw = p.user?.archive_stats
       const isAdmin = !!(p.user?.is_admin)
       return {
         user: {
@@ -550,13 +557,7 @@ export class AuthManager {
             limit: stats.monthly_free_analyses,
             subscription_ends_at: stats.subscription_ends_at ?? null,
           },
-          archive_stats: archiveRaw.archived_count == null ? undefined : {
-            count: archiveRaw.archived_count,
-            limit: archiveRaw.archived_limit,
-            remaining: archiveRaw.archived_remaining,
-            retention_days: archiveRaw.retention_days ?? null,
-            storage_bytes_used: archiveRaw.storage_bytes_used,
-          },
+          archive_stats: normalizeArchiveStats(archiveRaw),
           forge_rank: p.forge_rank ?? null,
         },
         latest_stats: p.latest_stats ?? null,

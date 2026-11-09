@@ -89,7 +89,7 @@ export function setupStorageHandlers(ipcMain: IpcMain, deps: StorageIpcDeps): vo
   })
 
   ipcMain.handle('storage:purge-orphans', () => {
-    const result = purgeUntrackedRecordingFiles(recordingsStore, recordingSavePath(), 0)
+    const result = purgeUntrackedRecordingFiles(recordingsStore, recordingSavePath())
     const mainWindow = getMainWindow()
     mainWindow?.webContents.send('recordings:updated')
     mainWindow?.webContents.send('dashboard:refresh')

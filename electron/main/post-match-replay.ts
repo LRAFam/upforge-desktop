@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron'
 import log from 'electron-log'
 import { buildTimelineFromDemo } from './demo-timeline'
+import { pollDemoJob } from './demo-job-poll'
 import { findLatestReplay, type SourceGame } from './source-replay-finder'
 import { SourceReplayUploader } from './source-replay-uploader'
 import type { AuthManager } from './auth-manager'
@@ -108,30 +109,22 @@ export async function uploadReplayInBackground(
     send('post-game:demo-status', { status: 'analysing', jobId })
     try { onJobId?.(jobId) } catch (linkErr) { log.warn(`[Replay] ${game} could not link job to recording:`, linkErr) }
 
-    const MAX_POLL_MS = 10 * 60 * 1000
-    const pollStart = Date.now()
-    let interval = 10_000
-
-    while (Date.now() - pollStart < MAX_POLL_MS) {
-      await new Promise<void>((r) => setTimeout(r, interval))
-      interval = Math.min(interval * 1.5, 30_000)
-
-      try {
-        const { status, error } = await uploader.pollStatus(game, jobId)
-        if (status === 'completed') {
-          send('post-game:demo-status', { status: 'complete', jobId })
-          return { jobId, status: 'completed' }
-        }
-        if (status === 'failed') {
-          send('post-game:demo-status', { status: 'error', error: error ?? 'Analysis failed' })
-          return { jobId, status: 'failed' }
-        }
-      } catch (pollErr) {
-        log.warn(`[Replay] ${game} poll error (non-fatal):`, pollErr)
-      }
+    const result = await pollDemoJob({
+      poll: () => uploader.pollStatus(game, jobId),
+      onPollError: (pollErr) => log.warn(`[Replay] ${game} poll error (non-fatal):`, pollErr),
+    })
+    if (result.status === 'completed') {
+      send('post-game:demo-status', { status: 'complete', jobId })
+      return { jobId, status: 'completed' }
+    }
+    if (result.status === 'failed') {
+      send('post-game:demo-status', { status: 'error', error: result.error ?? 'Analysis failed' })
+      return { jobId, status: 'failed' }
     }
 
+    // The API may still finish the job (retries); the result shows up on the match when it does.
     log.warn(`[Replay] ${game} poll timed out — jobId=${jobId}`)
+    send('post-game:demo-status', { status: 'still_analysing', jobId })
     return { jobId, status: 'timeout' }
   } catch (err) {
     log.warn(`[Replay] ${game} upload flow error:`, err)

@@ -15,6 +15,12 @@ import { resolveRecordingOutput } from './recording-preset'
 import { resolveRecordingSavePath } from './user-data-paths'
 import { prepareRecordingDirectory } from './recording-save-safety'
 import { fitUpForgeCaptureToCanvas } from './obs-setup'
+import {
+  buildObsEncoderPlan,
+  detectHardwareEncoders,
+  type EncoderDetector,
+  type ObsEncoderPlan,
+} from './obs-encoder-select'
 
 export function buildRecorderConfig(
   settings: AppSettings,
@@ -81,11 +87,36 @@ async function setProfileParam(
   }
 }
 
+async function resolveEncoderPlan(
+  config: RecorderConfig,
+  detect: EncoderDetector,
+): Promise<ObsEncoderPlan | null> {
+  let plan: ObsEncoderPlan | null = null
+  try {
+    plan = buildObsEncoderPlan(await detect(), config.bitrate)
+  } catch (err) {
+    log.warn('[OBS Output] Encoder detection failed:', err instanceof Error ? err.message : err)
+  }
+  if (plan) {
+    log.info(
+      `[OBS Output] Recording encoder=${plan.encoder} (source=${plan.source}, RecQuality=Small; ` +
+      `preset ${plan.bitrateKbps} kbps not forced — streaming settings left untouched). ` +
+      'Encoder change applies from the next OBS launch.',
+    )
+  } else {
+    log.info(
+      `[OBS Output] Recording encoder=OBS default bitrate=${config.bitrate ?? '?'} Mbps preset not applied ` +
+      '(hardware encoder detection unavailable — RecQuality=Small fallback)',
+    )
+  }
+  return plan
+}
+
 export async function applyObsRecordingSettings(
   obs: OBSWebSocket,
   config: RecorderConfig,
   obsStudioVersion?: string | null,
-  options?: { outputsHot?: boolean },
+  options?: { outputsHot?: boolean; detectEncoders?: EncoderDetector },
 ): Promise<ObsApplyResult> {
   const { cx, cy } = config.quality === '1080p'
     ? { cx: 1920, cy: 1080 }
@@ -116,7 +147,15 @@ export async function applyObsRecordingSettings(
 
   await setProfileParam(obs, 'Output', 'Mode', 'Simple')
   const recFormat = await applyCrashSafeObsRecFormat(obs, obsStudioVersion)
-  await setProfileParam(obs, 'SimpleOutput', 'RecQuality', 'Small')
+  const encoderPlan = await resolveEncoderPlan(config, options?.detectEncoders ?? detectHardwareEncoders)
+  if (encoderPlan) {
+    for (const [category, name, value] of encoderPlan.keys) {
+      await setProfileParam(obs, category, name, value)
+    }
+  } else {
+    // Detection failed — keep the previous behaviour (OBS-chosen encoder, CQP "Small").
+    await setProfileParam(obs, 'SimpleOutput', 'RecQuality', 'Small')
+  }
   await setProfileParam(obs, 'SimpleOutput', 'RecRB', String(config.clipsOnly === true))
 
   try {
@@ -205,7 +244,9 @@ export async function applyObsRecordingSettings(
   }
 
   const recRb = await getProfileParam(obs, 'SimpleOutput', 'RecRB')
-  const label = `${config.quality} · ${fps} fps · OBS Simple/Small quality`
+  const label = encoderPlan
+    ? `${config.quality} · ${fps} fps · OBS Simple/${encoderPlan.encoder} Small quality`
+    : `${config.quality} · ${fps} fps · OBS Simple/Small quality`
   log.info(
     `[OBS Output] Applied ${label}${config.manageObsVideo === false ? ' (OBS video settings unchanged)' : ''} → ${savePath} ` +
     `(mode=${outputMode ?? '?'}, ${outputWidth ?? '?'}×${outputHeight ?? '?'}, replayBuffer=${recRb ?? '?'}, format=${recFormat})`,

@@ -28,12 +28,6 @@ export type TradeTimelineEvent = {
   }
 }
 
-function worldDistance(ax: number, ay: number, bx: number, by: number): number {
-  const dx = ax - bx
-  const dy = ay - by
-  return Math.sqrt(dx * dx + dy * dy)
-}
-
 /**
  * Living allies (excl. player) just before the death at `deathIndex`
  * in a round-ordered kill list (same round only).
@@ -66,39 +60,28 @@ export function countAlliesAliveAtDeath(
 }
 
 /**
- * True when an ally kills the player's killer within `windowMs` (same round; Valorant 3 s by default),
- * or kills any enemy who dies within trade radius of the death location (proximity fallback).
+ * True when an ally kills the player's killer within `windowMs` (same round; Valorant 3 s by default).
+ * One trade rule everywhere (AI service services/trade_claims.py): killing some other enemy near
+ * the body is not a trade.
+ * Null when the killer, round or death time is unknown — "unknown" must never read as untraded.
  */
 export function deathWasTraded(
   death: TradeTimelineEvent & { killerPuuid?: string },
   subsequentKills: TradeTimelineEvent[],
   allyPuids: Set<string>,
-  tradeRadiusWorld: number = 2500,
   windowMs: number = TRADE_AFTER_DEATH_MS,
-): boolean {
+): boolean | null {
   const t0 = death.videoOffsetMs
-  if (t0 == null || death.round == null) return false
   const killer = death.killerPuuid?.toLowerCase()
-  const deathWorld = death.spatial?.victimWorld
+  if (t0 == null || death.round == null || !killer) return null
 
-  for (const k of subsequentKills) {
-    if (k.round !== death.round || k.videoOffsetMs == null) continue
+  return subsequentKills.some((k) => {
+    if (k.round !== death.round || k.videoOffsetMs == null) return false
     const dt = k.videoOffsetMs - t0
-    if (dt <= 0 || dt > windowMs) continue
     const kKiller = k.killerPuuid?.toLowerCase()
-    if (!kKiller || !allyPuids.has(kKiller)) continue
-    if (killer && k.victimPuuid?.toLowerCase() === killer) return true
-    if (deathWorld && k.spatial?.victimWorld) {
-      const dist = worldDistance(
-        deathWorld.x,
-        deathWorld.y,
-        k.spatial.victimWorld.x,
-        k.spatial.victimWorld.y,
-      )
-      if (dist <= tradeRadiusWorld) return true
-    }
-  }
-  return false
+    return dt > 0 && dt <= windowMs && !!kKiller && allyPuids.has(kKiller)
+      && k.victimPuuid?.toLowerCase() === killer
+  })
 }
 
 /**
@@ -120,7 +103,10 @@ export function farFromTeam(s: TradeFlagSpatial): boolean {
   return (s.alliesNearby ?? 0) === 0 && (s.alliesAlive ?? 0) >= 1
 }
 
-/** Untraded death with a living partner available. */
+/**
+ * Untraded death with a living partner available. A last-alive death (no teammate alive) or an
+ * unmeasured trade is never "untraded".
+ */
 export function isUntradedDeath(s: TradeFlagSpatial): boolean {
-  return s.traded !== true && (s.alliesAlive ?? 0) >= 1
+  return s.traded === false && (s.alliesAlive ?? 0) >= 1
 }

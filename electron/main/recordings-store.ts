@@ -5,6 +5,7 @@ import type { MatchData } from './riot-local-api'
 import { recordingPathVariants, sourcePathForCompressed, deleteLocalRecordingFiles } from './vod-compressor'
 import { recordingMatchesLinkedRiot, localMediaRoot, type LinkedRiotId } from './user-data-paths'
 import { healRecordingPath } from './heal-recording-paths'
+import { DEADLOCK_RECORDING_MODES } from './deadlock-recording-hero'
 import {
   catalogueWriter,
   installTimeline,
@@ -20,7 +21,21 @@ function recordingStemKey(filePath: string): string {
   return path.join(path.dirname(filePath), normalizedStem).toLowerCase()
 }
 
+/**
+ * An orphan import nothing was done with yet. The match flow's own row for the same file has the
+ * detected game, map and agent; the orphan only has a guess (3.4.x: the selected game tab).
+ */
+function isDisposableOrphanImport(rec: PendingRecording): boolean {
+  return rec.orphanedImport === true
+    && !rec.analysed
+    && !rec.archiveId
+    && !hasCloudRecording(rec)
+    && (rec.pipelineStatus == null || rec.pipelineStatus === 'pending')
+}
+
 function preferRecordingEntry(a: PendingRecording, b: PendingRecording): PendingRecording {
+  const aOrphan = isDisposableOrphanImport(a)
+  if (aOrphan !== isDisposableOrphanImport(b)) return aOrphan ? b : a
   const aCompressed = sourcePathForCompressed(a.path) != null
   const bCompressed = sourcePathForCompressed(b.path) != null
   if (aCompressed !== bCompressed) return aCompressed ? a : b
@@ -72,6 +87,10 @@ export interface PendingRecording {
   lastAnalysisFailureDiagnostics?: Record<string, unknown> | null
   /** When we last showed an OS notification for this recording's analysis failure. */
   analysisFailureNotifiedAt?: number
+  /** First "will be deleted soon" warning for a local-only recording (auto-delete needs this). */
+  expiryWarnedAt?: number
+  /** Last-day "will be deleted" warning. */
+  expiryFinalWarnedAt?: number
   /** Upload queued but paused while OBS is recording. */
   pipelineDeferReason?: PipelineDeferReason | null
   /** True when an in-flight upload is archive-only (no analysis quota). */
@@ -321,6 +340,12 @@ export class RecordingsStore {
       pipelineStatus: data.pipelineStatus ?? 'pending',
       fileSizeBytes,
     }
+    if (!recording.orphanedImport && recording.path && !recording.clipsOnly) {
+      // The match flow registers its own file: drop an orphan import of it made while it saved.
+      const stem = recordingStemKey(recording.path)
+      this.recordings = this.recordings.filter(r =>
+        !(r.path && !r.clipsOnly && isDisposableOrphanImport(r) && recordingStemKey(r.path) === stem))
+    }
     const userId = this.userId
     installTimeline(recording, { value: data.timeline ?? null }, () => this.timelineChanged(userId, recording.id))
     if (recording.timeline) catalogueWriter(this.filePath).markTimelineDirty(recording.id)
@@ -473,6 +498,18 @@ export class RecordingsStore {
     this.persist()
   }
 
+  markExpiryWarned(id: string, stage: 'first' | 'final', at = Date.now()): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return
+    if (stage === 'first') {
+      rec.expiryWarnedAt = at
+      rec.expiryFinalWarnedAt = undefined
+    } else {
+      rec.expiryFinalWarnedAt = at
+    }
+    this.persist()
+  }
+
   markAnalysisFailureNotified(id: string): void {
     const rec = this.recordings.find(r => r.id === id)
     if (!rec) return
@@ -523,6 +560,26 @@ export class RecordingsStore {
     return n
   }
 
+  /**
+   * Store the real queue on a Deadlock match's recordings (from match metadata, after the match).
+   * Only known queue ids are accepted; see DEADLOCK_RECORDING_MODES.
+   */
+  setDeadlockMode(matchId: string, mode: string): number {
+    if (!(DEADLOCK_RECORDING_MODES as readonly string[]).includes(mode)) return 0
+    let n = 0
+    for (const rec of this.recordings) {
+      if (rec.game === 'deadlock' && rec.matchId === matchId && rec.gameMode !== mode) {
+        rec.gameMode = mode
+        // Reassign (not mutate) so the timeline file is marked dirty and saved.
+        const timeline = rec.timeline
+        if (timeline) rec.timeline = { ...timeline, gameMode: mode }
+        n++
+      }
+    }
+    if (n) this.persist()
+    return n
+  }
+
   setManualAnalyseRequested(id: string, requested: boolean): void {
     const rec = this.recordings.find(r => r.id === id)
     if (!rec) return
@@ -565,7 +622,7 @@ export class RecordingsStore {
    * Reset upload rows left mid-S3 after a crash (no active upload in this process).
    * Returns count reset so the dashboard shows Analyse/Save again.
    */
-  resetInterruptedUploads(activeUploadIds: ReadonlySet<string> = new Set()): number {
+  resetInterruptedUploads(activeUploadIds: ReadonlySet<string> = new Set(), onReset?: (id: string) => void): number {
     let reset = 0
     for (const rec of this.recordings) {
       if (rec.pipelineStatus !== 'uploading') continue
@@ -573,6 +630,7 @@ export class RecordingsStore {
       rec.pipelineStatus = 'pending'
       rec.uploadProgress = undefined
       reset++
+      onReset?.(rec.id)
     }
     if (reset > 0) this.persist()
     return reset
@@ -688,6 +746,11 @@ export class RecordingsStore {
       || null
     if (agent) rec.agent = agent
     if (timeline.map?.trim()) rec.map = timeline.map.trim()
+    // Deadlock timelines carry the COMPETITIVE placeholder; never let it undo a queue read from match metadata.
+    if (rec.game === 'deadlock' && timeline.gameMode?.trim() === 'COMPETITIVE'
+      && (DEADLOCK_RECORDING_MODES as readonly string[]).includes(rec.gameMode)) {
+      timeline.gameMode = rec.gameMode
+    }
     if (timeline.gameMode?.trim()) rec.gameMode = timeline.gameMode.trim()
     if (timeline.matchId?.trim()) rec.matchId = timeline.matchId.trim()
     if (timeline.playerName?.trim()) rec.riotName = timeline.playerName.trim()

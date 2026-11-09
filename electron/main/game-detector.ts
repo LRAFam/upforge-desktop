@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events'
+import log from 'electron-log'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { isGsiMatchLive, isGsiReceiving } from './steam-gsi-server'
@@ -6,6 +7,15 @@ import {
   interpretTasklistProcessStdout,
   type ProcessProbeResult,
 } from './match-wait-guard'
+import {
+  POLL_ACTIVE_MS,
+  POLL_CONFIRMED_MS,
+  POLL_IDLE_MS,
+  PROCESS_SNAPSHOT_MAX_AGE_MS,
+  nextProcessPollDelayMs,
+  probeFromSnapshot,
+  type ProcessSnapshot,
+} from './process-poll-plan'
 
 const execAsync = promisify(exec)
 const IS_WIN = process.platform === 'win32'
@@ -25,11 +35,6 @@ const VALORANT_CLIENT_PROCESS = 'VALORANT.exe'
 
 /** Stable priority when multiple games run — user's primary wins if it is running. */
 export const GAME_DETECTION_ORDER = ['valorant', 'cs2', 'deadlock', 'lol'] as const
-
-// Poll interval when no game is running (check for game start)
-const POLL_IDLE_MS = 5000
-// Poll interval while a game is active (check for game stop) — less frequent to reduce in-game overhead
-const POLL_ACTIVE_MS = 10000
 
 /**
  * Pick which game to track when several are open.
@@ -91,6 +96,12 @@ export class GameDetector extends EventEmitter {
   /** Last primary game from settings — preferred when multiple games are running. */
   private _watchGame: string | null = null
   private _valorantClientOpen = false
+  /** Game a game API confirmed is in a live match — full tasklist slows to POLL_CONFIRMED_MS. */
+  private _confirmedGame: string | null = null
+  /** Latest full process list, reused by in-match process checks. */
+  private _snapshot: ProcessSnapshot | null = null
+  private _pollInFlight: Promise<void> | null = null
+  private _timerDueAt = 0
 
   constructor(opts: GameDetectorOptions = {}) {
     super()
@@ -101,7 +112,10 @@ export class GameDetector extends EventEmitter {
     if (this._polling) return
     this._polling = true
     this._scheduleNext()
-    console.log('[GameDetector] Started polling (idle: %dms, active: %dms)', POLL_IDLE_MS, POLL_ACTIVE_MS)
+    console.log(
+      '[GameDetector] Started polling (idle: %dms, active: %dms, confirmed match: %dms)',
+      POLL_IDLE_MS, POLL_ACTIVE_MS, POLL_CONFIRMED_MS,
+    )
   }
 
   stop(): void {
@@ -156,7 +170,7 @@ export class GameDetector extends EventEmitter {
       const stopped = this._activeGame
       this._activeGame = null
       this.emit('game-stopped', stopped)
-      console.log(`[GameDetector] ${stopped} stopped (primary game switched to ${normalized})`)
+      log.info(`[GameDetector] ${stopped} stopped (primary game switched to ${normalized})`)
     }
 
     if (this._polling) {
@@ -205,6 +219,58 @@ export class GameDetector extends EventEmitter {
   }
 
   /**
+   * Set while a game API (Valorant presence, CS2/Deadlock GSI, LoL live client) shows a live
+   * match. The full process poll then runs every POLL_CONFIRMED_MS instead of POLL_ACTIVE_MS.
+   */
+  setMatchConfirmed(confirmed: boolean): void {
+    const next = confirmed ? this._activeGame : null
+    if (next === this._confirmedGame) return
+    this._confirmedGame = next
+    // Leaving a confirmed match: do not sit on a 30 s timer.
+    if (!next && this._polling && this._interval && this._timerDueAt - Date.now() > POLL_ACTIVE_MS) {
+      this._scheduleNext()
+    }
+  }
+
+  /**
+   * Process probe that reuses the latest full tasklist when it is at most `maxAgeMs` old.
+   * Otherwise runs one full poll now (shared with the detector's own timer), so in-match
+   * checks never spawn a second, filtered tasklist. Poll failure → 'unknown'.
+   */
+  async probeGameProcessRecent(
+    game: string,
+    maxAgeMs = PROCESS_SNAPSHOT_MAX_AGE_MS,
+  ): Promise<ProcessProbeResult> {
+    if (!IS_WIN && !this._listProcesses) return 'stopped'
+    const processNames = GAME_PROCESSES[game]
+    if (!processNames?.length) return 'stopped'
+    const cached = probeFromSnapshot(this._snapshot, processNames, maxAgeMs)
+    if (cached) return cached
+    const before = this._snapshot
+    await this._pollNow()
+    if (this._snapshot === before) return 'unknown'
+    return probeFromSnapshot(this._snapshot, processNames, Number.POSITIVE_INFINITY) ?? 'unknown'
+  }
+
+  /** Shipping.exe check for the in-match loop — reuses the latest full process list. */
+  async isMatchProcessRunningRecent(): Promise<boolean> {
+    return await this.probeGameProcessRecent('valorant') !== 'stopped'
+  }
+
+  /** Out-of-band poll: joins a poll in flight, then restarts the timer from now. */
+  private async _pollNow(): Promise<void> {
+    await this._pollShared()
+    if (this._polling) this._scheduleNext()
+  }
+
+  private _pollShared(): Promise<void> {
+    if (!this._pollInFlight) {
+      this._pollInFlight = this._poll().finally(() => { this._pollInFlight = null })
+    }
+    return this._pollInFlight
+  }
+
+  /**
    * Tri-state process probe. Prefer this over boolean checks when deciding to cancel
    * match-wait — `'unknown'` must not count as a process exit.
    */
@@ -229,9 +295,17 @@ export class GameDetector extends EventEmitter {
 
   private _scheduleNext(): void {
     if (!this._polling) return
-    const delay = this._activeGame ? POLL_ACTIVE_MS : POLL_IDLE_MS
+    // Replace any pending timer so out-of-band polls never fork a second timer chain.
+    if (this._interval) clearTimeout(this._interval)
+    const delay = nextProcessPollDelayMs({
+      activeGame: this._activeGame,
+      matchConfirmed: this._confirmedGame !== null && this._confirmedGame === this._activeGame,
+      missedPollStreak: this._missedPollStreak,
+    })
+    this._timerDueAt = Date.now() + delay
     this._interval = setTimeout(async () => {
-      await this._poll()
+      this._interval = null
+      await this._pollShared()
       this._scheduleNext()
     }, delay)
   }
@@ -264,6 +338,7 @@ export class GameDetector extends EventEmitter {
             'tasklist /fo csv /nh',
             { windowsHide: true, timeout: 4000, maxBuffer: 2 * 1024 * 1024 },
           )).stdout
+      this._snapshot = { stdout, at: Date.now() }
       const runningGames = runningGamesFromTasklist(stdout)
       const valorantClientOpen = isValorantClientOpenFromTasklist(stdout)
       if (valorantClientOpen !== this._valorantClientOpen) {
@@ -280,7 +355,7 @@ export class GameDetector extends EventEmitter {
           this._missedPollStreak = 0
           this._activeGame = null
           this.emit('game-stopped', active)
-          console.log(`[GameDetector] ${active} idle in menu — handing off to ${handoff}`)
+          log.info(`[GameDetector] ${active} idle in menu — handing off to ${handoff}`)
           this._activeGame = handoff
           this.emit('game-started', handoff)
           return
@@ -303,7 +378,7 @@ export class GameDetector extends EventEmitter {
         this._missedPollStreak = 0
         this._activeGame = null
         this.emit('game-stopped', active)
-        console.log(`[GameDetector] ${active} stopped`)
+        log.info(`[GameDetector] ${active} stopped`)
       }
 
       if (!runningGames.length) return
@@ -315,11 +390,11 @@ export class GameDetector extends EventEmitter {
       this._missedPollStreak = 0
       this.emit('game-started', next)
       if (runningGames.length > 1) {
-        console.log(
+        log.info(
           `[GameDetector] ${next} started (${runningGames.length} games running — tracking ${next} per primary/first-until-close)`,
         )
       } else {
-        console.log(`[GameDetector] ${next} started`)
+        log.info(`[GameDetector] ${next} started`)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

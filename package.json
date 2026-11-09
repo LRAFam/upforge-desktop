@@ -61,7 +61,6 @@
     "autoprefixer": "^10.4.17",
     "electron": "^35.0.0",
     "electron-builder": "^26.0.0",
-    "electron-rebuild": "^3.2.9",
     "electron-vite": "^3.1.0",
     "eslint": "^8.56.0",
     "eslint-plugin-vue": "^9.20.0",
@@ -101,10 +100,17 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "icon": "resources/icon.png",
-      "category": "public.app-category.games"
+      "category": "public.app-category.games",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "UpForge records your game audio and microphone for match recordings and clips."
+      }
     },
     "nsis": {
       "oneClick": false,

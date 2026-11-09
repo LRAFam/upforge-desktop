@@ -36,6 +36,7 @@ import { useVodPortraits } from './vod/useVodPortraits'
 import { takeArchive, takeDetail, takeTimeline, noteArchiveRateLimited } from './vod/match-prefetch'
 import { uiV3 } from '../lib/ui-v3'
 import { readCache, writeCache } from '../lib/stale-cache'
+import { useLifetime } from './useLifetime'
 
 // Round outcome icons — game-aware via timeline-event-icons.ts
 
@@ -1961,6 +1962,7 @@ function createVodReview() {
     coachingDetail.value = null
     timelineError.value = 'Your account changed. Reopen cloud storage to continue.'
   }))
+  const life = useLifetime()
   onMounted(async () => {
     loadSpatialPreviewState()
     loadSpatialUiPrefs()
@@ -1970,6 +1972,8 @@ function createVodReview() {
     }).catch(() => {})
   
     await loadTimeline()
+    // Unmounted while the timeline loaded: don't add listeners nothing will remove.
+    if (life.ended) return
   
     window.addEventListener('keydown', handleKeyDown)
     document.addEventListener('fullscreenchange', onFullscreenChange)

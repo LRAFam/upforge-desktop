@@ -25,6 +25,7 @@ import { prepareRecordingDirectory } from '../recording-save-safety'
 import { openPathSafe } from '../shell-open'
 import { trackOnboardingComplete, trackReportOpened, trackUpgradeClicked } from '../funnel-events'
 import { startCheckout, type CheckoutIntent } from '../billing-checkout'
+import { createCheckoutFocusRefresh } from '../checkout-focus-refresh'
 import { getFrontendBaseUrl } from '../api-base'
 import { applyLayoutForRoute } from '../window-layouts'
 import { isInGameOverlayEnabled } from '../in-game-overlay'
@@ -147,11 +148,23 @@ export function setupAppHandlers(
     }
   })
 
+  // After checkout opens in the browser, refresh the user + usage when the app regains focus (10 min).
+  let checkoutOwner: number | null = null
+  const checkoutRefresh = createCheckoutFocusRefresh(async () => {
+    if (!auth.isAuthenticated() || auth.getUser()?.id !== checkoutOwner) return checkoutRefresh.cancel()
+    const user = await auth.fetchUser()
+    if (!user || user.id !== checkoutOwner) return
+    BrowserWindow.getAllWindows().forEach(w => {
+      if (!w.isDestroyed()) w.webContents.send('account:billing-refreshed', user)
+    })
+  })
+  app.on('browser-window-focus', () => checkoutRefresh.onFocus())
+
   // Upgrade buttons: Stripe checkout for the logged-in user, or the logged-in pricing page.
   ipcMain.handle('billing:start-checkout', async (e, { intent, source }: { intent: CheckoutIntent; source: string }) => {
     const parent = BrowserWindow.fromWebContents(e.sender)
     const safeSource = typeof source === 'string' ? source.slice(0, 40) : 'unknown'
-    return startCheckout(intent, safeSource, {
+    const result = await startCheckout(intent, safeSource, {
       post: auth.isAuthenticated()
         ? async (path, body) => {
             const res = await auth.getApi().post(path, body, { validateStatus: () => true })
@@ -165,6 +178,11 @@ export function setupAppHandlers(
       },
       trackUpgradeClicked,
     })
+    if (result.ok && auth.isAuthenticated()) {
+      checkoutOwner = auth.getUser()?.id ?? null
+      checkoutRefresh.checkoutStarted()
+    }
+    return result
   })
 
   ipcMain.handle('web-shell:close', () => {

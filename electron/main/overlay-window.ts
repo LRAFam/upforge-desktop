@@ -2,6 +2,7 @@ import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { isInGameOverlayEnabled, notifyOverlayUnavailable } from './in-game-overlay'
+import { lockDownWindowNavigation } from './window-security'
 
 let overlayWindow: BrowserWindow | null = null
 let isVisible = false
@@ -30,9 +31,12 @@ export function createOverlayWindow(): BrowserWindow | null {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   })
+
+  // The overlay never opens links; deny window.open and off-app navigation.
+  lockDownWindowNavigation(win, 'desktop_overlay')
 
   // Use screen-saver level so overlay renders above full-screen games
   win.setAlwaysOnTop(true, 'screen-saver', 1)
