@@ -620,6 +620,8 @@ export interface ClipRecord {
 
 export interface AnalysisItem {
   id: number
+  /** Deadlock only: ranked · standard · street_brawl · other (game_mode is the 'DEADLOCK' marker). */
+  queue?: string | null
   /** When the match was played (API `played_at`); null when unknown. Prefer it over created_at for dates. */
   played_at?: string | null
   /** Riot/Valve match id when the API knows it (League links stats coaching by it). */
@@ -696,6 +698,8 @@ export interface DeadlockAnalysisItem {
   kills: number | null
   deaths: number | null
   assists: number | null
+  /** ranked · standard · street_brawl · other, from match metadata (API 9 Nov 2026+); null when unknown. */
+  queue?: string | null
   created_at: string
   completed_at: string | null
 }

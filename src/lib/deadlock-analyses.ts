@@ -19,6 +19,8 @@ export function mapDeadlockToAnalysisItem(a: DeadlockAnalysisItem): AnalysisItem
     map: null,
     agent: a.hero,
     game_mode: 'DEADLOCK',
+    // ranked · standard · street_brawl · other (API, from match metadata); null when unknown.
+    queue: a.queue ?? null,
     won: parseDeadlockWon(a.match_result),
     kills: a.kills,
     deaths: a.deaths,

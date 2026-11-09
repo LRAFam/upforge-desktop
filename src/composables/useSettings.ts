@@ -569,7 +569,8 @@ function createSettings() {
       { value: 'DEATHMATCH', label: 'Deathmatch', hint: '' },
     ],
     deadlock: [
-      { value: 'COMPETITIVE', label: 'Ranked', hint: 'Only detectable mode today' },
+      // One switch: the queue is only known after the match, so it can't filter before recording.
+      { value: 'COMPETITIVE', label: 'All matches', hint: 'Ranked, Standard, Street Brawl, bots and lobbies' },
     ],
   }
 

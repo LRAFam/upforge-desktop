@@ -58,7 +58,7 @@ const modeHint = computed(() => {
     return "Only selected modes are recorded. Summoner's Rift covers ranked, normals and Swiftplay."
   }
   if (settings.primaryGame === 'deadlock') {
-    return 'Deadlock matchmaking is treated as Ranked until Steam exposes more queue types. Uncheck Ranked to skip all auto-recording.'
+    return 'Every Deadlock match is recorded. The queue (Ranked, Standard, Street Brawl…) is read after the match, and only Ranked counts toward Progress. Uncheck to skip all auto-recording.'
   }
   return 'Only selected modes are recorded. If none are selected, nothing is recorded.'
 })

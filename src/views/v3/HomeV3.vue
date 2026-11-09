@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { plural } from '../../lib/plural'
-import { countsTowardProgress } from '../../lib/game-queue'
+import { analysisCountsTowardProgress } from '../../lib/game-queue'
 /**
  * UI v3 Home (Coach) — board 4. Reading order: last match score → the coach's sentence →
  * one red action → recent form → focus → evidence. Real data only; honest empty states.
@@ -168,7 +168,7 @@ const needsAction = computed(() => d.pendingRecordings.value.filter(recordingNee
 
 // Recent form: the last 5 real matches (deduped, this game only), newest first.
 // Recent form + its averages: ranked/main modes only (Wingman, Deathmatch, Swiftplay… left out — game-queue.ts).
-const formMatches = computed(() => matches.value.filter(a => countsTowardProgress(d.primaryGame.value, a.game_mode)).slice(0, 5))
+const formMatches = computed(() => matches.value.filter(a => analysisCountsTowardProgress(d.primaryGame.value, a)).slice(0, 5))
 const formSquares = computed(() => formMatches.value.map(a => ({
   key: a.id,
   cls: a.won === true ? 'is-w' : a.won === false ? 'is-l' : '',
