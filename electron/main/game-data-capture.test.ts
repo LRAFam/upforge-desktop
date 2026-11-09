@@ -30,7 +30,9 @@ beforeEach(() => {
 })
 afterEach(() => {
   vi.useRealTimers()
-  fs.rmSync(dir, { recursive: true, force: true })
+  // Async writes (summary/console copy) can land while the folder is being removed,
+  // which makes rmdir fail with ENOTEMPTY. Node retries that case when maxRetries is set.
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 })
 })
 
 describe('classifyGsiBody', () => {
@@ -195,6 +197,7 @@ describe('GameDataCapture — Deadlock', () => {
     c.deadlockMatchEnded()
     // The status is filled in after the batched (async) summary write, so wait for it.
     await vi.waitFor(() => expect(c.getStatus().last?.deadlock?.consoleLogHint).toMatch(/-condebug/))
+    await c.flushed()
   })
 
   it('ignores CS2 bodies while a Deadlock capture is running', async () => {
