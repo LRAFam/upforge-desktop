@@ -1268,6 +1268,7 @@
 </template>
 
 <script setup lang="ts">
+import { useLifetime } from '../composables/useLifetime'
 import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import StorageIndicator from '../components/shared/StorageIndicator.vue'
 import LibraryPageHeader from '../components/shared/LibraryPageHeader.vue'
@@ -1656,7 +1657,7 @@ async function deleteClipIds(ids: string[]) {
   confirmBulkDelete.value = false
 }
 
-const removeListener = ref<(() => void) | null>(null)
+const life = useLifetime()
 
 onMounted(async () => {
   const agentQ = typeof route.query.agent === 'string' ? route.query.agent : null
@@ -1673,42 +1674,37 @@ onMounted(async () => {
     appUser.value = s.user ?? null
   }).catch(() => {})
   window.api.profile.get().then(p => { subscriptionEndsAt.value = p?.user?.analysis_stats?.subscription_ends_at ?? null }).catch(() => {})
-  removeListener.value = window.api.on('clips:new', async (_ids: unknown) => {
+  // Registered after awaits: tie them to this view so a mid-load unmount can't leak them (useLifetime).
+  life.own(window.api.on('clips:new', async (_ids: unknown) => {
     // clips:new sends an array of newly extracted clip IDs — reload everything
     await loadClips()
-  })
-  const clipsUpdatedCleanup = window.api.on('clips:updated', async () => {
+  }))
+  life.own(window.api.on('clips:updated', async () => {
     if (!cloudOnly.value) closePlayer()
     trimModal.value = { show: false, clipId: '', startSec: 0, endSec: 10, duration: 10, loading: false, error: null }
     await loadClips()
-  })
-  ;(window as Window & { _clipsUpdatedCleanup?: () => void })._clipsUpdatedCleanup = clipsUpdatedCleanup
-  window.addEventListener('keydown', handleKeyDown)
-  watch(primaryGame, () => {
+  }))
+  if (!life.ended) {
+    window.addEventListener('keydown', handleKeyDown)
+    life.own(() => window.removeEventListener('keydown', handleKeyDown))
+  }
+  // A watch created after an await is not owned by the component: stop it explicitly.
+  life.own(watch(primaryGame, () => {
     showAllGames.value = false
     activeFilter.value = 'all'
     void loadClips()
-  })
-  const settingsCleanup = window.api.on('settings:changed', (...args: unknown[]) => {
+  }))
+  life.own(window.api.on('settings:changed', (...args: unknown[]) => {
     const s = args[0] as { primaryGame?: string } | undefined
     if (s?.primaryGame) {
       showAllGames.value = false
       void loadClips()
     }
-  })
-  ;(window as Window & { _clipsSettingsCleanup?: () => void })._clipsSettingsCleanup = settingsCleanup
+  }))
 })
 
 onUnmounted(() => {
   cloudGeneration++; clearTimeout(cloudPoll); cloudSessionCleanup.forEach(fn => fn())
-  removeListener.value?.()
-  const clipsUpdatedCleanup = (window as Window & { _clipsUpdatedCleanup?: () => void })._clipsUpdatedCleanup
-  clipsUpdatedCleanup?.()
-  delete (window as Window & { _clipsUpdatedCleanup?: () => void })._clipsUpdatedCleanup
-  const settingsCleanup = (window as Window & { _clipsSettingsCleanup?: () => void })._clipsSettingsCleanup
-  settingsCleanup?.()
-  delete (window as Window & { _clipsSettingsCleanup?: () => void })._clipsSettingsCleanup
-  window.removeEventListener('keydown', handleKeyDown)
 })
 
 function handleKeyDown(e: KeyboardEvent) {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { priorTrainingSessions, comparableTrainingRuns, trainingComparisonRequest, resultHitsCell, isTrackingScenario } from '../lib/training-result-metrics'
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useLifetime } from '../composables/useLifetime'
 import { useRouter } from 'vue-router'
 import type { TrainingHistory, CoachingDrill, TrainingBenchmark, SharedTrainingPlan } from '../env'
 import { ACHIEVEMENTS, useAchievements } from '../composables/useAchievements'
@@ -733,13 +734,12 @@ const earlyTrainerFetch = uiV3.value ? fetchTrainerData() : null
 earlyTrainerFetch?.catch(() => { /* surfaced where it is awaited */ })
 
 // ── IPC listener ──────────────────────────────────────────────────────────────
-let removeListener: (() => void) | null = null
-let removeEndedListener: (() => void) | null = null
+const life = useLifetime() // listeners registered after an await stop with this view
 
 onMounted(async () => {
   await achievements.load()
 
-  removeEndedListener = window.api.on('trainer:session-ended', (raw: unknown) => {
+  life.own(window.api.on('trainer:session-ended', (raw: unknown) => {
     const ended = asSessionEnded(raw)
     if (!ended || ended.reason === 'completed') return // results are handled below
     if (launching.value) return // the previous trainer being replaced; launch() reports its own failure
@@ -750,9 +750,9 @@ onMounted(async () => {
     // A guided session stays on this step (Start now / Cancel); it never advances without a result.
     clearSessionTimer()
     trainerNotice.value = sessionEndedMessage(ended)
-  })
+  }))
 
-  removeListener = window.api.on('trainer:session-result', async (result: unknown, launch?: unknown) => {
+  life.own(window.api.on('trainer:session-result', async (result: unknown, launch?: unknown) => {
     const r = result as SessionResult
     lastResult.value = r
     sessionHistory.value.unshift(r)
@@ -801,7 +801,7 @@ onMounted(async () => {
       })
       if (newAchs.length) window.__ufAchievementUnlocked?.(newAchs)
     })
-  })
+  }))
 
   // Fetch training history + coaching drills from API
   // (v3 with cached data refreshes quietly: no "Loading history…" over data already shown)
@@ -820,8 +820,6 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  removeListener?.()
-  removeEndedListener?.()
   clearSessionTimer()
   stopPBCarousel()
 })

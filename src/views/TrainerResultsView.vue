@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
+import { useLifetime } from '../composables/useLifetime'
 import { priorTrainingSessions, reactionMetricScore, isTrackingScenario, trainingComparisonRequest, resultCountCells, reactionMetricLabel, isTimeToHitMetric, accuracyMetricLabel, drillDetailCells } from '../lib/training-result-metrics'
 import { TRAINER_SCENARIOS, isBetaScenario, trainerScenarioDef, type TrainerUiGroup } from '../lib/trainer-scenarios'
 import { asSessionEnded, launchConfigFromInfo, launchTrainer, sessionEndedMessage } from '../lib/trainer-launch'
@@ -28,8 +29,7 @@ const launching = ref(false)
 const launched = ref(false)
 const heatmapCanvas = ref<HTMLCanvasElement | null>(null)
 
-let removeListener: (() => void) | null = null
-let removeEndedListener: (() => void) | null = null
+const life = useLifetime() // listeners registered after an await stop with this view
 
 // ── Scenario metadata ─────────────────────────────────────────────────────────
 // Labels from the canonical registry (src/lib/trainer-scenarios.ts); colour by drill group.
@@ -350,7 +350,7 @@ onMounted(async () => {
   drawHeatmap()
 
   // Listen for results from Play Again (since TrainingHubView is unmounted)
-  removeListener = window.api.on('trainer:session-result', async (raw: unknown, launch?: unknown) => {
+  life.own(window.api.on('trainer:session-result', async (raw: unknown, launch?: unknown) => {
     const r = raw as typeof store.result
     if (!r) return
     store.setResult(r, launchConfigFromInfo(launch) ?? store.launchConfig, null)
@@ -358,19 +358,14 @@ onMounted(async () => {
     trainerNotice.value = null
     await loadComparison()
     drawHeatmap()
-  })
+  }))
 
-  removeEndedListener = window.api.on('trainer:session-ended', (raw: unknown) => {
+  life.own(window.api.on('trainer:session-ended', (raw: unknown) => {
     const ended = asSessionEnded(raw)
     if (!ended || ended.reason === 'completed' || launching.value) return
     launched.value = false
     trainerNotice.value = sessionEndedMessage(ended)
-  })
-})
-
-onUnmounted(() => {
-  removeEndedListener?.()
-  removeListener?.()
+  }))
 })
 </script>
 

@@ -530,3 +530,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   outline: 2px solid #fb923c;
   outline-offset: 3px;
 }
+
+/* ── Window in the background (usually: the game has focus) ──────────────────
+   App.vue sets .uf-still while the window is unfocused or hidden. Infinite pulses, spinners
+   and shimmers otherwise keep the transparent, maximised window repainting every frame on the
+   player's other monitor while they play. Paused, not removed: nothing jumps on focus. */
+.uf-still *,
+.uf-still *::before,
+.uf-still *::after {
+  animation-play-state: paused !important;
+}
