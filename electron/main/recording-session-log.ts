@@ -18,25 +18,46 @@ function recordingStem(filePath: string): string {
   return filePath.replace(/\\/g, '/').toLowerCase().replace(/(_upforge)?\.[a-z0-9]+$/, '')
 }
 
+/** Game of a local recording no detection owned. The library shows it as "Game not recorded". */
+export const UNKNOWN_RECORDING_GAME = 'unknown'
+
 /**
  * Game for a local recording that never reached recordings.json. Prefers the session whose
  * stopped output is this file, then the newest session that was recording when it was written.
+ * No owning session → unknown. Never the selected game tab: 3.4.x used settings.primaryGame here,
+ * so a CS2 file imported while the Valorant tab was open became a Valorant match.
  */
 export function resolveOrphanRecordingGame(
   file: { path: string; modifiedAtMs: number | null },
   sessions: readonly RecordingSessionEntry[],
-  fallbackGame: string,
 ): string {
   const stem = recordingStem(file.path)
   const byPath = sessions.find((s) => s.outputPath && recordingStem(s.outputPath) === stem)
   if (byPath) return byPath.game
   const modified = file.modifiedAtMs
-  if (modified == null || !Number.isFinite(modified)) return fallbackGame
+  if (modified == null || !Number.isFinite(modified)) return UNKNOWN_RECORDING_GAME
   const covering = [...sessions]
     .sort((a, b) => b.startedAt - a.startedAt)
     .find((s) => s.startedAt <= modified + START_SLACK_MS
       && (s.endedAt == null || modified <= s.endedAt + END_SLACK_MS))
-  return covering?.game ?? fallbackGame
+  return covering?.game ?? UNKNOWN_RECORDING_GAME
+}
+
+/**
+ * Orphan import must not race the match-end flow: after OBS stops, the flow spends seconds to
+ * minutes (timeline, demo parse, file ready) before it registers the file. A library refresh in
+ * that window imported the same file as an orphan with no map/agent and a guessed game, and the
+ * flow then added a second row. Only the flow itself may import while it is saving (its file was
+ * not where OBS said).
+ */
+export function canScanForOrphanRecordings(input: {
+  recording: boolean
+  matchEndInFlight: boolean
+  fromMatchEnd?: boolean
+}): boolean {
+  if (input.recording) return false
+  if (input.matchEndInFlight && !input.fromMatchEnd) return false
+  return true
 }
 
 /** Small JSON-backed log of owned recording sessions (survives a crash or a stuck stop). */
@@ -63,7 +84,7 @@ export class RecordingSessionLog {
     try {
       fs.mkdirSync(path.dirname(this._filePath), { recursive: true })
       fs.writeFileSync(this._filePath, JSON.stringify(this._entries))
-    } catch { /* best effort — labels fall back to the primary game */ }
+    } catch { /* best effort — unowned files are labelled unknown */ }
   }
 
   begin(game: string, startedAt: number): void {

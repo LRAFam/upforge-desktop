@@ -128,6 +128,8 @@ export function setupIpcHandlers(
   onLogout?: () => void,
   getLocalRecordingPathByJobId?: (jobId: string) => string | null,
   waitForObsStartup?: () => Promise<void>,
+  /** Game of the recording UpForge owns (session → match flow → detected). Never the game tab. */
+  getRecordingOwnerGame: () => string | null = () => gameDetector.currentGame(),
 ): void {
   setupAuthHandlers(
     ipcMain,
@@ -150,7 +152,7 @@ export function setupIpcHandlers(
 
   setupMediaHandlers(
     ipcMain, getActiveRecorder, settingsManager, obsRecorder,
-    endMatchRecording, () => gameDetector.currentGame(),
+    endMatchRecording, getRecordingOwnerGame,
     getAudioDetectRecorder, waitForObsStartup,
   )
 

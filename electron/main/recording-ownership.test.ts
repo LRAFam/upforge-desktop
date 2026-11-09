@@ -7,6 +7,7 @@ import {
   decideGameStartedWhileRecording,
   decideMaxDurationAction,
   isSupersededGameStop,
+  recordingOwnerGame,
   resolveGameStartOwnership,
   type GameStartOwnershipDeps,
 } from './recording-ownership'
@@ -239,5 +240,51 @@ describe('index.ts wiring (card 232 follow-ups)', () => {
 
   it('re-arms a game start that was ignored because the old recording would not stop', () => {
     expect(source).toContain('ignoredStartRearm.arm(game)')
+  })
+})
+
+describe('recordingOwnerGame (game a stop/OBS-death/clip belongs to)', () => {
+  it('prefers the game of the recording UpForge owns, then the match flow, then the detected process', () => {
+    expect(recordingOwnerGame({ sessionGame: 'cs2', flowGame: 'valorant', detectedGame: 'lol' })).toBe('cs2')
+    expect(recordingOwnerGame({ sessionGame: null, flowGame: 'cs2', detectedGame: 'valorant' })).toBe('cs2')
+    expect(recordingOwnerGame({ sessionGame: null, flowGame: null, detectedGame: 'deadlock' })).toBe('deadlock')
+  })
+
+  it('is null (not Valorant, not the selected tab) when nothing was detected', () => {
+    expect(recordingOwnerGame({ sessionGame: null, flowGame: null, detectedGame: null })).toBeNull()
+  })
+})
+
+describe('index.ts wiring — the selected game tab never labels a recording', () => {
+  const { readFileSync } = require('fs') as typeof import('fs')
+  const { join } = require('path') as typeof import('path')
+  const source = readFileSync(join(__dirname, 'index.ts'), 'utf8').replace(/\r\n/g, '\n')
+  const slice = (from: string, to: string) => {
+    const start = source.indexOf(from)
+    expect(start).toBeGreaterThan(-1)
+    return source.slice(start, source.indexOf(to, start))
+  }
+
+  it('recorder:stop is wired to the owning recording game', () => {
+    expect(source).toMatch(/\(\) => obsStartupTask,\n\s+currentRecordingOwnerGame,\n\s+\)/)
+  })
+
+  it('orphan import does not read primaryGame and waits for an in-flight match save', () => {
+    const fn = slice('function scanForOrphanedRecordings(', 'function isLegacyBareValorantOrphan(')
+    expect(fn).not.toContain('primaryGame')
+    expect(fn).not.toContain('normalizePrimaryGame(resolveOrphanRecordingGame')
+    expect(fn).toContain('canScanForOrphanRecordings(')
+  })
+
+  it('OBS-death finalise uses the owning recording, not the tracked tab', () => {
+    const fn = slice('async function finalizeAfterObsProcessDeathImpl(', 'finalizeAfterObsProcessDeath = finalizeAfterObsProcessDeathImpl')
+    expect(fn).not.toContain('trackedPrimaryGame')
+    expect(fn).toContain('currentRecordingOwnerGame()')
+  })
+
+  it('OBS replay clips are labelled by the owning recording, not the tracked tab', () => {
+    const fn = slice('obsRecorder.onReplayClipSaved = ', 'const performanceManager = new PerformanceManager()')
+    expect(fn).not.toContain('trackedPrimaryGame')
+    expect(fn).toContain('currentRecordingOwnerGame()')
   })
 })

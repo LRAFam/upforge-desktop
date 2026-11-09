@@ -20,7 +20,21 @@ function recordingStemKey(filePath: string): string {
   return path.join(path.dirname(filePath), normalizedStem).toLowerCase()
 }
 
+/**
+ * An orphan import nothing was done with yet. The match flow's own row for the same file has the
+ * detected game, map and agent; the orphan only has a guess (3.4.x: the selected game tab).
+ */
+function isDisposableOrphanImport(rec: PendingRecording): boolean {
+  return rec.orphanedImport === true
+    && !rec.analysed
+    && !rec.archiveId
+    && !hasCloudRecording(rec)
+    && (rec.pipelineStatus == null || rec.pipelineStatus === 'pending')
+}
+
 function preferRecordingEntry(a: PendingRecording, b: PendingRecording): PendingRecording {
+  const aOrphan = isDisposableOrphanImport(a)
+  if (aOrphan !== isDisposableOrphanImport(b)) return aOrphan ? b : a
   const aCompressed = sourcePathForCompressed(a.path) != null
   const bCompressed = sourcePathForCompressed(b.path) != null
   if (aCompressed !== bCompressed) return aCompressed ? a : b
@@ -324,6 +338,12 @@ export class RecordingsStore {
       analysed: false,
       pipelineStatus: data.pipelineStatus ?? 'pending',
       fileSizeBytes,
+    }
+    if (!recording.orphanedImport && recording.path && !recording.clipsOnly) {
+      // The match flow registers its own file: drop an orphan import of it made while it saved.
+      const stem = recordingStemKey(recording.path)
+      this.recordings = this.recordings.filter(r =>
+        !(r.path && !r.clipsOnly && isDisposableOrphanImport(r) && recordingStemKey(r.path) === stem))
     }
     const userId = this.userId
     installTimeline(recording, { value: data.timeline ?? null }, () => this.timelineChanged(userId, recording.id))
