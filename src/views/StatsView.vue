@@ -300,7 +300,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import ProgressV3 from './v3/ProgressV3.vue'
 import { uiV3 } from '../lib/ui-v3'
 import { averageMatchScore, matchScore } from '../lib/upforge-score'
-import { countsTowardProgress } from '../lib/game-queue'
+import { analysisCountsTowardProgress } from '../lib/game-queue'
 import { readCache, writeCache } from '../lib/stale-cache'
 import { useRouter } from 'vue-router'
 import type { AnalysisItem } from '../env.d.ts'
@@ -343,7 +343,7 @@ const analysesInRange = computed(() => {
 
 // Fun modes (Wingman, Deathmatch, Swiftplay, Unrated…) play differently: keep them out of win rate,
 // score and the tables, and say how many were left out (game-queue.ts).
-const filteredAnalyses = computed(() => analysesInRange.value.filter(a => countsTowardProgress(primaryGame.value, a.game_mode)))
+const filteredAnalyses = computed(() => analysesInRange.value.filter(a => analysisCountsTowardProgress(primaryGame.value, a)))
 const excludedFunModeCount = computed(() => analysesInRange.value.length - filteredAnalyses.value.length)
 
 // ── Stat cards ────────────────────────────────────────────────────────────────

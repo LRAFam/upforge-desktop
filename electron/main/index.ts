@@ -378,7 +378,7 @@ import {
   getDeadlockMatchSalts,
   getDeadlockDetectionStatus,
 } from './deadlock-match-watcher'
-import { recordingHeroLabel, resolveDeadlockRecordingHero } from './deadlock-recording-hero'
+import { recordingHeroLabel, resolveDeadlockRecordingMatch } from './deadlock-recording-hero'
 import { linkDeadlockAutoReview } from './deadlock-auto-review-link'
 import { FaceitLinkStore, registerCs2FaceitMatchIpc } from './cs2-faceit-match'
 import { setupCoachFlowDemoHandlers } from './ipc/coach-flow-demo-ipc'
@@ -4280,20 +4280,27 @@ function setupGameDetection(): void {
       ?? (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
     const uploadTargetWindow = postGameNotifyWindow
 
-    // Deadlock: name the hero on this match's recordings once deadlock-api publishes the match (retries for ~12 min).
+    // Deadlock: name the hero and the real queue (Ranked, Standard, Street Brawl, bots, lobby…) on this
+    // match's recordings once deadlock-api publishes the match (retries for ~12 min). The live watcher
+    // can't tell the queue, so every match is recorded and starts as the COMPETITIVE placeholder.
     if (game === 'deadlock') {
       const lobbyMatchId = getDeadlockLobbyMatchId()
       if (lobbyMatchId) {
-        void resolveDeadlockRecordingHero(lobbyMatchId, {
+        void resolveDeadlockRecordingMatch(lobbyMatchId, {
           fetchMatch: async (id) => {
             const res = await authManager.fetchDeadlockMatch(id)
             getGameDataCapture()?.saveDeadlockMetadata(id, res)
             return res
           },
         })
-          .then((player) => {
-            const label = recordingHeroLabel(player, null)
-            if (label && captureStore.setDeadlockHero(String(lobbyMatchId), label)) notifyRecordingsUpdated()
+          .then((resolved) => {
+            const label = recordingHeroLabel(resolved?.player ?? null, null)
+            let changed = label ? captureStore.setDeadlockHero(String(lobbyMatchId), label) : 0
+            if (resolved?.mode) {
+              changed += captureStore.setDeadlockMode(String(lobbyMatchId), resolved.mode)
+              log.info('[Deadlock] Match queue from metadata:', lobbyMatchId, resolved.mode)
+            }
+            if (changed) notifyRecordingsUpdated()
           })
           .catch(() => { /* best effort */ })
       }

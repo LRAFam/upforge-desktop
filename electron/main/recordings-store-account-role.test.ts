@@ -70,6 +70,22 @@ describe('RecordingsStore.setDeadlockHero', () => {
   })
 })
 
+describe('RecordingsStore.setDeadlockMode', () => {
+  it('stores the real queue on that match only and keeps it when the cloud timeline lands', () => {
+    const store = new RecordingsStore()
+    const dl = store.add({ ...recording('a', '1', 'deadlock'), matchId: '555', gameMode: 'COMPETITIVE' })
+    const other = store.add({ ...recording('b', '2', 'deadlock'), matchId: '556', gameMode: 'COMPETITIVE' })
+    expect(store.setDeadlockMode('555', 'not a mode')).toBe(0)
+    expect(store.setDeadlockMode('555', 'STREET_BRAWL')).toBe(1)
+    expect(store.getById(dl.id)?.gameMode).toBe('STREET_BRAWL')
+    expect(store.getById(other.id)?.gameMode).toBe('COMPETITIVE')
+    // The cloud replay timeline still carries the COMPETITIVE placeholder: it must not undo the real queue.
+    store.updateTimeline(dl.id, { game: 'deadlock', gameMode: 'COMPETITIVE' } as never)
+    expect(store.getById(dl.id)?.gameMode).toBe('STREET_BRAWL')
+    expect(store.getById(dl.id)?.timeline?.gameMode).toBe('STREET_BRAWL')
+  })
+})
+
 describe('riotAccountRole for League', () => {
   const lol = [{ name: 'LolMain', tag: 'EUW', isMain: true }, { name: 'LolSmurf', tag: 'EUW', isMain: false }]
   const lolRow = (riotName: string, riotTag: string) => ({ game: 'lol', riotName, riotTag, timeline: null }) as unknown as Parameters<typeof riotAccountRole>[0]

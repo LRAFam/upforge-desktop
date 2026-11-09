@@ -5,6 +5,7 @@ import type { MatchData } from './riot-local-api'
 import { recordingPathVariants, sourcePathForCompressed, deleteLocalRecordingFiles } from './vod-compressor'
 import { recordingMatchesLinkedRiot, localMediaRoot, type LinkedRiotId } from './user-data-paths'
 import { healRecordingPath } from './heal-recording-paths'
+import { DEADLOCK_RECORDING_MODES } from './deadlock-recording-hero'
 import {
   catalogueWriter,
   installTimeline,
@@ -539,6 +540,26 @@ export class RecordingsStore {
     return n
   }
 
+  /**
+   * Store the real queue on a Deadlock match's recordings (from match metadata, after the match).
+   * Only known queue ids are accepted; see DEADLOCK_RECORDING_MODES.
+   */
+  setDeadlockMode(matchId: string, mode: string): number {
+    if (!(DEADLOCK_RECORDING_MODES as readonly string[]).includes(mode)) return 0
+    let n = 0
+    for (const rec of this.recordings) {
+      if (rec.game === 'deadlock' && rec.matchId === matchId && rec.gameMode !== mode) {
+        rec.gameMode = mode
+        // Reassign (not mutate) so the timeline file is marked dirty and saved.
+        const timeline = rec.timeline
+        if (timeline) rec.timeline = { ...timeline, gameMode: mode }
+        n++
+      }
+    }
+    if (n) this.persist()
+    return n
+  }
+
   setManualAnalyseRequested(id: string, requested: boolean): void {
     const rec = this.recordings.find(r => r.id === id)
     if (!rec) return
@@ -705,6 +726,11 @@ export class RecordingsStore {
       || null
     if (agent) rec.agent = agent
     if (timeline.map?.trim()) rec.map = timeline.map.trim()
+    // Deadlock timelines carry the COMPETITIVE placeholder; never let it undo a queue read from match metadata.
+    if (rec.game === 'deadlock' && timeline.gameMode?.trim() === 'COMPETITIVE'
+      && (DEADLOCK_RECORDING_MODES as readonly string[]).includes(rec.gameMode)) {
+      timeline.gameMode = rec.gameMode
+    }
     if (timeline.gameMode?.trim()) rec.gameMode = timeline.gameMode.trim()
     if (timeline.matchId?.trim()) rec.matchId = timeline.matchId.trim()
     if (timeline.playerName?.trim()) rec.riotName = timeline.playerName.trim()
