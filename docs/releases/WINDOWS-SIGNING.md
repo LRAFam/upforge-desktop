@@ -7,6 +7,7 @@ Signed installers stop "Unknown publisher" warnings and let SmartScreen build re
 - **Tagged releases** (`vX.Y.Z`) are signed by `.github/workflows/release.yml` using the provider in the repo variable `WIN_SIGNING_PROVIDER`.
 - Once `WIN_SIGNING_PROVIDER` is set, **every release must be signed**. The **Verify Windows signature** step checks each `.exe` with Windows' own signature check and the expected publisher name. If anything is unsigned or signed by someone else, the job fails and the release is **not published**.
 - Until a provider is connected, releases still build unsigned, with a warning on the workflow run.
+- If any signing secret or variable exists but `WIN_SIGNING_PROVIDER` is empty, the release **fails** instead of shipping unsigned (signing is half set up).
 - Branch builds (pushes to `main`) are never signed, so they don't use paid signatures.
 - `build/release-signing.test.ts` fails CI if the signature check is removed or weakened.
 
