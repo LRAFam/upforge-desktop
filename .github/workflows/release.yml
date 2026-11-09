@@ -202,11 +202,31 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Static arm64 ffmpeg 7.1.1 (same version as Windows), GPL build from
+      # ffmpeg.martin-riedl.de. Homebrew's ffmpeg links /opt/homebrew dylibs that
+      # players don't have, so it is never bundled.
       - name: Download ffmpeg for macOS
+        env:
+          FFMPEG_URL: https://ffmpeg.martin-riedl.de/download/macos/arm64/1741000090_7.1.1/ffmpeg.zip
+          FFMPEG_SHA256: e18c39a330ad783c33d6d7b47784e82a42f8acdbb497a1f73550f1bc0e830d44
         run: |
-          brew install ffmpeg
+          if [ "$(uname -m)" != arm64 ]; then
+            echo "::error::Bundled ffmpeg is arm64; the Mac build must run on an arm64 runner"; exit 1
+          fi
+          zip="$RUNNER_TEMP/ffmpeg-mac.zip"
+          curl -fsSL --retry 5 --retry-delay 10 -o "$zip" "$FFMPEG_URL"
+          echo "$FFMPEG_SHA256  $zip" | shasum -a 256 -c - || { echo "::error::ffmpeg download checksum mismatch"; exit 1; }
           mkdir -p resources/ffmpeg
-          cp "$(which ffmpeg)" resources/ffmpeg/ffmpeg
+          unzip -o -q "$zip" ffmpeg -d resources/ffmpeg
+          chmod +x resources/ffmpeg/ffmpeg
+          # Must only link macOS system libraries, or it breaks on players' Macs.
+          foreign=$(otool -L resources/ffmpeg/ffmpeg | tail -n +2 | awk '{print $1}' | grep -vE '^(/usr/lib/|/System/Library/)' || true)
+          if [ -n "$foreign" ]; then
+            echo "::error::Bundled ffmpeg links non-system libraries:"; echo "$foreign"; exit 1
+          fi
+          resources/ffmpeg/ffmpeg -hide_banner -version | head -1
+          resources/ffmpeg/ffmpeg -hide_banner -encoders | grep -q h264_videotoolbox || { echo "::error::Bundled ffmpeg has no h264_videotoolbox"; exit 1; }
+          resources/ffmpeg/ffmpeg -hide_banner -devices 2>&1 | grep -q avfoundation || { echo "::error::Bundled ffmpeg has no avfoundation capture"; exit 1; }
           echo "ffmpeg bundled: $(wc -c < resources/ffmpeg/ffmpeg) bytes"
 
       - name: Download pinned Godot trainer for macOS
@@ -218,16 +238,79 @@ jobs:
           unzip -q "$RUNNER_TEMP/upforge-trainer.zip" -d resources/trainer
           test -x "resources/trainer/UpForge Trainer.app/Contents/MacOS/UpForge Trainer"
 
+      # ── macOS signing + notarisation (release tags only) ───────────────────
+      # All five secrets set   → signed with Developer ID, notarised, verified.
+      # None set               → unsigned build with a warning (Gatekeeper blocks
+      #                          first launch; Macs can't auto-update unsigned apps).
+      # Some but not all set   → the release fails.
+      # Setup: docs/releases/MACOS-SIGNING.md
+      - name: Prepare macOS signing (tag)
+        id: mac_signing
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          HAS_CERT: ${{ secrets.MAC_CSC_LINK != '' && secrets.MAC_CSC_KEY_PASSWORD != '' }}
+          HAS_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+          HAS_ANY_MAC_SIGNING: ${{ secrets.MAC_CSC_LINK != '' || secrets.MAC_CSC_KEY_PASSWORD != '' || secrets.APPLE_ID != '' || secrets.APPLE_APP_SPECIFIC_PASSWORD != '' || secrets.APPLE_TEAM_ID != '' }}
+        run: |
+          if [ "$HAS_CERT" = true ] && [ "$HAS_NOTARY" = true ]; then
+            echo "required=true" >> "$GITHUB_OUTPUT"
+            echo "macOS signing + notarisation: on"
+          elif [ "$HAS_ANY_MAC_SIGNING" = true ]; then
+            echo "::error title=macOS signing half set up::Set all of MAC_CSC_LINK, MAC_CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID (or none). See docs/releases/MACOS-SIGNING.md"
+            exit 1
+          else
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "::warning title=Unsigned macOS release::No Apple Developer ID secrets are set. The Mac app ships unsigned and un-notarised: Gatekeeper blocks first launch and Macs cannot auto-update. See docs/releases/MACOS-SIGNING.md"
+          fi
+
       - name: Build Mac installer (tag — publish in publish-release job)
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           VITE_ERROR_REPORTING_KEY: ${{ secrets.ERROR_REPORTING_KEY }}
+          # Empty when not configured; the Prepare step then turns auto-discovery off.
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run build && npx electron-builder --mac --publish never
+
+      - name: Verify macOS signature (tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          SIGNING_REQUIRED: ${{ steps.mac_signing.outputs.required }}
+        run: |
+          app=$(ls -d dist/mac*/UpForge.app | head -1)
+          [ -n "$app" ] || { echo "::error::UpForge.app not found in dist"; exit 1; }
+          ff="$app/Contents/Resources/ffmpeg/ffmpeg"
+          [ -x "$ff" ] || { echo "::error::Packaged app has no bundled ffmpeg at $ff"; exit 1; }
+          "$ff" -hide_banner -version | head -1
+          ls dist/*.zip >/dev/null 2>&1 || { echo "::error::No zip built (needed for Mac auto-update)"; exit 1; }
+          if [ "$SIGNING_REQUIRED" != true ]; then
+            echo "::warning title=Unsigned macOS release::Skipping signature checks (signing not configured)."
+            exit 0
+          fi
+          problems=0
+          codesign --verify --deep --strict --verbose=2 "$app" || problems=1
+          codesign --verify --strict --verbose=2 "$ff" || problems=1
+          spctl --assess --type execute --verbose=4 "$app" || problems=1
+          xcrun stapler validate "$app" || problems=1
+          for dmg in dist/*.dmg; do
+            codesign --verify --verbose=2 "$dmg" || echo "::warning::$dmg itself is not signed (app inside is checked above)"
+          done
+          if [ "$problems" -ne 0 ]; then
+            echo "::error::Release blocked: the Mac app must be signed and notarised."
+            exit 1
+          fi
 
       - name: Build Mac installer (dev artifact)
         if: "!startsWith(github.ref, 'refs/tags/v')"
         env:
           VITE_ERROR_REPORTING_KEY: ${{ secrets.ERROR_REPORTING_KEY }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run build && npx electron-builder --mac --publish never
 
       - name: Upload Mac release artifacts
@@ -239,6 +322,8 @@ jobs:
             dist/latest-mac.yml
             dist/*.dmg
             dist/*.dmg.blockmap
+            dist/*.zip
+            dist/*.zip.blockmap
           retention-days: 7
 
       - name: Upload Mac dev artifact
@@ -305,7 +390,7 @@ jobs:
 
           echo "Uploading installers…"
           gh release upload "$TAG" --repo "${{ github.repository }}" \
-            "dist/${EXPECTED_EXE}" dist/*.exe.blockmap dist/*.dmg dist/*.dmg.blockmap --clobber
+            "dist/${EXPECTED_EXE}" dist/*.exe.blockmap dist/*.dmg dist/*.dmg.blockmap dist/*.zip dist/*.zip.blockmap --clobber
 
           echo "Verifying latest.yml is downloadable…"
           for i in $(seq 1 12); do
