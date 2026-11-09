@@ -1,0 +1,289 @@
+{
+  "source": "valorant-api.com /v1/maps and /v1/agents?isPlayableCharacter=true, fetched 2026-11-09",
+  "maps": [
+    {
+      "uuid": "dd3a1cd9-41b1-50ea-3bd6-a7bb3c5978bd",
+      "displayName": "Gauntlet",
+      "mapUrl": "/Game/Maps/AbilityDraft/AbilityDraft",
+      "competitive": false
+    },
+    {
+      "uuid": "7eaecc1b-4337-bbf6-6ab9-04b8f06b3319",
+      "displayName": "Ascent",
+      "mapUrl": "/Game/Maps/Ascent/Ascent",
+      "competitive": true
+    },
+    {
+      "uuid": "d960549e-485c-e861-8d71-aa9d1aed12a2",
+      "displayName": "Split",
+      "mapUrl": "/Game/Maps/Bonsai/Bonsai",
+      "competitive": true
+    },
+    {
+      "uuid": "b529448b-4d60-346e-e89e-00a4c527a405",
+      "displayName": "Fracture",
+      "mapUrl": "/Game/Maps/Canyon/Canyon",
+      "competitive": true
+    },
+    {
+      "uuid": "2c9d57ec-4431-9c5e-2939-8f9ef6dd5cba",
+      "displayName": "Bind",
+      "mapUrl": "/Game/Maps/Duality/Duality",
+      "competitive": true
+    },
+    {
+      "uuid": "a9009649-421f-d5d5-f80c-0cbe02c125bb",
+      "displayName": "Skirmish A",
+      "mapUrl": "/Game/Maps/Duel/Duel_1/Skirmish_A",
+      "competitive": false
+    },
+    {
+      "uuid": "a38a3f9a-4042-844c-8970-a3ac2f7ce93d",
+      "displayName": "Skirmish B",
+      "mapUrl": "/Game/Maps/Duel/Duel_2/Skirmish_B",
+      "competitive": false
+    },
+    {
+      "uuid": "a264de0f-4a04-9c78-c97a-a6b192ce6e86",
+      "displayName": "Skirmish C",
+      "mapUrl": "/Game/Maps/Duel/Duel_3/Skirmish_C",
+      "competitive": false
+    },
+    {
+      "uuid": "4490f1d6-4818-bf5f-9b3a-9c9a8dbb52ed",
+      "displayName": "Skirmish E",
+      "mapUrl": "/Game/Maps/Duel/Duel_Heady/Skirmish_E",
+      "competitive": false
+    },
+    {
+      "uuid": "1c7555fc-4bc6-3b98-9674-789d47ef6c50",
+      "displayName": "Skirmish D",
+      "mapUrl": "/Game/Maps/Duel/Duel_Platform/Skirmish_D",
+      "competitive": false
+    },
+    {
+      "uuid": "2fb9a4fd-47b8-4e7d-a969-74b4046ebd53",
+      "displayName": "Breeze",
+      "mapUrl": "/Game/Maps/Foxtrot/Foxtrot",
+      "competitive": true
+    },
+    {
+      "uuid": "690b3ed2-4dff-945b-8223-6da834e30d24",
+      "displayName": "District",
+      "mapUrl": "/Game/Maps/HURM/HURM_Alley/HURM_Alley",
+      "competitive": false
+    },
+    {
+      "uuid": "12452a9d-48c3-0b02-e7eb-0381c3520404",
+      "displayName": "Kasbah",
+      "mapUrl": "/Game/Maps/HURM/HURM_Bowl/HURM_Bowl",
+      "competitive": false
+    },
+    {
+      "uuid": "2c09d728-42d5-30d8-43dc-96a05cc7ee9d",
+      "displayName": "Drift",
+      "mapUrl": "/Game/Maps/HURM/HURM_Helix/HURM_Helix",
+      "competitive": false
+    },
+    {
+      "uuid": "d6336a5a-428f-c591-98db-c8a291159134",
+      "displayName": "Glitch",
+      "mapUrl": "/Game/Maps/HURM/HURM_HighTide/HURM_HighTide",
+      "competitive": false
+    },
+    {
+      "uuid": "de28aa9b-4cbe-1003-320e-6cb3ec309557",
+      "displayName": "Piazza",
+      "mapUrl": "/Game/Maps/HURM/HURM_Yard/HURM_Yard",
+      "competitive": false
+    },
+    {
+      "uuid": "224b0a95-48b9-f703-1bd8-67aca101a61f",
+      "displayName": "Abyss",
+      "mapUrl": "/Game/Maps/Infinity/Infinity",
+      "competitive": true
+    },
+    {
+      "uuid": "2fe4ed3a-450a-948b-6d6b-e89a78e680a9",
+      "displayName": "Lotus",
+      "mapUrl": "/Game/Maps/Jam/Jam",
+      "competitive": true
+    },
+    {
+      "uuid": "92584fbe-486a-b1b2-9faa-39b0f486b498",
+      "displayName": "Sunset",
+      "mapUrl": "/Game/Maps/Juliett/Juliett",
+      "competitive": true
+    },
+    {
+      "uuid": "1f10dab3-4294-3827-fa35-c2aa00213cf3",
+      "displayName": "Basic Training",
+      "mapUrl": "/Game/Maps/NPEV2/NPEV2",
+      "competitive": false
+    },
+    {
+      "uuid": "fd267378-4d1d-484f-ff52-77821ed10dc2",
+      "displayName": "Pearl",
+      "mapUrl": "/Game/Maps/Pitt/Pitt",
+      "competitive": true
+    },
+    {
+      "uuid": "756da597-416b-c0f2-f47b-afbdf28670bc",
+      "displayName": "Summit",
+      "mapUrl": "/Game/Maps/Plummet/Plummet",
+      "competitive": true
+    },
+    {
+      "uuid": "e2ad5c54-4114-a870-9641-8ea21279579a",
+      "displayName": "Icebox",
+      "mapUrl": "/Game/Maps/Port/Port",
+      "competitive": true
+    },
+    {
+      "uuid": "ee613ee9-28b7-4beb-9666-08db13bb2244",
+      "displayName": "The Range",
+      "mapUrl": "/Game/Maps/Poveglia/Range",
+      "competitive": false
+    },
+    {
+      "uuid": "5914d1e0-40c4-cfdd-6b88-eba06347686c",
+      "displayName": "The Range",
+      "mapUrl": "/Game/Maps/PovegliaV2/RangeV2",
+      "competitive": false
+    },
+    {
+      "uuid": "1c18ab1f-420d-0d8b-71d0-77ad3c439115",
+      "displayName": "Corrode",
+      "mapUrl": "/Game/Maps/Rook/Rook",
+      "competitive": true
+    },
+    {
+      "uuid": "2bee0dc9-4ffe-519b-1cbd-7fbe763a6047",
+      "displayName": "Haven",
+      "mapUrl": "/Game/Maps/Triad/Triad",
+      "competitive": true
+    }
+  ],
+  "agents": [
+    {
+      "uuid": "41fb69c1-4189-7b37-f117-bcaf1e96f1bf",
+      "displayName": "Astra"
+    },
+    {
+      "uuid": "5f8d3a7f-467b-97f3-062c-13acf203c006",
+      "displayName": "Breach"
+    },
+    {
+      "uuid": "9f0d8ba9-4140-b941-57d3-a7ad57c6b417",
+      "displayName": "Brimstone"
+    },
+    {
+      "uuid": "22697a3d-45bf-8dd7-4fec-84a9e28c69d7",
+      "displayName": "Chamber"
+    },
+    {
+      "uuid": "1dbf2edd-4729-0984-3115-daa5eed44993",
+      "displayName": "Clove"
+    },
+    {
+      "uuid": "117ed9e3-49f3-6512-3ccf-0cada7e3823b",
+      "displayName": "Cypher"
+    },
+    {
+      "uuid": "cc8b64c8-4b25-4ff9-6e7f-37b4da43d235",
+      "displayName": "Deadlock"
+    },
+    {
+      "uuid": "dade69b4-4f5a-8528-247b-219e5a1facd6",
+      "displayName": "Fade"
+    },
+    {
+      "uuid": "e370fa57-4757-3604-3648-499e1f642d3f",
+      "displayName": "Gekko"
+    },
+    {
+      "uuid": "95b78ed7-4637-86d9-7e41-71ba8c293152",
+      "displayName": "Harbor"
+    },
+    {
+      "uuid": "ddd5a15c-4fbe-42fa-3789-11a55ca5ee04",
+      "displayName": "Hush"
+    },
+    {
+      "uuid": "0e38b510-41a8-5780-5e8f-568b2a4f2d6c",
+      "displayName": "Iso"
+    },
+    {
+      "uuid": "add6443a-41bd-e414-f6ad-e58d267f4e95",
+      "displayName": "Jett"
+    },
+    {
+      "uuid": "601dbbe7-43ce-be57-2a40-4abd24953621",
+      "displayName": "KAY/O"
+    },
+    {
+      "uuid": "1e58de9c-4950-5125-93e9-a0aee9f98746",
+      "displayName": "Killjoy"
+    },
+    {
+      "uuid": "7c8a4701-4de6-9355-b254-e09bc2a34b72",
+      "displayName": "Miks"
+    },
+    {
+      "uuid": "bb2a4828-46eb-8cd1-e765-15848195d751",
+      "displayName": "Neon"
+    },
+    {
+      "uuid": "8e253930-4c05-31dd-1b6c-968525494517",
+      "displayName": "Omen"
+    },
+    {
+      "uuid": "eb93336a-449b-9c1b-0a54-a891f7921d69",
+      "displayName": "Phoenix"
+    },
+    {
+      "uuid": "f94c3b30-42be-e959-889c-5aa313dba261",
+      "displayName": "Raze"
+    },
+    {
+      "uuid": "a3bfb853-43b2-7238-a4f1-ad90e9e46bcc",
+      "displayName": "Reyna"
+    },
+    {
+      "uuid": "569fdd95-4d10-43ab-ca70-79becc718b46",
+      "displayName": "Sage"
+    },
+    {
+      "uuid": "6f2a04ca-43e0-be17-7f36-b3908627744d",
+      "displayName": "Skye"
+    },
+    {
+      "uuid": "320b2a48-4d9b-a075-30f1-1f93a9b638fa",
+      "displayName": "Sova"
+    },
+    {
+      "uuid": "b444168c-4e35-8076-db47-ef9bf368f384",
+      "displayName": "Tejo"
+    },
+    {
+      "uuid": "92eeef5d-43b5-1d4a-8d03-b3927a09034b",
+      "displayName": "Veto"
+    },
+    {
+      "uuid": "707eab51-4836-f488-046a-cda6bf494859",
+      "displayName": "Viper"
+    },
+    {
+      "uuid": "efba5359-4016-a1e5-7626-b1ae76895940",
+      "displayName": "Vyse"
+    },
+    {
+      "uuid": "df1cb487-4902-002e-5c17-d28e83e78588",
+      "displayName": "Waylay"
+    },
+    {
+      "uuid": "7f94d92c-4234-0a36-9646-3a87eb8b5c89",
+      "displayName": "Yoru"
+    }
+  ]
+}

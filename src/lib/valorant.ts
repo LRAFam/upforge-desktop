@@ -261,9 +261,12 @@ const MAP_NAME_ALIASES: Record<string, string> = {
   hurmyard: 'piazza',
   yard: 'piazza',
   range: 'therange',
+  abilitydraft: 'gauntlet',
+  npev2: 'basictraining',
 }
 
 const MAP_DISPLAY_NAMES: Record<string, string> = {
+  ascent: 'Ascent',
   bind: 'Bind',
   haven: 'Haven',
   split: 'Split',
@@ -278,10 +281,18 @@ const MAP_DISPLAY_NAMES: Record<string, string> = {
   summit: 'Summit',
   district: 'District',
   kasbah: 'Kasbah',
+  drift: 'Drift',
   glitch: 'Glitch',
   piazza: 'Piazza',
   therange: 'The Range',
   rangev2: 'The Range',
+  gauntlet: 'Gauntlet',
+  skirmisha: 'Skirmish A',
+  skirmishb: 'Skirmish B',
+  skirmishc: 'Skirmish C',
+  skirmishd: 'Skirmish D',
+  skirmishe: 'Skirmish E',
+  basictraining: 'Basic Training',
 }
 
 const MAP_SPLASH_URLS: Record<string, string> = {
@@ -338,22 +349,31 @@ function compactMapKey(mapName: string): string {
   return mapName.toLowerCase().replace(/[\s_/-]/g, '')
 }
 
-/** Normalise stored map names (codenames, HURM paths) to canonical asset keys. */
+/** A raw Riot map id ("/Game/Maps/Juliett/Juliett") → its codename ("Juliett"); names pass through. */
+function mapCodename(mapName: string): string {
+  const trimmed = mapName.trim()
+  if (!trimmed.includes('/')) return trimmed
+  return trimmed.split('/').filter(Boolean).pop() ?? trimmed
+}
+
+/** Normalise stored map names (codenames, HURM paths, raw Riot map ids) to canonical asset keys. */
 export function normalizeMapAssetKey(mapName: string | null | undefined): string {
   if (!mapName) return ''
-  const compact = compactMapKey(mapName)
+  const compact = compactMapKey(mapCodename(mapName))
   return MAP_NAME_ALIASES[compact] ?? compact
 }
 
-/** Human-readable map label for UI (resolves codenames like Duality → Bind). */
+/** Human-readable map label for UI (resolves codenames like Duality → Bind and raw Riot map ids). */
 export function formatMapLabel(mapName: string | null | undefined): string {
   if (!mapName) return ''
   const key = normalizeMapAssetKey(mapName)
   if (MAP_DISPLAY_NAMES[key]) return MAP_DISPLAY_NAMES[key]
-  if (key === key.toLowerCase()) {
-    return mapName.replace(/\b\w/g, c => c.toUpperCase())
+  // A map newer than this build: show its codename readably, never the whole path.
+  const name = mapCodename(mapName).replace(/_+/g, ' ').trim()
+  if (name === name.toLowerCase()) {
+    return name.replace(/\b\w/g, c => c.toUpperCase())
   }
-  return mapName
+  return name
 }
 
 /** Returns the full-art splash URL for a Valorant map. */
