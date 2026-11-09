@@ -30,6 +30,7 @@ import { initProductActivity, trackProductActivity } from './product-activity'
 import { backgroundWork } from './background-work'
 import { BackgroundMatchState } from './background-match-state'
 import { matchPollPause } from './poll-pause'
+import { REARM_PROCESS_MAX_AGE_MS } from './process-poll-plan'
 import {
   RECORDING_MAX_DURATION_CHECK_MS,
   checkRecordingMaxDuration,
@@ -3825,7 +3826,8 @@ function setupGameDetection(): void {
       let waitingForLobbyClear = false
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 3000))
-        if (!await gameDetector.isGameProcessRunning(game)) continue
+        // The detector's own process list, not a filtered tasklist per tick (20 spawns/min in-match).
+        if (await gameDetector.probeGameProcessRecent(game, REARM_PROCESS_MAX_AGE_MS) === 'stopped') continue
 
         const stillInMatch = game === 'deadlock'
           ? (isDeadlockMatchLive() || isDeadlockReadyToRecord())

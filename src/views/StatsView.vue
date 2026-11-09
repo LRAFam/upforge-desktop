@@ -296,7 +296,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useLifetime } from '../composables/useLifetime'
 import ProgressV3 from './v3/ProgressV3.vue'
 import { uiV3 } from '../lib/ui-v3'
 import { averageMatchScore, matchScore } from '../lib/upforge-score'
@@ -638,7 +639,7 @@ async function loadStatsData() {
   loading.value = false
 }
 
-let stopDashboardRefresh: (() => void) | null = null
+const life = useLifetime() // listeners registered after an await stop with this view
 
 onMounted(async () => {
   // UI v3 shows per-game Progress (GameProgress) for every game; the old view stays Valorant-only.
@@ -647,11 +648,10 @@ onMounted(async () => {
     return
   }
   await loadStatsData()
-  stopDashboardRefresh = window.api.on('dashboard:refresh', () => {
+  life.own(window.api.on('dashboard:refresh', () => {
     invalidateGameAnalysesCache(primaryGame.value)
     void loadStatsData()
-  })
+  }))
 })
 
-onUnmounted(() => { stopDashboardRefresh?.() })
 </script>
