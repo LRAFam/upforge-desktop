@@ -23,6 +23,12 @@ describe('League focus wording', () => {
     expect(lolFocusSubline(focus())).not.toMatch(/\d\.\d+ death/)
   })
 
+  it('says it plainly when every game left has to hit', () => {
+    const p = (games_played: number, hits: number) => ({ games_played, hits, games_required: 3, hits_required: 2, status: 'active' })
+    expect(lolFocusSubline(focus({ progress: p(2, 1) }))).toBe('Lately: 7 deaths a game. Hit it in your next game.')
+    expect(lolFocusSubline(focus({ progress: p(1, 0) }))).toBe('Lately: 7 deaths a game. Hit it in each of your next 2 games.')
+  })
+
   it('achieved and missed headlines', () => {
     expect(lolFocusHeadline(focus({ progress: { games_played: 2, hits: 2, games_required: 3, hits_required: 2, status: 'achieved' } }))).toBe('Focus achieved: die 6 times or fewer')
     expect(lolFocusHeadline(focus({ progress: { games_played: 3, hits: 1, games_required: 3, hits_required: 2, status: 'missed' } }))).toBe('Not this time: die 6 times or fewer')

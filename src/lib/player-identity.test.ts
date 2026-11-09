@@ -69,7 +69,7 @@ describe('playerIdentity · other games', () => {
     expect(id.avatar).toEqual({ src: leagueProfileIcon(29), kind: 'icon' })
     expect(id.avatars).toHaveLength(1)
     expect(id.banner).toBeNull()
-    expect(id.rankIcon).toContain('emblem-gold.png')
+    expect(id.rankIcon).toContain('ranked-mini-crests/gold.svg')
     expect(id.rankLabel).toBe('GOLD II')
     expect(id.level).toBe(300)
     expect(playerIdentity({ game: 'league', rank: 'Unranked' })).toMatchObject({ rankIcon: null, rankLabel: null })
