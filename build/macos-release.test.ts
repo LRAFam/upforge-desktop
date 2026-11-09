@@ -131,6 +131,9 @@ describe('macOS signing and notarisation', () => {
     for (const name of ['CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID']) {
       expect(tag).toContain(`${name}:`)
     }
+    // Unsigned releases: blank secrets must be unset, or electron-builder treats CSC_LINK="" as a path.
+    expect(tag).toMatch(/for v in CSC_LINK[^\n]*APPLE_TEAM_ID; do/)
+    expect(tag).toContain('unset "$v"')
     const dev = stepBlock('Build Mac installer (dev artifact)')
     expect(dev).not.toContain('CSC_LINK')
     expect(dev).toContain('CSC_IDENTITY_AUTO_DISCOVERY: false')
