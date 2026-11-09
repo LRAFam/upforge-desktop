@@ -363,6 +363,7 @@ import { FaceitLinkStore, registerCs2FaceitMatchIpc } from './cs2-faceit-match'
 import { setupCoachFlowDemoHandlers } from './ipc/coach-flow-demo-ipc'
 import { setupCoachFlowLiveHandlers, startLiveCoachFlow } from './ipc/coach-flow-live-ipc'
 import { prepareMatchDataForUpload } from './match-data-payload'
+import { resendMatchDataForRetry } from './retry-match-data'
 import { cs2StartingReportMatches } from './cs2-starting-report'
 import { registerEnemyHabitsIpc } from './ipc/enemy-habits-ipc'
 import { getGameDataCapture } from './game-data-capture'
@@ -8119,6 +8120,35 @@ async function startApp(): Promise<void> {
         }, getActiveUserId())
         try {
           await uploadManager.retrySubmission(recording!.jobId!)
+          if ((recording!.game ?? 'valorant') === 'valorant') {
+            // The retried job still holds the first upload's match_data — re-send fresh stats.
+            const resent = await resendMatchDataForRetry(
+              recording!.jobId!,
+              await recordingsStore.getTimelineAsync(id),
+              {
+                fetchMatchDetails: (matchId) => riotLocalApi.fetchMatchDetailsLate(matchId),
+                populateFromDetails: (timeline, details) => {
+                  riotLocalApi.populateMatchDataFromDetails(timeline, details)
+                  enrichTimelineSpatial(timeline)
+                },
+                saveTimeline: (timeline) => { recordingsStore.updateTimeline(id, timeline) },
+                patchMatchData: async (jobId, timeline) => {
+                  const rrHistory = await authManager.fetchRRHistory().catch(() => [])
+                  const extras = buildCoachingSubmissionExtras(
+                    timeline,
+                    settingsManager.get(),
+                    rrHistory,
+                    riotLocalApi.getDiagnostics().clientVersion,
+                  )
+                  await uploadManager.patchMatchData(jobId, timeline, extras)
+                },
+              },
+            ).catch((err) => {
+              log.warn('[Retry] Failed to re-send match_data:', err)
+              return 'no_match_data' as const
+            })
+            logActivity(`Retry match data: ${resent}`)
+          }
           sendPostGameEventForRecording(
             win,
             id,
