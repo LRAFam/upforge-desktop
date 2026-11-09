@@ -84,9 +84,15 @@ jobs:
           PUBLISHER: ${{ vars.WIN_SIGNING_PUBLISHER }}
           HAS_AZURE: ${{ vars.AZURE_SIGNING_ENDPOINT != '' && vars.AZURE_SIGNING_ACCOUNT != '' && vars.AZURE_SIGNING_PROFILE != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_CLIENT_SECRET != '' }}
           HAS_SSLCOM: ${{ vars.SSLCOM_CODESIGNTOOL_URL != '' && vars.SSLCOM_CODESIGNTOOL_SHA256 != '' && secrets.ES_USERNAME != '' && secrets.ES_PASSWORD != '' && secrets.ES_CREDENTIAL_ID != '' && secrets.ES_TOTP_SECRET != '' }}
+          # Any signing setting present means signing was meant to be on.
+          HAS_ANY_SIGNING_SETTING: ${{ vars.WIN_SIGNING_PUBLISHER != '' || vars.AZURE_SIGNING_ENDPOINT != '' || vars.AZURE_SIGNING_ACCOUNT != '' || vars.AZURE_SIGNING_PROFILE != '' || secrets.AZURE_TENANT_ID != '' || secrets.AZURE_CLIENT_ID != '' || secrets.AZURE_CLIENT_SECRET != '' || vars.SSLCOM_CODESIGNTOOL_URL != '' || vars.SSLCOM_CODESIGNTOOL_SHA256 != '' || secrets.ES_USERNAME != '' || secrets.ES_PASSWORD != '' || secrets.ES_CREDENTIAL_ID != '' || secrets.ES_TOTP_SECRET != '' }}
         run: |
           case "$PROVIDER" in
             "")
+              if [ "$HAS_ANY_SIGNING_SETTING" = true ]; then
+                echo "::error title=Windows signing half set up::Signing secrets/variables exist but WIN_SIGNING_PROVIDER is empty. Set it to azure or sslcom (or remove the leftover settings). See docs/releases/WINDOWS-SIGNING.md"
+                exit 1
+              fi
               echo "required=false" >> "$GITHUB_OUTPUT"
               echo "::warning title=Unsigned Windows release::No signing provider is connected (WIN_SIGNING_PROVIDER is empty). See docs/releases/WINDOWS-SIGNING.md"
               ;;
