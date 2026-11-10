@@ -761,6 +761,7 @@ export class UploadManager {
         res.on('error', reject)
         res.on('end', () => {
           const status = res.statusCode ?? 0
+          if (status === 401) this.auth.handleSessionRejection(token, status, undefined, url)
           if (status === 429) {
             const retryAt = parseRetryAfter(res.headers['retry-after'])
             if (retryAt !== null) this._apiCooldowns.set(cooldownKey, retryAt)
@@ -769,6 +770,7 @@ export class UploadManager {
           }
           try {
             const json = JSON.parse(data)
+            if (status === 403) this.auth.handleSessionRejection(token, status, json, url)
             if (status === 402) reject(new UpgradeRequiredError(
               json.message || 'Quota limit reached. Upgrade to continue.',
               json.error || 'analysis_limit_reached',
@@ -1216,8 +1218,10 @@ export class UploadManager {
         res.on('error', reject)
         res.on('end', () => {
           const httpStatus = res.statusCode ?? 0
+          if (httpStatus === 401) this.auth.handleSessionRejection(token, httpStatus, undefined, url.pathname)
           try {
             const json = JSON.parse(body) as Record<string, unknown>
+            if (httpStatus === 403) this.auth.handleSessionRejection(token, httpStatus, json, url.pathname)
             if (httpStatus === 404) {
               reject(new Error('Job not found'))
               return

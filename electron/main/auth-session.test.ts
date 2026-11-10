@@ -48,7 +48,7 @@ const tokenFileExists = () => fs.existsSync(path.join(env.dir, 'auth.enc'))
 
 beforeEach(() => {
   env.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upforge-auth-'))
-  env.enc = false
+  env.enc = true
   env.decryptThrows = false
   routes = {}
   sent = []
@@ -220,6 +220,21 @@ describe('sign-in', () => {
 })
 
 describe('reading the saved session', () => {
+  it('rejects only the token carried by a raw upload request', async () => {
+    writeToken()
+    routes['/api/user'] = { status: 200, data: { user: USER } }
+    const auth = new AuthManager(); install(auth)
+    await auth.loadStoredToken()
+    const expired = vi.fn()
+    auth.onSessionExpired = expired
+    auth.handleSessionRejection('old-token', 401, undefined, '/api/desktop-submissions/presign')
+    expect(auth.getToken()).toBe(TOKEN)
+    auth.handleSessionRejection(TOKEN, 403, { message: 'Policy refusal' }, '/api/desktop-submissions/presign')
+    expect(auth.getToken()).toBe(TOKEN)
+    auth.handleSessionRejection(TOKEN, 401, undefined, '/api/desktop-submissions/presign')
+    expect(auth.getToken()).toBeNull()
+    expect(expired).toHaveBeenCalledOnce()
+  })
   it('records decrypt_failed when the keychain refuses and there was a session before', async () => {
     env.enc = true
     writeToken()
@@ -231,11 +246,28 @@ describe('reading the saved session', () => {
     expect(readSignOutEvents(env.dir).map(e => e.reason)).toEqual(['decrypt_failed'])
   })
 
-  it('still reads a token that was saved as plain text before encryption was available', () => {
+  it('refuses a token saved as plain text before encryption was available', () => {
     env.enc = true
     env.decryptThrows = true
     fs.writeFileSync(path.join(env.dir, 'auth.enc'), TOKEN)
-    expect(loadToken()).toEqual({ token: TOKEN, failure: null })
+    expect(loadToken()).toEqual({ token: null, failure: 'decrypt_failed' })
+    expect(tokenFileExists()).toBe(false)
+  })
+
+  it('keeps login in memory without writing plaintext when encryption is unavailable', async () => {
+    env.enc = false
+    routes['POST /api/login'] = { status: 200, data: { token: TOKEN, user: USER } }
+    const auth = new AuthManager(); install(auth)
+    expect(await auth.login('ada@example.com', 'pw')).toMatchObject({ ok: true })
+    expect(auth.getToken()).toBe(TOKEN)
+    expect(tokenFileExists()).toBe(false)
+  })
+
+  it('does not load plaintext when encryption is unavailable', () => {
+    env.enc = false
+    writeToken()
+    expect(loadToken()).toEqual({ token: null, failure: 'decrypt_failed' })
+    expect(tokenFileExists()).toBe(false)
   })
 
   it('a fresh install with no session records nothing', async () => {

@@ -28,12 +28,12 @@ function userDataDir(): string {
 /** Returns false when the session could not be saved (the user would have to sign in again next launch). */
 function saveToken(token: string): boolean {
   try {
-    if (safeStorage.isEncryptionAvailable()) {
-      const encrypted = safeStorage.encryptString(token)
-      writeFileSync(tokenPath(), encrypted)
-    } else {
-      writeFileSync(tokenPath(), Buffer.from(token, 'utf8'))
+    if (!safeStorage.isEncryptionAvailable()) {
+      log.warn('[Auth] Secure credential storage is unavailable; this session will stay in memory only.')
+      return false
     }
+    const encrypted = safeStorage.encryptString(token)
+    writeFileSync(tokenPath(), encrypted)
     markTokenIssued(userDataDir())
     return true
   } catch (err: unknown) {
@@ -44,8 +44,6 @@ function saveToken(token: string): boolean {
   }
 }
 
-const TOKEN_SHAPE = /^\d+\|[A-Za-z0-9]{20,}$/
-
 /** Read the saved token. `failure` says why there is none (for sign-out telemetry). */
 export function loadToken(): { token: string | null; failure: 'no_token_file' | 'decrypt_failed' | null } {
   let data: Buffer
@@ -54,22 +52,21 @@ export function loadToken(): { token: string | null; failure: 'no_token_file' | 
   } catch {
     return { token: null, failure: 'no_token_file' }
   }
+  // Older builds could persist a Sanctum token without encryption. Never reuse it,
+  // and remove the exposed copy; signing in again will use secure storage when available.
+  if (/^\d+\|[A-Za-z0-9]{20,}$/.test(data.toString('utf8').trim())) {
+    try { unlinkSync(tokenPath()) } catch { /* remain signed out if cleanup is denied */ }
+    return { token: null, failure: 'decrypt_failed' }
+  }
   if (safeStorage.isEncryptionAvailable()) {
     try {
       return { token: safeStorage.decryptString(data), failure: null }
     } catch (err) {
-      // Saved before a keyring existed (Linux) or by a build without encryption: plain text is still usable.
-      const plain = data.toString('utf8').trim()
-      if (TOKEN_SHAPE.test(plain)) {
-        log.warn('[Auth] Saved session was not encrypted; using it')
-        return { token: plain, failure: null }
-      }
       log.warn('[Auth] Saved session could not be decrypted (decrypt_failed):', (err as Error)?.message ?? 'unknown')
       return { token: null, failure: 'decrypt_failed' }
     }
   }
-  const plain = data.toString('utf8').trim()
-  return plain ? { token: plain, failure: null } : { token: null, failure: 'no_token_file' }
+  return { token: null, failure: 'decrypt_failed' }
 }
 
 /** The Authorization header a request actually carried (AxiosHeaders or a plain object). */
@@ -304,14 +301,20 @@ export class AuthManager {
       (err) => {
         // Only the token this request carried can be rejected: a late 401 from an older token
         // (e.g. a request still in flight from before a fresh sign-in) must not end the new session.
-        if (err?.response?.status === 401 && this._token
-          && sentAuthorization(err?.config?.headers) === `Bearer ${this._token}`) {
-          this.endSession('http_401', { endpoint: endpointPath(err?.config?.url), status: 401 }, true)
-        }
+        const authorization = sentAuthorization(err?.config?.headers)
+        if (authorization?.startsWith('Bearer ')) this.handleSessionRejection(
+          authorization.slice(7), err?.response?.status, err?.response?.data, err?.config?.url,
+        )
         // Never let the Bearer token travel with the error (handlers rethrow it; Electron logs it).
         return Promise.reject(redactAxiosError(err))
       }
     )
+  }
+
+  /** Raw HTTP uploads share the same session rejection rules as Axios requests. */
+  handleSessionRejection(token: string, status: number | undefined, data?: unknown, endpoint?: string): void {
+    if (this._token !== token || !sessionRejected(status, data)) return
+    this.endSession(status === 401 ? 'http_401' : 'user_403', { endpoint: endpointPath(endpoint), status }, true)
   }
 
   async loadStoredToken(): Promise<boolean> {
