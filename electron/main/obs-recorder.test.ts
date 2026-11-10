@@ -205,6 +205,16 @@ describe('OBS recording completion', () => {
     expect(rec.isRecording()).toBe(true)
   })
 
+  it('forceStop (quit/update) leaves the user\'s own OBS recording running', async () => {
+    mock.call.mockResolvedValue({ outputActive: true, outputBytes: 100 })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    rec.forceStop()
+    await vi.advanceTimersByTimeAsync(16_000)
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+    expect(mock.call).not.toHaveBeenCalledWith('StopReplayBuffer')
+  })
+
   it('does not confuse a clips-only session with a full recording', async () => {
     mock.call.mockResolvedValue({ outputActive: false })
     const rec = recorder()

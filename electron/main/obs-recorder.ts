@@ -1510,6 +1510,8 @@ export class OBSRecorder {
 
   forceStop(): void {
     if (this._stopInFlight) return
+    // Quit/update must never stop a recording the user started in OBS themselves.
+    if (!this._matchOwnedRecording && !this._clipsOnlySession) return
     // Send immediately: before-quit callers cannot keep Electron alive to await a status query.
     const request = this._clipsOnlySession
       ? this._obs.call('StopReplayBuffer').then(() => ({}))
