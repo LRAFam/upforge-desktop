@@ -48,7 +48,7 @@ import {
   type ValorantRegionSource,
 } from './riot-region'
 import { applyMenuWatchTick } from './menu-watch'
-import { parseRiotMatchHistory, type RiotMatchHistoryEntry } from './riot-match-history'
+import { parseRiotMatchHistory, pickHistoryMatchIdForRecording, type RiotMatchHistoryEntry } from './riot-match-history'
 import { downloadReplay, type ReplayDownloadResult } from './valorant-replay-download'
 import type { RecentMatchFetchResult } from './recent-match-export'
 import { createTtlSingleFlight } from './ttl-single-flight'
@@ -1173,7 +1173,7 @@ export class RiotLocalApi {
       && shouldUseMatchHistoryFallback(this.matchData)
     ) {
       console.log('[RiotLocalApi] No matchId captured — trying match history fallback')
-      const latestId = await this._fetchLatestMatchId()
+      const latestId = await this._fetchLatestMatchId(this.matchData.recordingStartTime)
       if (latestId) {
         this.matchData.matchId = latestId
         console.log(`[RiotLocalApi] matchId from history: ${latestId}`)
@@ -1373,10 +1373,15 @@ export class RiotLocalApi {
     })
   }
 
-  /** Fetch the most recent matchId from Riot history for normal captured timelines. */
-  private async _fetchLatestMatchId(): Promise<string | null> {
-    const history = await this._fetchRecentMatchHistory(1)
-    return history?.[0]?.matchId ?? null
+  /** Fetch the recent-history matchId whose start aligns with this recording (never just the latest). */
+  private async _fetchLatestMatchId(recordingStartMs: number): Promise<string | null> {
+    const history = await this._fetchRecentMatchHistory(3)
+    if (!history) return null
+    const matchId = pickHistoryMatchIdForRecording(history, recordingStartMs)
+    if (!matchId && history.length > 0) {
+      console.log('[RiotLocalApi] History fallback: no match aligned with recording start — skipping')
+    }
+    return matchId
   }
 
   /**
@@ -1926,7 +1931,7 @@ export class RiotLocalApi {
     }
 
     if (!timeline.matchId && this.region && this.ownPuuid && shouldUseMatchHistoryFallback(timeline)) {
-      const latestId = await this._fetchLatestMatchId()
+      const latestId = await this._fetchLatestMatchId(timeline.recordingStartTime)
       if (latestId) {
         timeline.matchId = latestId
         console.log(`[RiotLocalApi] enrich — matchId from history: ${latestId}`)
