@@ -58,6 +58,14 @@ function maintain(now: number, retentionDays = 14, untrackedCapBytes?: number) {
 }
 
 describe('untracked recording files are never deleted silently', () => {
+  it('counts and warns about owned MKV recordings while leaving user MKVs alone', () => {
+    const now = Date.UTC(2026, 10, 8)
+    const ours = untracked('captured.mkv', 2, 30, now)
+    const own = videoFile('user.mkv', 2, 30, now)
+    expect(getStorageBreakdown(new RecordingsStore(), null, saveDir)).toMatchObject({ orphanCount: 1, orphanBytes: 2 * MB })
+    expect(maintain(now).untrackedWarnings).toEqual([expect.objectContaining({ path: ours })])
+    expect(fs.existsSync(own)).toBe(true)
+  })
   it('warns first (count + size) and keeps the file', () => {
     const now = Date.UTC(2026, 10, 8)
     const file = untracked('old.mp4', 2, 30, now)
