@@ -18,6 +18,7 @@ import {
 } from './match-coaching-context'
 import type { SkillProfileSnapshot } from '../../src/lib/skill-profile'
 import { normalizeValorantCoachingStats, enforceValorantCoachingQuality, type CoachingDataQuality } from './valorant-coaching-quality'
+import { hasCompleteRiotKillEvents } from './valorant-kill-completeness'
 
 /** Slim Riot MatchDetails subset for coaching prompts (avoids multi‑MB raw JSON). */
 export interface MatchDetailsLite {
@@ -331,7 +332,11 @@ export function prepareMatchDataForUpload(
   }
 
   logPlantCoordStats(timeline, 'upload')
-  if (timeline.game === 'valorant') upload.dataQuality = enforceValorantCoachingQuality(upload, timeline)
+  if (timeline.game === 'valorant') {
+    upload.dataQuality = enforceValorantCoachingQuality(upload, timeline)
+    // Re-prove the actual outgoing arrays after quality filtering; never trust a saved flag.
+    upload.killEventsComplete = hasCompleteRiotKillEvents({ ...upload, matchDetails: timeline.matchDetails })
+  }
   return upload
 }
 

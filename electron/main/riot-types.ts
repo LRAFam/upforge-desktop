@@ -398,6 +398,8 @@ export interface MatchData {
   // Events (populated from Riot MatchDetails API post-match)
   events: GameEvent[]
   killEvents: KillEvent[]
+  /** True only after exact comparison with every saved Riot round/player kill list. */
+  killEventsComplete?: boolean
   playerKills: KillEvent[]
   playerDeaths: KillEvent[]
   spikePlants: SpikePlantedEvent[]

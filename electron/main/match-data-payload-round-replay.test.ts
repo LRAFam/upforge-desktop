@@ -101,6 +101,45 @@ describe('prepareMatchDataForUpload roundReplay', () => {
   })
 })
 
+function completeTimeline(): MatchData {
+  const timeline = timelineWithKills()
+  const ids = ['own-puuid', 'enemy-puuid', ...Array.from({ length: 8 }, (_, i) => `other-${i}`)]
+  timeline.finalScore = { allyScore: 1, enemyScore: 0 }
+  timeline.teamSnapshot = ids.map((puuid, i) => ({ ...timeline.teamSnapshot[0], puuid,
+    team: i < 5 ? 'Blue' : 'Red', kills: i === 0 ? 1 : 0, deaths: i === 1 ? 1 : 0 }))
+  timeline.matchDetails!.players = timeline.teamSnapshot.map(p => ({ subject: p.puuid, teamId: p.team,
+    stats: { kills: p.kills, deaths: p.deaths, assists: 0, score: 200, roundsPlayed: 1 } }))
+  timeline.matchDetails!.roundResults = [{ roundNum: 0, winningTeam: 'Blue', playerStats: ids.map(subject => ({
+    subject, kills: subject === 'own-puuid' ? timeline.matchDetails!.kills : [],
+  })) }]
+  return timeline
+}
+
+describe('upload kill completeness proof', () => {
+  it('marks only the verified outgoing complete event set', () => {
+    const upload = prepareMatchDataForUpload(completeTimeline())
+    expect(upload?.dataQuality?.status).toBe('verified_fields_only')
+    expect(upload?.killEventsComplete).toBe(true)
+    expect(upload?.killEvents).toHaveLength(1)
+  })
+
+  it('does not trust a saved completeness flag when provider rows are missing', () => {
+    const timeline = completeTimeline()
+    timeline.killEventsComplete = true
+    timeline.matchDetails!.roundResults = []
+    expect(prepareMatchDataForUpload(timeline)?.killEventsComplete).toBe(false)
+  })
+
+  it('does not mark facts that the quality boundary removed as complete', () => {
+    const timeline = completeTimeline()
+    timeline.finalStats!.kills = 2
+    const upload = prepareMatchDataForUpload(timeline)
+    expect(upload?.dataQuality?.status).toBe('blocked')
+    expect(upload?.killEvents).toEqual([])
+    expect(upload?.killEventsComplete).toBe(false)
+  })
+})
+
 it('carries versioned CS2 metrics through the upload without replacing null or zero', () => {
   const timeline = timelineWithKills()
   timeline.game = 'cs2'
