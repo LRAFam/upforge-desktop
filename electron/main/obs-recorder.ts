@@ -1473,11 +1473,21 @@ export class OBSRecorder {
       const response = await withTimeout(shutdownRequest, 5000, 'OBS stop request timed out. Restart OBS.')
       if (response.outputPath) this._outputPath = response.outputPath
     }
-    if (!this._connected) {
+    // OBS crashed mid-match: no process means no output, so the file it left (crash-safe MKV /
+    // hybrid MP4) is final. Release ownership and hand back that path instead of failing the match.
+    let obsGone = false
+    if (!this._connected && this._obsProcessDiedDuringMatch && !(await isObsProcessRunning())) {
+      obsGone = true
+      log.warn('[OBSRecorder] OBS exited during the match — treating recording as stopped:', this._outputPath)
+    }
+    if (!this._connected && !obsGone) {
       const result = await withTimeout(this.connect(), 5000, 'OBS reconnect timed out')
       if (!result.ok) throw new Error('Cannot reach OBS to confirm recording stopped. Restart OBS.')
     }
-    if (this._clipsOnlySession) {
+    if (obsGone) {
+      if (this._clipsOnlySession) this._outputPath = null
+      this._replayBufferActive = false
+    } else if (this._clipsOnlySession) {
       if (!shutdownRequest) await withTimeout(this._obs.call('StopReplayBuffer'), 5000, 'OBS replay buffer stop timed out')
       await waitForRecordingStopped(() => this._obs.call('GetReplayBufferStatus'))
       this._replayBufferActive = false
@@ -1498,7 +1508,8 @@ export class OBSRecorder {
     this._clipsOnlySession = false
     this._disconnectedDuringRecording = false
     this._noteRecordingStopped()
-    if (this._outputPath) await this._waitForRecordingFile(this._outputPath)
+    // After a crash the file only exists if OBS got to write it; the match-end path scan handles the rest.
+    if (this._outputPath && (!obsGone || existsSync(this._outputPath))) await this._waitForRecordingFile(this._outputPath)
     // A capture failure already sent the stopped state and its error. Successful
     // cleanup must not report that same failure again as a separate stop error.
     if (!this._recordingFailure && !suppressStoppedStatus) {
