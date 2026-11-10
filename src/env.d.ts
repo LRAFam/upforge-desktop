@@ -1010,7 +1010,7 @@ declare global {
       recordings: {
         get: () => Promise<PendingRecording[]>
         listAll: (opts?: { allAccounts?: boolean }) => Promise<Array<PendingRecording & { riotAccountRole?: 'main' | 'alt' | null }>>
-        analyse: (id: string) => Promise<{ ok?: boolean; error?: string }>
+        analyse: (id: string, focusAreas?: string[]) => Promise<{ ok?: boolean; error?: string }>
         retryMatchStats: (id: string) => Promise<{
           ok: boolean
           error?: string

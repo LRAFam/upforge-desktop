@@ -82,9 +82,10 @@ describe('recordings.json split — migration', () => {
     const store = openStore()
     const saved = store.add({ ...row(999), path: path.join(runtime.root, 'not-written-yet.mp4'),
       fileFinalizing: true, savedOffline: true, autoAnalyseRequested: true, pendingClipBookmarks: [12000] })
+    store.setSubmissionFocusAreas(saved.id, ['Trading'])
     await store.flush()
     const reopened = openStore()
-    expect(reopened.getById(saved.id)).toMatchObject({ fileFinalizing: true, savedOffline: true, autoAnalyseRequested: true, pendingClipBookmarks: [12000] })
+    expect(reopened.getById(saved.id)).toMatchObject({ fileFinalizing: true, savedOffline: true, autoAnalyseRequested: true, pendingClipBookmarks: [12000], submissionFocusAreas: ['Trading'] })
     expect(reopened.getPending().some(rec => rec.id === saved.id)).toBe(true)
     expect(reopened.forUser(USER + 1).getById(saved.id)).toBeUndefined()
     reopened.markFileFinalized(saved.id)

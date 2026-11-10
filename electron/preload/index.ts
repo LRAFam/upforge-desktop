@@ -178,7 +178,7 @@ const api = {
   recordings: {
     get: () => ipcRenderer.invoke('recordings:get'),
     listAll: (opts?: { allAccounts?: boolean }) => ipcRenderer.invoke('recordings:list-all', opts),
-    analyse: (id: string) => ipcRenderer.invoke('recordings:analyse', { id }),
+    analyse: (id: string, focusAreas?: string[]) => ipcRenderer.invoke('recordings:analyse', { id, focusAreas }),
     retryMatchStats: (id: string) => ipcRenderer.invoke('recordings:retry-match-stats', { id }),
     saveToCloud: (id: string) =>
       ipcRenderer.invoke('recordings:save-to-cloud', { id }) as Promise<import('../../src/env').SaveToCloudResult>,

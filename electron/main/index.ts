@@ -6,6 +6,7 @@ import { askQuitChoice } from './quit-dialog'
 import { canUseDeveloperTools, devOnly } from './dev-access'
 import { createCoalescedNotifier, createVodProbeSweep } from './vod-probe-sweep'
 import { createRecordingFileFinalizer } from './recording-file-finalizer'
+import { submissionFocusAreas } from '../../src/lib/submission-focus'
 import { createCallRateLogger, startMainLoopLagMonitor } from './main-loop-lag'
 import { saveReplay } from './valorant-replay-download'
 import { ValorantReplaySync, type ReplaySyncState } from './valorant-replay-sync'
@@ -6753,6 +6754,7 @@ async function performUploadAndAnalyse(
       timeline,
       coachingExtras,
       recordingId,
+      focusAreas: storedRecording?.submissionFocusAreas,
       onboardingBonus: storedRecording?.onboardingBonus === true,
       onboardingAdminTest: storedRecording?.onboardingAdminTest === true,
       prepareDuelClips: timeline && duelClipGames.has(game)
@@ -8352,13 +8354,25 @@ async function startApp(): Promise<void> {
     return { ok: true as const, analysisReadiness }
   })
 
-  ipcMain.handle('recordings:analyse', async (_e, { id }: { id: string }) => {
+  ipcMain.handle('recordings:analyse', async (_e, { id, focusAreas }: { id: string; focusAreas?: unknown }) => {
     if (productionVodFixtures.getById(id)) {
       return { error: 'Production fixtures are read-only', code: 'production_fixture_read_only' }
     }
     let recording = recordingsStore.getById(id)
     if (!recording) {
       return { error: 'Recording not found', code: 'not_found' }
+    }
+    try {
+      const focus = submissionFocusAreas(focusAreas)
+      if (focus) {
+        const owner = getActiveUserId()
+        const store = recordingsStore.forUser(owner)
+        store.setSubmissionFocusAreas(id, focus)
+        await store.flush()
+        if (getActiveUserId() !== owner) return { error: 'Your account changed. Open the recording again.', code: 'session_changed' }
+      }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Invalid focus area', code: 'invalid_focus' }
     }
 
     // Failed analysis with VOD already on S3 — retry without re-upload.
@@ -8418,7 +8432,7 @@ async function startApp(): Promise<void> {
           agent: recording!.agent,
         }, getActiveUserId())
         try {
-          await uploadManager.retrySubmission(recording!.jobId!)
+          await uploadManager.retrySubmission(recording!.jobId!, recording!.submissionFocusAreas)
           if ((recording!.game ?? 'valorant') === 'valorant') {
             // The retried job still holds the first upload's match_data — re-send fresh stats.
             const resent = await resendMatchDataForRetry(
@@ -8580,6 +8594,7 @@ async function startApp(): Promise<void> {
             recording.game,
             timeline,
             coachingExtras,
+            recording.submissionFocusAreas,
           )
           recordingsStore.markAnalysed(recording.id, result.job_id)
           notifyRecordingsUpdated()

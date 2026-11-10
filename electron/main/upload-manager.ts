@@ -24,6 +24,7 @@ import {
   type MultipartResumeState,
 } from './multipart-upload-state'
 import { getApiBaseUrl } from './api-base'
+import { submissionFocusAreas } from '../../src/lib/submission-focus'
 
 export interface UploadOptions {
   videoPath: string
@@ -40,6 +41,8 @@ export interface UploadOptions {
   trainingConsent?: boolean
   /** Supported rank and client-version context for coaching. */
   coachingExtras?: CoachingSubmissionExtras
+  /** Explicit request for this recording, optional for automatic submissions. */
+  focusAreas?: string[]
   /** Skip heavy match_data on presign — sent at complete() instead. */
   deferMatchDataOnPresign?: boolean
   /** Latest coaching extras (e.g. after parallel Riot enrich). Used at complete(). */
@@ -138,6 +141,7 @@ export function buildDesktopPresignBody(
     agent: submissionCtx.agent ?? opts.agent,
     game_mode: submissionCtx.game_mode,
     file_size_bytes: totalBytes,
+    focus_areas: submissionFocusAreas(opts.focusAreas),
     ...(opts.recordingId ? { client_recording_id: opts.recordingId } : {}),
     ...(opts.onboardingBonus ? { onboarding_bonus: true } : {}),
     ...(opts.onboardingAdminTest ? { onboarding_admin_test: true } : {}),
@@ -321,6 +325,7 @@ export class UploadManager {
     game: string,
     timeline?: MatchData | null,
     coachingExtras?: CoachingSubmissionExtras,
+    focusAreas?: string[],
   ): Promise<UploadResult> {
     const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
@@ -329,6 +334,7 @@ export class UploadManager {
     const ctx = submissionContextFromTimeline(timeline ?? null, coachingExtras)
     const body = JSON.stringify({
       game,
+      focus_areas: submissionFocusAreas(focusAreas),
       map: ctx.map,
       agent: ctx.agent,
       game_mode: ctx.game_mode,
@@ -348,14 +354,14 @@ export class UploadManager {
   }
 
   /** Re-queue analysis for a failed desktop submission (VOD already on S3). */
-  async retrySubmission(jobId: string): Promise<void> {
+  async retrySubmission(jobId: string, focusAreas?: string[]): Promise<void> {
     const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/${jobId}/retry`,
-      '{}',
+      JSON.stringify({ focus_areas: submissionFocusAreas(focusAreas) }),
       token,
     )
   }
@@ -549,6 +555,7 @@ export class UploadManager {
       `${apiUrl}/api/desktop-submissions/complete`,
       JSON.stringify({
         job_id,
+        focus_areas: submissionFocusAreas(opts.focusAreas),
         agent:      completeCtx.agent ?? opts.agent ?? undefined,
         map:        completeCtx.map ?? opts.map ?? undefined,
         game_mode:  completeCtx.game_mode ?? gameModeForApi(opts.timeline?.gameMode) ?? undefined,

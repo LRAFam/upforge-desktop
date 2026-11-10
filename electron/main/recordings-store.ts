@@ -55,6 +55,8 @@ export interface PendingRecording {
   savedOffline?: boolean
   /** OBS is confirmed stopped but its owned file is not stable/readable yet. */
   fileFinalizing?: boolean
+  /** Explicit player request for this recording's review; owner/game come from this catalogue row. */
+  submissionFocusAreas?: string[]
   pendingClipBookmarks?: number[]
   captureRecordingStartTime?: number | null
   path: string
@@ -385,6 +387,13 @@ export class RecordingsStore {
     if (!recording) return
     delete recording.fileFinalizing
     try { recording.fileSizeBytes = fs.statSync(recording.path).size } catch { /* next probe will report missing */ }
+    this.persist()
+  }
+
+  setSubmissionFocusAreas(id: string, areas: string[]): void {
+    const recording = this.recordings.find(item => item.id === id)
+    if (!recording) return
+    recording.submissionFocusAreas = [...areas]
     this.persist()
   }
 

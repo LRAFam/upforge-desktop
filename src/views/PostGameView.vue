@@ -598,6 +598,18 @@
         </div>
 
         <div class="mt-4 flex flex-col gap-2.5">
+          <label v-if="!isDemoWaitFlow" class="text-xs text-zinc-400">
+            Focus for this review (optional)
+            <input
+              v-model="submissionFocusText"
+              type="text"
+              maxlength="200"
+              placeholder="For example, positioning during close fights"
+              class="mt-1 w-full rounded border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+              :disabled="analysing || savingToCloud"
+            />
+            <span class="mt-1 block">Leave blank to keep your saved focus.</span>
+          </label>
           <GamingButton
             v-if="isDemoWaitFlow"
             variant="primary-sm"
@@ -1085,6 +1097,8 @@ const errorDiagnostics = computed(() => errorDetails.value?.failureDiagnostics ?
 const creditRefunded = computed(() => errorDetails.value?.creditRefunded ?? /refunded/i.test(errorMessage.value))
 const canRetryAnalysis = computed(() => errorDetails.value?.canRetry ?? (!clipsOnlyError.value && !needsUpgrade.value))
 const pendingRecordingId = ref<string | null>(null)
+const submissionFocusText = ref('')
+watch(pendingRecordingId, () => { submissionFocusText.value = '' })
 const pendingAnalysisReady = ref(false)
 const pendingAnalysisMessage = ref('Syncing match stats…')
 const pendingAnalysisState = ref<string | null>(null)
@@ -2259,7 +2273,8 @@ async function analyseNow() {
   analysing.value = true
   state.value = 'uploading'
   try {
-    const result = await window.api.recordings.analyse(pendingRecordingId.value) as {
+    const result = await window.api.recordings.analyse(pendingRecordingId.value,
+      submissionFocusText.value.trim() ? [submissionFocusText.value.trim()] : undefined) as {
       ok?: boolean
       error?: string
       code?: string
