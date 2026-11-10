@@ -335,19 +335,49 @@ export class SettingsManager {
       const result = { ...merged, ...applyRecordingPresetFields(merged) }
       if (!beforeMigrate || autoAnalyseConsent.migrated || autoOpenBrowserMigrate.migrated) {
         try {
-          fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
-          fs.writeFileSync(this.filePath, JSON.stringify(result, null, 2))
+          this.writeFileAtomic(JSON.stringify(result, null, 2))
         } catch (err: unknown) {
           console.error('[SettingsManager] Failed to persist obs preserve-scene migration:', err)
         }
       }
       return result
-    } catch {
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') this.preserveCorruptFile(err)
       return {
         ...DEFAULTS,
         obsPreserveSceneDefaultV2: true,
         autoOpenBrowserInAppV1: true,
       }
+    }
+  }
+
+  /** Write to a temp file and rename over settings.json so a crash mid-write can't truncate it. */
+  private writeFileAtomic(contents: string): void {
+    fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
+    const tmp = `${this.filePath}.${process.pid}.tmp`
+    try {
+      const fd = fs.openSync(tmp, 'w')
+      try {
+        fs.writeFileSync(fd, contents, 'utf-8')
+        fs.fsyncSync(fd)
+      } finally {
+        fs.closeSync(fd)
+      }
+      fs.renameSync(tmp, this.filePath)
+    } catch (err) {
+      try { fs.rmSync(tmp, { force: true }) } catch { /* best effort */ }
+      throw err
+    }
+  }
+
+  /** Unreadable settings fall back to defaults, but keep the original file so nothing is lost silently. */
+  private preserveCorruptFile(err: unknown): void {
+    const backup = path.join(path.dirname(this.filePath), `settings.corrupt-${Date.now()}.json`)
+    try {
+      fs.copyFileSync(this.filePath, backup)
+      console.error(`[SettingsManager] settings.json unreadable — using defaults; original kept at ${backup}:`, err)
+    } catch (copyErr: unknown) {
+      console.error('[SettingsManager] settings.json unreadable and could not be backed up:', err, copyErr)
     }
   }
 
@@ -402,8 +432,7 @@ export class SettingsManager {
       this.settings.savePath = DEFAULTS.savePath
     }
     try {
-      fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
-      fs.writeFileSync(this.filePath, JSON.stringify(this.settings, null, 2))
+      this.writeFileAtomic(JSON.stringify(this.settings, null, 2))
     } catch (err: unknown) {
       const code = (err as NodeJS.ErrnoException).code
       if (code === 'ENOSPC') {
