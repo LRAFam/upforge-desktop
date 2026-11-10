@@ -2,7 +2,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { clipTimingAfterTrim, replaceClipFileKeepingOriginal } from './clip-timing'
+import { clutchClipWindow, clipTimingAfterTrim, replaceClipFileKeepingOriginal } from './clip-timing'
+
+describe('clutchClipWindow', () => {
+  it('includes the final kill when the clutch spans more than 105 seconds', () => {
+    const window = clutchClipWindow(60_000, 190_000)
+    expect(window.startMs).toBe(45_000)
+    expect(window.startMs + window.durationMs).toBeGreaterThanOrEqual(193_000)
+  })
+
+  it('keeps the lead-in and follow-through for a short clutch', () => {
+    expect(clutchClipWindow(60_000, 80_000)).toEqual({ startMs: 45_000, durationMs: 55_000 })
+  })
+
+  it('does not seek before the recording starts', () => {
+    expect(clutchClipWindow(5_000, 20_000)).toEqual({ startMs: 0, durationMs: 40_000 })
+  })
+})
 
 describe('clipTimingAfterTrim', () => {
   const kill = (clipMs: number, vodMs: number) => ({ event_type: 'kill' as const, clip_offset_ms: clipMs, vod_offset_ms: vodMs })

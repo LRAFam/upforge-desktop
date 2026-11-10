@@ -64,3 +64,13 @@ export function combinedKillClipWindow(
   const durationMs = Math.min(last - startMs + postMs, Math.max(COMBINED_CLIP_MAX_MS, last - startMs + 3_000))
   return { startMs, durationMs }
 }
+
+/**
+ * Clutch clip: 15 s before the first kill to 20 s after the last. Capped at 120 s, but the cap
+ * never cuts off the final kill (a long clutch keeps its last kill plus 3 s).
+ */
+export function clutchClipWindow(firstKillMs: number, lastKillMs: number): { startMs: number; durationMs: number } {
+  const startMs = Math.max(0, firstKillMs - 15_000)
+  const toLast = lastKillMs - startMs
+  return { startMs, durationMs: Math.min(toLast + 20_000, Math.max(COMBINED_CLIP_MAX_MS, toLast + 3_000)) }
+}

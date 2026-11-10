@@ -24,7 +24,7 @@ import type { ClipCaptureSettings } from './settings-manager'
 import { pickDeathClips } from './death-clips'
 import { OBJECTIVE_CLIP_AFTER_MS, OBJECTIVE_CLIP_BEFORE_MS, objectiveClipTitle, pickObjectiveClips } from './objective-clips'
 import { buildClipKills } from './kill-clip-grouping'
-import { combinedKillClipWindow } from './clip-timing'
+import { clutchClipWindow, combinedKillClipWindow } from './clip-timing'
 import { buildClipEventsFromKills } from './live-kill-stamps'
 import type { ClipRecord } from './clip-store'
 import { formatLolClipsSkippedActivity } from './lol-enrich-activity'
@@ -436,8 +436,7 @@ export class ClipPipeline {
           if (clutchKills.length === 0) continue
           const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
           const last  = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
-          const startMs    = Math.max(0, first.videoOffsetMs! - 15_000)
-          const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
+          const { startMs, durationMs } = clutchClipWindow(first.videoOffsetMs!, last.videoOffsetMs!)
           let rec: ClipRecord | undefined
           try {
             rec = clipStore.add({
@@ -637,8 +636,7 @@ export class ClipPipeline {
       if (clutchKills.length === 0) continue
       const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
       const last  = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
-      const startMs    = Math.max(0, first.videoOffsetMs! - 15_000)
-      const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
+      const { startMs, durationMs } = clutchClipWindow(first.videoOffsetMs!, last.videoOffsetMs!)
       let rec: ClipRecord | undefined
       try {
         rec = clipStore.add({
