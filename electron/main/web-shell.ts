@@ -1,6 +1,6 @@
 /**
  * In-app web shell — loads upforge.gg pages inside a dedicated BrowserWindow
- * with its own web-shell Sanctum token (see web-shell-session.ts) as the web auth_token cookie.
+ * with its own web-shell Sanctum token (see web-shell-session.ts) in a host-only HttpOnly website cookie.
  */
 
 import { WEB_SHELL_PARTITION, applyWebShellCookie, noteShellApiResponse } from './web-shell-session'
@@ -54,7 +54,7 @@ async function injectAuthCookie(auth: AuthManager, frontendBase: string): Promis
   if (!watchingShellApi) {
     watchingShellApi = true
     session.fromPartition(WEB_SHELL_PARTITION).webRequest.onCompleted(
-      { urls: [`${getApiBaseUrl()}/*`] },
+      { urls: [`${getApiBaseUrl()}/*`, `${frontendBase.replace(/\/$/, '')}/api/browser/*`] },
       (details) => noteShellApiResponse(details.statusCode),
     )
   }
