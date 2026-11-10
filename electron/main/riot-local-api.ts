@@ -2480,7 +2480,7 @@ interface FirstBloodRound {
 }
 
 /** Earliest kill per round from Riot MatchDetails — used for first-death playstyle metrics. */
-function buildFirstBloodByRound(
+export function buildFirstBloodByRound(
   kills: Array<Record<string, unknown>>,
 ): Map<number, FirstBloodRound> {
   const map = new Map<number, FirstBloodRound>()
@@ -2496,7 +2496,8 @@ function buildFirstBloodByRound(
     const rawTsgm = k.timeSinceGameStartMillis as number | undefined
     const tsgm = (rawTsgm != null && rawTsgm > 0)
       ? rawTsgm
-      : ((k.gameTime as number) ?? Number.MAX_SAFE_INTEGER)
+      : (k.gameTime as number | undefined)
+    if (tsgm == null || !Number.isFinite(tsgm) || tsgm < 0 || tsgm >= Number.MAX_SAFE_INTEGER) continue
     const prev = map.get(round)
     if (!prev || tsgm < prev.tsgm) {
       map.set(round, { killer, victim, tsgm })
