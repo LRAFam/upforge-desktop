@@ -550,9 +550,16 @@ export function buildCs2TimelineFromDemo(
     let allyWins = 0
     let enemyWins = 0
 
+    // Sides swap at half time (and in overtime): playerInfo only holds the final side.
+    const localSteamForSides = [...steamToUserId.entries()].find(([, id]) => id === localUserId)?.[0] ?? null
+    const localSideByRound = localSteamForSides ? cs2LocalSideByRound(deaths, localSteamForSides) : new Map<number, number>()
+    let lastKnownSide: number | null = null
+
     for (let r = 0; r < roundsPlayed; r++) {
       const winnerTeam = roundWinners.get(r)
-      const won = localTeam != null && winnerTeam === localTeam
+      const roundSide: number | null = localSideByRound.get(r) ?? lastKnownSide ?? localTeam
+      if (localSideByRound.has(r)) lastKnownSide = localSideByRound.get(r)!
+      const won = roundSide != null && winnerTeam === roundSide
       if (won) allyWins++
       else if (winnerTeam != null) enemyWins++
       const planted = spikePlants.some((p) => p.round === r)
@@ -704,6 +711,41 @@ export function buildCs2TimelineFromDemo(
     log.warn('[CS2DemoParser] Parse failed:', (err as Error).message)
     return null
   }
+}
+
+/**
+ * The local player's side (2 = T, 3 = CT) per round, read from player_death `*_team_num`
+ * (the side at kill time). Rounds without the local player in a kill use any known teammate.
+ */
+export function cs2LocalSideByRound(deaths: JsonRow[], localSteamId: string): Map<number, number> {
+  const sides = new Map<number, number>()
+  const rowsOf = (row: JsonRow): Array<[string | null, number | null]> => [
+    [steamIdKey(row.user_steamid ?? row.user_steam_id), normalizeTeamId(row.user_team_num)],
+    [steamIdKey(row.attacker_steamid ?? row.attacker_steam_id), normalizeTeamId(row.attacker_team_num)],
+  ]
+  const roundOf = (row: JsonRow) => Math.max(0, rowNumber(row, 'total_rounds_played') ?? 0)
+  const isSide = (t: number | null): t is number => t === 2 || t === 3
+  for (const row of deaths) {
+    for (const [steam, team] of rowsOf(row)) {
+      if (steam === localSteamId && isSide(team)) sides.set(roundOf(row), team)
+    }
+  }
+  const teammates = new Set<string>()
+  for (const row of deaths) {
+    const side = sides.get(roundOf(row))
+    if (side == null) continue
+    for (const [steam, team] of rowsOf(row)) {
+      if (steam && steam !== localSteamId && team === side) teammates.add(steam)
+    }
+  }
+  for (const row of deaths) {
+    const round = roundOf(row)
+    if (sides.has(round)) continue
+    for (const [steam, team] of rowsOf(row)) {
+      if (steam && teammates.has(steam) && isSide(team)) { sides.set(round, team); break }
+    }
+  }
+  return sides
 }
 
 /**

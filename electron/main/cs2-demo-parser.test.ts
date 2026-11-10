@@ -96,6 +96,45 @@ describe('buildCs2TimelineFromDemo', () => {
     expect(timeline?.finalScore).toEqual({ allyScore: 2, enemyScore: 1 })
   })
 
+  it('judges round winners against the local side of that round (half-time swap)', () => {
+    vi.mocked(parseHeader).mockReturnValue({ map_name: 'de_mirage', playback_ticks: 128000, playback_time: 2000 })
+    // playerInfo holds the end-of-match side (CT); the player was T in the first half.
+    vi.mocked(parsePlayerInfo).mockReturnValue([
+      { name: 'CHEWI', steamid: '76561198000000001', team_number: 3 },
+      { name: 'Enemy', steamid: '76561198000000002', team_number: 2 },
+    ])
+    const kill = (tick: number, round: number, localSide: number) => ({
+      tick,
+      total_rounds_played: round,
+      attacker_name: 'CHEWI',
+      attacker_steamid: '76561198000000001',
+      attacker_team_num: localSide,
+      user_name: 'Enemy',
+      user_steamid: '76561198000000002',
+      user_team_num: localSide === 2 ? 3 : 2,
+      weapon: 'ak47',
+    })
+    vi.mocked(parseEvent).mockImplementation((_path, eventName) => {
+      if (eventName === 'round_start') return [{ tick: 0, total_rounds_played: 0 }]
+      if (eventName === 'player_death') return [kill(6400, 0, 2), kill(16000, 1, 3)]
+      if (eventName === 'round_end') return [{ winner: 'T', tick: 12800 }, { winner: 'CT', tick: 19200 }]
+      return []
+    })
+
+    const timeline = buildCs2TimelineFromDemo({
+      game: 'cs2',
+      demoPath: '/tmp/match.dem',
+      map: null,
+      matchStartTime: 1_700_000_000_000,
+      recordingStartTime: 1_700_000_000_000,
+      localPlayerName: 'CHEWI',
+      skipSpatial: true,
+    })
+
+    expect(timeline?.roundSummaries?.map((r) => r.winningTeam)).toEqual(['ALLY', 'ALLY'])
+    expect(timeline?.finalScore).toEqual({ allyScore: 2, enemyScore: 0 })
+  })
+
   it('subtracts demo anchor tick from kill timestamps', () => {
     vi.mocked(parseHeader).mockReturnValue({
       map_name: 'de_dust2',
