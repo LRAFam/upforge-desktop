@@ -27,6 +27,7 @@ import { sanitizeDemoClientName, sanitizeDemoMapName } from './demo-text-sanitiz
 import { getKnownCs2SteamId, rememberParsedCs2SteamId, type Cs2LocalMatch } from './cs2-identity-state'
 import type { FirstBloodEvent, KillEvent, MatchData, RoundSummary, SpikeDefusedEvent, SpikeDetonatedEvent, SpikePlantedEvent } from './riot-types'
 import type { DemoHeaderPeek } from './demo-header-peek'
+import { validCapturedCs2SteamId } from './cs2-upload-identity'
 
 const DEFAULT_TICK_RATE = 64
 
@@ -308,9 +309,10 @@ export function buildCs2TimelineFromDemo(
       return name.toLowerCase() === localName.toLowerCase()
     }
 
-    // Prefer the account's saved Steam64: names change and collide, Steam IDs don't.
+    // A captured recording owner takes priority over today's linked account or display name.
     let localMatchedBy: Cs2LocalMatch = null
-    const knownSteamId = getKnownCs2SteamId()
+    const capturedSteamId = validCapturedCs2SteamId(opts.cs2Live?.playerSteamId) ? opts.cs2Live.playerSteamId : null
+    const knownSteamId = capturedSteamId ?? getKnownCs2SteamId()
     const bySteam = knownSteamId ? steamToUserId.get(knownSteamId) : undefined
     if (bySteam != null) {
       localUserId = bySteam
@@ -646,6 +648,7 @@ export function buildCs2TimelineFromDemo(
     } : null
 
     const localSteamId = [...steamToUserId.entries()].find(([, id]) => id === localUserId)?.[0]
+    if (capturedSteamId && localSteamId === capturedSteamId) timeline.playerSteamId = capturedSteamId
     if (localSteamId && localName) {
       const lower = localName.toLowerCase()
       const sameName = [...userIdToName.values()].filter(n => n.toLowerCase() === lower).length

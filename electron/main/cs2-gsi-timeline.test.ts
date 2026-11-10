@@ -3,7 +3,7 @@ import { Cs2GsiTracker, cs2LiveDeathsForVod, cs2LiveKillsForVod, cs2LiveRoundSum
 import { hasRichMatchData } from './match-data-quality'
 import { emptyMatchData, timelineDeathsForVod, timelineKillsForVod } from './recording-sync'
 
-const ME = '76561190000000001'
+const ME = '76561198000000001'
 function p(round: number, extra: Partial<Cs2GsiPayload['player']> & { steamid?: string } = {}, roundPhase = 'live', map: Partial<NonNullable<Cs2GsiPayload['map']>> = {}): Cs2GsiPayload {
   return {
     provider: { steamid: ME },
@@ -20,9 +20,10 @@ describe('CS2 GSI live timeline', () => {
     t.ingest(p(0), 2_000)
     t.ingest(p(0, { match_stats: { kills: 1, deaths: 0, assists: 0 } }), 11_000)
     // died: GSI now describes the teammate we spectate
-    t.ingest(p(0, { steamid: '76561190000000002' }), 21_000)
+    t.ingest(p(0, { steamid: '76561198000000002' }), 21_000)
     t.ingest(p(1, { match_stats: { kills: 1, deaths: 1, assists: 0 } }, 'freezetime', { round_wins: { 1: 't_win_elimination' }, team_t: { score: 1 } }), 40_000)
     const s = t.summary()!
+    expect(s.playerSteamId).toBe(ME)
     expect(s.events).toEqual([
       { type: 'kill', round: 0, videoOffsetMs: 10_000 },
       { type: 'death', round: 0, videoOffsetMs: 20_000 },
@@ -53,6 +54,24 @@ describe('CS2 GSI live timeline', () => {
     expect(hasRichMatchData(tl)).toBe(false)
     expect(timelineKillsForVod(tl)).toHaveLength(2)
     expect(timelineDeathsForVod(tl)).toHaveLength(0)
+  })
+
+  it('does not capture a spectated player or retain an owner after the provider changes', () => {
+    const t = new Cs2GsiTracker()
+    t.start(0)
+    t.ingest(p(0, { steamid: '76561198000000002' }), 1)
+    t.ingest(p(0, { steamid: '76561198000000002' }, 'over', { round_wins: { 1: 'ct_win_elimination' } }), 2)
+    expect(t.summary()?.playerSteamId).toBeUndefined()
+    t.ingest(p(1), 3)
+    expect(t.summary()?.playerSteamId).toBe(ME)
+    const otherProvider = p(1)
+    otherProvider.provider = { steamid: '76561198000000002' }
+    t.ingest(otherProvider, 4)
+    t.ingest(p(2), 5)
+    expect(t.summary()?.playerSteamId).toBeUndefined()
+    t.start(10)
+    t.ingest(p(0), 11)
+    expect(t.summary()?.playerSteamId).toBe(ME)
   })
 
   it('times each round end it sees happen (anchors demo time to the video)', () => {

@@ -10,6 +10,7 @@ vi.mock('@laihoe/demoparser2', () => ({
 
 import { parseEvent, parseHeader, parsePlayerInfo } from '@laihoe/demoparser2'
 import { buildCs2TimelineFromDemo, peekCs2DemoHeader } from './cs2-demo-parser'
+import { resetCs2IdentityState, setKnownCs2Identity } from './cs2-identity-state'
 
 describe('peekCs2DemoHeader', () => {
   beforeEach(() => {
@@ -33,10 +34,31 @@ describe('peekCs2DemoHeader', () => {
 
 describe('buildCs2TimelineFromDemo', () => {
   beforeEach(() => {
+    resetCs2IdentityState()
     vi.mocked(parseHeader).mockReset()
     vi.mocked(parseEvent).mockReset()
     vi.mocked(parsePlayerInfo).mockReset()
     vi.spyOn(fs, 'existsSync').mockReturnValue(true)
+  })
+
+  it('uses the recorded GSI owner even after the linked account or name changes', () => {
+    setKnownCs2Identity('76561198000000002', 'api')
+    vi.mocked(parseHeader).mockReturnValue({ map_name: 'de_mirage' })
+    vi.mocked(parsePlayerInfo).mockReturnValue([
+      { name: 'Captured', steamid: '76561198000000001', team_number: 3 },
+      { name: 'Current', steamid: '76561198000000002', team_number: 2 },
+    ])
+    vi.mocked(parseEvent).mockImplementation((_path, eventName) => eventName === 'round_end' ? [{ winner: 'CT', tick: 6400 }] : [])
+    const options = {
+      game: 'cs2' as const, demoPath: '/tmp/match.dem', map: null,
+      matchStartTime: 1000, recordingStartTime: 1000, localPlayerName: 'Current', skipSpatial: true,
+    }
+    const captured = { source: 'gsi' as const, playerSteamId: '76561198000000001', events: [], rounds: [], stats: null, allyScore: null, enemyScore: null }
+    const timeline = buildCs2TimelineFromDemo({ ...options, cs2Live: captured })
+    expect(timeline?.playerName).toBe('Captured')
+    expect(timeline?.playerSteamId).toBe(captured.playerSteamId)
+    expect(buildCs2TimelineFromDemo(options)?.playerSteamId).toBeUndefined()
+    expect(buildCs2TimelineFromDemo({ ...options, cs2Live: { ...captured, playerSteamId: '76561198000000999' } })?.playerSteamId).toBeUndefined()
   })
 
   it('builds kill timeline from demoparser2 events', () => {

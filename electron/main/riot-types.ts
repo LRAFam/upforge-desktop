@@ -330,6 +330,8 @@ export interface SessionState {
 
 /** Full enriched match data — superset of MatchTimeline */
 export interface MatchData {
+  /** CS2 demo target corroborated by this recording’s captured GSI owner. */
+  playerSteamId?: string
   /** Measured CS2 demo statistics; null fields mean unavailable, never inferred. */
   match_stats?: import('./cs2-match-stats').Cs2MatchStats | null
   /** CS2: the player's flashes from flash_duration samples (cs2-round-facts.ts). */

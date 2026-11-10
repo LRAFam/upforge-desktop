@@ -9,6 +9,7 @@
  * Timestamps come from GSI delivery (buffer 0.1 s, throttle 0.5 s), so they are about ±1 s.
  */
 import type { KillEvent } from './riot-types'
+import { validCapturedCs2SteamId } from './cs2-upload-identity'
 
 export interface Cs2GsiPlayer {
   steamid?: string
@@ -49,6 +50,8 @@ export interface Cs2LiveRound {
 
 export interface Cs2LiveSummary {
   source: 'gsi'
+  /** Recording-time provider/player agreement; absent for legacy or conflicting GSI owners. */
+  playerSteamId?: string
   events: Cs2LiveEvent[]
   /**
    * When GSI saw each round end (round.phase → "over"), as positions in the recording. Anchors demo
@@ -69,6 +72,9 @@ function side(team: string | undefined): 'CT' | 'T' | null {
 
 export class Cs2GsiTracker {
   private recordingStartMs: number | null = null
+  private providerSteamId: string | null = null
+  private playerSteamId: string | null = null
+  private identityConflict = false
   private events: Cs2LiveEvent[] = []
   private roundEnds: Array<{ round: number; videoOffsetMs: number }> = []
   private lastRoundPhase: string | null = null
@@ -86,6 +92,9 @@ export class Cs2GsiTracker {
   /** Start a fresh match. `recordingStartMs` is when OBS started writing the file. */
   start(recordingStartMs: number | null): void {
     this.recordingStartMs = recordingStartMs
+    this.providerSteamId = null
+    this.playerSteamId = null
+    this.identityConflict = false
     this.events = []
     this.roundEnds = []
     this.lastRoundPhase = null
@@ -122,6 +131,15 @@ export class Cs2GsiTracker {
 
     const player = payload.player
     const local = !!player?.steamid && player.steamid === payload.provider?.steamid
+    const providerId = payload.provider?.steamid
+    if (validCapturedCs2SteamId(providerId)) {
+      if (this.providerSteamId && providerId !== this.providerSteamId) {
+        this.identityConflict = true
+        this.playerSteamId = null
+      }
+      this.providerSteamId ??= providerId
+      if (local && !this.identityConflict) this.playerSteamId = providerId
+    }
     const offset = Math.max(0, nowMs - this.recordingStartMs)
     const roundPhase = (payload.round?.phase ?? '').toLowerCase()
     if (roundPhase) {
@@ -185,6 +203,7 @@ export class Cs2GsiTracker {
     if (!this.events.length && !rounds.length && !this.lastStats) return null
     return {
       source: 'gsi',
+      ...(this.playerSteamId ? { playerSteamId: this.playerSteamId } : {}),
       events: [...this.events],
       roundEnds: [...this.roundEnds],
       rounds,

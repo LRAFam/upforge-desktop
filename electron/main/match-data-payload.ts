@@ -19,6 +19,7 @@ import {
 import { normalizeValorantCoachingStats, enforceValorantCoachingQuality, type CoachingDataQuality } from './valorant-coaching-quality'
 import { hasCompleteRiotKillEvents } from './valorant-kill-completeness'
 import { videoOffsetProvenance } from './video-offset-provenance'
+import { capturedCs2PlayerSteamId } from './cs2-upload-identity'
 
 /** Slim Riot MatchDetails subset for coaching prompts (avoids multi‑MB raw JSON). */
 export interface MatchDetailsLite {
@@ -268,8 +269,10 @@ export function prepareMatchDataForUpload(
   timeline.roundPlants = roundPlants
   const { allyAgents, enemyAgents } = buildTeamComp(timeline)
 
+  const playerSteamId = capturedCs2PlayerSteamId(timeline)
   const upload: UploadMatchData = {
     game: timeline.game,
+    ...(playerSteamId ? { playerSteamId } : {}),
     matchId: timeline.matchId,
     puuid: timeline.puuid,
     region: timeline.region,
