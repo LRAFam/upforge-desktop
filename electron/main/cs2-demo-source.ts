@@ -51,9 +51,9 @@ export const CS2_TIMELINE_EVENTS: ReadonlyArray<[string, string[], string[]]> = 
   ['round_start', [], TIMELINE_ROUND],
   ['round_freeze_end', [], TIMELINE_ROUND],
   // Valve's place name for the planter ("BombsiteA") names the site; the event's `site` is an entity id.
-  ['bomb_planted', ['last_place_name'], TIMELINE_ROUND],
-  ['bomb_defused', [], TIMELINE_ROUND],
-  ['bomb_exploded', [], TIMELINE_ROUND],
+  ['bomb_planted', ['last_place_name'], LIVE_ROUND],
+  ['bomb_defused', [], LIVE_ROUND],
+  ['bomb_exploded', [], LIVE_ROUND],
 ]
 
 export const CS2_STATS_EVENT_FIELDS = { playerExtra: STATS_TEAM, otherExtra: STATS_ROUND } as const

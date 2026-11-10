@@ -135,6 +135,39 @@ describe('buildCs2TimelineFromDemo', () => {
     expect(timeline?.finalScore).toEqual({ allyScore: 2, enemyScore: 0 })
   })
 
+  it('keys round_end by round number across a restart and drops warmup bomb events', () => {
+    vi.mocked(parseHeader).mockReturnValue({ map_name: 'de_mirage', playback_ticks: 128000, playback_time: 2000 })
+    vi.mocked(parsePlayerInfo).mockReturnValue([{ name: 'CHEWI', steamid: '76561198000000001', team_number: 3 }])
+    vi.mocked(parseEvent).mockImplementation((_path, eventName) => {
+      // Round 0 played, then mp_restartgame: round 0 replayed, then round 1.
+      if (eventName === 'round_start') {
+        return [{ tick: 1000, total_rounds_played: 0 }, { tick: 5000, total_rounds_played: 0 }, { tick: 9000, total_rounds_played: 1 }]
+      }
+      if (eventName === 'round_end') {
+        return [{ winner: 'T', tick: 4000 }, { winner: 'CT', tick: 8000 }, { winner: 'CT', tick: 12000 }]
+      }
+      if (eventName === 'bomb_planted') {
+        return [{ tick: 500, total_rounds_played: 0, is_warmup_period: true, user_name: 'CHEWI' }]
+      }
+      return []
+    })
+
+    const timeline = buildCs2TimelineFromDemo({
+      game: 'cs2',
+      demoPath: '/tmp/match.dem',
+      map: null,
+      matchStartTime: 1_700_000_000_000,
+      recordingStartTime: 1_700_000_000_000,
+      localPlayerName: 'CHEWI',
+      skipSpatial: true,
+    })
+
+    expect(timeline?.roundSummaries).toHaveLength(2)
+    expect(timeline?.spikePlants).toHaveLength(0)
+    expect(timeline?.matchDetails?.roundWinners?.get(0)).toBe(3)
+    expect(timeline?.matchDetails?.roundWinners?.get(1)).toBe(3)
+  })
+
   it('subtracts demo anchor tick from kill timestamps', () => {
     vi.mocked(parseHeader).mockReturnValue({
       map_name: 'de_dust2',

@@ -240,9 +240,10 @@ export function buildCs2TimelineFromDemo(
     ).filter((row) => row.is_warmup_period !== true)
     const roundStarts = safeParseEvent(source, 'round_start', [], ['total_rounds_played'])
     const roundFreezeEnds = safeParseEvent(source, 'round_freeze_end', [], ['total_rounds_played'])
-    const bombPlants = safeParseEvent(source, 'bomb_planted', ['last_place_name'], ['total_rounds_played'])
-    const bombDefuses = safeParseEvent(source, 'bomb_defused', [], ['total_rounds_played'])
-    const bombExplodes = safeParseEvent(source, 'bomb_exploded', [], ['total_rounds_played'])
+    const liveOnly = (row: JsonRow) => row.is_warmup_period !== true
+    const bombPlants = safeParseEvent(source, 'bomb_planted', ['last_place_name'], ['total_rounds_played', 'is_warmup_period']).filter(liveOnly)
+    const bombDefuses = safeParseEvent(source, 'bomb_defused', [], ['total_rounds_played', 'is_warmup_period']).filter(liveOnly)
+    const bombExplodes = safeParseEvent(source, 'bomb_exploded', [], ['total_rounds_played', 'is_warmup_period']).filter(liveOnly)
     const players = asRows(source.playerInfo())
 
     if (!deaths.length && !roundEnds.length) {
@@ -482,9 +483,30 @@ export function buildCs2TimelineFromDemo(
     const roundWinners = new Map<number, number>()
     const roundEndTimes = new Map<number, number>()
     const roundCeremonies = new Map<number, string>()
+    // Key each round_end by the round number of the round_start before it (same 0-based
+    // total_rounds_played the kills carry), so an mp_restartgame doesn't shift every round by one.
+    const startRounds = roundStarts
+      .map((row) => ({ tick: rowNumber(row, 'tick'), round: rowNumber(row, 'total_rounds_played') }))
+      .filter((s): s is { tick: number; round: number } => s.tick != null && s.round != null)
+      .sort((a, b) => a.tick - b.tick)
+    // Start row before each end; only trusted when every round_end has its own round_start.
+    const startIndexForEnd = roundEnds.map((row) => {
+      const tick = rowNumber(row, 'tick')
+      if (tick == null) return -1
+      let found = -1
+      startRounds.forEach((start, i) => { if (start.tick <= tick) found = i })
+      return found
+    })
+    const startsTrusted = startIndexForEnd.every((i) => i >= 0)
+      && new Set(startIndexForEnd).size === startIndexForEnd.length
+    const roundNumberForEnd = (index: number): number => (
+      startsTrusted ? Math.max(0, startRounds[startIndexForEnd[index]!]!.round) : index
+    )
+    let endRoundCount = 0
     roundEnds.forEach((row, index) => {
       const winner = normalizeTeamId(row.winner)
-      const roundNum = index
+      const roundNum = roundNumberForEnd(index)
+      endRoundCount = Math.max(endRoundCount, roundNum + 1)
       if (winner != null) roundWinners.set(roundNum, winner)
       const reason = rowNumber(row, 'reason', 'round_win_reason')
       const ceremony = ceremonyFromRoundEndReason(reason)
@@ -544,7 +566,7 @@ export function buildCs2TimelineFromDemo(
     })
 
     const roundsPlayed = roundEnds.length > 0
-      ? roundEnds.length
+      ? endRoundCount
       : Math.max(0, ...killEvents.map((k) => (k.round ?? 0) + 1), 0)
     const roundSummaries: RoundSummary[] = []
     let allyWins = 0
