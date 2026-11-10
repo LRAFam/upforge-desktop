@@ -16,8 +16,10 @@ import {
   type CoachingSubmissionExtras,
   type RankSnapshot,
 } from './match-coaching-context'
-import type { SkillProfileSnapshot } from '../../src/lib/skill-profile'
 import { normalizeValorantCoachingStats, enforceValorantCoachingQuality, type CoachingDataQuality } from './valorant-coaching-quality'
+import { hasCompleteRiotKillEvents } from './valorant-kill-completeness'
+import { videoOffsetProvenance } from './video-offset-provenance'
+import { capturedCs2PlayerSteamId } from './cs2-upload-identity'
 
 /** Slim Riot MatchDetails subset for coaching prompts (avoids multi‑MB raw JSON). */
 export interface MatchDetailsLite {
@@ -125,8 +127,6 @@ export type UploadMatchData = Omit<MatchData, 'events' | 'matchDetails'> & {
   /** Explicit team comps for KB routing and comp-aware coaching. */
   allyAgents?: string[]
   enemyAgents?: string[]
-  /** Rolling weakness profile from prior analyses (desktop-local, sent for continuity). */
-  skillProfile?: SkillProfileSnapshot | null
   /** Player rank snapshot at upload time. */
   rankSnapshot?: RankSnapshot | null
   /** Valorant client build when captured. */
@@ -269,8 +269,10 @@ export function prepareMatchDataForUpload(
   timeline.roundPlants = roundPlants
   const { allyAgents, enemyAgents } = buildTeamComp(timeline)
 
+  const playerSteamId = capturedCs2PlayerSteamId(timeline)
   const upload: UploadMatchData = {
     game: timeline.game,
+    ...(playerSteamId ? { playerSteamId } : {}),
     matchId: timeline.matchId,
     puuid: timeline.puuid,
     region: timeline.region,
@@ -287,6 +289,8 @@ export function prepareMatchDataForUpload(
     videoSyncOffsetMs: effectiveVideoSyncOffsetMs(timeline),
     // Measured from the round timer; lets anything that rebuilds offsets from match_data match the clips.
     roundTimerOffsetMs: timeline.roundTimerOffsetMs,
+    cs2DemoVideoShiftMs: timeline.cs2DemoVideoShiftMs,
+    videoOffsetProvenance: videoOffsetProvenance(timeline),
     roundScores: timeline.roundScores,
     finalScore: timeline.finalScore ?? deriveMatchScore(timeline) ?? null,
     killEvents: timeline.killEvents,
@@ -322,7 +326,6 @@ export function prepareMatchDataForUpload(
     coachingFacts: buildCoachingFacts(timeline),
     allyAgents: allyAgents.length ? allyAgents : undefined,
     enemyAgents: enemyAgents.length ? enemyAgents : undefined,
-    skillProfile: extras?.skillProfile ?? undefined,
     rankSnapshot: extras?.rankSnapshot ?? undefined,
     gameClientVersion: extras?.gameClientVersion ?? undefined,
     roundReplay: buildMatchRoundReplay(timeline) ?? undefined,
@@ -331,7 +334,11 @@ export function prepareMatchDataForUpload(
   }
 
   logPlantCoordStats(timeline, 'upload')
-  if (timeline.game === 'valorant') upload.dataQuality = enforceValorantCoachingQuality(upload, timeline)
+  if (timeline.game === 'valorant') {
+    upload.dataQuality = enforceValorantCoachingQuality(upload, timeline)
+    // Re-prove the actual outgoing arrays after quality filtering; never trust a saved flag.
+    upload.killEventsComplete = hasCompleteRiotKillEvents({ ...upload, matchDetails: timeline.matchDetails })
+  }
   return upload
 }
 
@@ -361,7 +368,6 @@ export function submissionContextFromTimeline(
   duel_moments?: DuelMomentManifest[]
   ally_agents?: string[]
   enemy_agents?: string[]
-  skill_profile?: SkillProfileSnapshot | null
   rank_snapshot?: RankSnapshot | null
 } {
   if (!timeline) return {}
@@ -377,7 +383,6 @@ export function submissionContextFromTimeline(
     duel_moments: duel_moments.length ? duel_moments : undefined,
     ally_agents: allyAgents.length ? allyAgents : undefined,
     enemy_agents: enemyAgents.length ? enemyAgents : undefined,
-    skill_profile: extras?.skillProfile ?? undefined,
     rank_snapshot: extras?.rankSnapshot ?? undefined,
   }
 }

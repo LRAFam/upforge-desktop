@@ -17,9 +17,26 @@ export interface MultipartResumeState {
   updatedAt: number
 }
 
-export function multipartStatePath(userDataPath: string, recordingId: string): string {
+export function multipartStatePath(userDataPath: string, recordingId: string, ownerUserId: number | null): string {
   const safe = recordingId.replace(/[^a-zA-Z0-9._-]/g, '_')
-  return path.join(userDataPath, 'multipart-state', `${safe}.json`)
+  const owner = ownerUserId === null ? 'pending-local' : path.join('users', String(ownerUserId))
+  return path.join(userDataPath, owner, 'multipart-state', `${safe}.json`)
+}
+
+/** Only the authenticated API's current ListParts result can authorize skipping a part. */
+export function serverCompletedParts(value: unknown, partCount: number): MultipartResumeState['completedParts'] {
+  // Older API deployments have no ListParts contract: safely re-upload all parts.
+  if (value === undefined) return []
+  if (!Array.isArray(value)) throw new Error('Invalid uploaded_parts response')
+  const seen = new Set<number>()
+  return value.map(raw => {
+    if (!raw || typeof raw !== 'object') throw new Error('Invalid uploaded_parts response')
+    const { part_number, etag } = raw as Record<string, unknown>
+    if (typeof part_number !== 'number' || !Number.isInteger(part_number) || part_number < 1 || part_number > partCount
+      || seen.has(part_number) || typeof etag !== 'string' || !etag.trim()) throw new Error('Invalid uploaded_parts response')
+    seen.add(part_number)
+    return { part_number, etag }
+  }).sort((a, b) => a.part_number - b.part_number)
 }
 
 export function readMultipartState(filePath: string): MultipartResumeState | null {

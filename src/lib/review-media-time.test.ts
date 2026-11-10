@@ -1,5 +1,10 @@
 import { expect, it } from 'vitest'
-import { parseReviewTime } from './review-media'
+import { parseReviewTime, reviewVideoUrl } from './review-media'
+it('encodes filename URL delimiters without changing remote media URLs', () => {
+  expect(reviewVideoUrl('/clips/round #1? 100%.mp4')).toBe('file:///clips/round%20%231%3F%20100%25.mp4')
+  expect(reviewVideoUrl('C:\\Clips\\round #1?.mp4')).toBe('file:///C:/Clips/round%20%231%3F.mp4')
+  expect(reviewVideoUrl('https://example.test/clip?token=abc#t=3')).toBe('https://example.test/clip?token=abc#t=3')
+})
 it('parses explicit media coordinates without rounding milliseconds', () => {
   expect(parseReviewTime('6:11.250')).toBe(371.25)
   expect(parseReviewTime('1:02:03.125')).toBe(3723.125)

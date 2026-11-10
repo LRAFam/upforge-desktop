@@ -78,8 +78,8 @@ describe('macOS targets and bundle', () => {
     const upload = stepBlock('Upload Mac release artifacts')
     expect(upload).toContain('dist/*.zip')
     expect(upload).toContain('dist/*.zip.blockmap')
-    const publish = stepBlock('Publish GitHub release (metadata first)')
-    expect(publish).toMatch(/dist\/\*\.zip dist\/\*\.zip\.blockmap/)
+    const publish = stepBlock('Publish verified draft release')
+    expect(publish).toContain('node scripts/publish-release.cjs dist')
   })
 
   it('declares microphone use and hardened-runtime entitlements', () => {

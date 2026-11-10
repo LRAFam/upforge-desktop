@@ -24,6 +24,7 @@ export const LOL_RECORDABLE_MODES = [
   'ARAM',
   'ARENA',
   'CUSTOM',
+  'BOT',
 ] as const
 
 export const CS2_RECORDABLE_MODES = [

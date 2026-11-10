@@ -1,7 +1,6 @@
 import type { RecordingsStore } from './recordings-store'
 import type { UploadManager } from './upload-manager'
 import { clearPendingJob } from './upload-manager'
-import { readActivePendingJob } from './user-session'
 import { getActiveAnalysisPollJobId, stopActiveAnalysisPoll } from './analysis-poll'
 import { clearDeferredUploadRetry } from './match-priority-guard'
 
@@ -36,10 +35,7 @@ export function abortInFlightAnalysis(
     deps.activeUploadRecordingIds.delete(recordingId)
   }
 
-  const pending = readActivePendingJob()
-  if (pending?.job_id && pending.job_id === rec.jobId) {
-    clearPendingJob()
-  }
+  if (rec.jobId) clearPendingJob(rec.jobId)
 
   clearDeferredUploadRetry(recordingId)
 

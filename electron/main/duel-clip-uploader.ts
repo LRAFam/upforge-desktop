@@ -73,19 +73,14 @@ export async function selectRecordedDuelMoments(
   return duelMomentsForUpload(timeline)
 }
 
-async function ensurePlayableExtractSource(
-  sourcePath: string,
-  workDir: string,
-): Promise<string> {
+/** MKV → its `_upforge.mp4` remux, extracted from in place (never a second full-VOD copy in tmp). */
+export async function ensurePlayableExtractSource(sourcePath: string): Promise<string> {
   if (!needsTranscodeForCloudUpload(sourcePath)) return sourcePath
   const remuxed = await remuxVodForUpload(sourcePath)
   if (!remuxed.ok) {
     throw new Error(remuxed.error ?? 'Could not remux OBS recording for duel clip extraction')
   }
-  const outPath = join(workDir, 'duel-source.mp4')
-  const { copyFile } = await import('fs/promises')
-  await copyFile(remuxed.outputPath, outPath)
-  return outPath
+  return remuxed.outputPath
 }
 
 type ExtractableMoment = Pick<DuelMomentManifest, 'moment_id' | 'window_start_ms' | 'window_end_ms'>
@@ -139,7 +134,7 @@ export async function extractDuelPreviewClip(opts: {
   const workDir = await mkdtemp(join(tmpdir(), 'upforge-duel-preview-'))
   try {
     const sourcePath = await resolveDuelClipSourcePath(videoPath, clipExtractor)
-    const extractSource = await ensurePlayableExtractSource(sourcePath, workDir)
+    const extractSource = await ensurePlayableExtractSource(sourcePath)
     const safeId = momentId.replace(/[^a-zA-Z0-9._-]/g, '_')
     const outPath = join(workDir, `${safeId}.mp4`)
     const result = await extractMomentClip(
@@ -230,7 +225,7 @@ export async function extractAndUploadDuelClips(opts: {
   let extractFailed = 0
 
   try {
-    const extractSource = await ensurePlayableExtractSource(sourcePath, workDir)
+    const extractSource = await ensurePlayableExtractSource(sourcePath)
     const durationMs = await clipExtractor.probeDurationMs(extractSource)
     if (durationMs != null) {
       const maxWindowEnd = Math.max(...moments.map((m) => m.window_end_ms))

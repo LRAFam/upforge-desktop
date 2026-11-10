@@ -150,7 +150,9 @@ export class ClipStore {
       const raw = fs.readFileSync(this.filePath, 'utf-8')
       const all: ClipRecord[] = JSON.parse(raw)
       // Prune clips whose file no longer exists (unless uploaded to API)
-      return all.filter(c => c.apiClipId != null || fs.existsSync(c.path))
+      return all.filter(c => c.apiClipId != null || fs.existsSync(c.path)).map(c => (
+        c.uploadStatus === 'uploading' ? { ...c, uploadStatus: 'failed' as const } : c
+      ))
     } catch {
       return []
     }
@@ -196,7 +198,7 @@ export class ClipStore {
       favorited: false,
     }
     this.clips.unshift(clip)
-    if (this.userId != null) this._enforceCap()
+    if (this.userId != null) this._enforceCap(clip.id)
     this._persist()
     if (this.userId !== null) this.onAdded?.(clip, this.userId)
     return clip
@@ -208,17 +210,21 @@ export class ClipStore {
     }
   }
 
-  private _enforceCap(): void {
+  private _enforceCap(protectedId: string): void {
     while (this.clips.length > MAX_CLIPS) {
-      let lowestIdx = 0
-      let lowestScore = clipRetentionScore(this.clips[0])
-      for (let i = 1; i < this.clips.length; i++) {
+      let lowestIdx = -1
+      let lowestScore = Infinity
+      for (let i = 0; i < this.clips.length; i++) {
+        // Extraction writes the file after add() returns. Retiring an in-flight record
+        // here would leave its eventual file orphaned; enforce again when it finishes.
+        if (this.clips[i].id === protectedId || (this.clips[i].apiClipId == null && !fs.existsSync(this.clips[i].path))) continue
         const score = clipRetentionScore(this.clips[i])
-        if (score < lowestScore || (score === lowestScore && this.clips[i].savedAt < this.clips[lowestIdx].savedAt)) {
+        if (lowestIdx < 0 || score < lowestScore || (score === lowestScore && this.clips[i].savedAt < this.clips[lowestIdx].savedAt)) {
           lowestIdx = i
           lowestScore = score
         }
       }
+      if (lowestIdx < 0) break
       const [removed] = this.clips.splice(lowestIdx, 1)
       this._deleteClipFiles(removed)
     }
@@ -228,6 +234,7 @@ export class ClipStore {
     const clip = this.clips.find(c => c.id === id)
     if (clip) {
       Object.assign(clip, patch)
+      if (this.userId != null && patch.path && fs.existsSync(patch.path)) this._enforceCap(id)
       this._persist()
     }
   }

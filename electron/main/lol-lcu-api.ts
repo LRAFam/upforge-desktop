@@ -126,7 +126,16 @@ export function normalizeLolQueueId(queueId: number | null | undefined): {
     1020: { gameMode: 'ONE_FOR_ALL', queueLabel: 'One for All' },
     1300: { gameMode: 'NEXUS_BLITZ', queueLabel: 'Nexus Blitz' },
     1700: { gameMode: 'ARENA', queueLabel: 'Arena' },
-    1710: { gameMode: 'ARENA', queueLabel: 'Arena' },
+    1710: { gameMode: 'ARENA', queueLabel: 'Arena' },    // Custom lobbies / practice tool report queue -1 (older clients 0).
+    [-1]: { gameMode: 'CUSTOM', queueLabel: 'Custom Game' },
+    0: { gameMode: 'CUSTOM', queueLabel: 'Custom Game' },
+    // Co-op vs AI (current Intro/Beginner/Intermediate + legacy ids).
+    830: { gameMode: 'BOT', queueLabel: 'Co-op vs AI' },
+    840: { gameMode: 'BOT', queueLabel: 'Co-op vs AI' },
+    850: { gameMode: 'BOT', queueLabel: 'Co-op vs AI' },
+    870: { gameMode: 'BOT', queueLabel: 'Co-op vs AI' },
+    880: { gameMode: 'BOT', queueLabel: 'Co-op vs AI' },
+    890: { gameMode: 'BOT', queueLabel: 'Co-op vs AI' },
   }
   const hit = map[queueId]
   if (hit) return hit
@@ -145,7 +154,12 @@ export function resolveLolFilterMode(opts: {
   mapId?: number | null
 }): string | null {
   const fromQueue = normalizeLolQueueId(opts.queueId ?? null)
-  if (fromQueue.gameMode === 'ARAM' || fromQueue.gameMode === 'ARENA') {
+  if (
+    fromQueue.gameMode === 'ARAM'
+    || fromQueue.gameMode === 'ARENA'
+    || fromQueue.gameMode === 'CUSTOM'
+    || fromQueue.gameMode === 'BOT'
+  ) {
     return fromQueue.gameMode
   }
   if (
@@ -219,6 +233,7 @@ interface GameflowSession {
     gameId?: number | string
     queue?: { id?: number; name?: string }
     map?: { id?: number }
+    isCustomGame?: boolean
   }
   map?: { id?: number }
 }
@@ -234,7 +249,9 @@ export function parseGameflowSession(session: GameflowSession | null | undefined
   }
   const phase = typeof session.phase === 'string' ? session.phase : null
   const queueIdRaw = session.gameData?.queue?.id
-  const queueId = typeof queueIdRaw === 'number' ? queueIdRaw : null
+  const queueId = session.gameData?.isCustomGame === true
+    ? -1
+    : typeof queueIdRaw === 'number' ? queueIdRaw : null
   const mapIdRaw = session.gameData?.map?.id ?? session.map?.id
   const mapId = typeof mapIdRaw === 'number' ? mapIdRaw : null
   return { phase, queueId, mapId }

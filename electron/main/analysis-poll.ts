@@ -1,7 +1,7 @@
 import type { BrowserWindow } from 'electron'
 import type { UploadManager } from './upload-manager'
 import { asCompletedPollStatus, isTerminalPollSuccess } from './analysis-completion'
-import { clearPendingJob } from './upload-manager'
+import { clearPendingJob, getPendingJobUserScope } from './upload-manager'
 import { formatAnalysisFailureMessage } from './analysis-failure-messages'
 import { sendPostGameEvent, sendPostGameEventForRecording } from './post-game-session'
 
@@ -163,6 +163,7 @@ function buildProgressPayload(
 export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () => void } {
   stopActiveAnalysisPoll()
 
+  const ownerUserId = opts.ownerUserId !== undefined ? opts.ownerUserId : getPendingJobUserScope()
   const startTime = Date.now()
   let pollFailCount = 0
   let pollDelay = 2_000
@@ -204,7 +205,7 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
 
     if (elapsedMs > ANALYSIS_POLL_MAX_MS) {
       stop()
-      // Keep pending-job.json — server may still finish; stuck-job reconciler will pick it up.
+      // Keep this pending job — server may still finish; stuck-job reconciler will pick it up.
       opts.onPollEnded?.('max_duration')
       return
     }
@@ -218,6 +219,7 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
 
     try {
       const status = await opts.uploadManager.pollStatus(opts.jobId)
+      if (stopped) return
       pollFailCount = 0
 
       const progressPayload = buildProgressPayload(opts.jobId, status, elapsedMs)
@@ -229,7 +231,7 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
         uploadingPolls++
         if (uploadingPolls >= 6) {
           stop()
-          clearPendingJob()
+          clearPendingJob(opts.jobId, ownerUserId)
           const rawError = 'Upload was interrupted before it finished. Check Pending Recordings on the dashboard to retry.'
           opts.onPollEnded?.('failed')
           opts.onFailed(rawError, rawError)
@@ -238,12 +240,12 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
         schedulePoll()
       } else if (status.status === 'completed' || isTerminalPollSuccess(status)) {
         stop()
-        clearPendingJob()
+        clearPendingJob(opts.jobId, ownerUserId)
         opts.onPollEnded?.('completed')
         opts.onCompleted(asCompletedPollStatus(status))
       } else if (status.status === 'failed') {
         stop()
-        clearPendingJob()
+        clearPendingJob(opts.jobId, ownerUserId)
         const rawError = status.error || 'Analysis failed. Please try again.'
         const userMessage = formatAnalysisFailureMessage(rawError)
         opts.onPollEnded?.('failed')
@@ -255,7 +257,7 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
         pollFailCount++
         if (pollFailCount >= 3) {
           stop()
-          clearPendingJob()
+          clearPendingJob(opts.jobId, ownerUserId)
           const rawError = `Unexpected job status: ${status.status || 'unknown'}`
           opts.onPollEnded?.('failed')
           opts.onFailed(rawError, rawError)

@@ -18,7 +18,8 @@ export function reviewVideoUrl(path: string | null | undefined): string {
   if (!path) return ''
   if (/^https?:\/\//i.test(path)) return path
   const normalized = path.replace(/\\/g, '/')
-  return normalized.startsWith('/') ? encodeURI(`file://${normalized}`) : encodeURI(`file:///${normalized}`)
+  const url = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+  return encodeURI(url).replace(/#/g, '%23').replace(/\?/g, '%3F')
 }
 
 /** Accept seconds, m:ss or h:mm:ss, with up to millisecond precision. */

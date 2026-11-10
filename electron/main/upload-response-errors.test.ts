@@ -10,6 +10,30 @@ import { UploadManager } from './upload-manager'
 afterEach(() => vi.unstubAllEnvs())
 
 describe('interrupted upload responses', () => {
+  it.each(['api', 'status'] as const)('passes a raw %s 401 to session rejection handling', async operation => {
+    const server = http.createServer((req, res) => {
+      req.resume()
+      req.on('end', () => { res.writeHead(401); res.end('unauthorized') })
+    })
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', resolve)
+    })
+    try {
+      const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+      vi.stubEnv('VITE_API_URL', origin)
+      const handleSessionRejection = vi.fn()
+      const manager = new UploadManager({ getToken: () => 'test-token', handleSessionRejection } as unknown as AuthManager)
+      const api = manager as unknown as { _apiPost: (url: string, body: string, token: string) => Promise<unknown> }
+      const pending = operation === 'api' ? api._apiPost(origin, '{}', 'test-token') : manager.pollStatus('test-job')
+      await expect(pending).rejects.toThrow(/401/)
+      expect(handleSessionRejection).toHaveBeenCalledWith('test-token', 401, undefined, expect.any(String))
+    } finally {
+      server.closeAllConnections()
+      await new Promise<void>(resolve => server.close(() => resolve()))
+    }
+  })
+
   it.each(['api', 'status', 'single upload', 'multipart upload'] as const)('rejects a truncated %s response', async (operation) => {
     const server = http.createServer((req, res) => {
       req.resume()

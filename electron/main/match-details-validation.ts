@@ -5,7 +5,7 @@
  */
 import type { MatchData } from './riot-types'
 import { resolveMapName } from './riot-lookup-tables'
-import { resolveValorantGameMode } from './riot-queue-id'
+import { resolveValorantGameMode, valorantQueueIdWithFlow } from './riot-queue-id'
 
 const PRACTICE_MODES = new Set(['CUSTOM', 'SHOOTING_RANGE', 'NEWMAP'])
 
@@ -36,7 +36,10 @@ export function mapFromMatchDetails(details: Record<string, unknown>): string | 
 
 export function queueFromMatchDetails(details: Record<string, unknown>): string | null {
   const matchInfo = details.matchInfo as Record<string, unknown> | undefined
-  const queueId = matchInfo?.queueID as string | undefined
+  const queueId = valorantQueueIdWithFlow(
+    matchInfo?.queueID as string | undefined,
+    matchInfo?.provisioningFlowID as string | undefined,
+  )
   return resolveValorantGameMode(queueId, matchInfo?.mapId as string | undefined)
 }
 

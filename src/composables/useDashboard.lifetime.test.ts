@@ -172,6 +172,19 @@ describe('Home lifetime (useDashboard)', () => {
     expect(api.listeners.get('dashboard:refresh')?.size ?? 0).toBe(1)
   })
 
+  it('plots the latest 20 scored matches and ends at the newest score', async () => {
+    const api = installApi()
+    const home = await mountHome()
+    api.release()
+    await settle()
+    home.ctx.analyses.value = Array.from({ length: 25 }, (_, i) => ({
+      id: i, overall_score: 100 - i,
+    })) as typeof home.ctx.analyses.value
+    expect(home.ctx.scoreChartData.value?.last).toBe(100)
+    expect(home.ctx.scoreChartData.value?.linePath.match(/L /g)).toHaveLength(19)
+    home()
+  })
+
   it('in a match with the game focused, Home runs no 5 s status poll and no 1 s clock re-render', async () => {
     const api = installApi()
     const home = await mountHome()

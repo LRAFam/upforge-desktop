@@ -13,7 +13,8 @@ import log from 'electron-log'
 import type { AxiosInstance } from 'axios'
 
 export const WEB_SHELL_PARTITION = 'persist:upforge-web'
-const COOKIE = 'auth_token'
+const LEGACY_COOKIE = 'auth_token'
+const cookieName = (url: string) => url.startsWith('https://') ? '__Host-upforge_session' : 'upforge_session'
 const TOKEN_SHAPE = /^\d+\|[A-Za-z0-9]{20,}$/
 
 export interface CookieJar {
@@ -78,31 +79,40 @@ export async function applyWebShellCookie(
   if (!desktopToken) return { signedIn: false, reason: 'not_signed_in' }
 
   const url = frontendBase.replace(/\/$/, '')
-  const current = (await jar.get({ url, name: COOKIE }).catch(() => []))[0]?.value
+  const cookie = cookieName(url)
+  const current = (await jar.get({ url, name: cookie }).catch(() => []))[0]?.value
 
-  if (cached && cached.desktopToken === desktopToken && current === encodeAuthCookie(cached.token)) {
+  if (cached && cached.desktopToken === desktopToken && current === cached.token) {
     return { signedIn: true }
   }
 
   const result = await mint(auth, desktopToken)
   if (!('token' in result)) {
     cached = null
-    if (current !== undefined) await jar.remove(url, COOKIE).catch(() => {})
+    await jar.remove(url, cookie).catch(() => {})
+    await jar.remove(url, LEGACY_COOKIE).catch(() => {})
     log.warn('[WebShell] Could not get a website session; opening signed out (desktop token is never shared):', result.reason)
     return { signedIn: false, reason: result.reason }
   }
 
-  cached = { token: result.token, desktopToken }
+  if (auth.getToken() !== desktopToken) {
+    cached = null
+    await jar.remove(url, cookie).catch(() => {})
+    await jar.remove(url, LEGACY_COOKIE).catch(() => {})
+    return { signedIn: false, reason: 'session_changed' }
+  }
+  await jar.remove(url, LEGACY_COOKIE)
   await jar.set({
     url,
-    name: COOKIE,
-    value: encodeAuthCookie(result.token),
+    name: cookie,
+    value: result.token,
     path: '/',
     secure: url.startsWith('https://'),
-    httpOnly: false,
+    httpOnly: true,
     sameSite: 'lax',
     expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30,
   })
+  cached = { token: result.token, desktopToken }
   return { signedIn: true }
 }
 

@@ -20,7 +20,15 @@ vi.mock('electron', () => ({
 vi.mock('./app-notifications', () => ({ showAppNotification: vi.fn() }))
 
 import { autoUpdater } from 'electron-updater'
-import { installUpdate, setInstallGate, setUpdateActivityGuard, shouldDeferUpdateWork } from './updater'
+import {
+  checkForUpdatesIfIdle,
+  getUpdateState,
+  installUpdate,
+  setInstallGate,
+  setUpdateActivityGuard,
+  setupAutoUpdater,
+  shouldDeferUpdateWork,
+} from './updater'
 
 describe('update activity guard', () => {
   beforeEach(() => setUpdateActivityGuard(() => false))
@@ -56,5 +64,25 @@ describe('installUpdate gate (quit guard)', () => {
   it('installs straight away without a gate', () => {
     installUpdate()
     expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('downloaded update stays ready', () => {
+  it('skips later background checks so an offline check cannot drop "Restart now"', () => {
+    vi.useFakeTimers()
+    setUpdateActivityGuard(() => false)
+    setupAutoUpdater(null, () => {})
+    const handler = vi.mocked(autoUpdater.on).mock.calls.find(([event]) => event === 'update-downloaded')?.[1] as
+      ((info: { version: string }) => void) | undefined
+    handler?.({ version: '9.9.9' })
+    expect(getUpdateState().phase).toBe('ready')
+    vi.mocked(autoUpdater.checkForUpdates).mockClear()
+
+    checkForUpdatesIfIdle()
+
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+    expect(getUpdateState().phase).toBe('ready')
+    vi.clearAllTimers()
+    vi.useRealTimers()
   })
 })

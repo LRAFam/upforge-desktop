@@ -522,6 +522,7 @@ const MODE_LABELS: Record<string, string> = {
   ARAM: 'ARAM',
   ARENA: 'Arena',
   CUSTOM: 'Custom',
+  BOT: 'Co-op vs AI',
   RANKED_SOLO: 'Ranked Solo/Duo',
   RANKED_FLEX: 'Ranked Flex',
   // CS2

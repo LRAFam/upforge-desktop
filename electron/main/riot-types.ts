@@ -1,4 +1,5 @@
 import type { LolLocalReview } from './lol-local-review'
+import type { TimerOffsetEvidence, VideoOffsetProvenance } from './video-offset-provenance'
 /**
  * riot-types.ts
  * TypeScript interfaces for the Riot Local API data model.
@@ -329,6 +330,8 @@ export interface SessionState {
 
 /** Full enriched match data — superset of MatchTimeline */
 export interface MatchData {
+  /** CS2 demo target corroborated by this recording’s captured GSI owner. */
+  playerSteamId?: string
   /** Measured CS2 demo statistics; null fields mean unavailable, never inferred. */
   match_stats?: import('./cs2-match-stats').Cs2MatchStats | null
   /** CS2: the player's flashes from flash_duration samples (cs2-round-facts.ts). */
@@ -383,12 +386,15 @@ export interface MatchData {
    * zero). When set it replaces the loading-time estimate; manual sync nudges still apply on top.
    */
   roundTimerOffsetMs?: number
+  roundTimerEvidence?: TimerOffsetEvidence
+  videoOffsetProvenance?: VideoOffsetProvenance
   /**
    * CS2: measured position in the recording of demo time zero (the first round_start), from GSI
    * live events (cs2-demo-video-sync). When set it replaces the match-start estimate, which is
    * taken during warmup; manual sync nudges still apply on top.
    */
   cs2DemoVideoShiftMs?: number
+  cs2DemoSyncEvidence?: { pairs: number; livePoints: number }
 
   // Round score progression from presence polling
   roundScores: RoundScore[]
@@ -398,6 +404,8 @@ export interface MatchData {
   // Events (populated from Riot MatchDetails API post-match)
   events: GameEvent[]
   killEvents: KillEvent[]
+  /** True only after exact comparison with every saved Riot round/player kill list. */
+  killEventsComplete?: boolean
   playerKills: KillEvent[]
   playerDeaths: KillEvent[]
   spikePlants: SpikePlantedEvent[]

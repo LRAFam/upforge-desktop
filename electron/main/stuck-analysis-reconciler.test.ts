@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const recovery = vi.hoisted(() => ({ owner: 1, jobs: [] as Array<{ job_id: string; savedAt: number }> }))
 
 vi.mock('electron', () => ({
   app: {
@@ -17,7 +19,8 @@ vi.mock('./upload-manager', () => ({
 }))
 
 vi.mock('./user-session', () => ({
-  readActivePendingJob: () => null,
+  readActivePendingJobs: () => recovery.jobs,
+  getActiveUserId: () => recovery.owner,
 }))
 
 vi.mock('./analysis-poll', () => ({
@@ -27,8 +30,36 @@ vi.mock('./analysis-poll', () => ({
 import { reconcileStuckAnalysisJobs } from './stuck-analysis-reconciler'
 import type { RecordingsStore } from './recordings-store'
 import type { UploadManager } from './upload-manager'
+import { clearPendingJob } from './upload-manager'
+
+beforeEach(() => { recovery.owner = 1; recovery.jobs = []; vi.clearAllMocks() })
 
 describe('reconcileStuckAnalysisJobs', () => {
+  it('checks every persisted orphan and clears only its completed job', async () => {
+    recovery.jobs = [{ job_id: 'complete', savedAt: 100 }, { job_id: 'pending', savedAt: 200 }]
+    const pollStatus = vi.fn(async (jobId: string) => ({ status: jobId === 'complete' ? 'completed' : 'queued' }))
+    const resumePoll = vi.fn()
+    await reconcileStuckAnalysisJobs({
+      uploadManager: { pollStatus } as unknown as UploadManager,
+      recordingsStore: { listStuckAnalysisJobs: () => [], getByJobId: () => null } as unknown as RecordingsStore,
+      isAuthenticated: () => true, onCompleted: vi.fn(), onFailed: vi.fn(), resumePoll,
+    })
+    expect(pollStatus.mock.calls.map(([id]) => id)).toEqual(['complete', 'pending'])
+    expect(clearPendingJob).toHaveBeenCalledExactlyOnceWith('complete', 1)
+    expect(resumePoll).toHaveBeenCalledWith('pending', expect.any(Object))
+  })
+
+  it('ignores an old owners response after account switching', async () => {
+    recovery.jobs = [{ job_id: 'old-owner', savedAt: 100 }]
+    const onCompleted = vi.fn()
+    await reconcileStuckAnalysisJobs({
+      uploadManager: { pollStatus: async () => { recovery.owner = 2; return { status: 'completed' } } } as unknown as UploadManager,
+      recordingsStore: { listStuckAnalysisJobs: () => [], getByJobId: () => null } as unknown as RecordingsStore,
+      isAuthenticated: () => true, onCompleted, onFailed: vi.fn(), resumePoll: vi.fn(),
+    })
+    expect(clearPendingJob).not.toHaveBeenCalled()
+    expect(onCompleted).not.toHaveBeenCalled()
+  })
   it('resumes at most one in-flight poll per pass (avoids superseding siblings)', async () => {
     const recordings = [
       {

@@ -124,7 +124,7 @@ describe('openWebShell — what it will open', () => {
   it('sets the website auth cookie (secure, frontend URL) before loading', async () => {
     await openWebShell(auth(), '/dashboard')
     expect(h.cookiesSet).toHaveBeenCalledWith(expect.objectContaining({
-      url: 'https://upforge.gg', name: 'auth_token', secure: true, path: '/',
+      url: 'https://upforge.gg', name: '__Host-upforge_session', secure: true, httpOnly: true, path: '/',
     }))
   })
 })

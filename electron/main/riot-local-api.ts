@@ -22,7 +22,7 @@ export {
   resolveEconomyArmor,
 } from './riot-lookup-tables'
 import { applySpatialEnrichment } from './spatial/enrich'
-import { resolveValorantGameMode } from './riot-queue-id'
+import { inferValorantModeFromLog, resolveValorantGameMode, valorantQueueIdWithFlow } from './riot-queue-id'
 export { normalizeQueueId } from './riot-queue-id'
 import { isCombatPlayerKill, matchesScoreboardDeaths } from './is-combat-kill'
 import { parsePlayerAbilitiesFromRoundStats } from './player-abilities'
@@ -48,7 +48,7 @@ import {
   type ValorantRegionSource,
 } from './riot-region'
 import { applyMenuWatchTick } from './menu-watch'
-import { parseRiotMatchHistory, type RiotMatchHistoryEntry } from './riot-match-history'
+import { parseRiotMatchHistory, pickHistoryMatchIdForRecording, type RiotMatchHistoryEntry } from './riot-match-history'
 import { downloadReplay, type ReplayDownloadResult } from './valorant-replay-download'
 import type { RecentMatchFetchResult } from './recent-match-export'
 import { createTtlSingleFlight } from './ttl-single-flight'
@@ -546,9 +546,12 @@ export class RiotLocalApi {
       const provisioningFlow = (decoded.provisioningFlow ?? mpd.provisioningFlow ?? '') as string
       const isReplay = provisioningFlow.toLowerCase() === 'replay'
       this._sessionStateFailures = 0
+      const loopState = (mpd.sessionLoopState ?? decoded.sessionLoopState ?? 'MENUS') as string
+      // Back in menus with nothing tracked → any stashed pregame id belongs to a dodged lobby.
+      if (loopState === 'MENUS' && !this.matchData) this.currentMatchId = null
       return {
-        sessionLoopState: (mpd.sessionLoopState ?? decoded.sessionLoopState ?? 'MENUS') as string,
-        queueId: (mpd.queueId ?? decoded.queueId ?? null) as string | null,
+        sessionLoopState: loopState,
+        queueId: valorantQueueIdWithFlow((mpd.queueId ?? decoded.queueId ?? null) as string | null, provisioningFlow),
         matchMap: (mpd.matchMap ?? decoded.matchMap ?? null) as string | null,
         allyScore: (decoded.partyOwnerMatchScoreAllyTeam ?? 0) as number,
         enemyScore: (decoded.partyOwnerMatchScoreEnemyTeam ?? 0) as number,
@@ -1017,6 +1020,7 @@ export class RiotLocalApi {
     const stashed = stashMatchIdFields(matchId, {
       timelineMatchId: this.matchData?.matchId ?? null,
       currentMatchId: this.currentMatchId,
+      trackingMatch: this.matchData != null,
     })
     this.currentMatchId = stashed.currentMatchId
     if (this.matchData && stashed.timelineMatchId) {
@@ -1173,7 +1177,7 @@ export class RiotLocalApi {
       && shouldUseMatchHistoryFallback(this.matchData)
     ) {
       console.log('[RiotLocalApi] No matchId captured — trying match history fallback')
-      const latestId = await this._fetchLatestMatchId()
+      const latestId = await this._fetchLatestMatchId(this.matchData.recordingStartTime)
       if (latestId) {
         this.matchData.matchId = latestId
         console.log(`[RiotLocalApi] matchId from history: ${latestId}`)
@@ -1373,10 +1377,15 @@ export class RiotLocalApi {
     })
   }
 
-  /** Fetch the most recent matchId from Riot history for normal captured timelines. */
-  private async _fetchLatestMatchId(): Promise<string | null> {
-    const history = await this._fetchRecentMatchHistory(1)
-    return history?.[0]?.matchId ?? null
+  /** Fetch the recent-history matchId whose start aligns with this recording (never just the latest). */
+  private async _fetchLatestMatchId(recordingStartMs: number): Promise<string | null> {
+    const history = await this._fetchRecentMatchHistory(3)
+    if (!history) return null
+    const matchId = pickHistoryMatchIdForRecording(history, recordingStartMs)
+    if (!matchId && history.length > 0) {
+      console.log('[RiotLocalApi] History fallback: no match aligned with recording start — skipping')
+    }
+    return matchId
   }
 
   /**
@@ -1480,8 +1489,12 @@ export class RiotLocalApi {
     if (matchInfo?.mapId) {
       this.matchData.map = resolveMapName(matchInfo.mapId as string)
     }
-    if (matchInfo?.queueID && !this.matchData.queueId) {
-      const queueId = matchInfo.queueID as string
+    const detailsQueueId = valorantQueueIdWithFlow(
+      matchInfo?.queueID as string | undefined,
+      matchInfo?.provisioningFlowID as string | undefined,
+    )
+    if (detailsQueueId && !this.matchData.queueId) {
+      const queueId = detailsQueueId
       this.matchData.queueId = queueId
     }
     const mode = resolveValorantGameMode(this.matchData.queueId, this.matchData.map)
@@ -1884,15 +1897,7 @@ export class RiotLocalApi {
       const buf = Buffer.alloc(readSize)
       fs.readSync(fd, buf, 0, readSize, stat.size - readSize)
       fs.closeSync(fd)
-      const text = buf.toString('utf8').toLowerCase()
-      if (text.includes('premier')) return 'PREMIER'
-      if (text.includes('swiftplay') || text.includes('swift play')) return 'SWIFTPLAY'
-      if (text.includes('spikerush') || text.includes('spike rush')) return 'SPIKERUSH'
-      if (text.includes('teamdeathmatch') || text.includes('hurm')) return 'TEAMDEATHMATCH'
-      if (text.includes('competitive')) return 'COMPETITIVE'
-      if (text.includes('deathmatch')) return 'DEATHMATCH'
-      if (text.includes('unrated')) return 'CLASSIC'
-      return null
+      return inferValorantModeFromLog(buf.toString('utf8'))
     } catch {
       return null
     }
@@ -1926,7 +1931,7 @@ export class RiotLocalApi {
     }
 
     if (!timeline.matchId && this.region && this.ownPuuid && shouldUseMatchHistoryFallback(timeline)) {
-      const latestId = await this._fetchLatestMatchId()
+      const latestId = await this._fetchLatestMatchId(timeline.recordingStartTime)
       if (latestId) {
         timeline.matchId = latestId
         console.log(`[RiotLocalApi] enrich — matchId from history: ${latestId}`)
@@ -2475,7 +2480,7 @@ interface FirstBloodRound {
 }
 
 /** Earliest kill per round from Riot MatchDetails — used for first-death playstyle metrics. */
-function buildFirstBloodByRound(
+export function buildFirstBloodByRound(
   kills: Array<Record<string, unknown>>,
 ): Map<number, FirstBloodRound> {
   const map = new Map<number, FirstBloodRound>()
@@ -2491,7 +2496,8 @@ function buildFirstBloodByRound(
     const rawTsgm = k.timeSinceGameStartMillis as number | undefined
     const tsgm = (rawTsgm != null && rawTsgm > 0)
       ? rawTsgm
-      : ((k.gameTime as number) ?? Number.MAX_SAFE_INTEGER)
+      : (k.gameTime as number | undefined)
+    if (tsgm == null || !Number.isFinite(tsgm) || tsgm < 0 || tsgm >= Number.MAX_SAFE_INTEGER) continue
     const prev = map.get(round)
     if (!prev || tsgm < prev.tsgm) {
       map.set(round, { killer, victim, tsgm })

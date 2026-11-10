@@ -5,6 +5,9 @@ import { buildQuitActivity, createQuitGuard } from './quit-guard'
 import { askQuitChoice } from './quit-dialog'
 import { canUseDeveloperTools, devOnly } from './dev-access'
 import { createCoalescedNotifier, createVodProbeSweep } from './vod-probe-sweep'
+import { createRecordingFileFinalizer } from './recording-file-finalizer'
+import { submissionFocusAreas } from '../../src/lib/submission-focus'
+import { parseDiscordLinkCallback } from './discord-link'
 import { createCallRateLogger, startMainLoopLagMonitor } from './main-loop-lag'
 import { saveReplay } from './valorant-replay-download'
 import { ValorantReplaySync, type ReplaySyncState } from './valorant-replay-sync'
@@ -179,7 +182,6 @@ import {
   activateUserSession,
   clearUserSession,
   readActivePendingJob,
-  clearActivePendingJob,
   getActiveUserId,
   persistActiveUserOverlay,
 } from './user-session'
@@ -280,6 +282,7 @@ import {
   getFreeDiskSpace,
 } from './disk-space'
 import { isLocalOnlyRecording, runRecordingStorageMaintenance } from './storage-cleanup'
+import { isOwnedRecordingFile } from './owned-recording-files'
 import { expiryNotificationBody, localExpiryDeleteAt } from './recording-expiry'
 import { untrackedNotificationBody } from './untracked-recording-grace'
 import { setupStorageHandlers } from './ipc/storage-ipc'
@@ -1744,11 +1747,32 @@ function syncUserSessionFromAuth(): void {
   enforceRecordingPresetAccess()
 }
 
+const recordingFileFinalizer = createRecordingFileFinalizer({
+  owner: () => getActiveUserId(),
+  rows: () => recordingsStore?.getPending() ?? [],
+  canWork: () => Boolean(recordingsStore) && localMediaWork === 0 && !obsRecorder.isRecording() && !backgroundWork.blocked,
+  stat: (filePath) => fs.promises.stat(filePath),
+  probe: (filePath) => clipExtractor.probe(filePath),
+  complete: async (id, owner) => {
+    const store = recordingsStore.forUser(owner)
+    store.markFileFinalized(id)
+    await store.flush()
+    if (getActiveUserId() !== owner) return
+    const recording = store.getById(id)
+    if (recording) await refreshRecordingVodProbe(recording)
+    if (getActiveUserId() !== owner) return
+    notifyRecordingsUpdated()
+    resumeSavedLocalMedia()
+  },
+})
+
 function resumeSavedLocalMedia(): void {
+  void recordingFileFinalizer.tick()
   const userId = getActiveUserId()
   if (!recordingsStore || userId === null || !authManager.isAuthenticated()) return
   if (localMediaWork > 0 || obsRecorder.isRecording()) return
   for (const rec of recordingsStore.getPending()) {
+    if (rec.fileFinalizing) continue
     if (!rec.savedOffline && !rec.pendingClipBookmarks?.length) continue
     recordingsStore.markSavedOffline(rec.id, false)
     if (rec.clipsOnly) continue
@@ -1834,6 +1858,7 @@ function clearAccountScopedRuntimeState(): void {
 /** When auto-delete will remove this local-only recording (shown as "Deletes in N days"), or null. */
 function rowLocalExpiresAt(rec: PendingRecording): number | null {
   if (!settingsManager || rec.savedOffline || rec.productionFixture || !isLocalOnlyRecording(rec)) return null
+  if (rec.orphanedImport && !isOwnedRecordingFile(rec.path)) return null // user's own video: never auto-deleted
   return localExpiryDeleteAt(rec, settingsManager.get().recordingRetentionDays)
 }
 
@@ -2073,7 +2098,7 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
     notifyRecordingsUpdated()
   }
 
-  clearPendingJob()
+  clearPendingJob(ctx.jobId)
   const scoreText = analysisScoreText(result)
   logActivity(`Analysis ready${scoreText ? ` — ${scoreText}` : ''}`)
 
@@ -3011,7 +3036,7 @@ function sendAnalysisReadinessUpdate(
 async function refreshRecordingVodProbe(
   rec: NonNullable<ReturnType<RecordingsStore['getById']>>,
 ): Promise<void> {
-  if (!rec.path || rec.clipsOnly) return
+  if (!rec.path || rec.clipsOnly || rec.fileFinalizing) return
   if (!fs.existsSync(rec.path)) return
   await refreshVodProbe(rec.path, (p) => clipExtractor.probe(p))
 }
@@ -3915,6 +3940,7 @@ function setupGameDetection(): void {
         ? Promise.resolve(null)
         : obsRecorder.stop(),
     ])
+    const outputStillFinalizing = stoppedPath !== null && obsRecorder.getFinalizingRecordingPath() === stoppedPath
     if (!captureNeverStarted) {
       if (obsRecorder.isRecording()) {
         log.warn(`[MatchEnd] ${game} (${endSource}) — OBS stop not confirmed; recording still owned`)
@@ -4070,6 +4096,23 @@ function setupGameDetection(): void {
       mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
     }
     const clipsOnly = !captureNeverStarted && (config?.fullMatchRecording === false || obsRecorder.isClipsOnlySession())
+
+    if (stoppedPath && outputStillFinalizing && !clipsOnly) {
+      // Persist exact owned output + capture context before releasing this match's flow.
+      // It can become readable after the old 45s deadline or after the app restarts.
+      captureStore.add({
+        path: stoppedPath, game, map, agent, gameMode, timeline,
+        riotName: timeline?.playerName?.trim() ?? '', riotTag: timeline?.playerTag?.trim() ?? '',
+        fileFinalizing: true, savedOffline: true, autoAnalyseRequested: ownerId !== null && autoAnalyse,
+        captureRecordingStartTime: currentRecordingStartTime, pendingClipBookmarks: hotkeyBookmarks.splice(0),
+        onboardingBonus: shouldUseOnboardingBonus(settingsManager.get().onboardingMatchMission, game),
+        onboardingAdminTest: settingsManager.get().onboardingMatchMission?.adminTest === true,
+      }, matchSessionStart)
+      await captureStore.flush()
+      notifyRecordingsUpdated()
+      logActivity('Recording is still finishing on disk. UpForge will continue when it is ready.', game)
+      return
+    }
 
     if (!canUploadCapture()) {
       const localClipContext = { recordingStartTime: currentRecordingStartTime, bookmarks: hotkeyBookmarks.splice(0) }
@@ -6198,6 +6241,7 @@ function linkAutoDeadlockReviewJob(jobId: string, match: { matchId?: number | nu
 async function handleOrphanedJobAtStartup(
   orphanedJob: { job_id: string; savedAt: number; agent?: string; map?: string; game?: string }
 ): Promise<void> {
+  const ownerUserId = getActiveUserId()
   const context = {
     agent: orphanedJob.agent,
     map: orphanedJob.map,
@@ -6205,16 +6249,17 @@ async function handleOrphanedJobAtStartup(
   }
 
   const decision = await reconcileOrphanedJob(uploadManager, orphanedJob)
+  if (getActiveUserId() !== ownerUserId) return
 
   if (decision.action === 'discard') {
-    clearPendingJob()
+    clearPendingJob(orphanedJob.job_id, ownerUserId)
     reconcileInterruptedUploads()
     logActivity(`Cleared stale analysis job (${decision.reason})`)
     return
   }
 
   if (decision.action === 'failed') {
-    clearPendingJob()
+    clearPendingJob(orphanedJob.job_id, ownerUserId)
     const rec = recordingsStore.getByJobId(orphanedJob.job_id)
     startupFailures.note({ key: `analysis:${orphanedJob.job_id}`, kind: 'analysis' })
     dispatchAnalysisFailure(decision.error, { recordingId: rec?.id ?? null, notify: false })
@@ -6324,6 +6369,9 @@ async function resumePollForJob(
 /** Save a recording to cloud only (archive quota — no analysis). */
 async function doUploadArchiveOnly(...args: Parameters<typeof uploadArchiveOnlyImpl>): Promise<{ archiveId: string | null; lastError: AnalysisErrorPayload | null }> {
   const recordingId = args[0]
+  if (recordingId && recordingsStore.getById(recordingId)?.fileFinalizing) {
+    return { archiveId: null, lastError: buildAnalysisErrorPayload('Recording is still finalizing. Try again when it is ready.') }
+  }
   if (recordingId) activeUploadRecordingIds.add(recordingId)
   try { return await uploadArchiveOnlyImpl(...args) }
   finally {
@@ -6707,6 +6755,7 @@ async function performUploadAndAnalyse(
       timeline,
       coachingExtras,
       recordingId,
+      focusAreas: storedRecording?.submissionFocusAreas,
       onboardingBonus: storedRecording?.onboardingBonus === true,
       onboardingAdminTest: storedRecording?.onboardingAdminTest === true,
       prepareDuelClips: timeline && duelClipGames.has(game)
@@ -7182,6 +7231,9 @@ async function startApp(): Promise<void> {
   app.once('will-quit', () => clearInterval(activityPresenceTimer))
   trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
   recordingsStore = new RecordingsStore()
+  const finalizingFileTimer = setInterval(() => { void recordingFileFinalizer.tick() }, 5000)
+  finalizingFileTimer.unref()
+  app.once('will-quit', () => clearInterval(finalizingFileTimer))
 
   // Register IPC before any BrowserWindow loads (dev updater, macOS activate, second instance).
   setupIpcHandlers(ipcMain, authManager, () => obsRecorder, gameDetector, settingsManager, () => {
@@ -7376,7 +7428,7 @@ async function startApp(): Promise<void> {
       mainWindow.webContents.once('did-finish-load', () => {
         reconcileInterruptedUploads()
         if (orphanedJob) {
-          void handleOrphanedJobAtStartup(orphanedJob)
+          void handleOrphanedJobAtStartup(orphanedJob).then(() => runStuckAnalysisReconcile())
         }
         // Pending Valorant VODs can sit forever on "waiting for match stats" after the
         // post-match poll window — resume enrich when the app opens again.
@@ -8303,13 +8355,25 @@ async function startApp(): Promise<void> {
     return { ok: true as const, analysisReadiness }
   })
 
-  ipcMain.handle('recordings:analyse', async (_e, { id }: { id: string }) => {
+  ipcMain.handle('recordings:analyse', async (_e, { id, focusAreas }: { id: string; focusAreas?: unknown }) => {
     if (productionVodFixtures.getById(id)) {
       return { error: 'Production fixtures are read-only', code: 'production_fixture_read_only' }
     }
     let recording = recordingsStore.getById(id)
     if (!recording) {
       return { error: 'Recording not found', code: 'not_found' }
+    }
+    try {
+      const focus = submissionFocusAreas(focusAreas)
+      if (focus) {
+        const owner = getActiveUserId()
+        const store = recordingsStore.forUser(owner)
+        store.setSubmissionFocusAreas(id, focus)
+        await store.flush()
+        if (getActiveUserId() !== owner) return { error: 'Your account changed. Open the recording again.', code: 'session_changed' }
+      }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Invalid focus area', code: 'invalid_focus' }
     }
 
     // Failed analysis with VOD already on S3 — retry without re-upload.
@@ -8369,7 +8433,7 @@ async function startApp(): Promise<void> {
           agent: recording!.agent,
         }, getActiveUserId())
         try {
-          await uploadManager.retrySubmission(recording!.jobId!)
+          await uploadManager.retrySubmission(recording!.jobId!, recording!.submissionFocusAreas)
           if ((recording!.game ?? 'valorant') === 'valorant') {
             // The retried job still holds the first upload's match_data — re-send fresh stats.
             const resent = await resendMatchDataForRetry(
@@ -8531,6 +8595,7 @@ async function startApp(): Promise<void> {
             recording.game,
             timeline,
             coachingExtras,
+            recording.submissionFocusAreas,
           )
           recordingsStore.markAnalysed(recording.id, result.job_id)
           notifyRecordingsUpdated()
@@ -8786,6 +8851,27 @@ app.on('before-quit', (event) => {
 const pendingDeepLink = new PendingDeepLink()
 function acceptDeepLink(raw: string | null): void {
   if (!raw) return
+  const discordCallback = parseDiscordLinkCallback(raw)
+  if (discordCallback) {
+    // A pending flow can only exist after IPC starts. Cold launches and duplicate
+    // bootstrap processes must not display a false result for another instance.
+    if (!ipcHandlersReady) return
+    // Codes and state stay in main, outside the generic renderer navigation queue.
+    const ownerToken = authManager.getToken()
+    void authManager.discordLink.complete(discordCallback).then(async result => {
+      if (!result || authManager.getToken() !== ownerToken) return
+      if (result.ok) await authManager.fetchUser()
+      if (authManager.getToken() !== ownerToken) return
+      showAppNotification({
+        title: result.ok ? 'Discord linked' : 'Discord linking',
+        body: result.ok ? 'Your Discord account is connected.' : result.error,
+        silent: true,
+        onClick: () => focusMainWindow(),
+      })
+      focusMainWindow()
+    }).catch(() => log.warn('[Discord] Could not complete account linking'))
+    return
+  }
   const action = pendingDeepLink.offer(raw)
   if (!action) {
     log.warn('[DeepLink] Ignored a link that is not on the allow-list')

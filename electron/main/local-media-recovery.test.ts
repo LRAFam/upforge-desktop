@@ -18,7 +18,7 @@ vi.mock('./vod-compressor', () => ({
 import { ClipPipeline } from './clip-pipeline'
 import type { ClipExtractor } from './clip-extractor'
 import { prunePendingRecordingsByAge, purgeUntrackedRecordingFiles } from './storage-cleanup'
-import { ClipStore, type NewClip } from './clip-store'
+import { ClipStore, MAX_CLIPS, type NewClip } from './clip-store'
 import { RecordingsStore, type NewRecording } from './recordings-store'
 import { registeredLocalRecordingPaths } from './local-media-paths'
 import { CaptureOwnership } from './capture-ownership'
@@ -50,6 +50,25 @@ function clip(): NewClip {
 }
 
 describe('durable logged-out media', () => {
+  it('lets an interrupted clip upload be retried after restart', () => {
+    const clips = new ClipStore()
+    const item = clips.add(clip())
+    clips.update(item.id, { uploadStatus: 'uploading' })
+    expect(new ClipStore().getById(item.id)?.uploadStatus).toBe('failed')
+  })
+
+  it('never evicts the clip whose file is about to be extracted', () => {
+    const clips = new ClipStore().forUser(11)
+    for (let i = 0; i < MAX_CLIPS; i++) {
+      clips.add({ ...clip(), path: mediaFile(`hotkey-${i}.mp4`), thumbPath: null })
+    }
+    const pending = clips.add({ ...clip(), path: '', thumbPath: null, trigger: 'kill' })
+    expect(clips.getAll()).toHaveLength(MAX_CLIPS)
+    expect(clips.getById(pending.id)).toBeDefined()
+    const file = mediaFile('new-kill.mp4')
+    clips.update(pending.id, { path: file })
+    expect(new ClipStore().forUser(11).getById(pending.id)?.path).toBe(file)
+  })
   it('keeps a guest VOD, match timeline, clip, thumbnail and event offsets across restart', () => {
     const match = new RecordingsStore().add({ ...recording(), pendingClipBookmarks: [42000], captureRecordingStartTime: 10000 })
     const highlight = new ClipStore().add(clip())
@@ -182,6 +201,30 @@ describe('durable logged-out media', () => {
     expect(fs.existsSync(guestClips[0].thumbPath!)).toBe(true)
     clips.claimGuest(11)
     expect(clips.getAll()).toEqual(guestClips)
+  })
+
+  it('a failed clip extraction leaves no ghost clip record or partial file', async () => {
+    const clips = new ClipStore()
+    const extractor = {
+      probeWithRetry: async () => ({ ok: true }),
+      probeDurationMs: async () => 120000,
+      extract: async ({ outputPath }: { outputPath: string }) => {
+        fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+        fs.writeFileSync(outputPath, 'partial')
+        throw new Error('ffmpeg failed')
+      },
+      thumbnail: async () => {},
+    } as unknown as ClipExtractor
+    const pipeline = new ClipPipeline({
+      clipStore: clips.forUser(null), clipExtractor: extractor,
+      hotkeyBookmarks: [42000], getRecordingStartTime: () => 10000,
+      getClipCapture: () => ({ singleKills: true, multiKills: true, aces: true, clutches: true, deaths: true, objectives: true }),
+      logActivity: vi.fn(), notifySilent: () => true, notifyMainWindow: vi.fn(),
+    })
+    expect(await pipeline.extractMatchClips(mediaFile('source.mp4'), null, null)).toBe(false)
+    expect(new ClipStore().getAll()).toEqual([])
+    const mediaDir = clips.forUser(null).getClipsMediaDir()
+    expect(fs.existsSync(mediaDir) ? fs.readdirSync(mediaDir).filter(f => f.endsWith('.mp4')) : []).toEqual([])
   })
 
   it('reports unfinished clip work when the source is temporarily unreadable', async () => {

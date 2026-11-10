@@ -285,8 +285,7 @@ export class SettingsManager {
 
   private load(): AppSettings {
     try {
-      const raw = fs.readFileSync(this.filePath, 'utf-8')
-      let parsed = JSON.parse(raw)
+      let parsed = this.readSettingsJson()
       // Migrate from old recordingMode field
       if (parsed.recordingMode !== undefined && parsed.recordedModes === undefined) {
         const ALL_MODES = [
@@ -335,8 +334,7 @@ export class SettingsManager {
       const result = { ...merged, ...applyRecordingPresetFields(merged) }
       if (!beforeMigrate || autoAnalyseConsent.migrated || autoOpenBrowserMigrate.migrated) {
         try {
-          fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
-          fs.writeFileSync(this.filePath, JSON.stringify(result, null, 2))
+          this.writeFileAtomic(JSON.stringify(result, null, 2))
         } catch (err: unknown) {
           console.error('[SettingsManager] Failed to persist obs preserve-scene migration:', err)
         }
@@ -348,6 +346,52 @@ export class SettingsManager {
         obsPreserveSceneDefaultV2: true,
         autoOpenBrowserInAppV1: true,
       }
+    }
+  }
+
+  /** Write to a temp file and rename over settings.json so a crash mid-write can't truncate it. */
+  private writeFileAtomic(contents: string): void {
+    fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
+    const tmp = `${this.filePath}.${process.pid}.tmp`
+    try {
+      const fd = fs.openSync(tmp, 'w')
+      try {
+        fs.writeFileSync(fd, contents, 'utf-8')
+        fs.fsyncSync(fd)
+      } finally {
+        fs.closeSync(fd)
+      }
+      fs.renameSync(tmp, this.filePath)
+      // Last good copy: the fallback if settings.json is ever unreadable on launch.
+      try { fs.copyFileSync(this.filePath, `${this.filePath}.bak`) } catch { /* best effort */ }
+    } catch (err) {
+      try { fs.rmSync(tmp, { force: true }) } catch { /* best effort */ }
+      throw err
+    }
+  }
+
+  /** settings.json, or the last good copy (settings.json.bak) when it is unreadable. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- migrated field by field below
+  private readSettingsJson(): any {
+    try {
+      return JSON.parse(fs.readFileSync(this.filePath, 'utf-8'))
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') throw err
+      this.preserveCorruptFile(err)
+      const parsed = JSON.parse(fs.readFileSync(`${this.filePath}.bak`, 'utf-8'))
+      console.warn('[SettingsManager] Restored settings from settings.json.bak')
+      return parsed
+    }
+  }
+
+  /** Unreadable settings fall back to defaults, but keep the original file so nothing is lost silently. */
+  private preserveCorruptFile(err: unknown): void {
+    const backup = path.join(path.dirname(this.filePath), `settings.corrupt-${Date.now()}.json`)
+    try {
+      fs.copyFileSync(this.filePath, backup)
+      console.error(`[SettingsManager] settings.json unreadable — using defaults; original kept at ${backup}:`, err)
+    } catch (copyErr: unknown) {
+      console.error('[SettingsManager] settings.json unreadable and could not be backed up:', err, copyErr)
     }
   }
 
@@ -402,8 +446,7 @@ export class SettingsManager {
       this.settings.savePath = DEFAULTS.savePath
     }
     try {
-      fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
-      fs.writeFileSync(this.filePath, JSON.stringify(this.settings, null, 2))
+      this.writeFileAtomic(JSON.stringify(this.settings, null, 2))
     } catch (err: unknown) {
       const code = (err as NodeJS.ErrnoException).code
       if (code === 'ENOSPC') {

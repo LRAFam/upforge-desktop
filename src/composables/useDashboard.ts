@@ -634,7 +634,7 @@ function createDashboard(opts: DashboardOptions = {}) {
   })
 
   const scoreChartData = computed(() => {
-    const scored = [...analyses.value].filter(a => a.overall_score != null).reverse().slice(0, 20)
+    const scored = analyses.value.filter(a => a.overall_score != null).slice(0, 20).reverse()
     if (scored.length < 2) return null
     const scores = scored.map(a => a.overall_score!)
     const W = 100, H = 32, pad = 2

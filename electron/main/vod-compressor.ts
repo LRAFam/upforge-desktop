@@ -90,7 +90,7 @@ export async function resolveUploadVideoPath(
     throw new Error(`Recording file not found: ${sourcePath}`)
   }
 
-  let sizeBytes = statSync(sourcePath).size
+  const sizeBytes = statSync(sourcePath).size
   const sibling = compressedPathFor(sourcePath)
   if (existsSync(sibling)) {
     const siblingSize = statSync(sibling).size
@@ -121,21 +121,9 @@ export async function resolveUploadVideoPath(
     ? 'transcode'
     : (sizeBytes / (1024 ** 3)).toFixed(1))
 
-  let inputPath = sourcePath
-  if (mustTranscode && shouldCompressVod(sizeBytes, forAnalysis)) {
-    onCompressStart?.('remux')
-    const remuxed = await remuxVodForUpload(sourcePath, options?.onProgress)
-    if (remuxed.ok) {
-      inputPath = remuxed.outputPath
-      sizeBytes = remuxed.outputSizeBytes
-      if (!shouldCompressVod(sizeBytes, forAnalysis)) {
-        return { path: remuxed.outputPath, sizeBytes, compressed: true }
-      }
-      onCompressStart?.((sizeBytes / (1024 ** 3)).toFixed(1))
-    }
-  }
-
-  const result = await compressVodForUpload(inputPath, options?.onProgress)
+  // Transcode straight from the source (MKV included): the output is its one `_upforge.mp4`
+  // sibling. Remuxing first made the remux the input and left `foo_upforge_upforge.mp4` behind.
+  const result = await compressVodForUpload(sourcePath, options?.onProgress)
   if (result.ok) {
     return { path: result.outputPath, sizeBytes: result.outputSizeBytes, compressed: true }
   }

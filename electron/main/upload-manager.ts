@@ -18,12 +18,13 @@ import { reportPipelineError } from './pipeline-errors'
 import {
   clearMultipartState,
   multipartStatePath,
-  readMultipartState,
+  serverCompletedParts,
   withCompletedPart,
   writeMultipartState,
   type MultipartResumeState,
 } from './multipart-upload-state'
 import { getApiBaseUrl } from './api-base'
+import { submissionFocusAreas } from '../../src/lib/submission-focus'
 
 export interface UploadOptions {
   videoPath: string
@@ -38,8 +39,10 @@ export interface UploadOptions {
   beforeComplete?: () => Promise<void>
   /** Opt-in for anonymised training use of archived VODs (storage is separate). */
   trainingConsent?: boolean
-  /** Skill profile, rank snapshot, etc. for coaching continuity. */
+  /** Supported rank and client-version context for coaching. */
   coachingExtras?: CoachingSubmissionExtras
+  /** Explicit request for this recording, optional for automatic submissions. */
+  focusAreas?: string[]
   /** Skip heavy match_data on presign — sent at complete() instead. */
   deferMatchDataOnPresign?: boolean
   /** Latest coaching extras (e.g. after parallel Riot enrich). Used at complete(). */
@@ -88,6 +91,7 @@ interface PresignResponse {
   upload_id?: string
   part_size?: number
   parts?: PresignMultipartPart[]
+  uploaded_parts?: unknown
 }
 
 interface MultipartScope {
@@ -115,6 +119,7 @@ function parsePresignResponse(raw: Record<string, unknown>): PresignResponse {
     upload_id: typeof raw.upload_id === 'string' ? raw.upload_id : undefined,
     part_size: typeof raw.part_size === 'number' ? raw.part_size : undefined,
     parts: Array.isArray(raw.parts) ? raw.parts.filter(isPresignPart) : undefined,
+    uploaded_parts: raw.uploaded_parts,
   }
 }
 
@@ -136,6 +141,7 @@ export function buildDesktopPresignBody(
     agent: submissionCtx.agent ?? opts.agent,
     game_mode: submissionCtx.game_mode,
     file_size_bytes: totalBytes,
+    focus_areas: submissionFocusAreas(opts.focusAreas),
     ...(opts.recordingId ? { client_recording_id: opts.recordingId } : {}),
     ...(opts.onboardingBonus ? { onboarding_bonus: true } : {}),
     ...(opts.onboardingAdminTest ? { onboarding_admin_test: true } : {}),
@@ -144,7 +150,6 @@ export function buildDesktopPresignBody(
       duel_moments: submissionCtx.duel_moments,
       ally_agents: submissionCtx.ally_agents,
       enemy_agents: submissionCtx.enemy_agents,
-      skill_profile: submissionCtx.skill_profile,
       rank_snapshot: submissionCtx.rank_snapshot,
     }),
   }
@@ -156,66 +161,46 @@ export interface ArchiveUploadResult {
 }
 
 import { userPendingJobPath } from './user-data-paths'
+import { readPendingJobRegistry, savePendingJobEntry, removePendingJobEntry, type PendingJob } from './pending-job-registry'
 
 let pendingJobUserId: number | null = null
 
-export function setPendingJobUserScope(userId: number | null): void {
-  pendingJobUserId = userId
+export function setPendingJobUserScope(userId: number | null): void { pendingJobUserId = userId }
+export function getPendingJobUserScope(): number | null { return pendingJobUserId }
+
+function pendingJobPath(userId: number | null): string {
+  return userId != null ? userPendingJobPath(userId) : path.join(app.getPath('userData'), 'pending-job.json')
 }
 
-function pendingJobPath(): string {
-  if (pendingJobUserId != null) {
-    return userPendingJobPath(pendingJobUserId)
-  }
-  return path.join(app.getPath('userData'), 'pending-job.json')
-}
-
-/** Persist a job_id to disk immediately after presign, so polling can resume on restart. */
-export function savePendingJob(jobId: string, context?: { agent?: string | null; map?: string | null; game?: string }): void {
+/** Save every presigned job under the owner captured before its request began. */
+export function savePendingJob(jobId: string, context?: { agent?: string | null; map?: string | null; game?: string }, userId = pendingJobUserId): void {
   try {
-    const filePath = pendingJobPath()
-    fs.mkdirSync(path.dirname(filePath), { recursive: true })
-    fs.writeFileSync(
-      filePath,
-      JSON.stringify({ job_id: jobId, savedAt: Date.now(), ...context }),
-      'utf-8',
-    )
-  } catch { /* non-critical */ }
+    savePendingJobEntry(pendingJobPath(userId), userId, {
+      job_id: jobId, savedAt: Date.now(),
+      agent: context?.agent ?? undefined, map: context?.map ?? undefined, game: context?.game,
+    })
+  } catch (error) { console.warn('[PendingJobs] Could not persist recovery job:', error) }
 }
 
-/** Clear the persisted job_id once the job is finished (completed, failed, or timed out). */
-export function clearPendingJob(): void {
-  clearPendingJobForUser(pendingJobUserId)
+export function clearPendingJob(jobId: string, userId = pendingJobUserId): void {
+  clearPendingJobForUser(userId, jobId)
 }
 
-export function clearPendingJobForUser(userId: number | null): void {
-  try {
-    const filePath = userId != null ? userPendingJobPath(userId) : path.join(app.getPath('userData'), 'pending-job.json')
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
-  } catch { /* non-critical */ }
+export function clearPendingJobForUser(userId: number | null, jobId: string): void {
+  try { removePendingJobEntry(pendingJobPath(userId), userId, jobId) }
+  catch (error) { console.warn('[PendingJobs] Could not clear recovery job:', error) }
 }
 
-/** Read any orphaned job_id saved from a previous session. Returns null if none. */
-export function readPendingJob(): { job_id: string; savedAt: number; agent?: string; map?: string; game?: string } | null {
-  return readPendingJobForUser(pendingJobUserId)
+export function readPendingJobsForUser(userId: number | null): PendingJob[] {
+  try { return readPendingJobRegistry(pendingJobPath(userId), userId) }
+  catch (error) { console.warn('[PendingJobs] Could not read recovery jobs:', error); return [] }
 }
 
-export function readPendingJobForUser(
-  userId: number | null,
-): { job_id: string; savedAt: number; agent?: string; map?: string; game?: string } | null {
-  const paths = userId != null
-    ? [userPendingJobPath(userId)]
-    : [path.join(app.getPath('userData'), 'pending-job.json')]
-
-  for (const filePath of paths) {
-    try {
-      const raw = fs.readFileSync(filePath, 'utf-8')
-      const parsed = JSON.parse(raw)
-      if (parsed?.job_id) return parsed
-    } catch { /* try next */ }
-  }
-  return null
+/** Single-row view retained for diagnostics; recovery consumes readPendingJobsForUser. */
+export function readPendingJobForUser(userId: number | null): PendingJob | null {
+  return readPendingJobsForUser(userId)[0] ?? null
 }
+export function readPendingJob(): PendingJob | null { return readPendingJobForUser(pendingJobUserId) }
 
 export class UploadManager {
   private static readonly S3_UPLOAD_MAX_ATTEMPTS = 5
@@ -340,6 +325,7 @@ export class UploadManager {
     game: string,
     timeline?: MatchData | null,
     coachingExtras?: CoachingSubmissionExtras,
+    focusAreas?: string[],
   ): Promise<UploadResult> {
     const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
@@ -348,6 +334,7 @@ export class UploadManager {
     const ctx = submissionContextFromTimeline(timeline ?? null, coachingExtras)
     const body = JSON.stringify({
       game,
+      focus_areas: submissionFocusAreas(focusAreas),
       map: ctx.map,
       agent: ctx.agent,
       game_mode: ctx.game_mode,
@@ -355,7 +342,6 @@ export class UploadManager {
       duel_moments: ctx.duel_moments,
       ally_agents: ctx.ally_agents,
       enemy_agents: ctx.enemy_agents,
-      skill_profile: ctx.skill_profile,
       rank_snapshot: ctx.rank_snapshot,
     })
 
@@ -368,14 +354,14 @@ export class UploadManager {
   }
 
   /** Re-queue analysis for a failed desktop submission (VOD already on S3). */
-  async retrySubmission(jobId: string): Promise<void> {
+  async retrySubmission(jobId: string, focusAreas?: string[]): Promise<void> {
     const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/${jobId}/retry`,
-      '{}',
+      JSON.stringify({ focus_areas: submissionFocusAreas(focusAreas) }),
       token,
     )
   }
@@ -418,6 +404,8 @@ export class UploadManager {
     }
     const totalBytes = fs.statSync(opts.videoPath).size
 
+    const ownerUserId = pendingJobUserId
+
     // ── Step 1: get presigned URL ──────────────────────────────────────────
     opts.onProgress(3)
     const presignBody = JSON.stringify(buildDesktopPresignBody(opts, totalBytes))
@@ -431,11 +419,12 @@ export class UploadManager {
 
     // Persist job_id immediately — if the app crashes during upload or
     // analysis, the user can resume polling from the next launch.
-    savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game })
+    savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game }, ownerUserId)
+    this._checkCancelled(generation)
 
     const stopHeartbeat = this._startUploadHeartbeat(job_id, token, generation)
     try {
-      return await this._finishUploadOnce(opts, fullAttempt, presign, job_id, token, generation, apiUrl, totalBytes, stopHeartbeat)
+      return await this._finishUploadOnce(opts, fullAttempt, presign, job_id, token, generation, apiUrl, totalBytes, stopHeartbeat, ownerUserId)
     } finally {
       stopHeartbeat.stop()
     }
@@ -483,6 +472,7 @@ export class UploadManager {
     apiUrl: string,
     totalBytes: number,
     heartbeat: { setProgress: (pct: number) => void },
+    ownerUserId: number | null,
   ): Promise<UploadResult> {
     const onProgress = (pct: number) => { heartbeat.setProgress(pct); opts.onProgress(pct) }
 
@@ -538,6 +528,8 @@ export class UploadManager {
           recordingId: opts.recordingId ?? null,
           jobId: job_id,
           uploadId: presign.upload_id ?? null,
+          ownerUserId,
+          uploadedParts: presign.uploaded_parts,
         },
       )
     } else if (presign.upload_url) {
@@ -563,6 +555,7 @@ export class UploadManager {
       `${apiUrl}/api/desktop-submissions/complete`,
       JSON.stringify({
         job_id,
+        focus_areas: submissionFocusAreas(opts.focusAreas),
         agent:      completeCtx.agent ?? opts.agent ?? undefined,
         map:        completeCtx.map ?? opts.map ?? undefined,
         game_mode:  completeCtx.game_mode ?? gameModeForApi(opts.timeline?.gameMode) ?? undefined,
@@ -570,7 +563,6 @@ export class UploadManager {
         duel_moments: duelMomentsForComplete,
         ally_agents: completeCtx.ally_agents,
         enemy_agents: completeCtx.enemy_agents,
-        skill_profile: completeCtx.skill_profile,
         rank_snapshot: completeCtx.rank_snapshot,
         ...(uploadParts ? { upload_parts: uploadParts } : {}),
       }),
@@ -578,7 +570,7 @@ export class UploadManager {
     )
     opts.onProgress(100)
     if (opts.recordingId) {
-      clearMultipartState(multipartStatePath(app.getPath('userData'), opts.recordingId))
+      clearMultipartState(multipartStatePath(app.getPath('userData'), opts.recordingId, ownerUserId))
     }
 
     return { job_id, duel_moments: duelMomentsPayload }
@@ -612,7 +604,6 @@ export class UploadManager {
       match_data: submissionCtx.match_data,
       ally_agents: submissionCtx.ally_agents,
       enemy_agents: submissionCtx.enemy_agents,
-      skill_profile: submissionCtx.skill_profile,
       rank_snapshot: submissionCtx.rank_snapshot,
     })
     const archivePresign = await this._apiPost(
@@ -643,7 +634,6 @@ export class UploadManager {
         match_data:      completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null, opts.coachingExtras),
         ally_agents:     completeCtx.ally_agents,
         enemy_agents:    completeCtx.enemy_agents,
-        skill_profile:   completeCtx.skill_profile,
         rank_snapshot:   completeCtx.rank_snapshot,
         file_size_bytes: totalBytes,
         training_consent: opts.trainingConsent === true,
@@ -678,8 +668,7 @@ export class UploadManager {
         duel_moments: ctx.duel_moments,
         ally_agents: ctx.ally_agents,
         enemy_agents: ctx.enemy_agents,
-        skill_profile: ctx.skill_profile,
-        rank_snapshot: ctx.rank_snapshot,
+          rank_snapshot: ctx.rank_snapshot,
       }),
       token,
     )
@@ -761,6 +750,7 @@ export class UploadManager {
         res.on('error', reject)
         res.on('end', () => {
           const status = res.statusCode ?? 0
+          if (status === 401) this.auth.handleSessionRejection(token, status, undefined, url)
           if (status === 429) {
             const retryAt = parseRetryAfter(res.headers['retry-after'])
             if (retryAt !== null) this._apiCooldowns.set(cooldownKey, retryAt)
@@ -769,6 +759,7 @@ export class UploadManager {
           }
           try {
             const json = JSON.parse(data)
+            if (status === 403) this.auth.handleSessionRejection(token, status, json, url)
             if (status === 402) reject(new UpgradeRequiredError(
               json.message || 'Quota limit reached. Upgrade to continue.',
               json.error || 'analysis_limit_reached',
@@ -1064,7 +1055,7 @@ export class UploadManager {
     partSize: number,
     onProgress: (pct: number) => void,
     concurrency = S3_MULTIPART_CONCURRENCY,
-    resume?: { recordingId: string | null; jobId: string; uploadId: string | null },
+    resume?: { recordingId: string | null; jobId: string; uploadId: string | null; ownerUserId: number | null; uploadedParts?: unknown },
   ): Promise<UploadedPart[]> {
     const generation = this._abortGeneration
     const pool = new AbortController()
@@ -1074,6 +1065,11 @@ export class UploadManager {
       pool.signal.throwIfAborted()
     }
     const sortedParts = [...parts].sort((a, b) => a.part_number - b.part_number)
+    if (!Number.isSafeInteger(partSize) || partSize <= 0 || !Number.isSafeInteger(totalBytes) || totalBytes <= 0
+      || sortedParts.length !== Math.ceil(totalBytes / partSize)
+      || sortedParts.some((part, index) => part.part_number !== index + 1 || !part.upload_url)) {
+      throw new Error('Invalid multipart upload plan')
+    }
     const results: UploadedPart[] = new Array(sortedParts.length)
     let uploaded = 0
     let nextIndex = 0
@@ -1082,43 +1078,24 @@ export class UploadManager {
     scope.onProgress = () => { lastProgressAt = Date.now() }
 
     const stateFile = resume?.recordingId
-      ? multipartStatePath(app.getPath('userData'), resume.recordingId)
+      ? multipartStatePath(app.getPath('userData'), resume.recordingId, resume.ownerUserId)
       : null
     let resumeState: MultipartResumeState | null = null
-    if (stateFile && resume?.uploadId) {
-      const existing = readMultipartState(stateFile)
-      if (
-        existing
-        && existing.uploadId === resume.uploadId
-        && existing.jobId === resume.jobId
-        && existing.totalBytes === totalBytes
-        && existing.partSize === partSize
-      ) {
-        resumeState = existing
-        for (const done of existing.completedParts) {
-          const idx = sortedParts.findIndex((p) => p.part_number === done.part_number)
-          if (idx >= 0) {
-            results[idx] = { part_number: done.part_number, etag: done.etag }
-            const offset = (done.part_number - 1) * partSize
-            const length = Math.min(partSize, totalBytes - offset)
-            uploaded += length
-          }
-        }
-      } else if (existing) {
-        // Different S3 session — start clean
-        clearMultipartState(stateFile)
-      }
+    const completedParts = serverCompletedParts(resume?.uploadedParts, sortedParts.length)
+    for (const done of completedParts) {
+      results[done.part_number - 1] = done
+      uploaded += Math.min(partSize, totalBytes - (done.part_number - 1) * partSize)
     }
 
     if (stateFile && resume?.uploadId && resume.recordingId) {
-      resumeState = resumeState ?? {
+      resumeState = {
         version: 1,
         recordingId: resume.recordingId,
         jobId: resume.jobId,
         uploadId: resume.uploadId,
         partSize,
         totalBytes,
-        completedParts: [],
+        completedParts,
         updatedAt: Date.now(),
       }
       writeMultipartState(stateFile, resumeState)
@@ -1216,8 +1193,10 @@ export class UploadManager {
         res.on('error', reject)
         res.on('end', () => {
           const httpStatus = res.statusCode ?? 0
+          if (httpStatus === 401) this.auth.handleSessionRejection(token, httpStatus, undefined, url.pathname)
           try {
             const json = JSON.parse(body) as Record<string, unknown>
+            if (httpStatus === 403) this.auth.handleSessionRejection(token, httpStatus, json, url.pathname)
             if (httpStatus === 404) {
               reject(new Error('Job not found'))
               return

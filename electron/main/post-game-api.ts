@@ -155,7 +155,6 @@ export async function requestPostGameDebrief(opts: PostGameDebriefOptions): Prom
     match_data: ctx.match_data ?? prepareMatchDataForUpload(timeline ?? null, coachingExtras),
     ally_agents: ctx.ally_agents,
     enemy_agents: ctx.enemy_agents,
-    skill_profile: ctx.skill_profile,
     rank_snapshot: ctx.rank_snapshot,
   })
   const parsedUrl = new URL(`${apiBase}/api/desktop-submissions/debrief`)

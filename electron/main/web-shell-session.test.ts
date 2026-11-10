@@ -41,7 +41,7 @@ function fakeJar(initial: Record<string, string> = {}) {
   const cookies = new Map(Object.entries(initial))
   const jar: CookieJar = {
     get: async ({ name }) => (name && cookies.has(name) ? [{ name, value: cookies.get(name)! }] : []),
-    set: async (d) => { cookies.set(d.name!, d.value!) },
+    set: vi.fn(async (d) => { cookies.set(d.name!, d.value!) }),
     remove: async (_url, name) => { cookies.delete(name) },
   }
   return { jar, cookies, clearStorageData: vi.fn(async () => { cookies.clear() }) }
@@ -62,9 +62,10 @@ describe('web shell cookie', () => {
     const res = await applyWebShellCookie(fakeAuth(), BASE, jar)
 
     expect(res.signedIn).toBe(true)
+    expect(jar.set).toHaveBeenCalledWith(expect.objectContaining({ name: '__Host-upforge_session', secure: true, httpOnly: true, path: '/', sameSite: 'lax' }))
     expect(sent[0]).toMatchObject({ method: 'POST', url: '/api/auth/web-session', auth: `Bearer ${DESKTOP}` })
-    expect(cookies.get('auth_token')).toBe(encodeAuthCookie(SHELL_1))
-    expect(cookies.get('auth_token')).not.toBe(encodeAuthCookie(DESKTOP))
+    expect(cookies.get('__Host-upforge_session')).toBe(SHELL_1)
+    expect(cookies.get('__Host-upforge_session')).not.toBe(DESKTOP)
   })
 
   it('reuses the cached token while the cookie is still there', async () => {
@@ -73,7 +74,7 @@ describe('web shell cookie', () => {
     await applyWebShellCookie(fakeAuth(), BASE, jar)
     await applyWebShellCookie(fakeAuth(), BASE, jar)
     expect(sent).toHaveLength(1)
-    expect(cookies.get('auth_token')).toBe(encodeAuthCookie(SHELL_1))
+    expect(cookies.get('__Host-upforge_session')).toBe(SHELL_1)
   })
 
   it('re-mints after the website logged out (cookie gone) or the shell got a 401', async () => {
@@ -81,9 +82,9 @@ describe('web shell cookie', () => {
     const { jar, cookies } = fakeJar()
     await applyWebShellCookie(fakeAuth(), BASE, jar)
 
-    cookies.delete('auth_token') // website "Log out"
+    cookies.delete('__Host-upforge_session') // website "Log out"
     await applyWebShellCookie(fakeAuth(), BASE, jar)
-    expect(cookies.get('auth_token')).toBe(encodeAuthCookie(SHELL_2))
+    expect(cookies.get('__Host-upforge_session')).toBe(SHELL_2)
 
     noteShellApiResponse(401)
     await applyWebShellCookie(fakeAuth(), BASE, jar)
@@ -113,7 +114,26 @@ describe('web shell cookie', () => {
     replies = [minted(SHELL_1)]
     const { jar, cookies } = fakeJar({ auth_token: encodeAuthCookie(DESKTOP) })
     await applyWebShellCookie(fakeAuth(), BASE, jar)
-    expect(cookies.get('auth_token')).toBe(encodeAuthCookie(SHELL_1))
+    expect(cookies.get('__Host-upforge_session')).toBe(SHELL_1)
+    expect(cookies.has('auth_token')).toBe(false)
+  })
+
+  it('uses a non-Secure development cookie only for an HTTP frontend', async () => {
+    replies = [minted(SHELL_1)]
+    const { jar, cookies } = fakeJar()
+    await applyWebShellCookie(fakeAuth(), 'http://localhost:3000', jar)
+    expect(jar.set).toHaveBeenCalledWith(expect.objectContaining({ name: 'upforge_session', httpOnly: true, secure: false }))
+    expect(cookies.get('upforge_session')).toBe(SHELL_1)
+  })
+
+  it('does not install a session minted while the desktop account changed', async () => {
+    replies = [minted(SHELL_1)]
+    const auth = fakeAuth()
+    vi.spyOn(auth, 'getToken').mockReturnValueOnce(DESKTOP).mockReturnValue('99|anotherdesktopowner00000')
+    const { jar, cookies } = fakeJar({ auth_token: encodeAuthCookie(DESKTOP) })
+    expect(await applyWebShellCookie(auth, BASE, jar)).toEqual({ signedIn: false, reason: 'session_changed' })
+    expect(cookies.size).toBe(0)
+    expect(jar.set).not.toHaveBeenCalled()
   })
 
   it('not signed in → no request, no cookie', async () => {
@@ -141,6 +161,6 @@ describe('desktop sign-out', () => {
     // Next open mints again instead of reusing the revoked token.
     replies = [minted(SHELL_2)]
     await applyWebShellCookie(auth, BASE, jar)
-    expect(cookies.get('auth_token')).toBe(encodeAuthCookie(SHELL_2))
+    expect(cookies.get('__Host-upforge_session')).toBe(SHELL_2)
   })
 })

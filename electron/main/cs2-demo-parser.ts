@@ -3,6 +3,7 @@
  * demofile is CS:GO-only and does not decode CS2 game events reliably.
  */
 import fs from 'fs'
+import { hasSource2DemoPreamble } from './source2-demo-preamble'
 import { calculateCs2MatchStats, readCs2StatsInput } from './cs2-match-stats'
 import { buildCs2RoundFacts, flashHitsFromSamples, humanizeCs2Place, type Cs2FlashHit, type Cs2RoundFactsResult } from './cs2-round-facts'
 import log from 'electron-log'
@@ -27,6 +28,7 @@ import { sanitizeDemoClientName, sanitizeDemoMapName } from './demo-text-sanitiz
 import { getKnownCs2SteamId, rememberParsedCs2SteamId, type Cs2LocalMatch } from './cs2-identity-state'
 import type { FirstBloodEvent, KillEvent, MatchData, RoundSummary, SpikeDefusedEvent, SpikeDetonatedEvent, SpikePlantedEvent } from './riot-types'
 import type { DemoHeaderPeek } from './demo-header-peek'
+import { validCapturedCs2SteamId } from './cs2-upload-identity'
 
 const DEFAULT_TICK_RATE = 64
 
@@ -191,9 +193,9 @@ function alignedGameTimeForTick(tick: number, anchorTick: number, tickRate: numb
   return cs2AlignedGameTimeMs(tick, anchorTick, tickRate)
 }
 
-/** CS2 demo header via demoparser2 — replaces demofile header peek for CS2. */
+/** CS2 demo header via demoparser2, after checking the required file preamble. */
 export function peekCs2DemoHeader(demoPath: string): DemoHeaderPeek | null {
-  if (!fs.existsSync(demoPath)) return null
+  if (!hasSource2DemoPreamble(demoPath)) return null
   try {
     const header = parseHeader(demoPath) as JsonRow
     const mapName = sanitizeDemoMapName(
@@ -240,9 +242,10 @@ export function buildCs2TimelineFromDemo(
     ).filter((row) => row.is_warmup_period !== true)
     const roundStarts = safeParseEvent(source, 'round_start', [], ['total_rounds_played'])
     const roundFreezeEnds = safeParseEvent(source, 'round_freeze_end', [], ['total_rounds_played'])
-    const bombPlants = safeParseEvent(source, 'bomb_planted', ['last_place_name'], ['total_rounds_played'])
-    const bombDefuses = safeParseEvent(source, 'bomb_defused', [], ['total_rounds_played'])
-    const bombExplodes = safeParseEvent(source, 'bomb_exploded', [], ['total_rounds_played'])
+    const liveOnly = (row: JsonRow) => row.is_warmup_period !== true
+    const bombPlants = safeParseEvent(source, 'bomb_planted', ['last_place_name'], ['total_rounds_played', 'is_warmup_period']).filter(liveOnly)
+    const bombDefuses = safeParseEvent(source, 'bomb_defused', [], ['total_rounds_played', 'is_warmup_period']).filter(liveOnly)
+    const bombExplodes = safeParseEvent(source, 'bomb_exploded', [], ['total_rounds_played', 'is_warmup_period']).filter(liveOnly)
     const players = asRows(source.playerInfo())
 
     if (!deaths.length && !roundEnds.length) {
@@ -307,9 +310,10 @@ export function buildCs2TimelineFromDemo(
       return name.toLowerCase() === localName.toLowerCase()
     }
 
-    // Prefer the account's saved Steam64: names change and collide, Steam IDs don't.
+    // A captured recording owner takes priority over today's linked account or display name.
     let localMatchedBy: Cs2LocalMatch = null
-    const knownSteamId = getKnownCs2SteamId()
+    const capturedSteamId = validCapturedCs2SteamId(opts.cs2Live?.playerSteamId) ? opts.cs2Live.playerSteamId : null
+    const knownSteamId = capturedSteamId ?? getKnownCs2SteamId()
     const bySteam = knownSteamId ? steamToUserId.get(knownSteamId) : undefined
     if (bySteam != null) {
       localUserId = bySteam
@@ -482,9 +486,30 @@ export function buildCs2TimelineFromDemo(
     const roundWinners = new Map<number, number>()
     const roundEndTimes = new Map<number, number>()
     const roundCeremonies = new Map<number, string>()
+    // Key each round_end by the round number of the round_start before it (same 0-based
+    // total_rounds_played the kills carry), so an mp_restartgame doesn't shift every round by one.
+    const startRounds = roundStarts
+      .map((row) => ({ tick: rowNumber(row, 'tick'), round: rowNumber(row, 'total_rounds_played') }))
+      .filter((s): s is { tick: number; round: number } => s.tick != null && s.round != null)
+      .sort((a, b) => a.tick - b.tick)
+    // Start row before each end; only trusted when every round_end has its own round_start.
+    const startIndexForEnd = roundEnds.map((row) => {
+      const tick = rowNumber(row, 'tick')
+      if (tick == null) return -1
+      let found = -1
+      startRounds.forEach((start, i) => { if (start.tick <= tick) found = i })
+      return found
+    })
+    const startsTrusted = startIndexForEnd.every((i) => i >= 0)
+      && new Set(startIndexForEnd).size === startIndexForEnd.length
+    const roundNumberForEnd = (index: number): number => (
+      startsTrusted ? Math.max(0, startRounds[startIndexForEnd[index]!]!.round) : index
+    )
+    let endRoundCount = 0
     roundEnds.forEach((row, index) => {
       const winner = normalizeTeamId(row.winner)
-      const roundNum = index
+      const roundNum = roundNumberForEnd(index)
+      endRoundCount = Math.max(endRoundCount, roundNum + 1)
       if (winner != null) roundWinners.set(roundNum, winner)
       const reason = rowNumber(row, 'reason', 'round_win_reason')
       const ceremony = ceremonyFromRoundEndReason(reason)
@@ -544,15 +569,22 @@ export function buildCs2TimelineFromDemo(
     })
 
     const roundsPlayed = roundEnds.length > 0
-      ? roundEnds.length
+      ? endRoundCount
       : Math.max(0, ...killEvents.map((k) => (k.round ?? 0) + 1), 0)
     const roundSummaries: RoundSummary[] = []
     let allyWins = 0
     let enemyWins = 0
 
+    // Sides swap at half time (and in overtime): playerInfo only holds the final side.
+    const localSteamForSides = [...steamToUserId.entries()].find(([, id]) => id === localUserId)?.[0] ?? null
+    const localSideByRound = localSteamForSides ? cs2LocalSideByRound(deaths, localSteamForSides) : new Map<number, number>()
+    let lastKnownSide: number | null = null
+
     for (let r = 0; r < roundsPlayed; r++) {
       const winnerTeam = roundWinners.get(r)
-      const won = localTeam != null && winnerTeam === localTeam
+      const roundSide: number | null = localSideByRound.get(r) ?? lastKnownSide ?? localTeam
+      if (localSideByRound.has(r)) lastKnownSide = localSideByRound.get(r)!
+      const won = roundSide != null && winnerTeam === roundSide
       if (won) allyWins++
       else if (winnerTeam != null) enemyWins++
       const planted = spikePlants.some((p) => p.round === r)
@@ -617,6 +649,7 @@ export function buildCs2TimelineFromDemo(
     } : null
 
     const localSteamId = [...steamToUserId.entries()].find(([, id]) => id === localUserId)?.[0]
+    if (capturedSteamId && localSteamId === capturedSteamId) timeline.playerSteamId = capturedSteamId
     if (localSteamId && localName) {
       const lower = localName.toLowerCase()
       const sameName = [...userIdToName.values()].filter(n => n.toLowerCase() === lower).length
@@ -688,6 +721,7 @@ export function buildCs2TimelineFromDemo(
       const sync = estimateCs2DemoVideoShift(timeline, opts.cs2Live)
       if (sync) {
         timeline.cs2DemoVideoShiftMs = sync.shiftMs
+        timeline.cs2DemoSyncEvidence = { pairs: sync.pairs, livePoints: sync.livePoints }
         const estimate = -Math.max(0, opts.recordingStartTime - (opts.matchStartTime ?? opts.recordingStartTime))
         log.info(`[CS2DemoSync] demo→video shift ${sync.shiftMs} ms from ${sync.pairs}/${sync.livePoints} GSI points (match-start estimate ${estimate} ms, diff ${sync.shiftMs - estimate} ms)`)
       } else {
@@ -704,6 +738,41 @@ export function buildCs2TimelineFromDemo(
     log.warn('[CS2DemoParser] Parse failed:', (err as Error).message)
     return null
   }
+}
+
+/**
+ * The local player's side (2 = T, 3 = CT) per round, read from player_death `*_team_num`
+ * (the side at kill time). Rounds without the local player in a kill use any known teammate.
+ */
+export function cs2LocalSideByRound(deaths: JsonRow[], localSteamId: string): Map<number, number> {
+  const sides = new Map<number, number>()
+  const rowsOf = (row: JsonRow): Array<[string | null, number | null]> => [
+    [steamIdKey(row.user_steamid ?? row.user_steam_id), normalizeTeamId(row.user_team_num)],
+    [steamIdKey(row.attacker_steamid ?? row.attacker_steam_id), normalizeTeamId(row.attacker_team_num)],
+  ]
+  const roundOf = (row: JsonRow) => Math.max(0, rowNumber(row, 'total_rounds_played') ?? 0)
+  const isSide = (t: number | null): t is number => t === 2 || t === 3
+  for (const row of deaths) {
+    for (const [steam, team] of rowsOf(row)) {
+      if (steam === localSteamId && isSide(team)) sides.set(roundOf(row), team)
+    }
+  }
+  const teammates = new Set<string>()
+  for (const row of deaths) {
+    const side = sides.get(roundOf(row))
+    if (side == null) continue
+    for (const [steam, team] of rowsOf(row)) {
+      if (steam && steam !== localSteamId && team === side) teammates.add(steam)
+    }
+  }
+  for (const row of deaths) {
+    const round = roundOf(row)
+    if (sides.has(round)) continue
+    for (const [steam, team] of rowsOf(row)) {
+      if (steam && teammates.has(steam) && isSide(team)) { sides.set(round, team); break }
+    }
+  }
+  return sides
 }
 
 /**

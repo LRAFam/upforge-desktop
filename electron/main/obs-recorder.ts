@@ -21,6 +21,7 @@ import {
   type ObsSceneSwitchOptions,
 } from './obs-setup'
 import { applyCrashSafeObsRecFormat, supportsHybridMp4 } from './obs-rec-format'
+import { markOwnedRecordingFile } from './owned-recording-files'
 import { findObsWindowString } from './game-window-finder'
 import { formatObsConnectError, isObsAuthenticationFailure, obsConnectHosts } from './obs-connect'
 import {
@@ -137,6 +138,7 @@ export class OBSRecorder {
   private _startedAt: number | null = null
   private _gameplayRefitDone = false
   private _outputPath: string | null = null
+  private _finalizingOutputPath: string | null = null
   private _lastError: string | null = null
   private _obsVersion: string | null = null
   /** OBS Studio version from GetVersion — used for crash-safe recording format. */
@@ -623,6 +625,7 @@ export class OBSRecorder {
   isActivelyRecording(): boolean { return this._matchOwnedRecording && this._recording }
   isClipsOnlySession(): boolean { return this._clipsOnlySession }
   getLastRecordingPath(): string | null { return this._outputPath }
+  getFinalizingRecordingPath(): string | null { return this._finalizingOutputPath }
   getLastError(): string | null { return this._lastError }
   hasRecordingFailure(): boolean { return this._recordingFailure !== null }
   wasNoAudio(): boolean { return this._noAudio }
@@ -1217,7 +1220,10 @@ export class OBSRecorder {
       this._startedAt ??= Date.now()
       this._recording = true
       this._startDiagnostics.stage = 'recording'
-      if (!this._clipsOnlySession) this._startProgressWatch()
+      if (!this._clipsOnlySession) {
+        markOwnedRecordingFile(this._outputPath)
+        this._startProgressWatch()
+      }
       this.onStatusChange?.(true)
       log.info(
         `[OBSRecorder] ${this._clipsOnlySession ? 'Clips-only session' : 'Recording'} started for game:`,
@@ -1457,6 +1463,7 @@ export class OBSRecorder {
 
   /** One stop attempt; throws on failure without marking the recording failed. */
   private async _stopAttempt(shutdownRequest?: Promise<{ outputPath?: string }>, suppressStoppedStatus = false): Promise<string | null> {
+    const ownsMatchFile = this._matchOwnedRecording && !this._clipsOnlySession
     this._stopProgressWatch()
     this._stopReconnectLoop()
     if (this._recordInactiveSettleTimer) {
@@ -1468,11 +1475,21 @@ export class OBSRecorder {
       const response = await withTimeout(shutdownRequest, 5000, 'OBS stop request timed out. Restart OBS.')
       if (response.outputPath) this._outputPath = response.outputPath
     }
-    if (!this._connected) {
+    // OBS crashed mid-match: no process means no output, so the file it left (crash-safe MKV /
+    // hybrid MP4) is final. Release ownership and hand back that path instead of failing the match.
+    let obsGone = false
+    if (!this._connected && this._obsProcessDiedDuringMatch && !(await isObsProcessRunning())) {
+      obsGone = true
+      log.warn('[OBSRecorder] OBS exited during the match — treating recording as stopped:', this._outputPath)
+    }
+    if (!this._connected && !obsGone) {
       const result = await withTimeout(this.connect(), 5000, 'OBS reconnect timed out')
       if (!result.ok) throw new Error('Cannot reach OBS to confirm recording stopped. Restart OBS.')
     }
-    if (this._clipsOnlySession) {
+    if (obsGone) {
+      if (this._clipsOnlySession) this._outputPath = null
+      this._replayBufferActive = false
+    } else if (this._clipsOnlySession) {
       if (!shutdownRequest) await withTimeout(this._obs.call('StopReplayBuffer'), 5000, 'OBS replay buffer stop timed out')
       await waitForRecordingStopped(() => this._obs.call('GetReplayBufferStatus'))
       this._replayBufferActive = false
@@ -1485,6 +1502,7 @@ export class OBSRecorder {
       }
       await waitForRecordingStopped(() => this._obs.call('GetRecordStatus'))
     }
+    if (ownsMatchFile) markOwnedRecordingFile(this._outputPath)
     // It is now safe to release ownership. File finalization is a separate success condition.
     this._recording = false
     this._matchOwnedRecording = false
@@ -1492,7 +1510,17 @@ export class OBSRecorder {
     this._clipsOnlySession = false
     this._disconnectedDuringRecording = false
     this._noteRecordingStopped()
-    if (this._outputPath) await this._waitForRecordingFile(this._outputPath)
+    // After a crash the file only exists if OBS got to write it; the match-end path scan handles the rest.
+    if (this._outputPath && (!obsGone || existsSync(this._outputPath))) {
+      const ready = await this._waitForRecordingFile(this._outputPath)
+      if (!ready) {
+        if (!ownsMatchFile || this._recordingFailure || suppressStoppedStatus) {
+          throw new Error(`OBS recording file did not finalize: ${this._outputPath}. Restart OBS before recording another match.`)
+        }
+        this._finalizingOutputPath = this._outputPath
+        log.info('[OBSRecorder] Stopped output is still finalizing; retaining it for background recovery:', this._outputPath)
+      } else this._finalizingOutputPath = null
+    }
     // A capture failure already sent the stopped state and its error. Successful
     // cleanup must not report that same failure again as a separate stop error.
     if (!this._recordingFailure && !suppressStoppedStatus) {
@@ -1504,6 +1532,8 @@ export class OBSRecorder {
 
   forceStop(): void {
     if (this._stopInFlight) return
+    // Quit/update must never stop a recording the user started in OBS themselves.
+    if (!this._matchOwnedRecording && !this._clipsOnlySession) return
     // Send immediately: before-quit callers cannot keep Electron alive to await a status query.
     const request = this._clipsOnlySession
       ? this._obs.call('StopReplayBuffer').then(() => ({}))
@@ -1512,7 +1542,7 @@ export class OBSRecorder {
   }
 
   /** Wait until the muxed file exists and size has stabilized (OBS writes async after StopRecord). */
-  private async _waitForRecordingFile(filePath: string): Promise<void> {
+  private async _waitForRecordingFile(filePath: string): Promise<boolean> {
     const pollMs = 500
     const maxWaitMs = 45_000
     let lastSize = -1
@@ -1533,7 +1563,7 @@ export class OBSRecorder {
       }
       if (size > 0 && size === lastSize) {
         stableChecks++
-        if (stableChecks >= 2) return
+        if (stableChecks >= 2) return true
       } else {
         stableChecks = 0
       }
@@ -1541,7 +1571,7 @@ export class OBSRecorder {
       await new Promise((r) => setTimeout(r, pollMs))
     }
 
-    throw new Error(`OBS recording file did not finalize: ${filePath}. Restart OBS before recording another match.`)
+    return false
   }
 
   // ── Replay buffer clip saving ────────────────────────────────────────────────

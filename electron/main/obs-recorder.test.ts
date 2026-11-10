@@ -205,6 +205,16 @@ describe('OBS recording completion', () => {
     expect(rec.isRecording()).toBe(true)
   })
 
+  it('forceStop (quit/update) leaves the user\'s own OBS recording running', async () => {
+    mock.call.mockResolvedValue({ outputActive: true, outputBytes: 100 })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    rec.forceStop()
+    await vi.advanceTimersByTimeAsync(16_000)
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+    expect(mock.call).not.toHaveBeenCalledWith('StopReplayBuffer')
+  })
+
   it('does not confuse a clips-only session with a full recording', async () => {
     mock.call.mockResolvedValue({ outputActive: false })
     const rec = recorder()
@@ -249,16 +259,17 @@ describe('OBS recording completion', () => {
     expect(rec.hasRecordingFailure()).toBe(false)
   })
 
-  it('reports a zero-byte finalization timeout as failure', async () => {
+  it('releases capture and retains a slow owned output for durable background finalization', async () => {
     mock.fileSize = 0
     mock.call.mockResolvedValue({ outputActive: false, outputBytes: 0 })
     const rec = recorder()
     const stopped = rec.stop()
     await vi.advanceTimersByTimeAsync(46_000)
-    expect(await stopped).toBeNull()
-    expect(rec.getLastError()).toMatch(/did not finalize/)
-    expect(rec.onStatusChange).toHaveBeenCalledWith(false, expect.stringContaining('did not finalize'), 'stop')
-    expect(rec.onStatusChange).not.toHaveBeenCalledWith(false, undefined)
+    expect(await stopped).toBe('/tmp/match.mp4')
+    expect(rec.getFinalizingRecordingPath()).toBe('/tmp/match.mp4')
+    expect(rec.isRecording()).toBe(false)
+    expect(rec.hasRecordingFailure()).toBe(false)
+    expect(rec.onStatusChange).toHaveBeenCalledWith(false, undefined, 'stop')
   })
 
   it('retries a hung stop request with backoff and releases ownership once OBS confirms idle', async () => {

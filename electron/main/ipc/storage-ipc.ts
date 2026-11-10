@@ -118,7 +118,7 @@ export function setupStorageHandlers(ipcMain: IpcMain, deps: StorageIpcDeps): vo
     }
 
     const pending = recordingsStore.getPending(linkedRiotFromAuth()).filter((rec) =>
-      !rec.clipsOnly && !rec.analysed && !rec.archiveId && !rec.cloudArchived
+      !rec.clipsOnly && !rec.fileFinalizing && !rec.analysed && !rec.archiveId && !rec.cloudArchived
       && !rec.jobId && rec.analysisId == null
       && rec.pipelineStatus !== 'uploading' && rec.pipelineStatus !== 'analysing'
       && rec.path && fs.existsSync(rec.path),

@@ -5,8 +5,6 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
 
 jobs:
   # Packaged Windows app must start the CS2 demo worker before any installer is built.
@@ -346,71 +344,35 @@ jobs:
           path: dist/*.dmg
           retention-days: 30
 
-  # Single publish step: upload latest.yml BEFORE installers so auto-updater never 404s.
+  # Auto Tag Release explicitly dispatches the tag build. Tag pushes do not also trigger it.
+  # Keep publication serialized across versions and keep all assets private until verified.
   publish-release:
     needs: [build-win, build-mac]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    concurrency:
+      group: desktop-release-publication
+      cancel-in-progress: false
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install release verifier dependencies
+        run: npm ci --ignore-scripts
+
       - uses: actions/download-artifact@v4
         with:
           pattern: UpForge-*
           merge-multiple: true
           path: dist
 
-      - name: Publish GitHub release (metadata first)
+      - name: Publish verified draft release
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          VERSION="${TAG#v}"
-          test -f dist/latest.yml || (echo "missing dist/latest.yml" && exit 1)
-          test -f dist/latest-mac.yml || (echo "missing dist/latest-mac.yml" && exit 1)
-
-          # latest.yml path must match the Windows installer filename on the release
-          EXPECTED_EXE=$(grep '^path:' dist/latest.yml | awk '{print $2}')
-          ACTUAL_EXE=$(ls -1 dist/*.exe 2>/dev/null | head -1 || true)
-          if [ -z "$EXPECTED_EXE" ] || [ -z "$ACTUAL_EXE" ]; then
-            echo "Missing installer or latest.yml path"
-            ls -la dist/
-            exit 1
-          fi
-          if [ "$(basename "$ACTUAL_EXE")" != "$EXPECTED_EXE" ]; then
-            echo "Aligning installer name: $(basename "$ACTUAL_EXE") -> $EXPECTED_EXE"
-            cp -f "$ACTUAL_EXE" "dist/$EXPECTED_EXE"
-          fi
-          test -f "dist/$EXPECTED_EXE" || (echo "Expected installer not found: $EXPECTED_EXE" && exit 1)
-
-          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release create "$TAG" --repo "${{ github.repository }}" --title "$VERSION" --notes "See commit history for changes."
-          fi
-
-          # electron-updater resolves GitHub's single "Latest" release. Set it
-          # explicitly so a user can jump from any older installer directly to
-          # this version instead of following stale release metadata.
-          gh release edit "$TAG" --repo "${{ github.repository }}" --latest
-          LATEST_TAG=$(gh release view --repo "${{ github.repository }}" --json tagName --jq '.tagName')
-          if [ "$LATEST_TAG" != "$TAG" ]; then
-            echo "Expected $TAG to be GitHub's latest release, got $LATEST_TAG"
-            exit 1
-          fi
-
-          echo "Uploading auto-update metadata first…"
-          gh release upload "$TAG" --repo "${{ github.repository }}" dist/latest.yml dist/latest-mac.yml --clobber
-
-          echo "Uploading installers…"
-          gh release upload "$TAG" --repo "${{ github.repository }}" \
-            "dist/${EXPECTED_EXE}" dist/*.exe.blockmap dist/*.dmg dist/*.dmg.blockmap dist/*.zip dist/*.zip.blockmap --clobber
-
-          echo "Verifying latest.yml is downloadable…"
-          for i in $(seq 1 12); do
-            if curl -sfL "https://github.com/${{ github.repository }}/releases/download/${TAG}/latest.yml" >/dev/null; then
-              echo "latest.yml is live"
-              exit 0
-            fi
-            echo "Waiting for CDN… ($i/12)"
-            sleep 5
-          done
-          echo "WARNING: latest.yml not yet reachable after upload"
+        run: node scripts/publish-release.cjs dist

@@ -14,7 +14,10 @@ vi.mock('./match-plant-telemetry', () => ({
   logPlantCoordStats: () => {},
 }))
 
-import { prepareMatchDataForUpload } from './match-data-payload'
+import { prepareMatchDataForUpload, submissionContextFromTimeline } from './match-data-payload'
+import { buildCoachingSubmissionExtras } from './match-coaching-context'
+import { buildClipUploadPayload } from './clip-coaching-context'
+import type { ClipRecord } from './clip-store'
 import type { MatchData } from './riot-types'
 
 function timelineWithKills(): MatchData {
@@ -101,9 +104,65 @@ describe('prepareMatchDataForUpload roundReplay', () => {
   })
 })
 
+function completeTimeline(): MatchData {
+  const timeline = timelineWithKills()
+  const ids = ['own-puuid', 'enemy-puuid', ...Array.from({ length: 8 }, (_, i) => `other-${i}`)]
+  timeline.finalScore = { allyScore: 1, enemyScore: 0 }
+  timeline.teamSnapshot = ids.map((puuid, i) => ({ ...timeline.teamSnapshot[0], puuid,
+    team: i < 5 ? 'Blue' : 'Red', kills: i === 0 ? 1 : 0, deaths: i === 1 ? 1 : 0 }))
+  timeline.matchDetails!.players = timeline.teamSnapshot.map(p => ({ subject: p.puuid, teamId: p.team,
+    stats: { kills: p.kills, deaths: p.deaths, assists: 0, score: 200, roundsPlayed: 1 } }))
+  timeline.matchDetails!.roundResults = [{ roundNum: 0, winningTeam: 'Blue', playerStats: ids.map(subject => ({
+    subject, kills: subject === 'own-puuid' ? timeline.matchDetails!.kills : [],
+  })) }]
+  return timeline
+}
+
+describe('upload kill completeness proof', () => {
+  it('marks only the verified outgoing complete event set', () => {
+    const upload = prepareMatchDataForUpload(completeTimeline())
+    expect(upload?.dataQuality?.status).toBe('verified_fields_only')
+    expect(upload?.killEventsComplete).toBe(true)
+    expect(upload?.killEvents).toHaveLength(1)
+    expect(upload?.videoOffsetProvenance).toMatchObject({ status: 'estimated', source: 'loading_estimate', uncertaintyMs: null })
+  })
+
+  it('does not trust a saved completeness flag when provider rows are missing', () => {
+    const timeline = completeTimeline()
+    timeline.killEventsComplete = true
+    timeline.matchDetails!.roundResults = []
+    expect(prepareMatchDataForUpload(timeline)?.killEventsComplete).toBe(false)
+  })
+
+  it('does not mark facts that the quality boundary removed as complete', () => {
+    const timeline = completeTimeline()
+    timeline.finalStats!.kills = 2
+    const upload = prepareMatchDataForUpload(timeline)
+    expect(upload?.dataQuality?.status).toBe('blocked')
+    expect(upload?.killEvents).toEqual([])
+    expect(upload?.killEventsComplete).toBe(false)
+  })
+})
+
 it('carries versioned CS2 metrics through the upload without replacing null or zero', () => {
   const timeline = timelineWithKills()
   timeline.game = 'cs2'
   timeline.match_stats = { schema_version: 1, rounds: 2, score: '1-1', player_stats: { adr: 75, kills: 0, headshot_pct: null }, round_stats: { ct_kd: 0 }, utility_stats: { enemies_flashed: null }, economy_stats: { avg_eq_t: 4200 } }
   expect(prepareMatchDataForUpload(timeline)?.match_stats).toEqual(timeline.match_stats)
+})
+
+it('keeps the local skill profile out of match, clip and top-level submission payloads', () => {
+  const timeline = completeTimeline()
+  const skillProfile = { skills: { game_sense: 50, crosshair: 50, movement: 50, trading: 50, utility: 50, communication: 50 },
+    gamesAnalysed: 1, updatedAt: '2026-11-10T00:00:00Z', issueCounts: { aim: 1 } }
+  const settings = { skillProfile }
+  const extras = buildCoachingSubmissionExtras(timeline, settings)
+  expect(extras).not.toHaveProperty('skillProfile')
+  expect(settings.skillProfile).toBe(skillProfile)
+  // Old cached callers may still supply the retired key. No transport should copy it.
+  const legacyExtras = { ...extras, skillProfile }
+  const match = prepareMatchDataForUpload(timeline, legacyExtras)
+  const submission = submissionContextFromTimeline(timeline, legacyExtras)
+  const clip = buildClipUploadPayload({ round: 0 } as ClipRecord, timeline, legacyExtras)
+  expect(JSON.stringify({ match, submission, clip })).not.toMatch(/skill_?[Pp]rofile/)
 })

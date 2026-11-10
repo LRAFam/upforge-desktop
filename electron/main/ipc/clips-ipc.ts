@@ -12,7 +12,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { AuthManager } from '../auth-manager'
 import { ClipStore } from '../clip-store'
-import { adjustMomentOffsetAfterTrim } from '../clip-timing'
+import { clipTimingAfterTrim, replaceClipFileKeepingOriginal } from '../clip-timing'
 import { clipMatchesGame, normalizeClipGame } from '../clip-game'
 import { ClipExtractor, FREE_CLIP_UPLOAD_MAX_HEIGHT } from '../clip-extractor'
 import { openPathSafe } from '../shell-open'
@@ -325,28 +325,13 @@ export function setupClipHandlers(
     const trimmedPath = clip.path.replace(/\.mp4$/, '_trimmed.mp4')
     try {
       await clipExtractor.trim({ sourcePath: clip.path, startSec, endSec, outputPath: trimmedPath })
-      // Swap trimmed file in atomically
-      const backupPath = clip.path + '.bak'
-      try {
-        fs.renameSync(clip.path, backupPath)
-        try {
-          fs.renameSync(trimmedPath, clip.path)
-          try { fs.unlinkSync(backupPath) } catch { /* backup cleanup — non-fatal */ }
-        } catch (renameErr) {
-          try { fs.renameSync(backupPath, clip.path) } catch { /* best-effort restore */ }
-          throw renameErr
-        }
-      } catch (backupErr) {
-        // Cross-device fallback
-        try { fs.unlinkSync(clip.path) } catch { /* ignore */ }
-        fs.renameSync(trimmedPath, clip.path)
-      }
+      // Same folder, so rename is atomic; a failure keeps the original clip.
+      replaceClipFileKeepingOriginal(clip.path, trimmedPath)
       const dur = endSec - startSec
       clipStore.update(id, {
         durationSeconds: dur,
         uploadStatus: 'local',
-        momentOffsetMs: adjustMomentOffsetAfterTrim(clip.momentOffsetMs, startSec),
-        clipStartMs: adjustMomentOffsetAfterTrim(clip.clipStartMs, startSec),
+        ...clipTimingAfterTrim(clip, startSec, endSec),
       })
       return { ok: true }
     } catch (err) {
