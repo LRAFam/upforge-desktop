@@ -9,6 +9,7 @@ import { setClipsMediaDir } from './clip-extractor'
 import {
   clearPendingJobForUser,
   readPendingJobForUser,
+  readPendingJobsForUser,
   setPendingJobUserScope,
 } from './upload-manager'
 import { userDataRoot, userOverlayPath, userRecordingsDir, legacyGlobalRecordingsDir, resolveRecordingSavePath } from './user-data-paths'
@@ -140,6 +141,10 @@ export function readActivePendingJob() {
   return readPendingJobForUser(activeUserId)
 }
 
-export function clearActivePendingJob(): void {
-  clearPendingJobForUser(activeUserId)
+export function readActivePendingJobs() {
+  return readPendingJobsForUser(activeUserId)
+}
+
+export function clearActivePendingJob(jobId: string): void {
+  clearPendingJobForUser(activeUserId, jobId)
 }

@@ -179,7 +179,6 @@ import {
   activateUserSession,
   clearUserSession,
   readActivePendingJob,
-  clearActivePendingJob,
   getActiveUserId,
   persistActiveUserOverlay,
 } from './user-session'
@@ -2075,7 +2074,7 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
     notifyRecordingsUpdated()
   }
 
-  clearPendingJob()
+  clearPendingJob(ctx.jobId)
   const scoreText = analysisScoreText(result)
   logActivity(`Analysis ready${scoreText ? ` — ${scoreText}` : ''}`)
 
@@ -6200,6 +6199,7 @@ function linkAutoDeadlockReviewJob(jobId: string, match: { matchId?: number | nu
 async function handleOrphanedJobAtStartup(
   orphanedJob: { job_id: string; savedAt: number; agent?: string; map?: string; game?: string }
 ): Promise<void> {
+  const ownerUserId = getActiveUserId()
   const context = {
     agent: orphanedJob.agent,
     map: orphanedJob.map,
@@ -6207,16 +6207,17 @@ async function handleOrphanedJobAtStartup(
   }
 
   const decision = await reconcileOrphanedJob(uploadManager, orphanedJob)
+  if (getActiveUserId() !== ownerUserId) return
 
   if (decision.action === 'discard') {
-    clearPendingJob()
+    clearPendingJob(orphanedJob.job_id, ownerUserId)
     reconcileInterruptedUploads()
     logActivity(`Cleared stale analysis job (${decision.reason})`)
     return
   }
 
   if (decision.action === 'failed') {
-    clearPendingJob()
+    clearPendingJob(orphanedJob.job_id, ownerUserId)
     const rec = recordingsStore.getByJobId(orphanedJob.job_id)
     startupFailures.note({ key: `analysis:${orphanedJob.job_id}`, kind: 'analysis' })
     dispatchAnalysisFailure(decision.error, { recordingId: rec?.id ?? null, notify: false })
@@ -7378,7 +7379,7 @@ async function startApp(): Promise<void> {
       mainWindow.webContents.once('did-finish-load', () => {
         reconcileInterruptedUploads()
         if (orphanedJob) {
-          void handleOrphanedJobAtStartup(orphanedJob)
+          void handleOrphanedJobAtStartup(orphanedJob).then(() => runStuckAnalysisReconcile())
         }
         // Pending Valorant VODs can sit forever on "waiting for match stats" after the
         // post-match poll window — resume enrich when the app opens again.

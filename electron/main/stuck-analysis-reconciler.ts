@@ -10,7 +10,7 @@ import {
   type AnalysisListRow,
 } from './analysis-completion'
 import { clearPendingJob } from './upload-manager'
-import { readActivePendingJob } from './user-session'
+import { readActivePendingJobs, getActiveUserId } from './user-session'
 import { getActiveAnalysisPollJobId, type AnalysisPollStatus } from './analysis-poll'
 
 export interface ReconciledAnalysisContext {
@@ -36,8 +36,7 @@ export interface StuckAnalysisReconcilerDeps {
 function collectStuckJobs(recordingsStore: RecordingsStore): Map<string, { agent?: string; map?: string; game?: string }> {
   const jobs = new Map<string, { agent?: string; map?: string; game?: string }>()
 
-  const pending = readActivePendingJob()
-  if (pending?.job_id) {
+  for (const pending of readActivePendingJobs()) {
     jobs.set(pending.job_id, {
       agent: pending.agent,
       map: pending.map,
@@ -78,6 +77,7 @@ function enrichStatusWithAnalysisId(
 export async function reconcileStuckAnalysisJobs(deps: StuckAnalysisReconcilerDeps): Promise<number> {
   if (!deps.isAuthenticated()) return 0
 
+  const ownerUserId = getActiveUserId()
   const jobs = collectStuckJobs(deps.recordingsStore)
   if (jobs.size === 0) return 0
 
@@ -94,6 +94,7 @@ export async function reconcileStuckAnalysisJobs(deps: StuckAnalysisReconcilerDe
     log.debug('[StuckAnalysis] recent analyses fetch skipped', err instanceof Error ? err.message : err)
   }
 
+  if (getActiveUserId() !== ownerUserId || !deps.isAuthenticated()) return 0
   const activeJobId = getActiveAnalysisPollJobId()
   let reconciled = 0
   // Only one resume poll may start per pass. resumePoll is async/fire-and-forget;
@@ -106,12 +107,13 @@ export async function reconcileStuckAnalysisJobs(deps: StuckAnalysisReconcilerDe
 
     try {
       let status = await deps.uploadManager.pollStatus(jobId)
+      if (getActiveUserId() !== ownerUserId || !deps.isAuthenticated()) break
       const rec = deps.recordingsStore.getByJobId(jobId)
       const recordingId = rec?.id ?? null
 
       if (status.status === 'completed' || isTerminalPollSuccess(status)) {
         status = enrichStatusWithAnalysisId(asCompletedPollStatus(status), analyses, jobId)
-        clearPendingJob()
+        clearPendingJob(jobId, ownerUserId)
         deps.onCompleted({
           jobId,
           status,
@@ -125,7 +127,7 @@ export async function reconcileStuckAnalysisJobs(deps: StuckAnalysisReconcilerDe
       }
 
       if (status.status === 'failed') {
-        clearPendingJob()
+        clearPendingJob(jobId, ownerUserId)
         if (recordingId && rec?.lastAnalysisError) {
           reconciled++
           continue
@@ -142,7 +144,7 @@ export async function reconcileStuckAnalysisJobs(deps: StuckAnalysisReconcilerDe
 
       const historyId = findAnalysisIdForJob(analyses, jobId)
       if (historyId != null) {
-        clearPendingJob()
+        clearPendingJob(jobId, ownerUserId)
         deps.onCompleted({
           jobId,
           status: {

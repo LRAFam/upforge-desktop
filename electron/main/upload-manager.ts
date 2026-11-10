@@ -156,66 +156,46 @@ export interface ArchiveUploadResult {
 }
 
 import { userPendingJobPath } from './user-data-paths'
+import { readPendingJobRegistry, savePendingJobEntry, removePendingJobEntry, type PendingJob } from './pending-job-registry'
 
 let pendingJobUserId: number | null = null
 
-export function setPendingJobUserScope(userId: number | null): void {
-  pendingJobUserId = userId
+export function setPendingJobUserScope(userId: number | null): void { pendingJobUserId = userId }
+export function getPendingJobUserScope(): number | null { return pendingJobUserId }
+
+function pendingJobPath(userId: number | null): string {
+  return userId != null ? userPendingJobPath(userId) : path.join(app.getPath('userData'), 'pending-job.json')
 }
 
-function pendingJobPath(): string {
-  if (pendingJobUserId != null) {
-    return userPendingJobPath(pendingJobUserId)
-  }
-  return path.join(app.getPath('userData'), 'pending-job.json')
-}
-
-/** Persist a job_id to disk immediately after presign, so polling can resume on restart. */
-export function savePendingJob(jobId: string, context?: { agent?: string | null; map?: string | null; game?: string }): void {
+/** Save every presigned job under the owner captured before its request began. */
+export function savePendingJob(jobId: string, context?: { agent?: string | null; map?: string | null; game?: string }, userId = pendingJobUserId): void {
   try {
-    const filePath = pendingJobPath()
-    fs.mkdirSync(path.dirname(filePath), { recursive: true })
-    fs.writeFileSync(
-      filePath,
-      JSON.stringify({ job_id: jobId, savedAt: Date.now(), ...context }),
-      'utf-8',
-    )
-  } catch { /* non-critical */ }
+    savePendingJobEntry(pendingJobPath(userId), userId, {
+      job_id: jobId, savedAt: Date.now(),
+      agent: context?.agent ?? undefined, map: context?.map ?? undefined, game: context?.game,
+    })
+  } catch (error) { console.warn('[PendingJobs] Could not persist recovery job:', error) }
 }
 
-/** Clear the persisted job_id once the job is finished (completed, failed, or timed out). */
-export function clearPendingJob(): void {
-  clearPendingJobForUser(pendingJobUserId)
+export function clearPendingJob(jobId: string, userId = pendingJobUserId): void {
+  clearPendingJobForUser(userId, jobId)
 }
 
-export function clearPendingJobForUser(userId: number | null): void {
-  try {
-    const filePath = userId != null ? userPendingJobPath(userId) : path.join(app.getPath('userData'), 'pending-job.json')
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
-  } catch { /* non-critical */ }
+export function clearPendingJobForUser(userId: number | null, jobId: string): void {
+  try { removePendingJobEntry(pendingJobPath(userId), userId, jobId) }
+  catch (error) { console.warn('[PendingJobs] Could not clear recovery job:', error) }
 }
 
-/** Read any orphaned job_id saved from a previous session. Returns null if none. */
-export function readPendingJob(): { job_id: string; savedAt: number; agent?: string; map?: string; game?: string } | null {
-  return readPendingJobForUser(pendingJobUserId)
+export function readPendingJobsForUser(userId: number | null): PendingJob[] {
+  try { return readPendingJobRegistry(pendingJobPath(userId), userId) }
+  catch (error) { console.warn('[PendingJobs] Could not read recovery jobs:', error); return [] }
 }
 
-export function readPendingJobForUser(
-  userId: number | null,
-): { job_id: string; savedAt: number; agent?: string; map?: string; game?: string } | null {
-  const paths = userId != null
-    ? [userPendingJobPath(userId)]
-    : [path.join(app.getPath('userData'), 'pending-job.json')]
-
-  for (const filePath of paths) {
-    try {
-      const raw = fs.readFileSync(filePath, 'utf-8')
-      const parsed = JSON.parse(raw)
-      if (parsed?.job_id) return parsed
-    } catch { /* try next */ }
-  }
-  return null
+/** Single-row view retained for diagnostics; recovery consumes readPendingJobsForUser. */
+export function readPendingJobForUser(userId: number | null): PendingJob | null {
+  return readPendingJobsForUser(userId)[0] ?? null
 }
+export function readPendingJob(): PendingJob | null { return readPendingJobForUser(pendingJobUserId) }
 
 export class UploadManager {
   private static readonly S3_UPLOAD_MAX_ATTEMPTS = 5
@@ -418,6 +398,8 @@ export class UploadManager {
     }
     const totalBytes = fs.statSync(opts.videoPath).size
 
+    const ownerUserId = pendingJobUserId
+
     // ── Step 1: get presigned URL ──────────────────────────────────────────
     opts.onProgress(3)
     const presignBody = JSON.stringify(buildDesktopPresignBody(opts, totalBytes))
@@ -431,7 +413,8 @@ export class UploadManager {
 
     // Persist job_id immediately — if the app crashes during upload or
     // analysis, the user can resume polling from the next launch.
-    savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game })
+    savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game }, ownerUserId)
+    this._checkCancelled(generation)
 
     const stopHeartbeat = this._startUploadHeartbeat(job_id, token, generation)
     try {
