@@ -184,6 +184,30 @@ describe('durable logged-out media', () => {
     expect(clips.getAll()).toEqual(guestClips)
   })
 
+  it('a failed clip extraction leaves no ghost clip record or partial file', async () => {
+    const clips = new ClipStore()
+    const extractor = {
+      probeWithRetry: async () => ({ ok: true }),
+      probeDurationMs: async () => 120000,
+      extract: async ({ outputPath }: { outputPath: string }) => {
+        fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+        fs.writeFileSync(outputPath, 'partial')
+        throw new Error('ffmpeg failed')
+      },
+      thumbnail: async () => {},
+    } as unknown as ClipExtractor
+    const pipeline = new ClipPipeline({
+      clipStore: clips.forUser(null), clipExtractor: extractor,
+      hotkeyBookmarks: [42000], getRecordingStartTime: () => 10000,
+      getClipCapture: () => ({ singleKills: true, multiKills: true, aces: true, clutches: true, deaths: true, objectives: true }),
+      logActivity: vi.fn(), notifySilent: () => true, notifyMainWindow: vi.fn(),
+    })
+    expect(await pipeline.extractMatchClips(mediaFile('source.mp4'), null, null)).toBe(false)
+    expect(new ClipStore().getAll()).toEqual([])
+    const mediaDir = clips.forUser(null).getClipsMediaDir()
+    expect(fs.existsSync(mediaDir) ? fs.readdirSync(mediaDir).filter(f => f.endsWith('.mp4')) : []).toEqual([])
+  })
+
   it('reports unfinished clip work when the source is temporarily unreadable', async () => {
     const pipeline = new ClipPipeline({
       clipStore: new ClipStore(),

@@ -119,8 +119,9 @@ export class ClipPipeline {
       const offsetMs = death.videoOffsetMs!
       const startMs = Math.max(0, offsetMs - 8_000)
       const durationMs = 11_000
+      let rec: ClipRecord | undefined
       try {
-        const rec = clipStore.add({
+        rec = clipStore.add({
           path: '', thumbPath: null, trigger: 'death', map: args.map, agent: args.agent, durationSeconds: 11,
           round: death.round ?? null, killCount: null, analysisJobId: args.analysisJobId, game: args.game,
           ...clipMatchMeta(args.timeline, death),
@@ -135,6 +136,7 @@ export class ClipPipeline {
         })
         args.out.push(rec.id)
       } catch (err) {
+        this.discardDraftClip(rec?.id)
         complete = false
         reportClipExtractError('[ClipExtract] Death clip failed', err)
       }
@@ -165,8 +167,9 @@ export class ClipPipeline {
       const offsetMs = objective.videoOffsetMs!
       const startMs = Math.max(0, offsetMs - OBJECTIVE_CLIP_BEFORE_MS)
       const durationMs = OBJECTIVE_CLIP_BEFORE_MS + OBJECTIVE_CLIP_AFTER_MS
+      let rec: ClipRecord | undefined
       try {
-        const rec = clipStore.add({
+        rec = clipStore.add({
           path: '', thumbPath: null, trigger: 'objective', map: args.map, agent: args.agent, durationSeconds: durationMs / 1000,
           round: null, killCount: null, analysisJobId: args.analysisJobId, game: args.game,
           ...clipMatchMeta(args.timeline, null),
@@ -182,12 +185,23 @@ export class ClipPipeline {
         args.out.push(rec.id)
         saved++
       } catch (err) {
+        this.discardDraftClip(rec?.id)
         complete = false
         reportClipExtractError('[ClipExtract] Objective clip failed', err)
       }
     }
     if (saved) logActivity(`Objective clips saved (${saved})`)
     return complete
+  }
+
+  /** A clip whose extraction failed must not stay in the library as an empty record. */
+  private discardDraftClip(id: string | undefined): void {
+    if (!id) return
+    this.ctx.clipStore.remove(id)
+    const dir = this.ctx.clipStore.getClipsMediaDir()
+    for (const file of [`${id}.mp4`, `${id}_thumb.jpg`]) {
+      try { fs.rmSync(path.join(dir, file), { force: true }) } catch { /* partial output only */ }
+    }
   }
 
   private async safeExtract(
@@ -290,8 +304,9 @@ export class ClipPipeline {
     for (const bookmarkedAt of hotkeyBookmarks) {
       const offsetMs = bookmarkedAt - recordingStart
       const startMs = Math.max(0, offsetMs - 25_000)
+      let rec: ClipRecord | undefined
       try {
-        const rec = clipStore.add({ path: '', thumbPath: null, trigger: 'hotkey', map, agent, durationSeconds: 30, round: null, killCount: null, analysisJobId, game, ...baseMeta })
+        rec = clipStore.add({ path: '', thumbPath: null, trigger: 'hotkey', map, agent, durationSeconds: 30, round: null, killCount: null, analysisJobId, game, ...baseMeta })
         const clipPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}.mp4`)
         const thumbPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}_thumb.jpg`)
         await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 30_000, outputPath: clipPath }, vodDurationMs)
@@ -300,6 +315,7 @@ export class ClipPipeline {
         extractedClipIds.push(rec.id)
         logActivity(`Saved hotkey clip (${map ?? 'unknown map'})`)
       } catch (err) {
+        this.discardDraftClip(rec?.id)
         complete = false
         reportClipExtractError('[ClipExtract] Hotkey clip failed', err)
       }
@@ -336,8 +352,9 @@ export class ClipPipeline {
         const offsetMs = kill.videoOffsetMs!
         const startMs = Math.max(0, offsetMs - 8_000)
         const durationMs = 13_000
+        let rec: ClipRecord | undefined
         try {
-          const rec = clipStore.add({
+          rec = clipStore.add({
             path: '', thumbPath: null, trigger: 'kill', map, agent, durationSeconds: 13,
             round: kill.round ?? null, killCount: null, analysisJobId, game, ...clipMatchMeta(timeline, kill),
           })
@@ -357,6 +374,7 @@ export class ClipPipeline {
           })
           extractedClipIds.push(rec.id)
         } catch (err) {
+          this.discardDraftClip(rec?.id)
           complete = false
           reportClipExtractError('[ClipExtract] Kill clip failed', err)
         }
@@ -378,8 +396,9 @@ export class ClipPipeline {
         const first = validKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
         const last  = validKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
         const { startMs, durationMs } = combinedKillClipWindow(validKills.map(k => k.videoOffsetMs!), trigger)!
+        let rec: ClipRecord | undefined
         try {
-          const rec = clipStore.add({
+          rec = clipStore.add({
             path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId, game,
             ...clipMatchMeta(timeline, first),
           })
@@ -405,6 +424,7 @@ export class ClipPipeline {
           extractedClipIds.push(rec.id)
           logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
         } catch (err) {
+          this.discardDraftClip(rec?.id)
           complete = false
           reportClipExtractError(`[ClipExtract] ${trigger} clip failed`, err)
         }
@@ -418,8 +438,9 @@ export class ClipPipeline {
           const last  = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
           const startMs    = Math.max(0, first.videoOffsetMs! - 15_000)
           const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
+          let rec: ClipRecord | undefined
           try {
-            const rec = clipStore.add({
+            rec = clipStore.add({
               path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round,
               killCount: clutchKills.length, analysisJobId, game, ...clipMatchMeta(timeline, first),
             })
@@ -445,6 +466,7 @@ export class ClipPipeline {
             extractedClipIds.push(rec.id)
             logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
           } catch (err) {
+            this.discardDraftClip(rec?.id)
             complete = false
             reportClipExtractError('[ClipExtract] Clutch clip failed', err)
           }
@@ -533,8 +555,9 @@ export class ClipPipeline {
       const offsetMs = kill.videoOffsetMs!
       const startMs = Math.max(0, offsetMs - 8_000)
       const durationMs = 13_000
+      let rec: ClipRecord | undefined
       try {
-        const rec = clipStore.add({
+        rec = clipStore.add({
           path: '', thumbPath: null, trigger: 'kill', map, agent, durationSeconds: 13,
           round: kill.round ?? null, killCount: null, analysisJobId, game, ...clipMatchMeta(timeline, kill),
         })
@@ -555,6 +578,7 @@ export class ClipPipeline {
         extractedClipIds.push(rec.id)
         logActivity(`Kill clip saved (late extract) — Round ${(kill.round ?? -1) + 1} (${map ?? 'unknown'})`)
       } catch (err) {
+        this.discardDraftClip(rec?.id)
         reportClipExtractError('[LateClipExtract] Kill clip failed', err)
       }
     }
@@ -575,8 +599,9 @@ export class ClipPipeline {
       const first = validKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
       const last  = validKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
       const { startMs, durationMs } = combinedKillClipWindow(validKills.map(k => k.videoOffsetMs!), trigger)!
+      let rec: ClipRecord | undefined
       try {
-        const rec = clipStore.add({
+        rec = clipStore.add({
           path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId, game,
           ...clipMatchMeta(timeline, first),
         })
@@ -602,6 +627,7 @@ export class ClipPipeline {
         extractedClipIds.push(rec.id)
         logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
+        this.discardDraftClip(rec?.id)
         reportClipExtractError(`[LateClipExtract] ${trigger} clip failed`, err)
       }
     }
@@ -613,8 +639,9 @@ export class ClipPipeline {
       const last  = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
       const startMs    = Math.max(0, first.videoOffsetMs! - 15_000)
       const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
+      let rec: ClipRecord | undefined
       try {
-        const rec = clipStore.add({
+        rec = clipStore.add({
           path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round,
           killCount: clutchKills.length, analysisJobId, game, ...clipMatchMeta(timeline, first),
         })
@@ -640,6 +667,7 @@ export class ClipPipeline {
         extractedClipIds.push(rec.id)
         logActivity(`Clutch clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
+        this.discardDraftClip(rec?.id)
         reportClipExtractError('[LateClipExtract] Clutch clip failed', err)
       }
     }
