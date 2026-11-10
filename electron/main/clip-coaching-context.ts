@@ -51,7 +51,6 @@ export function buildClipUploadPayload(
     payload.match_data = { clip_events: clip.clipEvents }
   }
 
-  if (coachingExtras?.skillProfile) payload.skill_profile = coachingExtras.skillProfile
   if (coachingExtras?.rankSnapshot) payload.rank_snapshot = coachingExtras.rankSnapshot
 
   return payload

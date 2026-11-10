@@ -14,7 +14,10 @@ vi.mock('./match-plant-telemetry', () => ({
   logPlantCoordStats: () => {},
 }))
 
-import { prepareMatchDataForUpload } from './match-data-payload'
+import { prepareMatchDataForUpload, submissionContextFromTimeline } from './match-data-payload'
+import { buildCoachingSubmissionExtras } from './match-coaching-context'
+import { buildClipUploadPayload } from './clip-coaching-context'
+import type { ClipRecord } from './clip-store'
 import type { MatchData } from './riot-types'
 
 function timelineWithKills(): MatchData {
@@ -145,4 +148,20 @@ it('carries versioned CS2 metrics through the upload without replacing null or z
   timeline.game = 'cs2'
   timeline.match_stats = { schema_version: 1, rounds: 2, score: '1-1', player_stats: { adr: 75, kills: 0, headshot_pct: null }, round_stats: { ct_kd: 0 }, utility_stats: { enemies_flashed: null }, economy_stats: { avg_eq_t: 4200 } }
   expect(prepareMatchDataForUpload(timeline)?.match_stats).toEqual(timeline.match_stats)
+})
+
+it('keeps the local skill profile out of match, clip and top-level submission payloads', () => {
+  const timeline = completeTimeline()
+  const skillProfile = { skills: { game_sense: 50, crosshair: 50, movement: 50, trading: 50, utility: 50, communication: 50 },
+    gamesAnalysed: 1, updatedAt: '2026-11-10T00:00:00Z', issueCounts: { aim: 1 } }
+  const settings = { skillProfile }
+  const extras = buildCoachingSubmissionExtras(timeline, settings)
+  expect(extras).not.toHaveProperty('skillProfile')
+  expect(settings.skillProfile).toBe(skillProfile)
+  // Old cached callers may still supply the retired key. No transport should copy it.
+  const legacyExtras = { ...extras, skillProfile }
+  const match = prepareMatchDataForUpload(timeline, legacyExtras)
+  const submission = submissionContextFromTimeline(timeline, legacyExtras)
+  const clip = buildClipUploadPayload({ round: 0 } as ClipRecord, timeline, legacyExtras)
+  expect(JSON.stringify({ match, submission, clip })).not.toMatch(/skill_?[Pp]rofile/)
 })

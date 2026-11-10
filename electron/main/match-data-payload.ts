@@ -16,7 +16,6 @@ import {
   type CoachingSubmissionExtras,
   type RankSnapshot,
 } from './match-coaching-context'
-import type { SkillProfileSnapshot } from '../../src/lib/skill-profile'
 import { normalizeValorantCoachingStats, enforceValorantCoachingQuality, type CoachingDataQuality } from './valorant-coaching-quality'
 import { hasCompleteRiotKillEvents } from './valorant-kill-completeness'
 
@@ -126,8 +125,6 @@ export type UploadMatchData = Omit<MatchData, 'events' | 'matchDetails'> & {
   /** Explicit team comps for KB routing and comp-aware coaching. */
   allyAgents?: string[]
   enemyAgents?: string[]
-  /** Rolling weakness profile from prior analyses (desktop-local, sent for continuity). */
-  skillProfile?: SkillProfileSnapshot | null
   /** Player rank snapshot at upload time. */
   rankSnapshot?: RankSnapshot | null
   /** Valorant client build when captured. */
@@ -323,7 +320,6 @@ export function prepareMatchDataForUpload(
     coachingFacts: buildCoachingFacts(timeline),
     allyAgents: allyAgents.length ? allyAgents : undefined,
     enemyAgents: enemyAgents.length ? enemyAgents : undefined,
-    skillProfile: extras?.skillProfile ?? undefined,
     rankSnapshot: extras?.rankSnapshot ?? undefined,
     gameClientVersion: extras?.gameClientVersion ?? undefined,
     roundReplay: buildMatchRoundReplay(timeline) ?? undefined,
@@ -366,7 +362,6 @@ export function submissionContextFromTimeline(
   duel_moments?: DuelMomentManifest[]
   ally_agents?: string[]
   enemy_agents?: string[]
-  skill_profile?: SkillProfileSnapshot | null
   rank_snapshot?: RankSnapshot | null
 } {
   if (!timeline) return {}
@@ -382,7 +377,6 @@ export function submissionContextFromTimeline(
     duel_moments: duel_moments.length ? duel_moments : undefined,
     ally_agents: allyAgents.length ? allyAgents : undefined,
     enemy_agents: enemyAgents.length ? enemyAgents : undefined,
-    skill_profile: extras?.skillProfile ?? undefined,
     rank_snapshot: extras?.rankSnapshot ?? undefined,
   }
 }

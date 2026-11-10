@@ -2,7 +2,6 @@
  * Extra coaching context attached to uploads, debriefs, and clip analysis.
  */
 import type { MatchData, RoundSummary } from './riot-types'
-import type { SkillProfileSnapshot } from '../../src/lib/skill-profile'
 import type { AppSettings } from './settings-manager'
 import { resolveScoreboardPlayer } from '../../src/lib/vod-scoreboard'
 
@@ -14,7 +13,6 @@ export interface RankSnapshot {
 }
 
 export interface CoachingSubmissionExtras {
-  skillProfile?: SkillProfileSnapshot | null
   rankSnapshot?: RankSnapshot | null
   gameClientVersion?: string | null
 }
@@ -83,12 +81,11 @@ export function topSkillFocus(settings: Pick<AppSettings, 'skillProfile'>): stri
 
 export function buildCoachingSubmissionExtras(
   timeline: MatchData,
-  settings: Pick<AppSettings, 'skillProfile'>,
+  _settings: Pick<AppSettings, 'skillProfile'>,
   rrHistory?: Array<{ rank: string | null; rr: number; elo: number }>,
   gameClientVersion?: string | null,
 ): CoachingSubmissionExtras {
   return {
-    skillProfile: settings.skillProfile ?? null,
     rankSnapshot: buildRankSnapshot(timeline, rrHistory),
     gameClientVersion: gameClientVersion ?? null,
   }

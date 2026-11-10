@@ -38,7 +38,7 @@ export interface UploadOptions {
   beforeComplete?: () => Promise<void>
   /** Opt-in for anonymised training use of archived VODs (storage is separate). */
   trainingConsent?: boolean
-  /** Skill profile, rank snapshot, etc. for coaching continuity. */
+  /** Supported rank and client-version context for coaching. */
   coachingExtras?: CoachingSubmissionExtras
   /** Skip heavy match_data on presign — sent at complete() instead. */
   deferMatchDataOnPresign?: boolean
@@ -144,7 +144,6 @@ export function buildDesktopPresignBody(
       duel_moments: submissionCtx.duel_moments,
       ally_agents: submissionCtx.ally_agents,
       enemy_agents: submissionCtx.enemy_agents,
-      skill_profile: submissionCtx.skill_profile,
       rank_snapshot: submissionCtx.rank_snapshot,
     }),
   }
@@ -335,7 +334,6 @@ export class UploadManager {
       duel_moments: ctx.duel_moments,
       ally_agents: ctx.ally_agents,
       enemy_agents: ctx.enemy_agents,
-      skill_profile: ctx.skill_profile,
       rank_snapshot: ctx.rank_snapshot,
     })
 
@@ -553,7 +551,6 @@ export class UploadManager {
         duel_moments: duelMomentsForComplete,
         ally_agents: completeCtx.ally_agents,
         enemy_agents: completeCtx.enemy_agents,
-        skill_profile: completeCtx.skill_profile,
         rank_snapshot: completeCtx.rank_snapshot,
         ...(uploadParts ? { upload_parts: uploadParts } : {}),
       }),
@@ -595,7 +592,6 @@ export class UploadManager {
       match_data: submissionCtx.match_data,
       ally_agents: submissionCtx.ally_agents,
       enemy_agents: submissionCtx.enemy_agents,
-      skill_profile: submissionCtx.skill_profile,
       rank_snapshot: submissionCtx.rank_snapshot,
     })
     const archivePresign = await this._apiPost(
@@ -626,7 +622,6 @@ export class UploadManager {
         match_data:      completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null, opts.coachingExtras),
         ally_agents:     completeCtx.ally_agents,
         enemy_agents:    completeCtx.enemy_agents,
-        skill_profile:   completeCtx.skill_profile,
         rank_snapshot:   completeCtx.rank_snapshot,
         file_size_bytes: totalBytes,
         training_consent: opts.trainingConsent === true,
@@ -661,8 +656,7 @@ export class UploadManager {
         duel_moments: ctx.duel_moments,
         ally_agents: ctx.ally_agents,
         enemy_agents: ctx.enemy_agents,
-        skill_profile: ctx.skill_profile,
-        rank_snapshot: ctx.rank_snapshot,
+          rank_snapshot: ctx.rank_snapshot,
       }),
       token,
     )
