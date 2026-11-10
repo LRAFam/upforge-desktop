@@ -22,7 +22,7 @@ export {
   resolveEconomyArmor,
 } from './riot-lookup-tables'
 import { applySpatialEnrichment } from './spatial/enrich'
-import { resolveValorantGameMode } from './riot-queue-id'
+import { inferValorantModeFromLog, resolveValorantGameMode, valorantQueueIdWithFlow } from './riot-queue-id'
 export { normalizeQueueId } from './riot-queue-id'
 import { isCombatPlayerKill, matchesScoreboardDeaths } from './is-combat-kill'
 import { parsePlayerAbilitiesFromRoundStats } from './player-abilities'
@@ -548,7 +548,7 @@ export class RiotLocalApi {
       this._sessionStateFailures = 0
       return {
         sessionLoopState: (mpd.sessionLoopState ?? decoded.sessionLoopState ?? 'MENUS') as string,
-        queueId: (mpd.queueId ?? decoded.queueId ?? null) as string | null,
+        queueId: valorantQueueIdWithFlow((mpd.queueId ?? decoded.queueId ?? null) as string | null, provisioningFlow),
         matchMap: (mpd.matchMap ?? decoded.matchMap ?? null) as string | null,
         allyScore: (decoded.partyOwnerMatchScoreAllyTeam ?? 0) as number,
         enemyScore: (decoded.partyOwnerMatchScoreEnemyTeam ?? 0) as number,
@@ -1485,8 +1485,12 @@ export class RiotLocalApi {
     if (matchInfo?.mapId) {
       this.matchData.map = resolveMapName(matchInfo.mapId as string)
     }
-    if (matchInfo?.queueID && !this.matchData.queueId) {
-      const queueId = matchInfo.queueID as string
+    const detailsQueueId = valorantQueueIdWithFlow(
+      matchInfo?.queueID as string | undefined,
+      matchInfo?.provisioningFlowID as string | undefined,
+    )
+    if (detailsQueueId && !this.matchData.queueId) {
+      const queueId = detailsQueueId
       this.matchData.queueId = queueId
     }
     const mode = resolveValorantGameMode(this.matchData.queueId, this.matchData.map)
@@ -1889,15 +1893,7 @@ export class RiotLocalApi {
       const buf = Buffer.alloc(readSize)
       fs.readSync(fd, buf, 0, readSize, stat.size - readSize)
       fs.closeSync(fd)
-      const text = buf.toString('utf8').toLowerCase()
-      if (text.includes('premier')) return 'PREMIER'
-      if (text.includes('swiftplay') || text.includes('swift play')) return 'SWIFTPLAY'
-      if (text.includes('spikerush') || text.includes('spike rush')) return 'SPIKERUSH'
-      if (text.includes('teamdeathmatch') || text.includes('hurm')) return 'TEAMDEATHMATCH'
-      if (text.includes('competitive')) return 'COMPETITIVE'
-      if (text.includes('deathmatch')) return 'DEATHMATCH'
-      if (text.includes('unrated')) return 'CLASSIC'
-      return null
+      return inferValorantModeFromLog(buf.toString('utf8'))
     } catch {
       return null
     }

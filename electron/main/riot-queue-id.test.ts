@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeQueueId, resolveValorantGameMode } from './riot-queue-id'
+import {
+  inferValorantModeFromLog,
+  normalizeQueueId,
+  resolveValorantGameMode,
+  valorantQueueIdWithFlow,
+} from './riot-queue-id'
 import { isValorantModeFilteredOut } from './recorded-modes-filter'
 
 describe('normalizeQueueId', () => {
@@ -34,5 +39,33 @@ describe('resolveValorantGameMode', () => {
     const mode = resolveValorantGameMode('skirmish2v2', 'The Range')!
     expect(isValorantModeFilteredOut(['COMPETITIVE', 'PREMIER'], mode)).toBe(true)
     expect(isValorantModeFilteredOut(['SHOOTING_RANGE'], mode)).toBe(false)
+  })
+})
+
+describe('valorantQueueIdWithFlow', () => {
+  it('labels custom games (empty queueId + CustomGame flow) as custom', () => {
+    expect(valorantQueueIdWithFlow('', 'CustomGame')).toBe('custom')
+    expect(valorantQueueIdWithFlow(null, 'customgame')).toBe('custom')
+    expect(resolveValorantGameMode(valorantQueueIdWithFlow('', 'CustomGame'), 'Ascent')).toBe('CUSTOM')
+  })
+
+  it('keeps matchmade queues and unknown flows unchanged', () => {
+    expect(valorantQueueIdWithFlow('competitive', 'Matchmaking')).toBe('competitive')
+    expect(valorantQueueIdWithFlow('', 'Matchmaking')).toBe('')
+    expect(valorantQueueIdWithFlow(null, undefined)).toBeNull()
+  })
+})
+
+describe('inferValorantModeFromLog', () => {
+  it('does not guess from bare menu words', () => {
+    expect(inferValorantModeFromLog('loaded premier tab; competitive rank widget')).toBeNull()
+  })
+
+  it('uses the last explicit known queue id', () => {
+    expect(inferValorantModeFromLog('queueid=competitive ... QueueId: "swiftplay"')).toBe('SWIFTPLAY')
+  })
+
+  it('returns null for an unknown queue id', () => {
+    expect(inferValorantModeFromLog('queueId=somethingnew')).toBeNull()
   })
 })
