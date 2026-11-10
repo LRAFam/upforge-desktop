@@ -3,6 +3,7 @@
  * demofile is CS:GO-only and does not decode CS2 game events reliably.
  */
 import fs from 'fs'
+import { hasSource2DemoPreamble } from './source2-demo-preamble'
 import { calculateCs2MatchStats, readCs2StatsInput } from './cs2-match-stats'
 import { buildCs2RoundFacts, flashHitsFromSamples, humanizeCs2Place, type Cs2FlashHit, type Cs2RoundFactsResult } from './cs2-round-facts'
 import log from 'electron-log'
@@ -192,9 +193,9 @@ function alignedGameTimeForTick(tick: number, anchorTick: number, tickRate: numb
   return cs2AlignedGameTimeMs(tick, anchorTick, tickRate)
 }
 
-/** CS2 demo header via demoparser2 — replaces demofile header peek for CS2. */
+/** CS2 demo header via demoparser2, after checking the required file preamble. */
 export function peekCs2DemoHeader(demoPath: string): DemoHeaderPeek | null {
-  if (!fs.existsSync(demoPath)) return null
+  if (!hasSource2DemoPreamble(demoPath)) return null
   try {
     const header = parseHeader(demoPath) as JsonRow
     const mapName = sanitizeDemoMapName(

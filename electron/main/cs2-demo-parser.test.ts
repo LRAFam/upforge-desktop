@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import fs from 'fs'
 
+vi.mock('./source2-demo-preamble', () => ({ hasSource2DemoPreamble: () => true }))
+
 vi.mock('@laihoe/demoparser2', () => ({
   parseHeader: vi.fn(),
   parseEvent: vi.fn(),

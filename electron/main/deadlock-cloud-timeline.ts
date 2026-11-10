@@ -1,8 +1,8 @@
 /**
  * Deadlock kill timeline from the cloud replay review.
  *
- * Deadlock replays are Source 2 files; the desktop's `demofile` parser only reads Source 1
- * (HL2DEMO), so a local parse never produced kills. The cloud review parses the replay with
+ * Deadlock replays use their own Source-2 schema; the desktop CS2 parser does not decode it.
+ * The cloud review parses the replay with
  * boon and returns the player's kills, deaths and assists with match-clock times. This turns
  * those into the recording's timeline, so clips, the match page and the Analyse lock all work
  * from real replay data, and stay locked when there is none.

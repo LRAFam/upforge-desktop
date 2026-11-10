@@ -1,8 +1,5 @@
 import fs from 'fs'
-import { DemoFile } from 'demofile'
-import log from 'electron-log'
 import { peekCs2DemoHeader } from './cs2-demo-parser'
-import { sanitizeDemoClientName, sanitizeDemoMapName } from './demo-text-sanitize'
 import type { SourceGame } from './source-replay-finder'
 
 export interface DemoHeaderPeek {
@@ -22,40 +19,6 @@ export function peekDemoHeader(
     return Promise.resolve(peekCs2DemoHeader(demoPath))
   }
 
-  return new Promise((resolve) => {
-    const demo = new DemoFile()
-    let settled = false
-
-    const finish = (value: DemoHeaderPeek | null) => {
-      if (settled) return
-      settled = true
-      resolve(value)
-    }
-
-    const fromHeader = (): DemoHeaderPeek | null => {
-      const header = demo.header
-      const mapName = sanitizeDemoMapName(header?.mapName)
-      const clientName = sanitizeDemoClientName(header?.clientName)
-      if (!mapName && !clientName && !header?.playbackTime) return null
-      return {
-        mapName,
-        clientName,
-        playbackTime: header?.playbackTime ?? null,
-      }
-    }
-
-    demo.on('end', () => finish(fromHeader()))
-    demo.on('error', (err: Error) => {
-      log.debug('[DemoHeaderPeek] Parse error (may still have header):', err.message)
-      finish(fromHeader())
-    })
-
-    try {
-      const stream = fs.createReadStream(demoPath)
-      demo.parseStream(stream)
-    } catch (err) {
-      log.warn('[DemoHeaderPeek] Failed to open:', (err as Error).message)
-      finish(null)
-    }
-  })
+  // Deadlock Source-2 replay metadata comes from its cloud review, not a Source-1 parser.
+  return Promise.resolve(null)
 }
