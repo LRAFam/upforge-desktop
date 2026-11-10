@@ -6,6 +6,7 @@ import {
   clearMultipartState,
   multipartStatePath,
   readMultipartState,
+  serverCompletedParts,
   withCompletedPart,
   writeMultipartState,
   type MultipartResumeState,
@@ -15,7 +16,7 @@ describe('multipart-upload-state', () => {
   it('reads and writes resume state', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'upforge-mp-'))
     try {
-      const file = multipartStatePath(dir, 'rec-1')
+      const file = multipartStatePath(dir, 'rec-1', 1)
       const state: MultipartResumeState = {
         version: 1,
         recordingId: 'rec-1',
@@ -39,6 +40,21 @@ describe('multipart-upload-state', () => {
       expect(readMultipartState(file)).toBeNull()
     } finally {
       await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('isolates the same recording key between accounts', () => {
+    expect(multipartStatePath('/data', 'same', 1)).not.toBe(multipartStatePath('/data', 'same', 2))
+    expect(multipartStatePath('/data', 'same', 1)).not.toBe(multipartStatePath('/data', 'same', null))
+  })
+
+  it('accepts only valid authoritative parts and does not infer missing server progress', () => {
+    expect(serverCompletedParts(undefined, 2)).toEqual([])
+    expect(serverCompletedParts([], 2)).toEqual([])
+    expect(serverCompletedParts([{ part_number: 2, etag: 'server' }], 2)).toEqual([{ part_number: 2, etag: 'server' }])
+    for (const value of [null, [{ part_number: 3, etag: 'x' }], [{ part_number: 1, etag: '' }],
+      [{ part_number: 1, etag: 'a' }, { part_number: 1, etag: 'b' }]]) {
+      expect(() => serverCompletedParts(value, 2)).toThrow('Invalid uploaded_parts')
     }
   })
 })

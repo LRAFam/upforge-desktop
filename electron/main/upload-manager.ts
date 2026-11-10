@@ -18,7 +18,7 @@ import { reportPipelineError } from './pipeline-errors'
 import {
   clearMultipartState,
   multipartStatePath,
-  readMultipartState,
+  serverCompletedParts,
   withCompletedPart,
   writeMultipartState,
   type MultipartResumeState,
@@ -88,6 +88,7 @@ interface PresignResponse {
   upload_id?: string
   part_size?: number
   parts?: PresignMultipartPart[]
+  uploaded_parts?: unknown
 }
 
 interface MultipartScope {
@@ -115,6 +116,7 @@ function parsePresignResponse(raw: Record<string, unknown>): PresignResponse {
     upload_id: typeof raw.upload_id === 'string' ? raw.upload_id : undefined,
     part_size: typeof raw.part_size === 'number' ? raw.part_size : undefined,
     parts: Array.isArray(raw.parts) ? raw.parts.filter(isPresignPart) : undefined,
+    uploaded_parts: raw.uploaded_parts,
   }
 }
 
@@ -416,7 +418,7 @@ export class UploadManager {
 
     const stopHeartbeat = this._startUploadHeartbeat(job_id, token, generation)
     try {
-      return await this._finishUploadOnce(opts, fullAttempt, presign, job_id, token, generation, apiUrl, totalBytes, stopHeartbeat)
+      return await this._finishUploadOnce(opts, fullAttempt, presign, job_id, token, generation, apiUrl, totalBytes, stopHeartbeat, ownerUserId)
     } finally {
       stopHeartbeat.stop()
     }
@@ -464,6 +466,7 @@ export class UploadManager {
     apiUrl: string,
     totalBytes: number,
     heartbeat: { setProgress: (pct: number) => void },
+    ownerUserId: number | null,
   ): Promise<UploadResult> {
     const onProgress = (pct: number) => { heartbeat.setProgress(pct); opts.onProgress(pct) }
 
@@ -519,6 +522,8 @@ export class UploadManager {
           recordingId: opts.recordingId ?? null,
           jobId: job_id,
           uploadId: presign.upload_id ?? null,
+          ownerUserId,
+          uploadedParts: presign.uploaded_parts,
         },
       )
     } else if (presign.upload_url) {
@@ -558,7 +563,7 @@ export class UploadManager {
     )
     opts.onProgress(100)
     if (opts.recordingId) {
-      clearMultipartState(multipartStatePath(app.getPath('userData'), opts.recordingId))
+      clearMultipartState(multipartStatePath(app.getPath('userData'), opts.recordingId, ownerUserId))
     }
 
     return { job_id, duel_moments: duelMomentsPayload }
@@ -1043,7 +1048,7 @@ export class UploadManager {
     partSize: number,
     onProgress: (pct: number) => void,
     concurrency = S3_MULTIPART_CONCURRENCY,
-    resume?: { recordingId: string | null; jobId: string; uploadId: string | null },
+    resume?: { recordingId: string | null; jobId: string; uploadId: string | null; ownerUserId: number | null; uploadedParts?: unknown },
   ): Promise<UploadedPart[]> {
     const generation = this._abortGeneration
     const pool = new AbortController()
@@ -1053,6 +1058,11 @@ export class UploadManager {
       pool.signal.throwIfAborted()
     }
     const sortedParts = [...parts].sort((a, b) => a.part_number - b.part_number)
+    if (!Number.isSafeInteger(partSize) || partSize <= 0 || !Number.isSafeInteger(totalBytes) || totalBytes <= 0
+      || sortedParts.length !== Math.ceil(totalBytes / partSize)
+      || sortedParts.some((part, index) => part.part_number !== index + 1 || !part.upload_url)) {
+      throw new Error('Invalid multipart upload plan')
+    }
     const results: UploadedPart[] = new Array(sortedParts.length)
     let uploaded = 0
     let nextIndex = 0
@@ -1061,43 +1071,24 @@ export class UploadManager {
     scope.onProgress = () => { lastProgressAt = Date.now() }
 
     const stateFile = resume?.recordingId
-      ? multipartStatePath(app.getPath('userData'), resume.recordingId)
+      ? multipartStatePath(app.getPath('userData'), resume.recordingId, resume.ownerUserId)
       : null
     let resumeState: MultipartResumeState | null = null
-    if (stateFile && resume?.uploadId) {
-      const existing = readMultipartState(stateFile)
-      if (
-        existing
-        && existing.uploadId === resume.uploadId
-        && existing.jobId === resume.jobId
-        && existing.totalBytes === totalBytes
-        && existing.partSize === partSize
-      ) {
-        resumeState = existing
-        for (const done of existing.completedParts) {
-          const idx = sortedParts.findIndex((p) => p.part_number === done.part_number)
-          if (idx >= 0) {
-            results[idx] = { part_number: done.part_number, etag: done.etag }
-            const offset = (done.part_number - 1) * partSize
-            const length = Math.min(partSize, totalBytes - offset)
-            uploaded += length
-          }
-        }
-      } else if (existing) {
-        // Different S3 session — start clean
-        clearMultipartState(stateFile)
-      }
+    const completedParts = serverCompletedParts(resume?.uploadedParts, sortedParts.length)
+    for (const done of completedParts) {
+      results[done.part_number - 1] = done
+      uploaded += Math.min(partSize, totalBytes - (done.part_number - 1) * partSize)
     }
 
     if (stateFile && resume?.uploadId && resume.recordingId) {
-      resumeState = resumeState ?? {
+      resumeState = {
         version: 1,
         recordingId: resume.recordingId,
         jobId: resume.jobId,
         uploadId: resume.uploadId,
         partSize,
         totalBytes,
-        completedParts: [],
+        completedParts,
         updatedAt: Date.now(),
       }
       writeMultipartState(stateFile, resumeState)

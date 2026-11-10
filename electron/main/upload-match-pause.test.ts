@@ -5,12 +5,14 @@ import os from 'os'
 import path from 'path'
 import { backgroundWork } from './background-work'
 import type { AuthManager } from './auth-manager'
+import { multipartStatePath, readMultipartState, writeMultipartState, clearMultipartState } from './multipart-upload-state'
 vi.mock('electron', () => ({ app: { getPath: () => os.tmpdir(), getAppPath: () => os.tmpdir(), isPackaged: false } }))
 import { UploadManager, type UploadOptions } from './upload-manager'
 
 type Internals = {
   _apiPost: (url: string, body: string, token: string) => Promise<Record<string, unknown>>
-  _putToS3Multipart: (file: string, size: number, parts: { part_number: number; upload_url: string }[], partSize: number, progress: (n: number) => void, concurrency: number) => Promise<unknown>
+  _putToS3Multipart: (file: string, size: number, parts: { part_number: number; upload_url: string }[], partSize: number, progress: (n: number) => void, concurrency: number,
+    resume?: { recordingId: string | null; jobId: string; uploadId: string | null; ownerUserId: number | null; uploadedParts?: unknown }) => Promise<unknown>
   _putPartToS3: (url: string, body: Buffer, scope?: { signal: AbortSignal; onProgress?: () => void }) => Promise<string>
   _isRetryableUploadError: (err: Error) => boolean
 }
@@ -52,6 +54,33 @@ function setupArchive() {
   return { manager, internal, api, opts, file }
 }
 describe('VOD cloud transfer match protection', () => {
+  it.each([
+    { label: 'same session after restart', uploadId: 'old', uploadedParts: [{ part_number: 1, etag: 'server-one' }], calls: 1 },
+    { label: 'expired S3 session', uploadId: 'new', uploadedParts: [], calls: 2 },
+    { label: 'API without the resume contract', uploadId: 'old', uploadedParts: undefined, calls: 2 },
+  ])('uses current server parts for $label, ignoring stale local ETags', async ({ uploadId, uploadedParts, calls }) => {
+    const { internal, file } = setupArchive()
+    const recordingId = path.basename(dir)
+    const stateFile = multipartStatePath(os.tmpdir(), recordingId, 7001)
+    const otherOwnerFile = multipartStatePath(os.tmpdir(), recordingId, 7002)
+    const old = { version: 1 as const, recordingId, jobId: 'job', uploadId: 'old', partSize: 50, totalBytes: 100,
+      completedParts: [{ part_number: 2, etag: 'stale-local' }], updatedAt: 1 }
+    writeMultipartState(stateFile, old)
+    writeMultipartState(otherOwnerFile, { ...old, jobId: 'other-owner-job' })
+    const put = vi.spyOn(internal, '_putPartToS3').mockResolvedValue('new-etag')
+    try {
+      const result = await internal._putToS3Multipart(file, 100, [1, 2].map(n => ({ part_number: n, upload_url: `${url}/${n}` })),
+        50, vi.fn(), 1, { recordingId, jobId: 'job', uploadId, ownerUserId: 7001, uploadedParts })
+      expect(put).toHaveBeenCalledTimes(calls)
+      expect(result).toEqual([{ part_number: 1, etag: calls === 1 ? 'server-one' : 'new-etag' }, { part_number: 2, etag: 'new-etag' }])
+      expect(readMultipartState(stateFile)?.uploadId).toBe(uploadId)
+      expect(readMultipartState(otherOwnerFile)?.jobId).toBe('other-owner-job')
+    } finally {
+      clearMultipartState(stateFile)
+      clearMultipartState(otherOwnerFile)
+    }
+  })
+
   it('keeps a slow multipart upload alive while bytes are still flowing', async () => {
     const { internal, file } = setupArchive()
     vi.useFakeTimers()
