@@ -164,8 +164,9 @@ describe('buildCs2TimelineFromDemo', () => {
 
     expect(timeline?.roundSummaries).toHaveLength(2)
     expect(timeline?.spikePlants).toHaveLength(0)
-    expect(timeline?.matchDetails?.roundWinners?.get(0)).toBe(3)
-    expect(timeline?.matchDetails?.roundWinners?.get(1)).toBe(3)
+    const roundWinners = timeline?.matchDetails?.roundWinners as Map<number, number>
+    expect(roundWinners.get(0)).toBe(3)
+    expect(roundWinners.get(1)).toBe(3)
   })
 
   it('subtracts demo anchor tick from kill timestamps', () => {
