@@ -31,4 +31,16 @@ describe('stashMatchIdFields', () => {
       changed: true,
     })
   })
+
+  it('replaces a dodged lobby id with the new pregame id before tracking starts', () => {
+    expect(stashMatchIdFields('new-lobby', {
+      timelineMatchId: null,
+      currentMatchId: 'dodged-lobby',
+      trackingMatch: false,
+    })).toEqual({
+      timelineMatchId: 'new-lobby',
+      currentMatchId: 'new-lobby',
+      changed: true,
+    })
+  })
 })

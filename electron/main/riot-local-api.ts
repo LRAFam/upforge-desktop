@@ -546,8 +546,11 @@ export class RiotLocalApi {
       const provisioningFlow = (decoded.provisioningFlow ?? mpd.provisioningFlow ?? '') as string
       const isReplay = provisioningFlow.toLowerCase() === 'replay'
       this._sessionStateFailures = 0
+      const loopState = (mpd.sessionLoopState ?? decoded.sessionLoopState ?? 'MENUS') as string
+      // Back in menus with nothing tracked → any stashed pregame id belongs to a dodged lobby.
+      if (loopState === 'MENUS' && !this.matchData) this.currentMatchId = null
       return {
-        sessionLoopState: (mpd.sessionLoopState ?? decoded.sessionLoopState ?? 'MENUS') as string,
+        sessionLoopState: loopState,
         queueId: valorantQueueIdWithFlow((mpd.queueId ?? decoded.queueId ?? null) as string | null, provisioningFlow),
         matchMap: (mpd.matchMap ?? decoded.matchMap ?? null) as string | null,
         allyScore: (decoded.partyOwnerMatchScoreAllyTeam ?? 0) as number,
@@ -1017,6 +1020,7 @@ export class RiotLocalApi {
     const stashed = stashMatchIdFields(matchId, {
       timelineMatchId: this.matchData?.matchId ?? null,
       currentMatchId: this.currentMatchId,
+      trackingMatch: this.matchData != null,
     })
     this.currentMatchId = stashed.currentMatchId
     if (this.matchData && stashed.timelineMatchId) {
