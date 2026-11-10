@@ -5,13 +5,14 @@ import { tmpdir } from 'os'
 vi.mock('electron-log', () => ({ default: { warn: vi.fn(), info: vi.fn() } }))
 vi.mock('./recording-path-resolver', () => ({ preferredRecordingPath: (path: string) => path }))
 vi.mock('./vod-compressor', () => ({
-  needsTranscodeForCloudUpload: () => false,
+  needsTranscodeForCloudUpload: (p: string) => p.endsWith('.mkv'),
   recordingPathVariants: () => [],
   remuxVodForUpload: vi.fn(),
 }))
 vi.mock('./pipeline-errors', () => ({ reportPipelineError: vi.fn() }))
 import { reportPipelineError } from './pipeline-errors'
-import { extractAndUploadDuelClips, selectRecordedDuelMoments } from './duel-clip-uploader'
+import { ensurePlayableExtractSource, extractAndUploadDuelClips, selectRecordedDuelMoments } from './duel-clip-uploader'
+import { remuxVodForUpload } from './vod-compressor'
 import type { ClipExtractor } from './clip-extractor'
 import type { UploadManager } from './upload-manager'
 import type { DuelMomentManifest } from './moment-picker'
@@ -66,4 +67,10 @@ it('measures the selected source and only offers recorded moments', async () => 
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
+})
+
+it('extracts duel clips from the MKV remux in place instead of copying the whole VOD to tmp', async () => {
+  vi.mocked(remuxVodForUpload).mockResolvedValue({ ok: true, outputPath: '/rec/match_upforge.mp4', outputSizeBytes: 5e9 })
+  expect(await ensurePlayableExtractSource('/rec/match.mkv')).toBe('/rec/match_upforge.mp4')
+  expect(await ensurePlayableExtractSource('/rec/match.mp4')).toBe('/rec/match.mp4')
 })

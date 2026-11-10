@@ -13,7 +13,8 @@ vi.mock('electron', () => ({
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
 vi.mock('electron-log', () => ({ default: { warn: vi.fn(), info: vi.fn() } }))
 
-import { runRecordingStorageMaintenance, getStorageBreakdown, untrackedStatePath } from './storage-cleanup'
+import { runRecordingStorageMaintenance, getStorageBreakdown, untrackedStatePath, purgeUntrackedRecordingFiles, prunePendingRecordingsByAge } from './storage-cleanup'
+import { markOwnedRecordingFile } from './owned-recording-files'
 import { RecordingsStore } from './recordings-store'
 import { UNTRACKED_GRACE_MS, untrackedNotificationBody } from './untracked-recording-grace'
 
@@ -29,12 +30,19 @@ beforeEach(() => {
 afterEach(() => { fs.rmSync(runtime.root, { recursive: true, force: true }) })
 
 /** Sparse .mp4 of `sizeMb` last modified `ageDays` before `now`. */
-function untracked(name: string, sizeMb: number, ageDays: number, now: number): string {
+function videoFile(name: string, sizeMb: number, ageDays: number, now: number): string {
   const file = path.join(saveDir, name)
   fs.writeFileSync(file, '')
   fs.truncateSync(file, sizeMb * MB)
   const t = new Date(now - ageDays * DAY)
   fs.utimesSync(file, t, t)
+  return file
+}
+
+/** An uncatalogued file UpForge's own match capture wrote. */
+function untracked(name: string, sizeMb: number, ageDays: number, now: number): string {
+  const file = videoFile(name, sizeMb, ageDays, now)
+  markOwnedRecordingFile(file)
   return file
 }
 
@@ -152,5 +160,51 @@ describe('untracked recording files are never deleted silently', () => {
     const result = maintain(now + UNTRACKED_GRACE_MS)
     expect(fs.existsSync(file)).toBe(true)
     expect(result.untrackedWarnings.map(w => w.stage)).toEqual(['first'])
+  })
+})
+
+describe('files UpForge did not record are never deleted', () => {
+  it('automatic cleanup never warns about or deletes the user\'s own OBS videos in the shared folder', () => {
+    const now = Date.UTC(2026, 10, 8)
+    const own = videoFile('2026-01-01 20-00-00.mp4', 4, 300, now)
+    const ours = untracked('match.mp4', 4, 300, now)
+
+    const first = maintain(now, 14, 1 * MB)
+    expect(first.untrackedWarnings.map(w => w.path)).toEqual([ours])
+    maintain(now + UNTRACKED_GRACE_MS, 14, 1 * MB)
+    maintain(now + 10 * UNTRACKED_GRACE_MS, 14, 1 * MB)
+
+    expect(fs.existsSync(own)).toBe(true)
+    expect(fs.existsSync(ours)).toBe(false)
+    expect(getStorageBreakdown(new RecordingsStore(), null, saveDir).orphanCount).toBe(0)
+  })
+
+  it('"Remove untracked files" only removes files UpForge recorded', () => {
+    const now = Date.UTC(2026, 10, 8)
+    const own = videoFile('user-clip.mp4', 2, 1, now)
+    const ours = untracked('match.mp4', 2, 1, now)
+    expect(purgeUntrackedRecordingFiles(new RecordingsStore(), saveDir).removed).toBe(1)
+    expect(fs.existsSync(own)).toBe(true)
+    expect(fs.existsSync(ours)).toBe(false)
+  })
+
+  it('an UpForge compressed export counts as owned through its source recording', () => {
+    const now = Date.UTC(2026, 10, 8)
+    markOwnedRecordingFile(path.join(saveDir, 'match.mkv'))
+    const exported = videoFile('match_upforge.mp4', 2, 1, now)
+    expect(purgeUntrackedRecordingFiles(new RecordingsStore(), saveDir).removed).toBe(1)
+    expect(fs.existsSync(exported)).toBe(false)
+  })
+
+  it('a user video imported into the library as an orphan never expires', () => {
+    const now = Date.UTC(2026, 10, 8)
+    const own = videoFile('user.mp4', 2, 60, now)
+    const store = new RecordingsStore()
+    store.add({
+      path: own, riotName: '', riotTag: '', game: 'unknown', map: null, agent: null,
+      gameMode: 'UNKNOWN', orphanedImport: true,
+    } as Parameters<RecordingsStore['add']>[0], now - 60 * DAY)
+    for (let i = 0; i < 5; i++) prunePendingRecordingsByAge(store, 1, null, now + i * UNTRACKED_GRACE_MS)
+    expect(fs.existsSync(own)).toBe(true)
   })
 })
