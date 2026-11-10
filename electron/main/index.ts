@@ -7,6 +7,7 @@ import { canUseDeveloperTools, devOnly } from './dev-access'
 import { createCoalescedNotifier, createVodProbeSweep } from './vod-probe-sweep'
 import { createRecordingFileFinalizer } from './recording-file-finalizer'
 import { submissionFocusAreas } from '../../src/lib/submission-focus'
+import { parseDiscordLinkCallback } from './discord-link'
 import { createCallRateLogger, startMainLoopLagMonitor } from './main-loop-lag'
 import { saveReplay } from './valorant-replay-download'
 import { ValorantReplaySync, type ReplaySyncState } from './valorant-replay-sync'
@@ -8850,6 +8851,27 @@ app.on('before-quit', (event) => {
 const pendingDeepLink = new PendingDeepLink()
 function acceptDeepLink(raw: string | null): void {
   if (!raw) return
+  const discordCallback = parseDiscordLinkCallback(raw)
+  if (discordCallback) {
+    // A pending flow can only exist after IPC starts. Cold launches and duplicate
+    // bootstrap processes must not display a false result for another instance.
+    if (!ipcHandlersReady) return
+    // Codes and state stay in main, outside the generic renderer navigation queue.
+    const ownerToken = authManager.getToken()
+    void authManager.discordLink.complete(discordCallback).then(async result => {
+      if (!result || authManager.getToken() !== ownerToken) return
+      if (result.ok) await authManager.fetchUser()
+      if (authManager.getToken() !== ownerToken) return
+      showAppNotification({
+        title: result.ok ? 'Discord linked' : 'Discord linking',
+        body: result.ok ? 'Your Discord account is connected.' : result.error,
+        silent: true,
+        onClick: () => focusMainWindow(),
+      })
+      focusMainWindow()
+    }).catch(() => log.warn('[Discord] Could not complete account linking'))
+    return
+  }
   const action = pendingDeepLink.offer(raw)
   if (!action) {
     log.warn('[DeepLink] Ignored a link that is not on the allow-list')

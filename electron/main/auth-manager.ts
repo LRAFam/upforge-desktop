@@ -8,6 +8,7 @@ import { withRetry } from './utils/retry'
 import { normalizeToAcs } from './combat-score'
 import { getApiBaseUrl } from './api-base'
 import { resolveMaxValorantAccounts } from './valorant-account-cap'
+import { DiscordLinkFlow } from './discord-link'
 import { normalizeLolRecent, type LolRecentResult } from '../../src/lib/lol-recent'
 import { normalizeArchiveStats, type NormalizedArchiveStats } from '../../src/lib/archive-retention-hint'
 import {
@@ -279,6 +280,19 @@ export class AuthManager {
   private _token: string | null = null
   private _user: AuthUser | null = null
   private _api: AxiosInstance
+  readonly discordLink = new DiscordLinkFlow({
+    session: () => this._token && this._user ? { userId: this._user.id, token: this._token } : null,
+    get: async (path, token) => {
+      const res = await this._api.get(path, { headers: { Authorization: `Bearer ${token}` }, validateStatus: () => true })
+      this.handleSessionRejection(token, res.status, res.data, path)
+      return { status: res.status, data: res.data }
+    },
+    post: async (path, body, token) => {
+      const res = await this._api.post(path, body, { headers: { Authorization: `Bearer ${token}` }, validateStatus: () => true })
+      this.handleSessionRejection(token, res.status, res.data, path)
+      return { status: res.status, data: res.data }
+    },
+  })
   /** Called when the server rejects the session (401/403) — use to force logout in the UI. */
   onSessionExpired?: () => void
   /** Called whenever a session ends (sign-out or expiry) — e.g. clear the embedded website's session. */
@@ -389,6 +403,7 @@ export class AuthManager {
    * so it can be sent as `desktop_signed_out` after the next sign-in.
    */
   private endSession(reason: SignOutReason, ctx: { endpoint?: string; status?: number; code?: string }, notify: boolean): void {
+    this.discordLink.clear()
     if (!this._token && !this._user) return
     this.recordSignOut(reason, ctx)
     this._token = null
