@@ -35,4 +35,13 @@ describe('SettingsManager persistence', () => {
     expect(backups).toHaveLength(1)
     expect(fs.readFileSync(path.join(runtime.root, backups[0]!), 'utf-8')).toBe('{"obsPort": 4466, "savePath": ')
   })
+
+  it('restores the last good settings when settings.json is truncated', () => {
+    const first = new SettingsManager()
+    first.save({ obsPort: 4466 })
+    first.save({ obsPort: 4477 })
+    fs.writeFileSync(settingsFile(), '{"obsPort": 44')
+    expect(new SettingsManager().get().obsPort).toBe(4477)
+    expect(fs.readdirSync(runtime.root).some((f) => f.startsWith('settings.corrupt-'))).toBe(true)
+  })
 })

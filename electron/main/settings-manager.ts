@@ -285,8 +285,7 @@ export class SettingsManager {
 
   private load(): AppSettings {
     try {
-      const raw = fs.readFileSync(this.filePath, 'utf-8')
-      let parsed = JSON.parse(raw)
+      let parsed = this.readSettingsJson()
       // Migrate from old recordingMode field
       if (parsed.recordingMode !== undefined && parsed.recordedModes === undefined) {
         const ALL_MODES = [
@@ -341,8 +340,7 @@ export class SettingsManager {
         }
       }
       return result
-    } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') this.preserveCorruptFile(err)
+    } catch {
       return {
         ...DEFAULTS,
         obsPreserveSceneDefaultV2: true,
@@ -364,9 +362,25 @@ export class SettingsManager {
         fs.closeSync(fd)
       }
       fs.renameSync(tmp, this.filePath)
+      // Last good copy: the fallback if settings.json is ever unreadable on launch.
+      try { fs.copyFileSync(this.filePath, `${this.filePath}.bak`) } catch { /* best effort */ }
     } catch (err) {
       try { fs.rmSync(tmp, { force: true }) } catch { /* best effort */ }
       throw err
+    }
+  }
+
+  /** settings.json, or the last good copy (settings.json.bak) when it is unreadable. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- migrated field by field below
+  private readSettingsJson(): any {
+    try {
+      return JSON.parse(fs.readFileSync(this.filePath, 'utf-8'))
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') throw err
+      this.preserveCorruptFile(err)
+      const parsed = JSON.parse(fs.readFileSync(`${this.filePath}.bak`, 'utf-8'))
+      console.warn('[SettingsManager] Restored settings from settings.json.bak')
+      return parsed
     }
   }
 
