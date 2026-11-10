@@ -21,6 +21,7 @@ vi.mock('./deadlock-paths', () => ({
 }))
 
 import {
+  getDeadlockMatchStartedAt,
   DEADLOCK_CACHE_LIVE_SCAN_MS,
   DEADLOCK_CACHE_POLL_MS,
   isDeadlockCacheScanDue,
@@ -163,6 +164,32 @@ describe('deadlock match readiness', () => {
     await vi.advanceTimersByTimeAsync(DEADLOCK_CACHE_POLL_MS + 500)
 
     expect(isDeadlockReadyToRecord()).toBe(true)
+    stopDeadlockLogWatcher()
+    vi.useRealTimers()
+  })
+
+  it('resets the match start time when the next match id appears', async () => {
+    vi.useFakeTimers()
+    noteDeadlockWaitStarted()
+    const hit = (matchId: number) => [{
+      matchId,
+      clusterId: 1,
+      metadataSalt: matchId + 1,
+      replaySalt: null,
+      sourcePath: `/cache/${matchId}`,
+      url: `https://replay1.valve.net/1422450/${matchId}_${matchId + 1}.meta.bz2`,
+    }]
+    vi.mocked(scanSteamHttpCache).mockResolvedValueOnce(hit(501))
+    startDeadlockLogWatcher()
+    await vi.advanceTimersByTimeAsync(DEADLOCK_CACHE_POLL_MS + 500)
+    const firstStart = getDeadlockMatchStartedAt()
+    expect(firstStart).not.toBeNull()
+
+    await vi.advanceTimersByTimeAsync(40 * 60_000)
+    vi.mocked(scanSteamHttpCache).mockResolvedValueOnce(hit(602))
+    await vi.advanceTimersByTimeAsync(DEADLOCK_CACHE_LIVE_SCAN_MS + DEADLOCK_CACHE_POLL_MS + 500)
+
+    expect(getDeadlockMatchStartedAt()).toBeGreaterThan(firstStart! + 39 * 60_000)
     stopDeadlockLogWatcher()
     vi.useRealTimers()
   })

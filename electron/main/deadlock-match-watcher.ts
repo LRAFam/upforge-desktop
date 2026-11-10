@@ -97,6 +97,8 @@ export function noteDeadlockWaitStarted(): void {
 
 function markMatchStarted(matchId: number): void {
   if (activeMatchId === matchId && matchStartedAtMs != null) return
+  // A different match id is a new match: don't carry the previous match's start time.
+  if (activeMatchId !== matchId) matchStartedAtMs = null
   activeMatchId = matchId
   matchSalts = saltsByMatch.get(matchId) ?? { matchId, clusterId: 0, metadataSalt: null, replaySalt: null }
   if (matchStartedAtMs == null) matchStartedAtMs = Date.now()
