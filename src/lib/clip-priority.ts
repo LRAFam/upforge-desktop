@@ -31,8 +31,8 @@ export function clipRetentionScore(clip: ClipPrioritySource): number {
   if (clip.trigger === 'multikill') return 300
   if (clip.trigger === 'manual') return 250
   // Routine kills — older kills evict first via savedAt tie-break
-  const ageMs = clip.savedAt ?? 0
-  return 100 + Math.min(99, Math.floor(ageMs / 86_400_000))
+  const ageMs = Math.max(0, Date.now() - (clip.savedAt ?? 0))
+  return 100 + Math.max(0, 99 - Math.floor(ageMs / 86_400_000))
 }
 
 export function sortClipsByRank<T extends ClipPrioritySource>(clips: T[]): T[] {

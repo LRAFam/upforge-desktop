@@ -18,7 +18,7 @@ vi.mock('./vod-compressor', () => ({
 import { ClipPipeline } from './clip-pipeline'
 import type { ClipExtractor } from './clip-extractor'
 import { prunePendingRecordingsByAge, purgeUntrackedRecordingFiles } from './storage-cleanup'
-import { ClipStore, type NewClip } from './clip-store'
+import { ClipStore, MAX_CLIPS, type NewClip } from './clip-store'
 import { RecordingsStore, type NewRecording } from './recordings-store'
 import { registeredLocalRecordingPaths } from './local-media-paths'
 import { CaptureOwnership } from './capture-ownership'
@@ -50,6 +50,25 @@ function clip(): NewClip {
 }
 
 describe('durable logged-out media', () => {
+  it('lets an interrupted clip upload be retried after restart', () => {
+    const clips = new ClipStore()
+    const item = clips.add(clip())
+    clips.update(item.id, { uploadStatus: 'uploading' })
+    expect(new ClipStore().getById(item.id)?.uploadStatus).toBe('failed')
+  })
+
+  it('never evicts the clip whose file is about to be extracted', () => {
+    const clips = new ClipStore().forUser(11)
+    for (let i = 0; i < MAX_CLIPS; i++) {
+      clips.add({ ...clip(), path: mediaFile(`hotkey-${i}.mp4`), thumbPath: null })
+    }
+    const pending = clips.add({ ...clip(), path: '', thumbPath: null, trigger: 'kill' })
+    expect(clips.getAll()).toHaveLength(MAX_CLIPS)
+    expect(clips.getById(pending.id)).toBeDefined()
+    const file = mediaFile('new-kill.mp4')
+    clips.update(pending.id, { path: file })
+    expect(new ClipStore().forUser(11).getById(pending.id)?.path).toBe(file)
+  })
   it('keeps a guest VOD, match timeline, clip, thumbnail and event offsets across restart', () => {
     const match = new RecordingsStore().add({ ...recording(), pendingClipBookmarks: [42000], captureRecordingStartTime: 10000 })
     const highlight = new ClipStore().add(clip())
