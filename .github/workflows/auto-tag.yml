@@ -56,8 +56,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          # GitHub Actions won't fire workflow triggers from Actions-created tags,
-          # even with a PAT. Explicitly dispatch the release build instead.
+          # This explicit dispatch is the only tag release trigger. release.yml does
+          # not also listen for tag pushes, whether GH_TOKEN is a PAT or an App token.
           gh workflow run "release.yml" --ref "${{ steps.pkg.outputs.version }}"
           echo "🚀 Dispatched Build Installers for ${{ steps.pkg.outputs.version }}"
 
