@@ -5,6 +5,7 @@ import { buildQuitActivity, createQuitGuard } from './quit-guard'
 import { askQuitChoice } from './quit-dialog'
 import { canUseDeveloperTools, devOnly } from './dev-access'
 import { createCoalescedNotifier, createVodProbeSweep } from './vod-probe-sweep'
+import { createRecordingFileFinalizer } from './recording-file-finalizer'
 import { createCallRateLogger, startMainLoopLagMonitor } from './main-loop-lag'
 import { saveReplay } from './valorant-replay-download'
 import { ValorantReplaySync, type ReplaySyncState } from './valorant-replay-sync'
@@ -1744,11 +1745,32 @@ function syncUserSessionFromAuth(): void {
   enforceRecordingPresetAccess()
 }
 
+const recordingFileFinalizer = createRecordingFileFinalizer({
+  owner: () => getActiveUserId(),
+  rows: () => recordingsStore?.getPending() ?? [],
+  canWork: () => Boolean(recordingsStore) && localMediaWork === 0 && !obsRecorder.isRecording() && !backgroundWork.blocked,
+  stat: (filePath) => fs.promises.stat(filePath),
+  probe: (filePath) => clipExtractor.probe(filePath),
+  complete: async (id, owner) => {
+    const store = recordingsStore.forUser(owner)
+    store.markFileFinalized(id)
+    await store.flush()
+    if (getActiveUserId() !== owner) return
+    const recording = store.getById(id)
+    if (recording) await refreshRecordingVodProbe(recording)
+    if (getActiveUserId() !== owner) return
+    notifyRecordingsUpdated()
+    resumeSavedLocalMedia()
+  },
+})
+
 function resumeSavedLocalMedia(): void {
+  void recordingFileFinalizer.tick()
   const userId = getActiveUserId()
   if (!recordingsStore || userId === null || !authManager.isAuthenticated()) return
   if (localMediaWork > 0 || obsRecorder.isRecording()) return
   for (const rec of recordingsStore.getPending()) {
+    if (rec.fileFinalizing) continue
     if (!rec.savedOffline && !rec.pendingClipBookmarks?.length) continue
     recordingsStore.markSavedOffline(rec.id, false)
     if (rec.clipsOnly) continue
@@ -3012,7 +3034,7 @@ function sendAnalysisReadinessUpdate(
 async function refreshRecordingVodProbe(
   rec: NonNullable<ReturnType<RecordingsStore['getById']>>,
 ): Promise<void> {
-  if (!rec.path || rec.clipsOnly) return
+  if (!rec.path || rec.clipsOnly || rec.fileFinalizing) return
   if (!fs.existsSync(rec.path)) return
   await refreshVodProbe(rec.path, (p) => clipExtractor.probe(p))
 }
@@ -3916,6 +3938,7 @@ function setupGameDetection(): void {
         ? Promise.resolve(null)
         : obsRecorder.stop(),
     ])
+    const outputStillFinalizing = stoppedPath !== null && obsRecorder.getFinalizingRecordingPath() === stoppedPath
     if (!captureNeverStarted) {
       if (obsRecorder.isRecording()) {
         log.warn(`[MatchEnd] ${game} (${endSource}) — OBS stop not confirmed; recording still owned`)
@@ -4071,6 +4094,23 @@ function setupGameDetection(): void {
       mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
     }
     const clipsOnly = !captureNeverStarted && (config?.fullMatchRecording === false || obsRecorder.isClipsOnlySession())
+
+    if (stoppedPath && outputStillFinalizing && !clipsOnly) {
+      // Persist exact owned output + capture context before releasing this match's flow.
+      // It can become readable after the old 45s deadline or after the app restarts.
+      captureStore.add({
+        path: stoppedPath, game, map, agent, gameMode, timeline,
+        riotName: timeline?.playerName?.trim() ?? '', riotTag: timeline?.playerTag?.trim() ?? '',
+        fileFinalizing: true, savedOffline: true, autoAnalyseRequested: ownerId !== null && autoAnalyse,
+        captureRecordingStartTime: currentRecordingStartTime, pendingClipBookmarks: hotkeyBookmarks.splice(0),
+        onboardingBonus: shouldUseOnboardingBonus(settingsManager.get().onboardingMatchMission, game),
+        onboardingAdminTest: settingsManager.get().onboardingMatchMission?.adminTest === true,
+      }, matchSessionStart)
+      await captureStore.flush()
+      notifyRecordingsUpdated()
+      logActivity('Recording is still finishing on disk. UpForge will continue when it is ready.', game)
+      return
+    }
 
     if (!canUploadCapture()) {
       const localClipContext = { recordingStartTime: currentRecordingStartTime, bookmarks: hotkeyBookmarks.splice(0) }
@@ -6327,6 +6367,9 @@ async function resumePollForJob(
 /** Save a recording to cloud only (archive quota — no analysis). */
 async function doUploadArchiveOnly(...args: Parameters<typeof uploadArchiveOnlyImpl>): Promise<{ archiveId: string | null; lastError: AnalysisErrorPayload | null }> {
   const recordingId = args[0]
+  if (recordingId && recordingsStore.getById(recordingId)?.fileFinalizing) {
+    return { archiveId: null, lastError: buildAnalysisErrorPayload('Recording is still finalizing. Try again when it is ready.') }
+  }
   if (recordingId) activeUploadRecordingIds.add(recordingId)
   try { return await uploadArchiveOnlyImpl(...args) }
   finally {
@@ -7185,6 +7228,9 @@ async function startApp(): Promise<void> {
   app.once('will-quit', () => clearInterval(activityPresenceTimer))
   trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
   recordingsStore = new RecordingsStore()
+  const finalizingFileTimer = setInterval(() => { void recordingFileFinalizer.tick() }, 5000)
+  finalizingFileTimer.unref()
+  app.once('will-quit', () => clearInterval(finalizingFileTimer))
 
   // Register IPC before any BrowserWindow loads (dev updater, macOS activate, second instance).
   setupIpcHandlers(ipcMain, authManager, () => obsRecorder, gameDetector, settingsManager, () => {

@@ -53,6 +53,8 @@ export interface PendingRecording {
   id: string
   /** Saved while its capture account was unavailable; resume only in that account. */
   savedOffline?: boolean
+  /** OBS is confirmed stopped but its owned file is not stable/readable yet. */
+  fileFinalizing?: boolean
   pendingClipBookmarks?: number[]
   captureRecordingStartTime?: number | null
   path: string
@@ -300,6 +302,7 @@ export class RecordingsStore {
       }
 
       const pruned = all.filter(r => {
+        if (r.fileFinalizing) return true
         if (r.clipsOnly) return true
         if (r.path && fs.existsSync(r.path)) return true
         if (hasCloudRecording(r)) return true
@@ -374,6 +377,14 @@ export class RecordingsStore {
     const recording = this.recordings.find(item => item.id === id)
     if (!recording) return
     recording.savedOffline = savedOffline
+    this.persist()
+  }
+
+  markFileFinalized(id: string): void {
+    const recording = this.recordings.find(item => item.id === id)
+    if (!recording) return
+    delete recording.fileFinalizing
+    try { recording.fileSizeBytes = fs.statSync(recording.path).size } catch { /* next probe will report missing */ }
     this.persist()
   }
 
@@ -763,6 +774,8 @@ export class RecordingsStore {
   getPending(linkedRiot?: LinkedRiotId | null): PendingRecording[] {
     return this.recordings.filter(r => {
       if (!matchesLinkedAccount(r, linkedRiot)) return false
+
+      if (r.fileFinalizing) return true
 
       if (r.clipsOnly) return true
 

@@ -60,6 +60,11 @@ function baseRecording(overrides: Partial<PendingRecording> = {}): PendingRecord
 }
 
 describe('getAnalysisReadiness', () => {
+  it('keeps a durable finalizing output waiting even while the file is missing or empty', () => {
+    const rec = baseRecording({ fileFinalizing: true, cloudArchived: false, archiveId: undefined })
+    expect(getAnalysisReadiness(rec).state).toBe('finalizing')
+    expect(getVodFileReadiness(rec)).toBe('finalizing')
+  })
   it('syncs fresh recordings while Riot stats are still loading', () => {
     const rec = baseRecording({
       recordedAt: Date.now() - 30_000,

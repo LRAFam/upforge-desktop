@@ -78,6 +78,19 @@ afterEach(async () => {
 })
 
 describe('recordings.json split — migration', () => {
+  it('keeps a missing finalizing file and capture context through restart, scoped to its owner', async () => {
+    const store = openStore()
+    const saved = store.add({ ...row(999), path: path.join(runtime.root, 'not-written-yet.mp4'),
+      fileFinalizing: true, savedOffline: true, autoAnalyseRequested: true, pendingClipBookmarks: [12000] })
+    await store.flush()
+    const reopened = openStore()
+    expect(reopened.getById(saved.id)).toMatchObject({ fileFinalizing: true, savedOffline: true, autoAnalyseRequested: true, pendingClipBookmarks: [12000] })
+    expect(reopened.getPending().some(rec => rec.id === saved.id)).toBe(true)
+    expect(reopened.forUser(USER + 1).getById(saved.id)).toBeUndefined()
+    reopened.markFileFinalized(saved.id)
+    await reopened.flush()
+    expect(reopened.getById(saved.id)?.fileFinalizing).toBeUndefined()
+  })
   it('moves inline timelines to their own files, shrinks the index, keeps a backup, and is idempotent', async () => {
     const legacy = writeLegacyCatalogue(5)
     const before = fs.statSync(indexPath()).size

@@ -18,6 +18,7 @@ describe('cloud-only bulk backup', () => {
         { ...base, id: 'archived', archiveId: 'cloud-id' },
         { ...base, id: 'uploaded', jobId: 'job-id' },
         { ...base, id: 'active', pipelineStatus: 'uploading' },
+        { ...base, id: 'finalizing', fileFinalizing: true },
         { ...base, id: 'missing', path: 'missing' },
       ] },
       authManager: { getUser: () => ({}) },

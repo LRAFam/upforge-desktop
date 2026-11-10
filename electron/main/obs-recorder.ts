@@ -138,6 +138,7 @@ export class OBSRecorder {
   private _startedAt: number | null = null
   private _gameplayRefitDone = false
   private _outputPath: string | null = null
+  private _finalizingOutputPath: string | null = null
   private _lastError: string | null = null
   private _obsVersion: string | null = null
   /** OBS Studio version from GetVersion — used for crash-safe recording format. */
@@ -624,6 +625,7 @@ export class OBSRecorder {
   isActivelyRecording(): boolean { return this._matchOwnedRecording && this._recording }
   isClipsOnlySession(): boolean { return this._clipsOnlySession }
   getLastRecordingPath(): string | null { return this._outputPath }
+  getFinalizingRecordingPath(): string | null { return this._finalizingOutputPath }
   getLastError(): string | null { return this._lastError }
   hasRecordingFailure(): boolean { return this._recordingFailure !== null }
   wasNoAudio(): boolean { return this._noAudio }
@@ -1509,7 +1511,16 @@ export class OBSRecorder {
     this._disconnectedDuringRecording = false
     this._noteRecordingStopped()
     // After a crash the file only exists if OBS got to write it; the match-end path scan handles the rest.
-    if (this._outputPath && (!obsGone || existsSync(this._outputPath))) await this._waitForRecordingFile(this._outputPath)
+    if (this._outputPath && (!obsGone || existsSync(this._outputPath))) {
+      const ready = await this._waitForRecordingFile(this._outputPath)
+      if (!ready) {
+        if (!ownsMatchFile || this._recordingFailure || suppressStoppedStatus) {
+          throw new Error(`OBS recording file did not finalize: ${this._outputPath}. Restart OBS before recording another match.`)
+        }
+        this._finalizingOutputPath = this._outputPath
+        log.info('[OBSRecorder] Stopped output is still finalizing; retaining it for background recovery:', this._outputPath)
+      } else this._finalizingOutputPath = null
+    }
     // A capture failure already sent the stopped state and its error. Successful
     // cleanup must not report that same failure again as a separate stop error.
     if (!this._recordingFailure && !suppressStoppedStatus) {
@@ -1531,7 +1542,7 @@ export class OBSRecorder {
   }
 
   /** Wait until the muxed file exists and size has stabilized (OBS writes async after StopRecord). */
-  private async _waitForRecordingFile(filePath: string): Promise<void> {
+  private async _waitForRecordingFile(filePath: string): Promise<boolean> {
     const pollMs = 500
     const maxWaitMs = 45_000
     let lastSize = -1
@@ -1552,7 +1563,7 @@ export class OBSRecorder {
       }
       if (size > 0 && size === lastSize) {
         stableChecks++
-        if (stableChecks >= 2) return
+        if (stableChecks >= 2) return true
       } else {
         stableChecks = 0
       }
@@ -1560,7 +1571,7 @@ export class OBSRecorder {
       await new Promise((r) => setTimeout(r, pollMs))
     }
 
-    throw new Error(`OBS recording file did not finalize: ${filePath}. Restart OBS before recording another match.`)
+    return false
   }
 
   // ── Replay buffer clip saving ────────────────────────────────────────────────

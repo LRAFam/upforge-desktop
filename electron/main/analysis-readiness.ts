@@ -23,7 +23,7 @@ export type AnalysisReadiness = AnalyseReadiness
 
 type ReadinessRecording = Pick<
   PendingRecording,
-  'game' | 'recordedAt' | 'timeline' | 'clipsOnly' | 'matchId' | 'path' | 'cloudArchived' | 'archiveId' | 'gameMode'
+  'game' | 'recordedAt' | 'timeline' | 'clipsOnly' | 'matchId' | 'path' | 'cloudArchived' | 'archiveId' | 'gameMode' | 'fileFinalizing'
 >
 
 type VodProbeResult = { ok: boolean; reason?: string; durationMs?: number | null }
@@ -47,6 +47,7 @@ function localVodPathRequired(rec: ReadinessRecording): boolean {
 }
 
 function vodFileGates(rec: ReadinessRecording): AnalysisReadiness | null {
+  if (rec.fileFinalizing) return { ready: false, state: 'finalizing', message: 'Finalizing recording…', duelMomentCount: 0 }
   if (!localVodPathRequired(rec)) return null
 
   const filePath = rec.path
@@ -121,6 +122,7 @@ function vodFileGates(rec: ReadinessRecording): AnalysisReadiness | null {
 }
 
 export function getVodFileReadiness(rec: ReadinessRecording): VodFileReadiness {
+  if (rec.fileFinalizing) return 'finalizing'
   if (!localVodPathRequired(rec)) return 'not_required'
 
   const gate = vodFileGates(rec)
