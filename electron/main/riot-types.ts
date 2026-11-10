@@ -1,4 +1,5 @@
 import type { LolLocalReview } from './lol-local-review'
+import type { TimerOffsetEvidence, VideoOffsetProvenance } from './video-offset-provenance'
 /**
  * riot-types.ts
  * TypeScript interfaces for the Riot Local API data model.
@@ -383,12 +384,15 @@ export interface MatchData {
    * zero). When set it replaces the loading-time estimate; manual sync nudges still apply on top.
    */
   roundTimerOffsetMs?: number
+  roundTimerEvidence?: TimerOffsetEvidence
+  videoOffsetProvenance?: VideoOffsetProvenance
   /**
    * CS2: measured position in the recording of demo time zero (the first round_start), from GSI
    * live events (cs2-demo-video-sync). When set it replaces the match-start estimate, which is
    * taken during warmup; manual sync nudges still apply on top.
    */
   cs2DemoVideoShiftMs?: number
+  cs2DemoSyncEvidence?: { pairs: number; livePoints: number }
 
   // Round score progression from presence polling
   roundScores: RoundScore[]

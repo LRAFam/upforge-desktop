@@ -717,6 +717,7 @@ export function buildCs2TimelineFromDemo(
       const sync = estimateCs2DemoVideoShift(timeline, opts.cs2Live)
       if (sync) {
         timeline.cs2DemoVideoShiftMs = sync.shiftMs
+        timeline.cs2DemoSyncEvidence = { pairs: sync.pairs, livePoints: sync.livePoints }
         const estimate = -Math.max(0, opts.recordingStartTime - (opts.matchStartTime ?? opts.recordingStartTime))
         log.info(`[CS2DemoSync] demo→video shift ${sync.shiftMs} ms from ${sync.pairs}/${sync.livePoints} GSI points (match-start estimate ${estimate} ms, diff ${sync.shiftMs - estimate} ms)`)
       } else {

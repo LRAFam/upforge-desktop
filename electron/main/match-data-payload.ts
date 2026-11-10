@@ -18,6 +18,7 @@ import {
 } from './match-coaching-context'
 import { normalizeValorantCoachingStats, enforceValorantCoachingQuality, type CoachingDataQuality } from './valorant-coaching-quality'
 import { hasCompleteRiotKillEvents } from './valorant-kill-completeness'
+import { videoOffsetProvenance } from './video-offset-provenance'
 
 /** Slim Riot MatchDetails subset for coaching prompts (avoids multi‑MB raw JSON). */
 export interface MatchDetailsLite {
@@ -285,6 +286,8 @@ export function prepareMatchDataForUpload(
     videoSyncOffsetMs: effectiveVideoSyncOffsetMs(timeline),
     // Measured from the round timer; lets anything that rebuilds offsets from match_data match the clips.
     roundTimerOffsetMs: timeline.roundTimerOffsetMs,
+    cs2DemoVideoShiftMs: timeline.cs2DemoVideoShiftMs,
+    videoOffsetProvenance: videoOffsetProvenance(timeline),
     roundScores: timeline.roundScores,
     finalScore: timeline.finalScore ?? deriveMatchScore(timeline) ?? null,
     killEvents: timeline.killEvents,

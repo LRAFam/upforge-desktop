@@ -124,6 +124,7 @@ describe('upload kill completeness proof', () => {
     expect(upload?.dataQuality?.status).toBe('verified_fields_only')
     expect(upload?.killEventsComplete).toBe(true)
     expect(upload?.killEvents).toHaveLength(1)
+    expect(upload?.videoOffsetProvenance).toMatchObject({ status: 'estimated', source: 'loading_estimate', uncertaintyMs: null })
   })
 
   it('does not trust a saved completeness flag when provider rows are missing', () => {

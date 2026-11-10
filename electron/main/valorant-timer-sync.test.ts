@@ -105,6 +105,7 @@ describe('alignValorantTimelineByRoundTimer', () => {
     const est = await alignValorantTimelineByRoundTimer(timeline, 'rec.mp4', fakeRecording(-4875, starts), { info: vi.fn(), warn: vi.fn() }, decodeFake)
     expect(est).not.toBeNull()
     expect(Math.abs(timeline.roundTimerOffsetMs! - -4875)).toBeLessThanOrEqual(250)
+    expect(timeline.roundTimerEvidence).toEqual({ samples: est!.samples, rounds: est!.rounds, spreadMs: est!.spreadMs, outliers: est!.outliers })
     expect(timeline.videoSyncOffsetMs).toBe(-8000)  // the manual-nudge channel is untouched
   })
 

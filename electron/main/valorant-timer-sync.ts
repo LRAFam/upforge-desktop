@@ -284,6 +284,7 @@ export async function alignValorantTimelineByRoundTimer(
     return null
   }
   timeline.roundTimerOffsetMs = est.offsetMs
+  timeline.roundTimerEvidence = { samples: est.samples, rounds: est.rounds, spreadMs: est.spreadMs, outliers: est.outliers }
   recomputeTimelineVideoOffsets(timeline)
   log.info(`[TimerSync] Offset ${current} -> ${est.offsetMs} ms from ${est.samples} timer ticks in ${est.rounds} rounds (spread ${est.spreadMs} ms)`)
   return est
