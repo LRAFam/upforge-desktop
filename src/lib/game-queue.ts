@@ -22,7 +22,7 @@ const RANKED: Record<string, ReadonlySet<string>> = {
 const UNRANKED: Record<string, ReadonlySet<string>> = {
   valorant: new Set(['CLASSIC', 'UNRATED', 'SWIFTPLAY', 'SPIKERUSH', 'DEATHMATCH', 'TEAMDEATHMATCH', 'SNOWBALL', 'SHOOTING_RANGE', 'RANGEV2', 'CUSTOM', 'NEWMAP', 'ONEFA', 'GGTEAM']),
   cs2: new Set(['WINGMAN', 'CASUAL', 'DEATHMATCH', 'ARMS_RACE', 'GUNGAME', 'DEMOLITION', 'RETAKES', 'CUSTOM', 'TRAINING', 'SKIRMISH']),
-  lol: new Set(['ARAM', 'ARENA', 'CUSTOM', 'NORMAL_DRAFT', 'NORMAL_BLIND', 'SWIFTPLAY']),
+  lol: new Set(['ARAM', 'ARENA', 'CUSTOM', 'BOT', 'NORMAL_DRAFT', 'NORMAL_BLIND', 'SWIFTPLAY']),
   // Mirrors the API's GameQueue: Standard matchmaking, Street Brawl, bots, lobbies, Hero Labs… never move ranked stats.
   deadlock: new Set(['UNRANKED', 'STANDARD', 'STREET_BRAWL', 'PRIVATE_LOBBY', 'COOP_BOT', 'HERO_LABS', 'TUTORIAL',
     'SERVER_TEST', 'NEW_PLAYER_PLACEMENT', 'SANDBOX']),

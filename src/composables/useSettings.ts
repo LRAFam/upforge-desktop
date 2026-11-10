@@ -560,6 +560,7 @@ function createSettings() {
       { value: 'ARAM', label: 'ARAM', hint: 'Includes ARAM: Mayhem' },
       { value: 'ARENA', label: 'Arena', hint: '2v2v2v2' },
       { value: 'CUSTOM', label: 'Custom / Practice', hint: 'Custom games and practice tool' },
+      { value: 'BOT', label: 'Co-op vs AI', hint: 'Bot games' },
     ],
     cs2: [
       { value: 'COMPETITIVE', label: 'Competitive', hint: 'Ranked' },

@@ -62,6 +62,21 @@ describe('resolveLolFilterMode', () => {
   })
 })
 
+describe('LoL custom and bot games', () => {
+  it('labels custom lobbies CUSTOM, not CLASSIC', () => {
+    expect(resolveLolFilterMode({ queueId: -1, liveGameMode: 'CLASSIC', mapId: 11 })).toBe('CUSTOM')
+    expect(parseGameflowSession({
+      phase: 'InProgress',
+      gameData: { isCustomGame: true, queue: { id: 400 }, map: { id: 11 } },
+    }).queueId).toBe(-1)
+  })
+
+  it('labels Co-op vs AI queues BOT, not CLASSIC', () => {
+    expect(normalizeLolQueueId(870)).toEqual({ gameMode: 'BOT', queueLabel: 'Co-op vs AI' })
+    expect(resolveLolFilterMode({ queueId: 880, liveGameMode: 'CLASSIC', mapId: 11 })).toBe('BOT')
+  })
+})
+
 describe('parseGameflowSession', () => {
   it('reads phase and queue from gameData', () => {
     expect(parseGameflowSession({
