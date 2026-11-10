@@ -107,6 +107,9 @@ export function checkForUpdatesIfIdle(): void {
     return
   }
   if (state.phase === 'downloading' || state.phase === 'checking') return
+  // An update is downloaded and waiting: a fresh check (often offline) would reset the phase
+  // and hide "Restart now" for an installer that is still on disk.
+  if (state.phase === 'ready') return
   pendingUpdateCheck = false
   log.info('[Updater] Background update check')
   void autoUpdater.checkForUpdates().catch((err: unknown) => {
@@ -191,6 +194,7 @@ export function setupAutoUpdater(
   }
 
   autoUpdater.on('checking-for-update', () => {
+    if (state.phase === 'ready') return // keep "Restart now" for the downloaded installer
     state = { phase: 'checking' }
     log.info('[Updater] Checking for updates')
     send('updater:checking')
@@ -233,6 +237,7 @@ export function setupAutoUpdater(
   })
 
   autoUpdater.on('update-not-available', () => {
+    if (state.phase === 'ready') return // keep "Restart now" for the downloaded installer
     state = { phase: 'idle' }
     log.info('[Updater] Up to date')
     send('updater:not-available')
@@ -241,6 +246,11 @@ export function setupAutoUpdater(
 
   autoUpdater.on('error', (err) => {
     const msg = err.message || String(err)
+    if (state.phase === 'ready') {
+      // Keep "Restart now" for the downloaded installer (e.g. a later check failed offline).
+      log.warn('[Updater] Error while an update is ready (kept ready):', msg)
+      return
+    }
     if (!startupComplete && isTransientUpdateError(msg)) {
       log.warn('[Updater] Transient metadata error (handled by retry loop):', msg)
       return
