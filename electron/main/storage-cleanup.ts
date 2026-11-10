@@ -14,6 +14,7 @@ import {
   type LinkedRiotId,
 } from './user-data-paths'
 import { MIN_RECORDING_FILE_BYTES } from './recording-limits'
+import { isOwnedRecordingFile, ownedRecordingFiles } from './owned-recording-files'
 import { getFreeDiskSpace } from './disk-space'
 import { planRecordingExpiry, type ExpiryWarningStage } from './recording-expiry'
 import {
@@ -135,12 +136,18 @@ function isPathKnown(filePath: string, knownPaths: Set<string>): boolean {
   return false
 }
 
+/**
+ * Uncatalogued files UpForge itself recorded. The OBS folder is shared with the user's own
+ * recordings, so a file UpForge never asked OBS to write is never listed (and never deleted).
+ */
 function listOrphanRecordingFiles(savePath: string, knownPaths: Set<string>): string[] {
   const { files } = scanMp4Directory(savePath)
   const seenStems = new Set<string>()
+  const owned = ownedRecordingFiles()
 
   return files.filter((filePath) => {
     if (isPathKnown(filePath, knownPaths)) return false
+    if (!isOwnedRecordingFile(filePath, owned)) return false
 
     const stem = path.basename(filePath, '.mp4').replace(/_upforge$/, '')
     const stemKey = path.join(path.dirname(filePath), stem).toLowerCase()
@@ -412,9 +419,12 @@ export function prunePendingRecordingsByAge(
 
   let removed = 0
   let freedBytes = 0
+  const owned = ownedRecordingFiles()
 
   for (const rec of store.getPending(linkedRiot)) {
     if (!isLocalOnlyRecording(rec) || rec.savedOffline) continue
+    // An imported folder file UpForge never recorded may be the user's own video: keep it.
+    if (rec.orphanedImport && !isOwnedRecordingFile(rec.path, owned)) continue
     const plan = planRecordingExpiry(rec, days, now)
     if (plan.action === 'warn') {
       store.markExpiryWarned(rec.id, plan.stage, now)

@@ -21,6 +21,7 @@ import {
   type ObsSceneSwitchOptions,
 } from './obs-setup'
 import { applyCrashSafeObsRecFormat, supportsHybridMp4 } from './obs-rec-format'
+import { markOwnedRecordingFile } from './owned-recording-files'
 import { findObsWindowString } from './game-window-finder'
 import { formatObsConnectError, isObsAuthenticationFailure, obsConnectHosts } from './obs-connect'
 import {
@@ -1217,7 +1218,10 @@ export class OBSRecorder {
       this._startedAt ??= Date.now()
       this._recording = true
       this._startDiagnostics.stage = 'recording'
-      if (!this._clipsOnlySession) this._startProgressWatch()
+      if (!this._clipsOnlySession) {
+        markOwnedRecordingFile(this._outputPath)
+        this._startProgressWatch()
+      }
       this.onStatusChange?.(true)
       log.info(
         `[OBSRecorder] ${this._clipsOnlySession ? 'Clips-only session' : 'Recording'} started for game:`,
@@ -1457,6 +1461,7 @@ export class OBSRecorder {
 
   /** One stop attempt; throws on failure without marking the recording failed. */
   private async _stopAttempt(shutdownRequest?: Promise<{ outputPath?: string }>, suppressStoppedStatus = false): Promise<string | null> {
+    const ownsMatchFile = this._matchOwnedRecording && !this._clipsOnlySession
     this._stopProgressWatch()
     this._stopReconnectLoop()
     if (this._recordInactiveSettleTimer) {
@@ -1485,6 +1490,7 @@ export class OBSRecorder {
       }
       await waitForRecordingStopped(() => this._obs.call('GetRecordStatus'))
     }
+    if (ownsMatchFile) markOwnedRecordingFile(this._outputPath)
     // It is now safe to release ownership. File finalization is a separate success condition.
     this._recording = false
     this._matchOwnedRecording = false

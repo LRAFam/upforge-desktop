@@ -280,6 +280,7 @@ import {
   getFreeDiskSpace,
 } from './disk-space'
 import { isLocalOnlyRecording, runRecordingStorageMaintenance } from './storage-cleanup'
+import { isOwnedRecordingFile } from './owned-recording-files'
 import { expiryNotificationBody, localExpiryDeleteAt } from './recording-expiry'
 import { untrackedNotificationBody } from './untracked-recording-grace'
 import { setupStorageHandlers } from './ipc/storage-ipc'
@@ -1834,6 +1835,7 @@ function clearAccountScopedRuntimeState(): void {
 /** When auto-delete will remove this local-only recording (shown as "Deletes in N days"), or null. */
 function rowLocalExpiresAt(rec: PendingRecording): number | null {
   if (!settingsManager || rec.savedOffline || rec.productionFixture || !isLocalOnlyRecording(rec)) return null
+  if (rec.orphanedImport && !isOwnedRecordingFile(rec.path)) return null // user's own video: never auto-deleted
   return localExpiryDeleteAt(rec, settingsManager.get().recordingRetentionDays)
 }
 
