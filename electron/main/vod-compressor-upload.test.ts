@@ -18,7 +18,10 @@ vi.mock('child_process', () => ({
     ffmpeg.calls.push(args)
     const proc = Object.assign(new EventEmitter(), { stderr: new EventEmitter(), kill: vi.fn(), pid: undefined })
     setTimeout(() => {
-      fs.writeFileSync(args[args.length - 1], Buffer.alloc(1024))
+      const out = args[args.length - 1]
+      fs.writeFileSync(out, '')
+      // Stream copy keeps the size; a transcode shrinks it.
+      fs.truncateSync(out, args.includes('copy') ? 2 * 1024 ** 3 : 1024)
       proc.emit('close', 0, null)
     }, 0)
     return proc
