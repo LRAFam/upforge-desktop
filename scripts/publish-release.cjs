@@ -78,6 +78,25 @@ function readRelease(gh, endpoint) {
   }
 }
 
+// GitHub's "release by tag" endpoint never returns drafts (404), so look the tag up in the
+// release list, which includes drafts. More than one release on a tag is never safe to publish.
+function findRelease(gh, repo, tag) {
+  const list = JSON.parse(gh(['api', `repos/${repo}/releases?per_page=100`]))
+  if (!Array.isArray(list)) fail('Unexpected release list response')
+  const matches = list.filter(release => release?.tag_name === tag)
+  if (matches.length > 1) fail(`More than one release uses ${tag}; delete the extra drafts first`)
+  return matches[0] ?? null
+}
+
+// Latest can lag a moment behind publication; retry before calling the run a failure.
+async function waitForLatest(gh, repo, tag, wait) {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    if (readRelease(gh, `repos/${repo}/releases/latest`)?.tag_name === tag) return true
+    if (attempt < 5) await wait(5_000)
+  }
+  return false
+}
+
 async function verifyRemoteAssets(gh, repo, tag, release, manifest) {
   const assets = release?.assets
   if (!Array.isArray(assets) || assets.length !== manifest.length) fail('Draft has an incomplete or unexpected asset set')
@@ -120,12 +139,12 @@ async function verifyPublicAssets(repo, tag, manifest) {
   fail(`Published assets are not publicly reachable: ${pending.join(', ')}`)
 }
 
-async function publishRelease({ repo, tag, dir, gh = execGh, verifyPublic = verifyPublicAssets }) {
+async function publishRelease({ repo, tag, dir, gh = execGh, verifyPublic = verifyPublicAssets,
+  wait = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo) || !tag?.startsWith('v')) fail('Invalid release repository or tag')
   const version = tag.slice(1)
   const manifest = await releaseManifest(dir, version)
-  const endpoint = `repos/${repo}/releases/tags/${tag}`
-  let release = readRelease(gh, endpoint)
+  let release = findRelease(gh, repo, tag)
   if (release && (release.tag_name !== tag || release.prerelease)) fail('Unexpected existing release identity')
 
   // A rerun must never replace bytes that installed clients may already be downloading.
@@ -139,7 +158,7 @@ async function publishRelease({ repo, tag, dir, gh = execGh, verifyPublic = veri
       '--notes', 'See commit history for changes.'])
   }
   gh(['release', 'upload', tag, '--repo', repo, ...manifest.map(asset => path.join(dir, asset.name)), '--clobber'])
-  release = readRelease(gh, endpoint)
+  release = findRelease(gh, repo, tag)
   if (!release?.draft || release.tag_name !== tag || release.prerelease) fail('Release is no longer the expected draft')
   await verifyRemoteAssets(gh, repo, tag, release, manifest)
 
@@ -150,9 +169,9 @@ async function publishRelease({ repo, tag, dir, gh = execGh, verifyPublic = veri
     if (!latestVersion || semver.gte(latestVersion, version)) fail('Refusing to replace a newer or unrecognized Latest release')
   }
   gh(['release', 'edit', tag, '--repo', repo, '--draft=false', '--latest'])
-  const published = readRelease(gh, endpoint)
-  const finalLatest = readRelease(gh, `repos/${repo}/releases/latest`)
-  if (published?.draft !== false || published?.prerelease || finalLatest?.tag_name !== tag) {
+  const published = findRelease(gh, repo, tag)
+  const isLatest = await waitForLatest(gh, repo, tag, wait)
+  if (published?.draft !== false || published?.prerelease || !isLatest) {
     fail('Release publication or Latest verification failed')
   }
   await verifyPublic(repo, tag, manifest)
