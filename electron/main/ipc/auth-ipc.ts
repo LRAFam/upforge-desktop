@@ -355,6 +355,10 @@ export function setupAuthHandlers(
         deaths: timelineDeathsForVod(timelineForSync),
         roundSummaries: timelineForSync.roundSummaries ?? [],
         finalStats,
+        // Without these the AI coaching page can't tell which team is yours and shows every round lost.
+        finalScore: md.finalScore ?? null,
+        puuid: typeof md.puuid === 'string' ? md.puuid : null,
+        matchId: typeof md.matchId === 'string' ? md.matchId : (analysis.match_id ?? null),
         teamSnapshot,
         spatialSummary: timelineForSync.spatialSummary ?? md.spatialSummary ?? null,
         spikePlants: timelineForSync.spikePlants ?? [],

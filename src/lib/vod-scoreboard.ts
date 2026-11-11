@@ -12,9 +12,37 @@ export function resolveScoreboardPlayer(
       ? players.filter(p => p.isLocalPlayer === true)
       : recordedName?.trim() ? players.filter(p => p.summonerName === recordedName) : []
   } else {
-    matches = puuid?.trim() ? players.filter(p => p.puuid === puuid) : []
+    const want = puuid?.trim().toLowerCase()
+    matches = want ? players.filter(p => p.puuid?.toLowerCase() === want) : []
   }
   return matches.length === 1 ? matches[0]! : null
+}
+
+/**
+ * Fallback when the player's own row can't be found: the team whose round wins equal the
+ * recorded ally score. Null when the score is missing, a draw, or matches no team exactly.
+ */
+export function inferOwnTeamFromScore(
+  summaries: ReadonlyArray<{ winningTeam: string | null }>,
+  finalScore: { allyScore: number; enemyScore: number } | null | undefined,
+): string | null {
+  if (!finalScore || finalScore.allyScore === finalScore.enemyScore) return null
+  const wins = new Map<string, number>()
+  for (const s of summaries) {
+    if (s.winningTeam) wins.set(s.winningTeam, (wins.get(s.winningTeam) ?? 0) + 1)
+  }
+  const matches = [...wins].filter(([, n]) => n === finalScore.allyScore)
+  return matches.length === 1 ? matches[0]![0] : null
+}
+
+/** The recording player's team: scoreboard row, then the stored final-stats team, then the score. */
+export function resolveOwnTeam(
+  scoreboardTeam: string | null | undefined,
+  finalStatsTeam: string | null | undefined,
+  summaries: ReadonlyArray<{ winningTeam: string | null }>,
+  finalScore: { allyScore: number; enemyScore: number } | null | undefined,
+): string | null {
+  return scoreboardTeam || finalStatsTeam || inferOwnTeamFromScore(summaries, finalScore)
 }
 
 export function groupScoreboardPlayers(players: TeamPlayerSnapshot[], own: TeamPlayerSnapshot | null) {

@@ -265,7 +265,12 @@ export async function alignValorantTimelineByRoundTimer(
   if (manualSyncNudgeMs(timeline) !== 0) return null  // the user already lined this recording up by hand
   const nudgeBefore = manualSyncNudgeMs(timeline)
   const recordingStartBefore = timeline.recordingStartTime
-  const starts = observedRoundStarts((timeline.killEvents ?? []) as unknown as Array<Record<string, unknown>>)
+  let starts = observedRoundStarts((timeline.killEvents ?? []) as unknown as Array<Record<string, unknown>>)
+  // Recordings saved before kill events kept the round clock: Riot's raw kills still have it.
+  if (starts.size < 2) {
+    const rawKills = timeline.matchDetails?.kills
+    if (Array.isArray(rawKills)) starts = observedRoundStarts(rawKills as Array<Record<string, unknown>>)
+  }
   if (starts.size < 2) return null
   const current = totalRecordingOffsetMs(timeline)
   let est: OffsetEstimate | null = null

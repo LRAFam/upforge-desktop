@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveScoreboardPlayer, groupScoreboardPlayers, formatScoreboardStat } from './vod-scoreboard'
+import { resolveScoreboardPlayer, groupScoreboardPlayers, formatScoreboardStat, inferOwnTeamFromScore, resolveOwnTeam } from './vod-scoreboard'
 import type { TeamPlayerSnapshot } from '../../electron/main/riot-types'
 
 const players = [
@@ -36,5 +36,40 @@ describe('recorded scoreboard identity', () => {
     expect(formatScoreboardStat(NaN)).toBe('—')
     expect(formatScoreboardStat(0)).toBe('0')
     expect(formatScoreboardStat(14256)).toBe('14,256')
+  })
+})
+
+describe('inferOwnTeamFromScore', () => {
+  const rounds = [
+    ...Array.from({ length: 13 }, () => ({ winningTeam: 'Blue' })),
+    ...Array.from({ length: 3 }, () => ({ winningTeam: 'Red' })),
+  ]
+  it('picks the team whose round wins match the ally score', () => {
+    expect(inferOwnTeamFromScore(rounds, { allyScore: 13, enemyScore: 3 })).toBe('Blue')
+    expect(inferOwnTeamFromScore(rounds, { allyScore: 3, enemyScore: 13 })).toBe('Red')
+  })
+  it('gives up on a missing score, a draw or no exact match', () => {
+    expect(inferOwnTeamFromScore(rounds, null)).toBeNull()
+    expect(inferOwnTeamFromScore(rounds, { allyScore: 8, enemyScore: 8 })).toBeNull()
+    expect(inferOwnTeamFromScore(rounds, { allyScore: 12, enemyScore: 4 })).toBeNull()
+  })
+})
+
+describe('resolveScoreboardPlayer puuid case', () => {
+  it('matches the recording player regardless of puuid case', () => {
+    const players = [{ puuid: 'abc-DEF', team: 'Blue' }] as unknown as Parameters<typeof resolveScoreboardPlayer>[0]
+    expect(resolveScoreboardPlayer(players, 'valorant', 'ABC-def', null)?.team).toBe('Blue')
+  })
+})
+
+describe('resolveOwnTeam', () => {
+  const rounds = [{ winningTeam: 'Blue' }, { winningTeam: 'Blue' }, { winningTeam: 'Red' }]
+  it('uses the final-stats team when the scoreboard is empty and there is no score (real 13–3 upload)', () => {
+    expect(resolveOwnTeam(null, 'Blue', rounds, null)).toBe('Blue')
+  })
+  it('prefers the scoreboard row, then falls back to the score', () => {
+    expect(resolveOwnTeam('Red', 'Blue', rounds, null)).toBe('Red')
+    expect(resolveOwnTeam(null, null, rounds, { allyScore: 1, enemyScore: 2 })).toBe('Red')
+    expect(resolveOwnTeam(null, null, rounds, null)).toBeNull()
   })
 })
