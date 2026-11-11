@@ -40,18 +40,36 @@ function fixture() {
 type RemoteAsset = { name: string; size: number; state: string }
 type Release = { tag_name: string; draft: boolean; prerelease: boolean; assets: RemoteAsset[] }
 
-function remote(options: { failUpload?: boolean; corruptDownload?: boolean; latest?: string; missingAsset?: boolean } = {}) {
+function remote(options: {
+  failUpload?: boolean; corruptDownload?: boolean; latest?: string; missingAsset?: boolean
+  existingDraft?: boolean; duplicateDraft?: boolean; latestLag?: number
+} = {}) {
   const calls: string[][] = []
   const bytes = new Map<string, Buffer>()
-  let release: Release | null = null
+  let release: Release | null = options.existingDraft || options.duplicateDraft
+    ? { tag_name: tag, draft: true, prerelease: false, assets: [] } : null
   let latest = options.latest ?? 'v3.4.7'
+  let latestLag = options.latestLag ?? 0
   let downloaded = false
+  const notFound = () => Object.assign(new Error('gh: Not Found (HTTP 404)'), { stderr: 'gh: Not Found (HTTP 404)' })
   const gh = (args: string[]) => {
     calls.push(args)
     if (args[0] === 'api') {
-      if (args[1].endsWith('/latest')) return JSON.stringify({ tag_name: latest, draft: false })
-      if (!release) throw Object.assign(new Error('HTTP 404'), { stderr: 'HTTP 404' })
-      return JSON.stringify(release)
+      if (args[1].endsWith('/latest')) {
+        if (latestLag > 0 && latest === tag) { latestLag -= 1; return JSON.stringify({ tag_name: 'v3.4.7', draft: false }) }
+        return JSON.stringify({ tag_name: latest, draft: false })
+      }
+      // Like GitHub: the list includes drafts, the by-tag endpoint never returns one.
+      if (args[1].includes('/releases?')) {
+        const list = release ? [release] : []
+        if (options.duplicateDraft && release) list.push({ ...release, assets: [] })
+        return JSON.stringify(list)
+      }
+      if (args[1].includes('/releases/tags/')) {
+        if (!release || release.draft) throw notFound()
+        return JSON.stringify(release)
+      }
+      throw new Error(`Unexpected gh api call: ${args[1]}`)
     }
     if (args[1] === 'create') {
       release = { tag_name: tag, draft: args.includes('--draft'), prerelease: false, assets: [] }
@@ -123,6 +141,30 @@ describe('draft release publication', () => {
     await publishRelease(input)
     expect(api.release?.draft).toBe(false)
     expect(api.calls.filter(call => call[1] === 'create')).toHaveLength(1)
+  })
+
+  it('publishes a draft GitHub hides from the by-tag endpoint, without making a second one', async () => {
+    const api = remote({ existingDraft: true })
+    const result = await publishRelease({ repo, tag, dir: fixture(), gh: api.gh, verifyPublic: async () => {} })
+    expect(result.alreadyPublished).toBe(false)
+    expect(api.release?.draft).toBe(false)
+    expect(api.calls.some(call => call[1] === 'create')).toBe(false)
+  })
+
+  it('refuses to publish when two releases share the tag', async () => {
+    const api = remote({ duplicateDraft: true })
+    await expect(publishRelease({ repo, tag, dir: fixture(), gh: api.gh, verifyPublic: async () => {} }))
+      .rejects.toThrow(/More than one release/)
+    expect(api.calls.some(call => ['create', 'upload', 'edit'].includes(call[1]))).toBe(false)
+  })
+
+  it('waits for Latest to catch up after publishing', async () => {
+    const api = remote({ latestLag: 2 })
+    const waits: number[] = []
+    const result = await publishRelease({ repo, tag, dir: fixture(), gh: api.gh, verifyPublic: async () => {},
+      wait: async (ms: number) => { waits.push(ms) } })
+    expect(result.alreadyPublished).toBe(false)
+    expect(waits).toHaveLength(2)
   })
 
   it('never modifies an already-published release on a verified rerun', async () => {
