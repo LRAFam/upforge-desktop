@@ -27,7 +27,7 @@ import {
 import { recordingStatusBadge } from '../../../lib/recording-status'
 import { usePrimaryGame } from '../../../composables/usePrimaryGame'
 
-const STATUS_CHIPS = new Set<RecordingLibraryChip>(['all', 'action_required', 'ready', 'analysed', 'cloud'])
+const STATUS_CHIPS = new Set<RecordingLibraryChip>(['all', 'action_required', 'ready', 'analysed', 'cloud', 'local'])
 function routeStatusChip(value: unknown): RecordingLibraryChip {
   return typeof value === 'string' && STATUS_CHIPS.has(value as RecordingLibraryChip) ? value as RecordingLibraryChip : 'all'
 }
@@ -37,7 +37,9 @@ export const statusFilters: { label: string; value: RecordingLibraryChip }[] = [
   { label: 'Action required', value: 'action_required' },
   { label: 'Ready', value: 'ready' },
   { label: 'Analysed', value: 'analysed' },
-  { label: 'Cloud', value: 'cloud' },
+  // Where the video is: players couldn't find their cloud videos vs the ones on this PC.
+  { label: 'On this PC', value: 'local' },
+  { label: 'In cloud', value: 'cloud' },
 ]
 
 export interface FootageLibraryOptions {

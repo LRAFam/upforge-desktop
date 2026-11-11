@@ -3,7 +3,7 @@ import { resolveScoreboardPlayer, groupScoreboardPlayers, resolveOwnTeam } from 
 import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import { createReviewSeek } from '../lib/review-seek'
 import { buildReviewEvents } from '../lib/review-timeline'
-import { boundedMediaTime, reviewVideoUrl, reviewEventStart, EVENT_PRE_ROLL_SECONDS, DEATH_PRE_ROLL_SECONDS } from '../lib/review-media'
+import { boundedMediaTime, reviewVideoUrl, reviewEventStart, EVENT_PRE_ROLL_SECONDS, DEATH_PRE_ROLL_SECONDS, PLANT_PRE_ROLL_SECONDS, DEFUSE_PRE_ROLL_SECONDS } from '../lib/review-media'
 import { PlaybackActivityMeter } from '../lib/playback-activity'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject, provide, type InjectionKey } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -1043,7 +1043,10 @@ function createVodReview() {
   })
   
   function preRollSeconds(type: string): number {
-    return type === 'death' ? DEATH_PRE_ROLL_SECONDS : EVENT_PRE_ROLL_SECONDS
+    if (type === 'death') return DEATH_PRE_ROLL_SECONDS
+    if (type === 'plant') return PLANT_PRE_ROLL_SECONDS
+    if (type === 'defuse') return DEFUSE_PRE_ROLL_SECONDS
+    return EVENT_PRE_ROLL_SECONDS
   }
   
   function openUpgrade() {

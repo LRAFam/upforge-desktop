@@ -33,11 +33,19 @@ export function matchRowSummary(rec: Pick<PendingRecording, 'timeline'>, analysi
   return { result, score, kda }
 }
 
-/** Storage line under the status, without repeating what the status already says (e.g. "Cloud" twice). */
-export function storageLine(status: string, hasLocalFile: boolean, inCloud: boolean): string {
-  const parts = [hasLocalFile ? 'On this PC' : null, inCloud ? 'Cloud' : null].filter((p): p is string => !!p)
-  const s = status.trim().toLowerCase()
-  return parts.filter(p => p.toLowerCase() !== s).join(' · ')
+/** Where the full video can be watched, in plain words (players couldn't tell "Cloud" from "On this PC"). */
+export function storageLine(hasLocalFile: boolean, inCloud: boolean): string {
+  if (hasLocalFile && inCloud) return 'Video on this PC and in cloud'
+  if (hasLocalFile) return 'Video on this PC'
+  if (inCloud) return 'Video in cloud'
+  return ''
+}
+
+/** One status line ("Analysed · Video in cloud"); a bare "Cloud" status is replaced by the storage words. */
+export function rowStatusText(status: string, hasLocalFile: boolean, inCloud: boolean): string {
+  const storage = storageLine(hasLocalFile, inCloud)
+  const keepStatus = !(storage && status.trim().toLowerCase() === 'cloud')
+  return [keepStatus ? status : '', storage].filter(Boolean).join(' · ')
 }
 
 /** "Deletes from this PC in 3 days" for a local-only recording auto-delete will remove, or null. */

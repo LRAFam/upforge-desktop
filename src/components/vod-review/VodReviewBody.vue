@@ -888,8 +888,8 @@ const noVideoHint = computed((): string => {
           <!-- Event feed -->
           <div v-if="selectedRound.events.length" class="scroll-col min-h-0 flex-1 divide-y divide-white/[0.025] overscroll-contain pr-0.5">
             <button
-              v-for="event in selectedRound.events"
-              :key="`detail-${event.videoOffsetMs}`"
+              v-for="(event, ei) in selectedRound.events"
+              :key="`detail-${event.videoOffsetMs}-${ei}`"
               class="w-full flex items-center gap-2 px-3 py-2 hover:bg-white/[0.03] transition-colors text-left group"
               @click="seekToEvent(event)"
             >

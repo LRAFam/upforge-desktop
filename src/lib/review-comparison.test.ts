@@ -85,11 +85,13 @@ describe('media coordinate bounds shared with single review', () => {
 
 
 describe('event selection lead-in shared by review and comparison', () => {
-  it('shows the approach to a death or kill without changing objective timestamps', () => {
+  it('shows the approach to a death or kill, and the whole plant or defuse', () => {
     expect(reviewEventStart(77, 'death')).toBe(73)
     expect(reviewEventStart(234, 'kill')).toBe(232)
-    expect(reviewEventStart(245, 'plant')).toBe(245)
-    expect(reviewEventStart(288, 'defuse')).toBe(288)
+    // Riot times a plant/defuse at completion: start at the beginning of the action.
+    expect(reviewEventStart(245, 'plant')).toBe(241)
+    expect(reviewEventStart(288, 'defuse')).toBe(281)
+    expect(reviewEventStart(300, 'detonation')).toBe(300)
   })
   it('clamps early events to the start and rejects unavailable timestamps', () => {
     expect(reviewEventStart(1, 'death')).toBe(0)

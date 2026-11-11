@@ -2,7 +2,7 @@ import type { PendingRecording } from '../env.d.ts'
 import { recordingStatusBadge } from './recording-status'
 import { pendingMatchPrimaryAction } from './match-lifecycle'
 
-export type RecordingLibraryChip = 'all' | 'action_required' | 'ready' | 'analysed' | 'cloud'
+export type RecordingLibraryChip = 'all' | 'action_required' | 'ready' | 'analysed' | 'cloud' | 'local'
 export type RecordingDateGroupLabel = 'Today' | 'Yesterday' | 'This Week' | 'This Month' | 'Older'
 export interface RecordingDateGroup {
   label: RecordingDateGroupLabel
@@ -24,6 +24,7 @@ export function matchesRecordingLibraryChip(rec: PendingRecording, chip: Recordi
   if (chip === 'action_required') return recordingNeedsUserAction(rec)
   if (chip === 'analysed') return recordingStatusBadge(rec).label === 'Analysed'
   if (chip === 'cloud') return recordingStatusBadge(rec).label === 'Cloud'
+  if (chip === 'local') return !!rec.hasLocalFile
   if (chip === 'ready') {
     return (
       rec.analysisId == null

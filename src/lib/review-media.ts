@@ -6,11 +6,18 @@ export function boundedMediaTime(seconds: number, duration: number): number | nu
 
 export const EVENT_PRE_ROLL_SECONDS = 2
 export const DEATH_PRE_ROLL_SECONDS = 4
+/** Riot stamps a plant/defuse when it completes; start early enough to watch the action itself. */
+export const PLANT_PRE_ROLL_SECONDS = 4
+export const DEFUSE_PRE_ROLL_SECONDS = 7
 
-/** Preserve the event timestamp for labels; seek early enough to review the action. */
+/** Preserve the event timestamp for labels; seek early enough to review the action (incl. plant/defuse). */
 export function reviewEventStart(seconds: number, type: string): number | null {
   if (!Number.isFinite(seconds) || seconds < 0) return null
-  const leadIn = type === 'death' ? DEATH_PRE_ROLL_SECONDS : type === 'kill' ? EVENT_PRE_ROLL_SECONDS : 0
+  const leadIn = type === 'death' ? DEATH_PRE_ROLL_SECONDS
+    : type === 'kill' ? EVENT_PRE_ROLL_SECONDS
+      : type === 'plant' ? PLANT_PRE_ROLL_SECONDS
+        : type === 'defuse' ? DEFUSE_PRE_ROLL_SECONDS
+          : 0
   return Math.max(0, seconds - leadIn)
 }
 

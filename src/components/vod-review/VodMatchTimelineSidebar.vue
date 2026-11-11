@@ -69,7 +69,7 @@ function titleClass(event: FlatEvent): string {
       </div>
     </div>
     <div class="mt3-list scrollbar-hide">
-      <button v-for="event in events" :key="`${event.type}-${event.videoOffsetMs}`" type="button" class="vod-round-event mt3-event" :class="[nearEventHighlightClass(event), `mt3-event--${event.type === 'kill' ? 'kill' : event.type === 'death' ? 'death' : 'other'}`]" @click="seekToEvent(event)">
+      <button v-for="(event, ei) in events" :key="`${event.type}-${event.videoOffsetMs}-${ei}`" type="button" class="vod-round-event mt3-event" :class="[nearEventHighlightClass(event), `mt3-event--${event.type === 'kill' ? 'kill' : event.type === 'death' ? 'death' : 'other'}`]" @click="seekToEvent(event)">
         <VodTimelineEventIcon :type="event.type" :game="timeline?.game" :first-blood="event.isFirstBlood" :source-image="eventOpponentImage(event) || undefined" size="sm" />
         <span class="mt3-text">
           <span class="mt3-main">{{ eventTitle(event) }}</span>
@@ -124,8 +124,8 @@ function titleClass(event: FlatEvent): string {
 
     <div class="flex-1 overflow-y-auto scrollbar-hide scroll-smooth space-y-0.5 px-1.5 py-2">
       <button
-        v-for="event in events"
-        :key="`${event.type}-${event.videoOffsetMs}`"
+        v-for="(event, ei) in events"
+        :key="`${event.type}-${event.videoOffsetMs}-${ei}`"
         class="vod-round-event w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/[0.05] group"
         :class="nearEventHighlightClass(event)"
         @click="seekToEvent(event)"

@@ -116,7 +116,7 @@ const countLine = computed(() => {
   <div class="uf-matches">
     <MatchesTabsV3 :active="coaching ? 'coaching' : 'matches'" :count="countLine">
       <button v-if="!coaching" type="button" class="uf-link" @click="lib.openFolder()">Open folder</button>
-      <button type="button" class="uf-link" @click="router.push('/cloud-storage')">Manage storage</button>
+      <button type="button" class="uf-link" @click="router.push('/cloud-storage')">Cloud storage</button>
     </MatchesTabsV3>
 
     <CoachingHistoryView v-if="coaching" embedded />

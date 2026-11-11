@@ -58,6 +58,8 @@ describe('matchesRecordingLibraryChip', () => {
     })
     expect(matchesRecordingLibraryChip(analysed, 'analysed')).toBe(true)
     expect(matchesRecordingLibraryChip(cloud, 'cloud')).toBe(true)
+    expect(matchesRecordingLibraryChip(rec({ hasLocalFile: true }), 'local')).toBe(true)
+    expect(matchesRecordingLibraryChip(rec({ hasLocalFile: false, cloudUploaded: true }), 'local')).toBe(false)
     expect(matchesRecordingLibraryChip(ready, 'ready')).toBe(true)
     expect(matchesRecordingLibraryChip(ready, 'action_required')).toBe(true)
   })

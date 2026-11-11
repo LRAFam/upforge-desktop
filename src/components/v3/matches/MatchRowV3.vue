@@ -15,7 +15,7 @@ import UfButton from '../UfButton.vue'
 import { deadlockRecordingHero, loadDeadlockHeroesOnce } from '../../../lib/deadlock-hero-names'
 import { deadlockReviewState } from './deadlock-review-row'
 import { gameLogo } from './game-logo'
-import { localExpiryLine, matchRowSummary, rowCloudAction, rowOpenAction, storageLine } from './match-row'
+import { localExpiryLine, matchRowSummary, rowCloudAction, rowOpenAction, rowStatusText } from './match-row'
 import { useReadyAnalyses } from '../../../composables/useReadyAnalyses'
 import { parseRetention, retentionLine } from '../../../lib/cloud-retention'
 import { useCloudRetention } from '../../../composables/useCloudRetention'
@@ -57,9 +57,8 @@ const openLabel = computed(() => unavailable.value || openAction.value.label)
 const { items: readyItems } = useReadyAnalyses()
 const isNew = computed(() => props.rec.analysisId != null && readyItems.value.some(r => r.analysisId === props.rec.analysisId))
 const status = computed(() => recordingStatusBadge(props.rec).label)
-const storage = computed(() => storageLine(status.value, !!props.rec.hasLocalFile, !!(props.rec.archiveId || props.rec.cloudUploaded)))
-/** One status line ("Analysed · Cloud") so every row has the same height and baseline. */
-const statusText = computed(() => unavailable.value || [status.value, storage.value].filter(Boolean).join(' · '))
+/** One status line ("Analysed · Video in cloud") so every row has the same height and baseline. */
+const statusText = computed(() => unavailable.value || rowStatusText(status.value, !!props.rec.hasLocalFile, !!(props.rec.archiveId || props.rec.cloudUploaded)))
 const ufScore = computed(() => matchScore(props.analysis))
 /** Local-only recording that auto-delete will remove soon (warned by desktop notification too). */
 const expiryText = computed(() => localExpiryLine(props.rec.localExpiresAt))
