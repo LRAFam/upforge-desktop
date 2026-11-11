@@ -67,7 +67,8 @@ async function releaseManifest(dir, version) {
 }
 
 function execGh(args) {
-  return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  // The default 1 MB buffer is too small for gh output on a repo with many releases.
+  return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 })
 }
 
 function readRelease(gh, endpoint) {
@@ -81,7 +82,9 @@ function readRelease(gh, endpoint) {
 // GitHub's "release by tag" endpoint never returns drafts (404), so look the tag up in the
 // release list, which includes drafts. More than one release on a tag is never safe to publish.
 function findRelease(gh, repo, tag) {
-  const list = JSON.parse(gh(['api', `repos/${repo}/releases?per_page=100`]))
+  // Filter on GitHub's side: the full list is over 1 MB.
+  const list = JSON.parse(gh(['api', `repos/${repo}/releases?per_page=100`,
+    '--jq', `[.[] | select(.tag_name == ${JSON.stringify(tag)})]`]))
   if (!Array.isArray(list)) fail('Unexpected release list response')
   const matches = list.filter(release => release?.tag_name === tag)
   if (matches.length > 1) fail(`More than one release uses ${tag}; delete the extra drafts first`)

@@ -61,6 +61,7 @@ function remote(options: {
       }
       // Like GitHub: the list includes drafts, the by-tag endpoint never returns one.
       if (args[1].includes('/releases?')) {
+        expect(args.slice(2)).toEqual(['--jq', `[.[] | select(.tag_name == "${tag}")]`])
         const list = release ? [release] : []
         if (options.duplicateDraft && release) list.push({ ...release, assets: [] })
         return JSON.stringify(list)
