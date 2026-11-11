@@ -322,7 +322,7 @@ export function setupAuthHandlers(
       const timelineForSync = {
         ...md,
         game,
-        recordingStartTime: (md.recordingStartTime as number) ?? Date.now(),
+        recordingStartTime: md.recordingStartTime as number,
         killEvents: md.killEvents ?? [],
         playerKills: md.playerKills ?? [],
         playerDeaths: md.playerDeaths ?? [],
@@ -339,7 +339,9 @@ export function setupAuthHandlers(
         startTime: (md.startTime as number) ?? Date.now(),
         endTime: (md.endTime as number) ?? null,
       } as MatchData
-      recomputeTimelineVideoOffsets(timelineForSync)
+      // Without the recording's start time a recompute would anchor events to "now" and scatter
+      // them; keep the uploaded offsets instead.
+      if (Number.isFinite(md.recordingStartTime)) recomputeTimelineVideoOffsets(timelineForSync)
 
       return {
         id: String(analysis.id),
@@ -355,6 +357,10 @@ export function setupAuthHandlers(
         deaths: timelineDeathsForVod(timelineForSync),
         roundSummaries: timelineForSync.roundSummaries ?? [],
         finalStats,
+        // Without these the AI coaching page can't tell which team is yours and shows every round lost.
+        finalScore: md.finalScore ?? null,
+        puuid: typeof md.puuid === 'string' ? md.puuid : null,
+        matchId: typeof md.matchId === 'string' ? md.matchId : (analysis.match_id ?? null),
         teamSnapshot,
         spatialSummary: timelineForSync.spatialSummary ?? md.spatialSummary ?? null,
         spikePlants: timelineForSync.spikePlants ?? [],

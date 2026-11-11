@@ -23,6 +23,8 @@ export interface KillEvent extends GameEvent {
   assistants: string[]
   /** Milliseconds since game start — from Riot MatchDetails timeSinceGameStartMillis */
   timeSinceGameStartMillis?: number
+  /** Milliseconds since this round started — Riot MatchDetails timeSinceRoundStartMillis (Valorant). */
+  timeSinceRoundStartMillis?: number
   /** Offset from recording start in ms — use this to seek video to the kill */
   videoOffsetMs?: number
   /** Weapon/damage type (e.g. "Vandal", "Ability", "Ultimate", "Spike") */

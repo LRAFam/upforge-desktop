@@ -1614,6 +1614,8 @@ export class RiotLocalApi {
           victimName: _resolveName(victimPuuid),
           assistants: (k.assistants as string[]) ?? [],
           timeSinceGameStartMillis: tsgm,
+          // Round-timer sync derives each round's start from this; without it the sync never runs.
+          ...(typeof k.timeSinceRoundStartMillis === 'number' ? { timeSinceRoundStartMillis: k.timeSinceRoundStartMillis } : {}),
           videoOffsetMs,
           weapon: finishing.weapon ?? undefined,
           abilitySlot: finishing.abilitySlot ?? undefined,

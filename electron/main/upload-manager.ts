@@ -657,7 +657,7 @@ export class UploadManager {
     const token = this.auth.getToken()
     if (!token || !timeline) return
     const match_data = prepareMatchDataForUpload(timeline, coachingExtras)
-    if (!match_data) return
+    if (!shouldPatchMatchData(match_data)) return
 
     const apiUrl = getApiBaseUrl()
     const ctx = submissionContextFromTimeline(timeline, coachingExtras)
@@ -1227,4 +1227,12 @@ export class UploadManager {
       }).on('error', reject)
     })
   }
+}
+
+/**
+ * A blocked quality check empties the match facts (scoreboard, spikes, score). Sending that would
+ * overwrite whatever the server rebuilt for this job, so a backfill only goes out with real facts.
+ */
+export function shouldPatchMatchData(matchData: { dataQuality?: { status?: string } } | null | undefined): boolean {
+  return !!matchData && matchData.dataQuality?.status !== 'blocked'
 }

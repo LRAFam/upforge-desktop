@@ -109,6 +109,19 @@ describe('alignValorantTimelineByRoundTimer', () => {
     expect(timeline.videoSyncOffsetMs).toBe(-8000)  // the manual-nudge channel is untouched
   })
 
+  it('falls back to Riot raw kills when saved kill events have no round clock (older recordings)', async () => {
+    const { alignValorantTimelineByRoundTimer } = await import('./valorant-timer-sync')
+    const starts = new Map([[0, 40_000], [1, 150_000], [2, 260_000]])
+    const raw = kills([[0, 40_000], [1, 150_000], [2, 260_000]])
+    const timeline = live([], {
+      killEvents: raw.map(({ round, timeSinceGameStartMillis }) => ({ round, timeSinceGameStartMillis })) as never,
+      matchDetails: { kills: raw },
+    })
+    const est = await alignValorantTimelineByRoundTimer(timeline, 'rec.mp4', fakeRecording(-4875, starts), { info: vi.fn(), warn: vi.fn() }, decodeFake)
+    expect(est).not.toBeNull()
+    expect(Math.abs(timeline.roundTimerOffsetMs! - -4875)).toBeLessThanOrEqual(250)
+  })
+
   it('leaves a recording alone when it was already measured or nudged by hand', async () => {
     const { alignValorantTimelineByRoundTimer } = await import('./valorant-timer-sync')
     const read = vi.fn(fakeRecording(0, new Map()))

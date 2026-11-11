@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchRowSummary, storageLine } from './match-row'
+import { matchRowSummary, rowStatusText, storageLine } from './match-row'
 
 const a = { won: true, rounds_won: 13, rounds_lost: 10, kills: 29, deaths: 15, assists: 8 }
 
@@ -16,10 +16,16 @@ describe('matchRowSummary with the server analysis', () => {
   })
 })
 
-describe('storageLine', () => {
-  it('does not repeat the status', () => {
-    expect(storageLine('Cloud', false, true)).toBe('')
-    expect(storageLine('Analysed', true, true)).toBe('On this PC · Cloud')
-    expect(storageLine('cloud', true, true)).toBe('On this PC')
+describe('row status text', () => {
+  it('says plainly where the video can be watched', () => {
+    expect(storageLine(true, false)).toBe('Video on this PC')
+    expect(storageLine(false, true)).toBe('Video in cloud')
+    expect(storageLine(true, true)).toBe('Video on this PC and in cloud')
+    expect(storageLine(false, false)).toBe('')
+  })
+  it('replaces a bare "Cloud" status instead of repeating it', () => {
+    expect(rowStatusText('Cloud', false, true)).toBe('Video in cloud')
+    expect(rowStatusText('Analysed', true, true)).toBe('Analysed · Video on this PC and in cloud')
+    expect(rowStatusText('Analysed', false, false)).toBe('Analysed')
   })
 })

@@ -474,6 +474,8 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
       finalStats: tl?.finalStats ?? (tl?.cs2Live?.stats ? { ...tl.cs2Live.stats } : null),
       /** Events above came from live GSI, not a demo: keep the attach-demo panel up. */
       cs2LiveOnly: recording.game === 'cs2' && !!tl?.cs2Live && !tl.killEvents?.length && !tl.playerKills?.length,
+      finalScore: tl?.finalScore ?? null,
+      puuid: tl?.puuid ?? null,
       teamSnapshot: tl?.teamSnapshot ?? [],
       spikePlants: tl?.spikePlants ?? [],
       spikeDefuses: tl?.spikeDefuses ?? [],

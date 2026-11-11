@@ -92,7 +92,7 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
         </div>
 
         <div v-if="visibleRoundEvents(round).length && expandedRoundNumber !== round.roundNumber" class="vod-round-moment-strip rl3-strip">
-          <button v-for="event in momentPreview(visibleRoundEvents(round))" :key="`${event.type}-${event.videoOffsetMs}-preview`" type="button" :aria-label="`Jump to ${formatMs(event.videoOffsetMs)}`" :title="`Jump to ${formatMs(event.videoOffsetMs)}`" @click.stop="seekToEvent(event)">
+          <button v-for="(event, ei) in momentPreview(visibleRoundEvents(round))" :key="`${event.type}-${event.videoOffsetMs}-preview-${ei}`" type="button" :aria-label="`Jump to ${formatMs(event.videoOffsetMs)}`" :title="`Jump to ${formatMs(event.videoOffsetMs)}`" @click.stop="seekToEvent(event)">
             <VodTimelineEventIcon :type="event.type" :game="timeline?.game" :first-blood="event.isFirstBlood" :source-image="getEventSourceImage(event)" size="xs" />
           </button>
           <span v-if="extraMomentCount(visibleRoundEvents(round))" class="uf-t4 uf-num">+{{ extraMomentCount(visibleRoundEvents(round)) }}</span>
@@ -100,8 +100,8 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
 
         <div v-if="expandedRoundNumber === round.roundNumber" class="rl3-events">
           <button
-            v-for="event in visibleRoundEvents(round)"
-            :key="`${event.type}-${event.videoOffsetMs}`"
+            v-for="(event, ei) in visibleRoundEvents(round)"
+            :key="`${event.type}-${event.videoOffsetMs}-${ei}`"
             type="button"
             :data-round-event="`${round.roundNumber}-${event.videoOffsetMs}`"
             class="vod-round-event rl3-event"
@@ -253,8 +253,8 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
             class="vod-round-moment-strip flex flex-wrap items-center gap-1 px-2 pb-2"
           >
             <button
-              v-for="event in momentPreview(visibleRoundEvents(round))"
-              :key="`${event.type}-${event.videoOffsetMs}-preview`"
+              v-for="(event, ei) in momentPreview(visibleRoundEvents(round))"
+              :key="`${event.type}-${event.videoOffsetMs}-preview-${ei}`"
               type="button"
               class="rounded transition-transform hover:scale-110"
               :title="`Jump to ${formatMs(event.videoOffsetMs)}`"
@@ -276,8 +276,8 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
 
           <div v-if="expandedRoundNumber === round.roundNumber" class="border-t border-white/[0.05] pb-1">
             <button
-              v-for="event in visibleRoundEvents(round)"
-              :key="`${event.type}-${event.videoOffsetMs}`"
+              v-for="(event, ei) in visibleRoundEvents(round)"
+              :key="`${event.type}-${event.videoOffsetMs}-${ei}`"
               :data-round-event="`${round.roundNumber}-${event.videoOffsetMs}`"
               class="vod-round-event w-full flex items-center gap-2 px-2 py-1.5 pl-2.5 text-left transition-colors hover:bg-white/[0.05] group"
               :class="nearEventHighlightClass(event)"

@@ -1,9 +1,9 @@
 import type { TeamPlayerSnapshot } from '../../electron/main/riot-types'
-import { resolveScoreboardPlayer, groupScoreboardPlayers } from '../lib/vod-scoreboard'
+import { resolveScoreboardPlayer, groupScoreboardPlayers, resolveOwnTeam } from '../lib/vod-scoreboard'
 import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import { createReviewSeek } from '../lib/review-seek'
 import { buildReviewEvents } from '../lib/review-timeline'
-import { boundedMediaTime, reviewVideoUrl, reviewEventStart, EVENT_PRE_ROLL_SECONDS, DEATH_PRE_ROLL_SECONDS } from '../lib/review-media'
+import { boundedMediaTime, reviewVideoUrl, reviewEventStart, EVENT_PRE_ROLL_SECONDS, DEATH_PRE_ROLL_SECONDS, PLANT_PRE_ROLL_SECONDS, DEFUSE_PRE_ROLL_SECONDS } from '../lib/review-media'
 import { PlaybackActivityMeter } from '../lib/playback-activity'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject, provide, type InjectionKey } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -100,6 +100,8 @@ interface FinalStats {
   deaths: number
   assists: number
   won?: boolean
+  /** Riot team id ("Blue"/"Red"); older uploads carry this even when the scoreboard is empty. */
+  team?: string | null
 }
 
 
@@ -133,6 +135,8 @@ export interface RecordingTimeline {
   roundSummaries: RoundSummary[]
   finalStats: FinalStats | null
   finalScore?: { allyScore: number; enemyScore: number } | null
+  /** Recording player's id; fallback when no kill or death is tagged "You". */
+  puuid?: string | null
   teamSnapshot: TeamPlayerSnapshot[]
   spikePlants?: Array<{ videoOffsetMs?: number; round?: number; planter?: string; site?: string }>
   spikeDefuses?: Array<{ videoOffsetMs?: number; round?: number; defuser?: string }>
@@ -520,7 +524,11 @@ function createVodReview() {
   function isOwnScoreboardPlayer(player: TeamPlayerSnapshot): boolean {
     return ownScoreboardPlayer.value === player
   }
-  const ownTeam = computed(() => ownScoreboardPlayer.value?.team ?? null)
+  // Some uploads have an empty scoreboard and no final score; without a team every round reads as lost.
+  const ownTeam = computed(() => resolveOwnTeam(
+    ownScoreboardPlayer.value?.team, timeline.value?.finalStats?.team,
+    timeline.value?.roundSummaries ?? [], timeline.value?.finalScore,
+  ))
   
   function roundOutcomeIcon(round: RoundGroup): string | null {
     return resolveRoundOutcomeIcon(round, reviewGame.value)
@@ -1035,7 +1043,10 @@ function createVodReview() {
   })
   
   function preRollSeconds(type: string): number {
-    return type === 'death' ? DEATH_PRE_ROLL_SECONDS : EVENT_PRE_ROLL_SECONDS
+    if (type === 'death') return DEATH_PRE_ROLL_SECONDS
+    if (type === 'plant') return PLANT_PRE_ROLL_SECONDS
+    if (type === 'defuse') return DEFUSE_PRE_ROLL_SECONDS
+    return EVENT_PRE_ROLL_SECONDS
   }
   
   function openUpgrade() {
@@ -1709,6 +1720,7 @@ function createVodReview() {
       const ownDeath = timeline.value.deaths?.find((d: KillEvent) => d.victimName === 'You')
       if (ownDeath?.victimPuuid) ownPuuid.value = ownDeath.victimPuuid
     }
+    if (!ownPuuid.value && timeline.value.puuid) ownPuuid.value = timeline.value.puuid
   }
   
   function applyCoachReviewUiState() {
