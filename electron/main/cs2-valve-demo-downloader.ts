@@ -53,6 +53,8 @@ export type ValveDemoFailureCode =
   /** Steam lists later matches but not this one — it never will. No automatic retry. */
   | 'not_listed'
   | 'download_failed'
+  /** The demo is on disk but the bundled parser cannot read it (e.g. a CS2 update changed the format). No retry. */
+  | 'demo_unreadable'
 
 export type ValveDemoDownloadResult =
   | { ok: true; demoPath: string; match: ValveMatchSummary }

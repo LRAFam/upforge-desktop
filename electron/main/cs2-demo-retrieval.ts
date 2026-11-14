@@ -57,6 +57,7 @@ export function cs2DemoRetryDecision(
     case 'unsupported':
     case 'no_cs2_dir':
     case 'not_listed':
+    case 'demo_unreadable':
       return { stop: true }
     case 'gc_failed':
     case 'download_failed':

@@ -6,7 +6,7 @@ import fs from 'fs'
 import log from 'electron-log'
 import { peekDemoHeader } from './demo-header-peek'
 import { isDemoLikelyIncomplete, sanitizeDemoMapName } from './demo-text-sanitize'
-import { buildTimelineFromDemo } from './demo-timeline'
+import { buildTimelineFromDemo, cs2DemoReadError, CS2_DEMO_UNREADABLE_MESSAGE } from './demo-timeline'
 import { cs2PlayerIdentityMismatch, hasRichMatchData } from './match-data-quality'
 import { recomputeTimelineVideoOffsets } from './riot-local-api'
 import { resolveMatchSessionStartMs } from './recording-sync'
@@ -72,6 +72,10 @@ export async function attachDemoFileToRecording(opts: {
     const peek = !timeline ? await peekDemoHeader(normalized, rec.game as SourceGame) : null
     const incomplete = isDemoLikelyIncomplete(normalized, peek)
     const hasHeader = Boolean(sanitizeDemoMapName(peek?.mapName) || peek?.playbackTime)
+    // The file is complete but the bundled parser cannot read it: say so instead of blaming the file.
+    if (!incomplete && rec.game === 'cs2' && cs2DemoReadError(normalized)) {
+      return { ok: false, error: CS2_DEMO_UNREADABLE_MESSAGE }
+    }
 
     if (!timeline) {
       if (incomplete && hasHeader) {

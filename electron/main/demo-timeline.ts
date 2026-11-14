@@ -3,7 +3,7 @@ import log from 'electron-log'
 import { buildCs2TimelineFromDemo } from './cs2-demo-parser'
 import { parseCs2DemoInWorker } from './cs2-demo-parse-client'
 import { getGameDataCapture } from './game-data-capture'
-import { cachedCs2DemoSource, type Cs2DemoSource } from './cs2-demo-source'
+import { cachedCs2DemoSource, cs2DemoBundleReadError, type Cs2DemoSource } from './cs2-demo-source'
 import type { MatchData } from './riot-types'
 import { hasSource2DemoPreamble } from './source2-demo-preamble'
 
@@ -21,6 +21,18 @@ export interface DemoTimelineOptions {
   /** CS2: what GSI saw live for this recording — anchors demo time to the video. */
   cs2Live?: import('./cs2-gsi-timeline').Cs2LiveSummary | null
 }
+
+/** Demos the CS2 parser could not read (path → parser error). Cleared when a parse succeeds. */
+const cs2DemoReadErrors = new Map<string, string>()
+
+/** Why the last parse of this CS2 demo failed, when the parser itself could not read it. */
+export function cs2DemoReadError(demoPath: string | null | undefined): string | null {
+  return demoPath ? cs2DemoReadErrors.get(demoPath) ?? null : null
+}
+
+/** Shown when the demo exists but the parser cannot read it — usually a CS2 update changed the format. */
+export const CS2_DEMO_UNREADABLE_MESSAGE =
+  'UpForge could not read this CS2 demo. A CS2 game update can change the demo format: update UpForge to the latest version, then scan again.'
 
 /**
  * Parse a Source-engine .dem replay into MatchData for clip extraction and VOD review.
@@ -44,8 +56,17 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
     getGameDataCapture()?.noteAfterMatch('cs2', 'cs2-demo-parse', { status: parsed.status, durationMs: Date.now() - parseStartedAt, demoBytes })
     let source: Cs2DemoSource | undefined
     if (parsed.status === 'ok') {
+      const readError = cs2DemoBundleReadError(parsed.bundle)
+      if (readError) {
+        cs2DemoReadErrors.set(opts.demoPath, readError)
+        log.warn('[DemoTimeline] CS2 demo unreadable by demoparser2:', readError)
+      } else {
+        cs2DemoReadErrors.delete(opts.demoPath)
+      }
       source = cachedCs2DemoSource(parsed.bundle)
     } else if (parsed.status === 'failed') {
+      // A timeout is a slow parse, not a format problem: keep the generic message for it.
+      if (!/timed out/.test(parsed.error)) cs2DemoReadErrors.set(opts.demoPath, parsed.error)
       log.warn('[DemoTimeline] CS2 demo parse worker failed:', parsed.error)
       return null
     } else {

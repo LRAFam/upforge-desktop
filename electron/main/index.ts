@@ -23,7 +23,7 @@ import { setupReviewNotebookHandlers } from './ipc/review-notebook-ipc'
 import { setupRoundReviewHandlers } from './ipc/round-review-ipc'
 import { setupProgressPlanHandlers } from './ipc/progress-plan-ipc'
 import { setupMarketplaceHandlers } from './ipc/marketplace-ipc'
-import { buildTimelineFromDemo } from './demo-timeline'
+import { buildTimelineFromDemo, cs2DemoReadError, CS2_DEMO_UNREADABLE_MESSAGE } from './demo-timeline'
 import { Cs2DemoRetrieval, cs2DemoRetrievalStatus } from './cs2-demo-retrieval'
 import { setupOverstepIntegration } from './overstep-integration'
 import type { OverstepBridge } from './overstep-bridge'
@@ -2723,7 +2723,8 @@ async function retrieveReplayTimelineForRecording(
   if (!parsed.timeline || !hasRichMatchData(parsed.timeline)) {
     if (cs2DemoRetrievalStatus.get(recordingId)?.state === 'syncing') {
       // Back off (not the 5 s default) so a bad local demo is not re-parsed every few seconds.
-      if (parsed.demoPath) setStatus('waiting_match_data', 'No usable match stats found in the demo. Check that it belongs to this recording.', 'download_failed')
+      if (parsed.demoPath && cs2DemoReadError(parsed.demoPath)) setStatus('waiting_match_data', CS2_DEMO_UNREADABLE_MESSAGE, 'demo_unreadable')
+      else if (parsed.demoPath) setStatus('waiting_match_data', 'No usable match stats found in the demo. Check that it belongs to this recording.', 'download_failed')
       else setStatus('waiting_match_data', 'Waiting for the CS2 demo.', 'gc_failed')
     }
     return false
