@@ -44,8 +44,8 @@ describe('deadlockRankSeries', () => {
       { ranked_display_badge: 42, start_time: 1782243833 }, { ranked_display_badge: null, start_time: 1782200000 },
       { ranked_display_badge: 41, start_time: 1782130525 },
     ])
-    expect(s.map(p => p.label)).toEqual(['Arcanist 1', 'Arcanist 2'])
-    expect(rankSentence(s)).toMatch(/^Your rank is up from Arcanist 1 to Arcanist 2 since \d{1,2} \w{3}\.$/)
+    expect(s.map(p => p.label)).toEqual(['Sentinel 1', 'Sentinel 2'])
+    expect(rankSentence(s)).toMatch(/^Your rank is up from Sentinel 1 to Sentinel 2 since \d{1,2} \w{3}\.$/)
   })
 
   it('keeps the old newest-first reading for undated history', () => {
@@ -73,7 +73,7 @@ describe('deadlock labels', () => {
 
   it('calls Obscurus unranked', () => {
     expect(deadlockRankCaption({ name: 'Obscurus', tier: 0 })).toMatch(/^Unranked/)
-    expect(deadlockRankCaption({ name: 'Arcanist', tier: 4 })).toBe('Current rank')
+    expect(deadlockRankCaption({ name: 'Sentinel', tier: 4 })).toBe('Current rank')
     expect(deadlockRankCaption(null)).toBe('Current rank')
   })
 })

@@ -87,9 +87,9 @@ describe('playerIdentity · other games', () => {
   })
 
   it('Deadlock: bundled rank badge; no avatar art without data', () => {
-    const id = playerIdentity({ game: 'deadlock', name: 'x', rank: 'Archon', rankSubtier: 4 })
+    const id = playerIdentity({ game: 'deadlock', name: 'x', rank: 'Mystic', rankSubtier: 4 })
     expect(id.rankIcon).toBeTruthy()
-    expect(id.rankLabel).toBe('Archon')
+    expect(id.rankLabel).toBe('Mystic')
     expect(id.avatar).toBeNull()
     expect(playerIdentity({ game: 'deadlock', rank: 'Nope' }).rankIcon).toBeNull()
   })

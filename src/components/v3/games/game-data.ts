@@ -5,6 +5,7 @@
  */
 import type { DeadlockProfileStats, LolMatchSummary } from '../../../env.d.ts'
 import { mapDisplayName } from './display-names'
+import { DEADLOCK_TIERS } from '../../../lib/deadlock'
 
 export type DemoGame = 'cs2' | 'deadlock' | 'lol'
 
@@ -120,7 +121,7 @@ export function lolSetup(linked: boolean): SetupState {
 
 // ── Deadlock rank history ───────────────────────────────────────────────────
 
-export const DEADLOCK_TIERS = ['Obscurus', 'Initiate', 'Seeker', 'Alchemist', 'Arcanist', 'Ritualist', 'Emissary', 'Archon', 'Oracle', 'Phantom', 'Ascendant', 'Eternus'] as const
+export { DEADLOCK_TIERS }
 
 export interface DeadlockRankPoint {
   badge: number; tier: number; sub: number | null; name: string; label: string; score: number
