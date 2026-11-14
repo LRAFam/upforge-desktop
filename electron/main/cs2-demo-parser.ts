@@ -5,7 +5,7 @@
 import fs from 'fs'
 import { hasSource2DemoPreamble } from './source2-demo-preamble'
 import { calculateCs2MatchStats, readCs2StatsInput } from './cs2-match-stats'
-import { buildCs2RoundFacts, flashHitsFromSamples, humanizeCs2Place, type Cs2FlashHit, type Cs2RoundFactsResult } from './cs2-round-facts'
+import { buildCs2RoundFacts, cs2GrenadeThrowRows, flashHitsFromSamples, humanizeCs2Place, type Cs2FlashHit, type Cs2RoundFactsResult } from './cs2-round-facts'
 import log from 'electron-log'
 import { parseHeader } from '@laihoe/demoparser2'
 import {
@@ -783,7 +783,7 @@ function applyCs2RoundFacts(args: {
   source: Cs2DemoSource
   localSteamId: string
   tickRate: number
-  statsInput: { starts: JsonRow[]; ends: JsonRow[]; snapshots: JsonRow[] }
+  statsInput: { starts: JsonRow[]; ends: JsonRow[]; snapshots: JsonRow[]; fires: JsonRow[] | null }
   deaths: JsonRow[]
   bombPlants: JsonRow[]
   killEvents: KillEvent[]
@@ -792,7 +792,11 @@ function applyCs2RoundFacts(args: {
 }): Cs2RoundFactsResult {
   const { source, localSteamId, tickRate, statsInput } = args
   const { playerExtra, otherExtra } = CS2_STATS_EVENT_FIELDS
-  const grenades = safeEventOrNull(source, 'grenade_thrown', [...playerExtra], [...otherExtra])
+  // Valve MM demos have no grenade_thrown rows; throws come from weapon_fire (same rows as match_stats).
+  const grenades = cs2GrenadeThrowRows(
+    safeEventOrNull(source, 'grenade_thrown', [...playerExtra], [...otherExtra]),
+    statsInput.fires,
+  )
   const detonations = safeEventOrNull(source, 'flashbang_detonate', [...playerExtra], [...otherExtra])
   let flashHits: Cs2FlashHit[] | null = null
   if (detonations) {

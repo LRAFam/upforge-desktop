@@ -124,4 +124,37 @@ describe('CS2 demo round facts on the timeline', () => {
     expect(t.playerDeaths[0]).not.toHaveProperty('blind')
     expect(t.playerDeaths[0]!.spatial?.alliesNearby).toBeUndefined()
   })
+
+  it('reads grenade throws from weapon_fire on Valve demos with no grenade_thrown event', () => {
+    const base = vi.mocked(parseEvent).getMockImplementation()!
+    vi.mocked(parseEvent).mockImplementation((p, name, ...rest) => {
+      if (name === 'grenade_thrown') return []
+      if (name === 'weapon_fire') {
+        return [
+          { tick: FREEZE + 17 * RATE, user_steamid: ALLY, weapon: 'weapon_flashbang', total_rounds_played: 0, is_warmup_period: false },
+          { tick: FREEZE + 18 * RATE, user_steamid: ME, weapon: 'weapon_flashbang', total_rounds_played: 0, is_warmup_period: false },
+          { tick: FREEZE + 18 * RATE, user_steamid: ME, weapon: 'weapon_ak47', total_rounds_played: 0, is_warmup_period: false },
+        ]
+      }
+      return base(p, name, ...rest)
+    })
+    const t = buildCs2TimelineFromDemo(opts)!
+    // Opening duel (enemy kills the player at 20 s): two team flashes in the 5 s before it.
+    expect(t.roundSummaries[0]!.openingUtility).toEqual({ flashbang: 2 })
+    // Same count as match_stats (both read weapon_fire), not a false 0.
+    expect(t.match_stats?.utility_stats.flashes_thrown).toBe(1)
+    expect(t.playerFlashes?.thrown).toBe(1)
+  })
+
+  it('does not claim "no utility" when grenade throws cannot be read', () => {
+    const base = vi.mocked(parseEvent).getMockImplementation()!
+    vi.mocked(parseEvent).mockImplementation((p, name, ...rest) => {
+      if (name === 'grenade_thrown') return []
+      if (name === 'weapon_fire') throw new Error('unreadable')
+      return base(p, name, ...rest)
+    })
+    const t = buildCs2TimelineFromDemo(opts)!
+    expect(t.roundSummaries[0]).not.toHaveProperty('openingUtility')
+    expect(t.playerFlashes).toBeUndefined()
+  })
 })
