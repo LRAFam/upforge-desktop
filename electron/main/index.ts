@@ -2588,6 +2588,9 @@ function refreshReplayTimelineForRecording(
   return attempt
 }
 
+/** Deadlock replay download failures already shown in the activity feed (recordingId:message). */
+const deadlockReplayFailureNotices = new Set<string>()
+
 /** Re-poll CS2 / Deadlock demo and merge stats into the dashboard recording. */
 async function retrieveReplayTimelineForRecording(
   recordingId: string,
@@ -2703,6 +2706,12 @@ async function retrieveReplayTimelineForRecording(
           parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
         } else if (valve.code !== 'no_salt') {
           log.info('[DeadlockValve]', valve.error)
+          // Show the failure once per recording + message (this path re-polls).
+          const noticeKey = `${recordingId}:${valve.error}`
+          if (!deadlockReplayFailureNotices.has(noticeKey)) {
+            deadlockReplayFailureNotices.add(noticeKey)
+            logActivity(`Deadlock replay download failed: ${valve.error}`, 'deadlock')
+          }
         }
       } finally {
         clearDemoDownloadProgress(notifyWindows())
