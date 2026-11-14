@@ -885,7 +885,8 @@
         >
           <p class="text-[11px] text-gray-400 leading-relaxed">{{ replayNotFoundHint }}</p>
           <ul class="text-[10px] text-gray-500 space-y-1 list-disc pl-4">
-            <li v-if="gameInfo.game === 'cs2'">Download the GOTV replay in CS2 (Watch → Your Matches)</li>
+            <li v-if="gameInfo.game === 'cs2'">Close CS2: UpForge fetches the demo from Steam once the game is closed</li>
+            <li v-if="gameInfo.game === 'cs2'">Or, between matches, download the GOTV replay in CS2 (Watch → Your Matches)</li>
             <li v-if="gameInfo.game === 'cs2'">Attach the <code class="text-cyan-400/80">.dem</code> file from the dashboard for kills and clips</li>
             <li v-if="gameInfo.game === 'deadlock'">Download the replay from Deadlock match history, then attach the .dem file</li>
           </ul>

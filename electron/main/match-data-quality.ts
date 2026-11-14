@@ -128,7 +128,7 @@ export function shouldDeferPostGameForDemoSync(
 
 export function demoAttachHint(game: string | null | undefined): string {
   if (game === 'cs2') {
-    return 'Download the GOTV demo in CS2 (Watch → Your Matches), then attach the .dem file. Analyse stays locked until the demo is linked.'
+    return 'Coaching starts when you close CS2: UpForge then fetches the demo from Steam. Between matches, download the GOTV demo in CS2 (Watch → Your Matches) and attach the .dem file.'
   }
   if (game === 'deadlock') {
     return 'Download the replay in Deadlock match history, then attach the .dem file. Analyse stays locked until the replay is linked.'

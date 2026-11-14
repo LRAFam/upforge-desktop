@@ -36,7 +36,7 @@ describe('Steam demo lookup', () => {
   it('does not launch the helper or terminate CS2 while the game is open', async () => {
     mocks.exec.mockResolvedValue({ stdout: '"cs2.exe","123"' })
     const { listRecentValveMatches } = await import('./cs2-valve-demo-downloader')
-    await expect(listRecentValveMatches()).rejects.toThrow('Close CS2')
+    await expect(listRecentValveMatches()).rejects.toThrow('Coaching starts when you close CS2')
     expect(mocks.spawn).not.toHaveBeenCalled()
     expect(mocks.exec).toHaveBeenCalledTimes(1)
     expect(mocks.exec.mock.calls[0][0]).toContain('tasklist')

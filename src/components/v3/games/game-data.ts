@@ -5,6 +5,7 @@
  */
 import type { DeadlockProfileStats, LolMatchSummary } from '../../../env.d.ts'
 import { mapDisplayName } from './display-names'
+import { DEADLOCK_TIERS } from '../../../lib/deadlock'
 
 export type DemoGame = 'cs2' | 'deadlock' | 'lol'
 
@@ -65,7 +66,7 @@ export function cs2Setup(profile: Cs2Profile | null, demos: FileList | null): Se
   const steps: SetupStep[] = [
     { title: 'Set your Steam name', text: 'So UpForge can find you in demo files.', done: named },
     { title: 'Find the demo folder', text: 'Where CS2 saves match replays on this PC.', done: folder },
-    { title: 'Attach the demo', text: 'After a match, attach its demo to the recording.', done: false },
+    { title: 'Close CS2 after playing', text: 'Coaching starts when you close CS2: Steam sends the demo then. Between matches, download it in CS2 and attach it.', done: false },
   ]
   const ready = named && folder
   const i = firstUndone(steps)
@@ -120,7 +121,7 @@ export function lolSetup(linked: boolean): SetupState {
 
 // ── Deadlock rank history ───────────────────────────────────────────────────
 
-export const DEADLOCK_TIERS = ['Obscurus', 'Initiate', 'Seeker', 'Alchemist', 'Arcanist', 'Ritualist', 'Emissary', 'Archon', 'Oracle', 'Phantom', 'Ascendant', 'Eternus'] as const
+export { DEADLOCK_TIERS }
 
 export interface DeadlockRankPoint {
   badge: number; tier: number; sub: number | null; name: string; label: string; score: number

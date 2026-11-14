@@ -8,7 +8,7 @@ import {
   getDisplayTier,
 } from '../../lib/valorant'
 import { getSubscriptionIconUrl } from '../../lib/rank-assets'
-import { getDeadlockRankIconUrl } from '../../lib/deadlock'
+import { deadlockCurrentRankIconUrl } from '../../lib/deadlock'
 import PaymentFailedAlert from '../PaymentFailedAlert.vue'
 
 const {
@@ -41,9 +41,7 @@ const {
 } = useDashboard()
 
 function deadlockRankIconUrl() {
-  const rank = deadlockStats.value?.current_rank
-  if (!rank) return getDeadlockRankIconUrl('Obscurus')
-  return getDeadlockRankIconUrl(rank.name, rank.subtier) ?? getDeadlockRankIconUrl('Obscurus')
+  return deadlockCurrentRankIconUrl(deadlockStats.value?.current_rank)
 }
 </script>
 

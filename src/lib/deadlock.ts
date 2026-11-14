@@ -1,17 +1,14 @@
-const RANK_TIERS: Record<string, number> = {
-  Obscurus: 0,
-  Initiate: 1,
-  Seeker: 2,
-  Alchemist: 3,
-  Arcanist: 4,
-  Ritualist: 5,
-  Emissary: 6,
-  Archon: 7,
-  Oracle: 8,
-  Phantom: 9,
-  Ascendant: 10,
-  Eternus: 11,
-}
+/**
+ * Deadlock rank ladder, index = tier (rank badge = tier × 10 + subtier). Matches deadlock-api
+ * `/v1/assets/ranks` (checked 14 Nov 2026); the bundled badges in assets/ranks/deadlock come from it.
+ * Valve retired Alchemist / Arcanist / Archon — tiers 3–7 are now Acolyte … Emissary.
+ */
+export const DEADLOCK_TIERS = [
+  'Obscurus', 'Initiate', 'Seeker', 'Acolyte', 'Sentinel', 'Mystic',
+  'Ritualist', 'Emissary', 'Oracle', 'Phantom', 'Ascendant', 'Eternus',
+] as const
+
+const RANK_TIERS: Record<string, number> = Object.fromEntries(DEADLOCK_TIERS.map((name, tier) => [name, tier]))
 
 const DEADLOCK_ASSETS_BASE = 'https://assets-bucket.deadlock-api.com/assets-api-res'
 
@@ -38,12 +35,25 @@ export function getDeadlockRankIconUrl(
 
   const sub = subtier != null && subtier >= 1 && subtier <= 6 ? subtier : null
   if (sub != null) {
-    return deadlockRankAsset(`rank${tier}-sub${sub}.png`)
+    return deadlockRankAsset(`rank${tier}-sub${sub}.webp`)
   }
   if (tier === 0) {
     return deadlockRankAsset('rank0-sm.png')
   }
   return deadlockRankAsset(`rank${tier}-lg.webp`)
+}
+
+/**
+ * Badge for the API's `current_rank` ({ name, subtier, image }). Bundled art for known names; the
+ * image the API sent when the name is not in the local ladder (a future rename); else Obscurus.
+ */
+export function deadlockCurrentRankIconUrl(
+  rank: { name?: string | null; subtier?: number | null; image?: string | null } | null | undefined,
+): string | null {
+  if (!rank) return getDeadlockRankIconUrl('Obscurus')
+  return getDeadlockRankIconUrl(rank.name, rank.subtier)
+    ?? (rank.image && /^https:\/\/assets(-bucket)?\.deadlock-api\.com\//.test(rank.image) ? rank.image : null)
+    ?? getDeadlockRankIconUrl('Obscurus')
 }
 
 /**
