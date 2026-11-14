@@ -61,6 +61,8 @@ import fs from 'fs'
 import { addExcludedObsRecordingPath } from './obs-recording-exclusions'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { showAppNotification, setMatchRecordingGuard } from './app-notifications'
+import { reportReadyNotice } from './report-ready-notice'
+import { focusesReply, isFocusGame, isFocusId, parseAddFocus } from './focuses-bridge'
 import { addReady, readReadyFile, removeReady, writeReadyFile, type ReadyAnalysis } from './ready-analyses'
 import {
   startCoachNotificationPoller,
@@ -154,7 +156,7 @@ import { shouldRetryFocusSync, syncMatchReports, type SyncResult } from './match
 import { focusReportDiagnostic, readFocusSyncState, writeFocusSyncState } from './focus-state'
 import { hydrateFocusResponse } from '../../src/lib/focus'
 import { decideRiotAccountSwitch } from './riot-account-switch'
-import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, normalizeCs2GameMode } from './recorded-modes-filter'
+import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, normalizeCs2GameMode, modeSkippedMessage } from './recorded-modes-filter'
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { withTimeout } from './promise-timeout'
 import { LoLLiveClientApi } from './lol-live-client-api'
@@ -5591,9 +5593,7 @@ function setupGameDetection(): void {
     if (isModeFilteredOut(recordedModes, gameMode, allRecordableModes)) {
       log.info(`[GameDetector] Skipping recording — mode is ${gameMode} (recordedModes=${recordedModes.join(',')})`)
       logActivity(`Mode ${gameMode} not in recorded modes (${recordedModes.join(', ')}) — skipped`)
-      notifyRecordingUx(
-        `${gameMode} is not in your recorded modes — this match was not captured. Change modes in Settings → Recording.`,
-      )
+      notifyRecordingUx(modeSkippedMessage(game, gameMode ?? ''))
       tray?.setToolTip(idleTooltip(game))
       await rearmGameDetection(game, true)
       return
@@ -7966,6 +7966,8 @@ async function startApp(): Promise<void> {
   let focusSyncRunning = false
   let lastFocusSyncAt = 0
   let lastFocusSyncUserId: number | null = null
+  /** Match reports already announced this session ("Your match report is ready"). */
+  const announcedReports = new Set<string>()
   async function runFocusSync(reason: string, limit = 20): Promise<SyncResult | null> {
     const userId = getActiveUserId()
     if (!authManager.isAuthenticated() || userId == null) return null
@@ -7995,6 +7997,26 @@ async function startApp(): Promise<void> {
       if (res.latest) {
         mainWindow?.webContents.send('focus:updated', res.latest)
         if (postGameWindow && !postGameWindow.isDestroyed()) postGameWindow.webContents.send('focus:updated', res.latest)
+      }
+      // A match that was not recorded has no after-match window: say the report is ready, once.
+      const notice = reportReadyNotice({
+        reason,
+        latest: res.latest,
+        postGameShowing: !!postGameWindow && !postGameWindow.isDestroyed() && postGameWindow.isVisible(),
+        announced: announcedReports,
+      })
+      if (notice) {
+        announcedReports.add(notice.matchId)
+        showAppNotification({
+          title: notice.title,
+          body: notice.body,
+          silent: notifySilent(),
+          deferWhileRecording: true,
+          onClick: () => {
+            focusMainWindow()
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('app:navigate', notice.path)
+          },
+        })
       }
       return res
     } catch {
@@ -8076,12 +8098,33 @@ async function startApp(): Promise<void> {
     const r = await authManager.getApi().post(`/api/starting-report/${game}/focus`, {}, { validateStatus: () => true }).catch(() => null)
     return { ok: r?.status === 200 && !!r.data?.success, focus: r?.data?.focus ?? null }
   })
-  ipcMain.handle('match-report:list', async (_event, limit: unknown) => {
+  ipcMain.handle('match-report:list', async (_event, limit: unknown, opts?: unknown) => {
     if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
     const n = Number.isInteger(limit) ? Math.min(Math.max(limit as number, 1), 50) : 20
-    const r = await authManager.getApi().get('/api/match-reports', { params: { limit: n }, validateStatus: () => true }).catch(() => null)
+    // Ranked only unless asked for every queue (the Matches list shows Unrated, Swiftplay… too).
+    const everyQueue = (opts as { everyQueue?: unknown } | null | undefined)?.everyQueue === true
+    const params = everyQueue ? { limit: n, queue: 'all' } : { limit: n }
+    const r = await authManager.getApi().get('/api/match-reports', { params, validateStatus: () => true }).catch(() => null)
     if (r?.status !== 200 || !r.data?.success) return { ok: false, error: 'unavailable' }
     return { ok: true, reports: Array.isArray(r.data.reports) ? r.data.reports : [] }
+  })
+  // Several focuses per game: what the player works on, what they can add, what ended (no AI, no cost).
+  // An older API without /api/focuses answers 404: the app then shows its single-focus screens only.
+  ipcMain.handle('focuses:list', async (_event, game: unknown) => {
+    if (!isFocusGame(game)) return { ok: false, error: 'unsupported_game' }
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    return focusesReply(await authManager.getApi().get('/api/focuses', { params: { game }, validateStatus: () => true }).catch(() => null))
+  })
+  ipcMain.handle('focuses:add', async (_event, payload: unknown) => {
+    const request = parseAddFocus(payload)
+    if (!request.ok) return request
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    return focusesReply(await authManager.getApi().post('/api/focuses', request.body, { validateStatus: () => true }).catch(() => null))
+  })
+  ipcMain.handle('focuses:drop', async (_event, id: unknown) => {
+    if (!isFocusId(id)) return { ok: false, error: 'not_found' }
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    return focusesReply(await authManager.getApi().delete(`/api/focuses/${id}`, { validateStatus: () => true }).catch(() => null))
   })
   ipcMain.handle('focus:get', async () => {
     const userId = getActiveUserId()

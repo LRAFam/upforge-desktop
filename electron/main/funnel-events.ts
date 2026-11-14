@@ -50,6 +50,9 @@ export type FunnelEventName =
   | 'postgame_opened'
   | 'first_match_synced'
   | 'recording_enabled'
+  // Free match report → video (kept apart from `report_opened`, which means the video coaching report)
+  | 'match_report_opened'
+  | 'match_report_video_clicked'
 
 export async function trackFunnelEvent(
   event: FunnelEventName,
@@ -251,4 +254,28 @@ export function trackPostgameOpened(game: string): void {
 /** Board 11b: the first free match note synced (server keeps it once per user). */
 export function trackFirstMatchSynced(uploaded: number): void {
   if (uploaded > 0) void trackFunnelEvent('first_match_synced', { uploaded })
+}
+
+const MATCH_REPORT_GAMES = new Set(['valorant', 'lol', 'cs2', 'deadlock'])
+/** What the report offered for the match's recording (see src/lib/report-video.ts). */
+const MATCH_REPORT_VIDEO_STATES = new Set(['none', 'open', 'working', 'waiting', 'upgrade', 'start'])
+
+/** Only known values leave the app: the renderer can send anything over IPC. */
+function matchReportProps(props: Record<string, unknown> | undefined): { game: string; video: string } | null {
+  const game = typeof props?.game === 'string' ? props.game : ''
+  const video = typeof props?.video === 'string' ? props.video : ''
+  if (!MATCH_REPORT_GAMES.has(game) || !MATCH_REPORT_VIDEO_STATES.has(video)) return null
+  return { game, video }
+}
+
+/** The free match report was shown (repeatable, one per view). `video` = what it offered for the recording. */
+export function trackMatchReportOpened(props?: Record<string, unknown>): void {
+  const clean = matchReportProps(props)
+  if (clean) void trackFunnelEvent('match_report_opened', clean)
+}
+
+/** A video action was pressed inside the free match report (start, retry, open or plans). */
+export function trackMatchReportVideoClicked(props?: Record<string, unknown>): void {
+  const clean = matchReportProps(props)
+  if (clean) void trackFunnelEvent('match_report_video_clicked', clean)
 }

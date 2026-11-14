@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /**
- * Match report (v3): the free, data-only coaching page for one match. No video, no credit.
+ * Match report (v3): the free, data-only coaching page for one match. Opening it uses no credit.
  * Headline (result, score, what decided it) · facts · focus check · coach notes · next steps.
  * Valorant reads the stored report (match-report:get). League and Deadlock read facts the API
  * computes from cached match data (match-report:get-game); CS2 reads the recording's parsed demo.
- * Never generates an AI report.
+ * Never generates an AI report on its own. Valorant: when this match was recorded, the page links
+ * its rounds to the footage and offers video coaching, which the player starts (uses 1 analysis).
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -33,6 +34,14 @@ import LolLoadoutStrip from '../../components/v3/games/LolLoadoutStrip.vue'
 import NumbersV3 from '../../components/v3/coach-flow/NumbersV3.vue'
 import { numbersView, roundCells } from '../../components/v3/coach-flow/coach-visuals'
 import { momentsLine, notesLine, type CoachAllowances, type LiveMoment, type LiveUpdate } from '../../lib/coach-allowances'
+import type { PendingRecording, ProfileData } from '../../env.d.ts'
+import {
+  firstReportView, pickReportRecording, reportAllowanceLabel, reportVideoAction, reportVideoCopy, reportWatchQuery,
+} from '../../lib/report-video'
+import { hasAnalysisQuotaRemaining } from '../../lib/tier-features'
+import { openAnalysisVodReview } from '../../lib/open-vod-review'
+import { openUpgrade } from '../../lib/upgrade'
+import { matchCheckLine } from '../../lib/focuses'
 
 const route = useRoute()
 const router = useRouter()
@@ -165,11 +174,30 @@ watch([matchId, game], () => { void load() })
  * report keeps its plain facts list.
  */
 const localTimeline = ref<Record<string, unknown> | null>(null)
+/** Valorant: this match's recording, when there is one. Drives the round links and the video coaching action. */
+const recording = ref<PendingRecording | null>(null)
+/** The recording lookup for this match has answered (straight away for games without one). */
+const recordingChecked = ref(false)
+let recordingAsk = 0
+async function loadRecording(): Promise<PendingRecording[]> {
+  const id = matchId.value
+  const ask = ++recordingAsk
+  if (game.value !== 'valorant' || !id) { recording.value = null; recordingChecked.value = true; return [] }
+  const rows = await window.api?.recordings?.listAll?.().catch(() => []) ?? []
+  // Only the latest answer counts: an older list arriving late must not undo a newer state.
+  if (ask === recordingAsk && id === matchId.value && game.value === 'valorant') {
+    recording.value = pickReportRecording(rows, id)
+    recordingChecked.value = true
+  }
+  return rows
+}
 async function loadLocalTimeline(): Promise<void> {
   localTimeline.value = null
-  if (game.value !== 'valorant' || !matchId.value) return
+  recording.value = null
+  recordingChecked.value = false
+  if (game.value !== 'valorant' || !matchId.value) { recordingChecked.value = true; return }
   const id = matchId.value
-  const rows = await window.api?.recordings?.listAll?.().catch(() => []) ?? []
+  const rows = await loadRecording()
   const rec = rows.find(r => r.matchId === id)
   if (!rec) return
   const t = await window.api?.recordings?.getTimeline?.(rec.id).catch(() => null)
@@ -179,6 +207,71 @@ onMounted(loadLocalTimeline)
 watch([matchId, game], loadLocalTimeline)
 const cells = computed(() => roundCells(localTimeline.value))
 const numbers = computed(() => (cells.value.length ? numbersView(localTimeline.value) : null))
+
+// Video coaching for this match (Valorant): the step up from the free report, started by the player.
+const profileUser = ref<ProfileData['user'] | null>(readCache<ProfileData['user']>('sidebar:user')?.value ?? null)
+const videoBusy = ref(false)
+const videoError = ref<string | null>(null)
+/** Recording the player just sent from here: holds "sending" until its row reports the upload. */
+const startedId = ref<string | null>(null)
+let startedTimer: ReturnType<typeof setTimeout> | null = null
+function holdStarted(id: string | null): void {
+  if (startedTimer) clearTimeout(startedTimer)
+  startedTimer = null
+  startedId.value = id
+  // If nothing has moved after a minute, show what the recording really says again.
+  if (id) startedTimer = setTimeout(() => { holdStarted(null); void loadRecording() }, 60_000)
+}
+const quotaLeft = computed<boolean | null>(() => {
+  const u = profileUser.value
+  return u ? hasAnalysisQuotaRemaining(u.analysis_stats, u.tier, u.is_admin) : null
+})
+const videoAction = computed(() => reportVideoAction(recording.value, {
+  quotaLeft: quotaLeft.value,
+  justStarted: !!recording.value && startedId.value === recording.value.id,
+}))
+const videoCopy = computed(() => reportVideoCopy(videoAction.value, reportAllowanceLabel(profileUser.value?.analysis_stats)))
+function trackReport(kind: 'opened' | 'video_clicked'): void {
+  void window.api?.funnel?.trackMatchReport?.(kind, { game: game.value, video: videoAction.value.kind })?.catch(() => {})
+}
+async function videoPress(): Promise<void> {
+  const action = videoAction.value
+  if (videoBusy.value) return
+  videoError.value = null
+  if (action.kind !== 'upgrade' && action.kind !== 'open' && action.kind !== 'start') return
+  trackReport('video_clicked')
+  if (action.kind === 'upgrade') { openUpgrade('match_report_video'); return }
+  videoBusy.value = true
+  try {
+    if (action.kind === 'open') {
+      const opened = await openAnalysisVodReview(router, action.analysisId, { source: 'match_report' }).catch(() => false)
+      if (!opened) videoError.value = 'Couldn’t open the video coaching. Check your connection and try again.'
+      return
+    }
+    // Opens the after-match window, which shows the upload and the coach's progress.
+    const res = await window.api.recordings.analyse(action.recordingId).catch(() => null)
+    if (!res || res.error) videoError.value = res?.error || 'Couldn’t start video coaching. Try again.'
+    else holdStarted(action.recordingId)
+    await loadRecording()
+  } finally {
+    videoBusy.value = false
+  }
+}
+function watchRound(round: number): void {
+  const query = reportWatchQuery(recording.value, round)
+  if (query) router.push({ path: '/vod-review', query }).catch(() => {})
+}
+const canWatchRounds = computed(() => !!reportWatchQuery(recording.value, 1))
+const stopVideoWatch: Array<() => void> = []
+onMounted(() => {
+  // The recording's state moves on its own (upload, analysis, a failure): keep the action current.
+  const off = window.api?.on?.('recordings:updated', () => { void loadRecording() })
+  const offFailed = window.api?.on?.('dashboard:analysis-failed', () => { holdStarted(null); void loadRecording() })
+  for (const stop of [off, offFailed]) if (typeof stop === 'function') stopVideoWatch.push(stop)
+  void window.api?.profile?.get?.().then((p) => { if (p?.user) profileUser.value = p.user }).catch(() => {})
+})
+onBeforeUnmount(() => { holdStarted(null); stopVideoWatch.forEach(stop => stop()) })
+watch(matchId, () => { videoError.value = null; holdStarted(null) })
 
 const notFoundText = computed(() => {
   if (needsDemo.value) return 'This report is built from the match demo. Attach or wait for the demo on the match page, then come back.'
@@ -191,6 +284,10 @@ const notFoundText = computed(() => {
 })
 
 const view = computed(() => (state.value?.kind === 'ready' ? state.value.view : null))
+// One "opened" per match per app session, sent once the page knows what it offers for the recording.
+watch([view, recordingChecked], () => {
+  if (view.value && recordingChecked.value && firstReportView(game.value, matchId.value)) trackReport('opened')
+})
 /** Line under the headline about the coach note (Valorant notes come with the report, so never "loading"). */
 const noteLine = computed(() => {
   const v = view.value
@@ -336,6 +433,13 @@ function back(): void { if (window.history.length > 1) router.back(); else route
           </div>
         </section>
 
+        <section v-if="videoCopy" class="mr3-video" aria-live="polite">
+          <span class="uf-label">Video coaching</span>
+          <p class="uf-t2">{{ videoCopy.text }}</p>
+          <UfButton v-if="videoCopy.button" :variant="videoAction.kind === 'open' ? 'secondary' : 'primary'" :disabled="videoBusy" @click="videoPress">{{ videoCopy.button }}</UfButton>
+          <p v-if="videoError" class="uf-t4" role="alert">{{ videoError }}</p>
+        </section>
+
         <DeadlockItemBuildV3 v-if="game === 'deadlock' && view.itemBuild !== undefined" :steps="view.itemBuild" />
 
         <section v-if="cells.length" class="mr3-visual">
@@ -361,7 +465,17 @@ function back(): void { if (window.history.length > 1) router.back(); else route
               <p class="mr3-uf"><span class="uf-d3 uf-num" :style="{ color: scoreToneColor(ufScore.tone) }">{{ ufScore.text }}</span><span class="uf-t4">{{ ufScore.label }} · 500 is average for your rank</span></p>
               <ScoreWhyV3 v-if="view.upforgeScoreBreakdown" :score="ufScore.value" :breakdown="view.upforgeScoreBreakdown" />
             </div>
-            <div v-if="view.focusCheck" class="mr3-focus">
+            <div v-if="view.focusChecks?.length" class="mr3-focus">
+              <span class="uf-label">{{ view.focusChecks.length === 1 ? 'Your focus' : 'Your focuses' }}</span>
+              <ul class="mr3-checks">
+                <li v-for="(c, i) in view.focusChecks.map(matchCheckLine)" :key="i">
+                  <span class="uf-t3">{{ c.label }}</span>
+                  <span class="uf-t4">{{ c.detail }}</span>
+                  <span class="uf-t4" :style="{ color: c.hit ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ c.hit ? 'On target this match' : 'Missed this match' }}</span>
+                </li>
+              </ul>
+            </div>
+            <div v-else-if="view.focusCheck" class="mr3-focus">
               <span class="uf-label">Your focus</span>
               <p class="uf-t3">{{ view.focusCheck.label }}</p>
               <p class="uf-t4" :style="{ color: view.focusCheck.hit ? 'var(--uf-win)' : 'var(--uf-loss)' }">
@@ -389,7 +503,11 @@ function back(): void { if (window.history.length > 1) router.back(); else route
             <div v-if="view.watchRounds?.length" class="mr3-next">
               <span class="uf-label">Rounds to rewatch</span>
               <ul class="mr3-watch">
-                <li v-for="w in view.watchRounds" :key="w.round"><span class="uf-t3 uf-num">R{{ w.round }}</span><span class="uf-t4">{{ w.why }}</span></li>
+                <li v-for="w in view.watchRounds" :key="w.round">
+                  <span class="uf-t3 uf-num">R{{ w.round }}</span>
+                  <span class="uf-t4">{{ w.why }}</span>
+                  <button v-if="canWatchRounds" type="button" class="uf-link" :aria-label="`Watch round ${w.round}`" @click="watchRound(w.round)">Watch →</button>
+                </li>
               </ul>
             </div>
             <!-- Reserved: "Review a round" (paid, visual). Hidden until round-review pricing is decided. -->
@@ -423,8 +541,14 @@ function back(): void { if (window.history.length > 1) router.back(); else route
 .mr3-focus, .mr3-next { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--uf-line); }
 .mr3-next ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .mr3-drill { margin: 0; }
+.mr3-checks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.mr3-checks li { display: flex; flex-direction: column; gap: 2px; }
 .mr3-watch { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
-.mr3-watch li { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.mr3-watch li { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+.mr3-watch .uf-link { margin-top: 0; white-space: nowrap; }
+.mr3-video { display: flex; flex-direction: column; gap: 10px; max-width: 760px; padding-top: 18px; border-top: 1px solid var(--uf-line); }
+.mr3-video p { margin: 0; }
+.mr3-video :deep(button) { align-self: flex-start; }
 .mr3-next :deep(button) { align-self: flex-start; margin-top: 6px; }
 .mr3-empty { display: flex; flex-direction: column; gap: 12px; padding: 64px 40px; max-width: 640px; }
 .mr3-actions { display: flex; gap: 12px; margin-top: 8px; }
