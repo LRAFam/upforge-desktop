@@ -76,7 +76,7 @@ export function timelineBlockedShortLabel(game: string | null | undefined): stri
 
 /** One-line explainer for compact UI (cards, post-game). */
 export function demoSyncExplainerShort(game: string | null | undefined): string {
-  if (game === 'cs2') return 'Attach a GOTV .dem to unlock Analyse (kills + highlight clips).'
+  if (game === 'cs2') return 'Coaching starts when you close CS2. Between matches, attach the GOTV .dem instead.'
   if (game === 'deadlock') return 'Attach a replay .dem to unlock Analyse (stats + highlight clips).'
   return ''
 }
@@ -84,7 +84,7 @@ export function demoSyncExplainerShort(game: string | null | undefined): string 
 /** Longer explainer for side panels and help text. */
 export function demoSyncExplainer(game: string | null | undefined): string {
   if (game === 'cs2') {
-    return 'Download the GOTV demo in CS2 (Watch → Your Matches), then attach the .dem file. Analyse stays locked until the demo is linked.'
+    return 'Coaching starts when you close CS2: UpForge then fetches the demo from Steam. Between matches, download the GOTV demo in CS2 (Watch → Your Matches) and attach the .dem file.'
   }
   if (game === 'deadlock') {
     return 'Download the replay from Deadlock match history, then attach the .dem file. Analyse stays locked until the replay is linked.'

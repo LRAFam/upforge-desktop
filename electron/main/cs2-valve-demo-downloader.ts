@@ -96,6 +96,13 @@ function resolveBoilerWritterExe(): string {
   )
 }
 
+/**
+ * Steam's GC lookup shares CS2's Steam session, so the demo cannot be fetched while CS2 runs.
+ * Shown in the post-game window and on the match card while the game is still open.
+ */
+export const CS2_RUNNING_DEMO_MESSAGE =
+  'Coaching starts when you close CS2: Steam only sends the match demo once the game is closed. Between matches, download it in CS2 (Watch → Your Matches) and attach it.'
+
 async function isSteamRunning(): Promise<boolean> {
   if (!IS_WIN) return false
   try {
@@ -116,7 +123,7 @@ async function ensureCs2Closed(): Promise<void> {
     timeout: 5000,
   })
   if (stdout.toLowerCase().includes('cs2.exe')) {
-    throw new ValveDemoError('Close CS2 to let UpForge fetch the demo, or download it in-game and attach it.', 'cs2_running')
+    throw new ValveDemoError(CS2_RUNNING_DEMO_MESSAGE, 'cs2_running')
   }
 }
 
@@ -129,7 +136,7 @@ function boilerExitMessage(code: number): string {
     case BOILER_EXIT.SteamRestartRequired:
       return 'Steam needs a restart before UpForge can fetch CS2 demos.'
     case BOILER_EXIT.AlreadyConnected:
-      return 'Close CS2 to allow Steam demo retrieval.'
+      return CS2_RUNNING_DEMO_MESSAGE
     case BOILER_EXIT.CommunicationFailure:
       return 'Could not reach the CS2 Game Coordinator. Check your Steam connection.'
     case BOILER_EXIT.NoMatchesFound:
