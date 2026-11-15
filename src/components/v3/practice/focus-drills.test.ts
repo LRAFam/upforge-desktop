@@ -1,34 +1,48 @@
 import { describe, expect, it } from 'vitest'
-import { FOCUS_DRILL_METRICS, focusDrillPlan } from './focus-drills'
+import { NO_DRILL_CAPTION, focusDrillPlan, focusMetricScenario } from './focus-drills'
+import { parseDrillRulebook } from '../../../lib/drill-rulebook'
 import { TRAINER_SCENARIOS } from '../../../lib/trainer-scenarios'
 import { activeFocusOf } from './usePracticeFocus'
 
 const ALL = TRAINER_SCENARIOS.map(s => s.key)
 
+// Shape of GET /api/drills/rulebook with beta drills off (config/coach-drills.php on the API).
+const RULEBOOK = parseDrillRulebook({
+  headshot_hit_rate: { trigger: 'low_headshot', title: 'Raise your crosshair to head height', scenarios: [{ key: 'head_height', label: 'Head Height Corridor' }, { key: 'microflick', label: 'Micro Flick' }] },
+  opening_death_rate: { trigger: 'opening_deaths', title: 'Win (or avoid) the first duel', scenarios: [{ key: 'duel', label: '3D Duel' }] },
+  traded_death_rate: { trigger: 'untraded', title: 'Die where a teammate can trade you', scenarios: [] },
+})
+
 describe('focusDrillPlan', () => {
-  it('returns nothing for unknown, empty or missing metrics', () => {
-    expect(focusDrillPlan('made_up_metric', ALL)).toBeNull()
-    expect(focusDrillPlan('', ALL)).toBeNull()
-    expect(focusDrillPlan(null, ALL)).toBeNull()
+  it('returns nothing for unknown, empty or missing metrics, or before the rulebook loads', () => {
+    expect(focusDrillPlan('made_up_metric', ALL, RULEBOOK)).toBeNull()
+    expect(focusDrillPlan('', ALL, RULEBOOK)).toBeNull()
+    expect(focusDrillPlan(null, ALL, RULEBOOK)).toBeNull()
+    expect(focusDrillPlan('headshot_hit_rate', ALL, null)).toBeNull()
   })
 
-  it('maps every known focus metric only to drills that exist in the trainer catalogue', () => {
-    for (const metric of FOCUS_DRILL_METRICS) {
-      const plan = focusDrillPlan(metric, ALL)
-      expect(plan, metric).not.toBeNull()
-      expect(plan!.scenarios.length).toBeGreaterThanOrEqual(2)
-      expect(plan!.scenarios.length).toBeLessThanOrEqual(3)
-      for (const s of plan!.scenarios) expect(ALL).toContain(s)
-    }
+  it('uses the rulebook order and title, limited to drills in the catalogue', () => {
+    expect(focusDrillPlan('headshot_hit_rate', ALL, RULEBOOK)).toEqual({ metric: 'headshot_hit_rate', caption: 'Raise your crosshair to head height', scenarios: ['head_height', 'microflick'], noDrill: false })
+    expect(focusDrillPlan('headshot_hit_rate', ['microflick'], RULEBOOK)!.scenarios).toEqual(['microflick'])
+    expect(focusDrillPlan('opening_death_rate', ['flick'], RULEBOOK)).toBeNull()
   })
 
-  it('covers every focus-loop metric the AI service measures (services/match_report_facts.py)', () => {
-    expect(FOCUS_DRILL_METRICS.sort()).toEqual(['early_opening_death_rate', 'headshot_hit_rate', 'leg_hit_rate', 'opening_death_rate', 'traded_death_rate', 'zero_damage_round_rate'])
+  it('says there is no drill for a positioning finding instead of sending it to aim drills', () => {
+    const plan = focusDrillPlan('traded_death_rate', ALL, RULEBOOK)!
+    expect(plan.noDrill).toBe(true)
+    expect(plan.scenarios).toEqual([])
+    expect(plan.caption).toBe(NO_DRILL_CAPTION)
+    expect(focusMetricScenario('traded_death_rate', RULEBOOK)).toBeNull()
   })
 
-  it('drops drills that are not loaded, and returns null when none are left', () => {
-    expect(focusDrillPlan('opening_death_rate', ['angle_clearing', 'flick'])!.scenarios).toEqual(['angle_clearing'])
-    expect(focusDrillPlan('opening_death_rate', ['flick'])).toBeNull()
+  it('first scenario for the match report comes from the rulebook', () => {
+    expect(focusMetricScenario('opening_death_rate', RULEBOOK)).toBe('duel')
+    expect(focusMetricScenario('opening_death_rate', null)).toBeNull()
+  })
+
+  it('drops malformed rulebook entries', () => {
+    expect(parseDrillRulebook([])).toBeNull()
+    expect(parseDrillRulebook({ x: { scenarios: [{ label: 'no key' }, { key: 'flick' }] } })).toEqual({ x: { trigger: 'x', title: '', scenarios: [{ key: 'flick', label: 'flick' }] } })
   })
 })
 

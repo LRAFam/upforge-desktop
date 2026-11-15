@@ -3,7 +3,7 @@
  * Alt-tabbing shows black/last game frame in the VOD, not other apps.
  */
 
-import { isBenignObsWebSocketError } from './obs-errors'
+import { describeObsError, isBenignObsWebSocketError } from './obs-errors'
 import type OBSWebSocket from 'obs-websocket-js'
 import log from 'electron-log'
 import { resolveObsCaptureWindow } from './game-window-finder'
@@ -76,7 +76,7 @@ async function getSceneCollectionName(obs: OBSWebSocket): Promise<string | null>
   }
 }
 
-async function getUpForgeSceneIdentity(obs: OBSWebSocket): Promise<ObsSceneIdentity | null> {
+export async function getUpForgeSceneIdentity(obs: OBSWebSocket): Promise<ObsSceneIdentity | null> {
   const sceneList = await obs.call('GetSceneList') as unknown as {
     scenes?: Array<{ sceneName: string; sceneUuid?: string }>
   }
@@ -171,6 +171,72 @@ async function removeUpForgeInput(obs: OBSWebSocket): Promise<void> {
   await pruneUpForgeCaptureSources(obs)
 }
 
+async function ensureCaptureSceneItem(obs: OBSWebSocket, inputName: string): Promise<void> {
+  const items = await obs.call('GetSceneItemList', { sceneName: UPFORGE_SCENE_NAME }) as {
+    sceneItems?: { sourceName: string }[]
+  }
+  if (items.sceneItems?.some((item) => item.sourceName === inputName)) return
+  await obs.call('CreateSceneItem', {
+    sceneName: UPFORGE_SCENE_NAME,
+    sourceName: inputName,
+    sceneItemEnabled: true,
+  })
+}
+
+const INPUT_RELEASE_POLL_MS = 150
+const INPUT_RELEASE_POLLS = 4
+
+async function waitForInputRemoved(obs: OBSWebSocket, inputName: string): Promise<boolean> {
+  for (let i = 0; i < INPUT_RELEASE_POLLS; i++) {
+    await new Promise((resolve) => setTimeout(resolve, INPUT_RELEASE_POLL_MS))
+    const res = await obs.call('GetInputList') as { inputs?: { inputName?: string }[] }
+    if (!(res.inputs ?? []).some((input) => input.inputName === inputName)) return true
+  }
+  return false
+}
+
+async function createOrReuseCaptureInput(
+  obs: OBSWebSocket,
+  inputKind: string,
+  inputSettings: Record<string, string | number | boolean>,
+): Promise<boolean> {
+  try {
+    await obs.call('CreateInput', {
+      sceneName: UPFORGE_SCENE_NAME,
+      inputName: UPFORGE_INPUT_NAME,
+      inputKind,
+      inputSettings: inputSettings as never,
+      sceneItemEnabled: true,
+    })
+    return true
+  } catch (err) {
+    // Another connection may have created it, or RemoveInput may have left it
+    // behind. Reuse only a compatible game/window capture, never a display input.
+    if (!/source already exists by that input name/i.test(describeObsError(err))) throw err
+    if (await getInputKind(obs, UPFORGE_INPUT_NAME) !== inputKind) {
+      // OBS frees a removed input only once nothing holds it; give that a moment, then create.
+      if (!await waitForInputRemoved(obs, UPFORGE_INPUT_NAME)) throw err
+      await obs.call('CreateInput', {
+        sceneName: UPFORGE_SCENE_NAME,
+        inputName: UPFORGE_INPUT_NAME,
+        inputKind,
+        inputSettings: inputSettings as never,
+        sceneItemEnabled: true,
+      })
+      log.info('[OBS Setup] Created capture input after OBS released the old one')
+      return true
+    }
+    await obs.call('SetInputSettings', {
+      inputName: UPFORGE_INPUT_NAME,
+      inputSettings: inputSettings as never,
+      overlay: true,
+    })
+    await ensureCaptureSceneItem(obs, UPFORGE_INPUT_NAME)
+    log.info('[OBS Setup] Reused capture input after a source name collision')
+    return false
+  }
+}
+
 async function findUpForgeSceneItem(obs: OBSWebSocket): Promise<{
   sourceName: string
   sceneItemId: number
@@ -238,6 +304,7 @@ async function ensureUpForgeCaptureSerial(
         inputSettings: inputSettings as never,
         overlay: true,
       })
+      if (allowRecreate) await ensureCaptureSceneItem(obs, targetName)
       log.info('[OBS Setup] Updated capture target for', game, '→', captureWindow)
       return { inputCreated: false, inputUpgraded: false, captureWindow }
     }
@@ -269,26 +336,14 @@ async function ensureUpForgeCaptureSerial(
       log.info('[OBS Setup] Recreating', inputKind, 'for', game)
     }
     await removeUpForgeInput(obs)
-    await obs.call('CreateInput', {
-      sceneName: UPFORGE_SCENE_NAME,
-      inputName: UPFORGE_INPUT_NAME,
-      inputKind,
-      inputSettings: inputSettings as never,
-      sceneItemEnabled: true,
-    })
-    log.info('[OBS Setup] Created', inputKind, 'for', game, '→', captureWindow)
-    return { inputCreated: true, inputUpgraded, captureWindow }
+    const inputCreated = await createOrReuseCaptureInput(obs, inputKind, inputSettings)
+    log.info('[OBS Setup] Configured', inputKind, 'for', game, '→', captureWindow)
+    return { inputCreated, inputUpgraded: inputCreated && inputUpgraded, captureWindow }
   }
 
-  await obs.call('CreateInput', {
-    sceneName: UPFORGE_SCENE_NAME,
-    inputName: UPFORGE_INPUT_NAME,
-    inputKind,
-    inputSettings: inputSettings as never,
-    sceneItemEnabled: true,
-  })
-  log.info('[OBS Setup] Created', inputKind, 'for', game, '→', captureWindow)
-  return { inputCreated: true, inputUpgraded: false, captureWindow }
+  const inputCreated = await createOrReuseCaptureInput(obs, inputKind, inputSettings)
+  log.info('[OBS Setup] Configured', inputKind, 'for', game, '→', captureWindow)
+  return { inputCreated, inputUpgraded: false, captureWindow }
 }
 
 /** Scale the capture source to fill the OBS canvas (same as Transform → Fit to screen). */
@@ -368,6 +423,8 @@ export async function refitCaptureWithSettle(
 export type ObsSceneSwitchOptions = {
   /** When false, update capture on the UpForge scene but leave the streamer's active scene alone. */
   switchScene?: boolean
+  /** When false, skip profile writes (recording format, replay buffer) — the player's profile is active. */
+  writeProfile?: boolean
   forceRecreate?: boolean
   /** When false, never RemoveInput/CreateInput — prefer SetInputSettings in-place. Default true. */
   allowRecreate?: boolean
@@ -433,27 +490,29 @@ export async function setupUpForgeScene(
     await fitUpForgeCaptureToCanvas(obs)
     sceneIdentity = await getUpForgeSceneIdentity(obs) ?? sceneIdentity
 
-    try {
-      const versionInfo = await obs.call('GetVersion') as { obsVersion?: string }
-      await applyCrashSafeObsRecFormat(obs, versionInfo.obsVersion)
-    } catch {
-      await applyCrashSafeObsRecFormat(obs, null)
-    }
+    if (options.writeProfile !== false) {
+      try {
+        const versionInfo = await obs.call('GetVersion') as { obsVersion?: string }
+        await applyCrashSafeObsRecFormat(obs, versionInfo.obsVersion)
+      } catch {
+        await applyCrashSafeObsRecFormat(obs, null)
+      }
 
-    const profileParams: Array<[string, string, string]> = [
-      ['SimpleOutput', 'ReplayBufferEnable', 'true'],
-    ]
-    for (const [parameterCategory, parameterName, parameterValue] of profileParams) {
-      await obs.call('SetProfileParameter', {
-        parameterCategory,
-        parameterName,
-        parameterValue,
-      }).catch(() => { /* profile layout varies — non-fatal */ })
+      const profileParams: Array<[string, string, string]> = [
+        ['SimpleOutput', 'ReplayBufferEnable', 'true'],
+      ]
+      for (const [parameterCategory, parameterName, parameterValue] of profileParams) {
+        await obs.call('SetProfileParameter', {
+          parameterCategory,
+          parameterName,
+          parameterValue,
+        }).catch(() => { /* profile layout varies — non-fatal */ })
+      }
     }
 
     return { ok: true, sceneCreated, inputCreated, inputUpgraded, captureWindow, sceneIdentity }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = describeObsError(err)
     log.warn('[OBS Setup] setupUpForgeScene failed:', msg)
     return { ok: false, sceneCreated, inputCreated, inputUpgraded, captureWindow, sceneIdentity, error: msg }
   }

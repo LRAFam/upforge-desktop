@@ -25,6 +25,17 @@ const GRENADES = new Set(['flashbang', 'smokegrenade', 'molotov', 'incgrenade', 
 
 export type Cs2BlindFact = { seconds: number; by?: 'enemy' | 'teammate' | 'self' | 'unknown' }
 
+/**
+ * Grenade throws for the round facts. Valve matchmaking demos carry no `grenade_thrown` event:
+ * throws appear only as `weapon_fire` rows with a grenade weapon. An empty `grenade_thrown` list
+ * alone is "not measured" (null), never "no utility thrown".
+ */
+export function cs2GrenadeThrowRows(grenadeThrown: Row[] | null, weaponFire: Row[] | null): Row[] | null {
+  if (grenadeThrown?.length) return grenadeThrown
+  if (Array.isArray(weaponFire)) return weaponFire.filter(r => GRENADES.has(weaponKey(r.weapon)))
+  return null
+}
+
 /** Facts added to a local-player kill or death (KillEvent keys). */
 export interface Cs2EventFacts {
   alive?: string
@@ -73,7 +84,7 @@ export interface Cs2RoundFactsInput {
   snapshots: Row[]
   /** bomb_planted rows; [] when none. */
   plants: Row[]
-  /** grenade_thrown rows, null when unreadable. */
+  /** Grenade throws (cs2GrenadeThrowRows: grenade_thrown, else grenade weapon_fire rows); null when not measured. */
   grenades: Row[] | null
   /** Flashes that hit players, null when unreadable. */
   flashHits: Cs2FlashHit[] | null
@@ -120,6 +131,13 @@ export function humanizeCs2Place(raw: unknown): string | null {
   if (typeof raw !== 'string' || !raw.trim()) return null
   const s = raw.trim()
   return PLACE_ALIASES[s.toLowerCase()] ?? s.replace(/(?<=[a-z0-9])(?=[A-Z])/g, ' ')
+}
+
+/** Bombsite letter from Valve's place name ("BombsiteA" → "A"), or null for any other place. */
+export function cs2SiteFromPlace(raw: unknown): 'A' | 'B' | null {
+  if (typeof raw !== 'string') return null
+  const m = /^bombsite([ab])$/i.exec(raw.trim())
+  return m ? (m[1]!.toUpperCase() as 'A' | 'B') : null
 }
 
 /** Who each flash blinded: flash_duration changed between the tick before and after detonation. */

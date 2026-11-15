@@ -114,7 +114,7 @@ describe('matchReportView · UpForge score', () => {
 describe('recurrenceLine', () => {
   const r = (seen: number, of: number, streak = 0) => ({ finding_id: 'opening_deaths', seen, of, streak })
   it('calls a repeated finding a habit and puts it first', () => {
-    expect(recurrenceLine(r(4, 10, 0))).toEqual({ tone: 'habit', text: 'Also came up in 4 of your last 10 matches. It keeps costing you rounds, so fix this before anything else.' })
+    expect(recurrenceLine(r(4, 10, 0))).toEqual({ tone: 'habit', text: "Also came up in 4 of your last 10 matches. It's a repeat, so it's the one to work on first." })
     expect(recurrenceLine(r(3, 5, 3))!.text).toBe('4 matches in a row. This is a habit now, not a one-off, so it\'s the one to fix first.')
   })
   it('notes a single repeat and a new finding', () => {

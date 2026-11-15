@@ -48,18 +48,31 @@ for (let lvl = 1; lvl <= 9; lvl++) {
 fs.copyFileSync(path.join(faceitXp, 'level5010.png'), path.join(faceitDir, '10.png'))
 
 console.log('[ranks] Deadlock rank badges…')
+// Names live in src/lib/deadlock.ts (DEADLOCK_TIERS): update them when this ladder changes.
+// Shrunk with ImageMagick + cwebp (sub badges 200 px wide, tier badges 256 px) to keep the bundle small.
 fs.mkdirSync(deadlockDir, { recursive: true })
 const ranks = JSON.parse(execSync('curl -sfL https://api.deadlock-api.com/v1/assets/ranks', { encoding: 'utf8' }))
+console.log('[ranks] Deadlock ladder:', ranks.map(r => `${r.tier} ${r.name}`).join(', '))
+const tmp = path.join(root, 'scripts/.cache/deadlock-ranks')
+fs.mkdirSync(tmp, { recursive: true })
+function shrinkWebp(url, dest, resize) {
+  const raw = path.join(tmp, 'raw')
+  const png = path.join(tmp, 'resized.png')
+  curl(url, raw)
+  execSync(`magick "${raw}" -resize ${resize} "${png}"`)
+  execSync(`cwebp -quiet -q 85 -alpha_q 90 "${png}" -o "${dest}"`)
+}
 for (const rank of ranks) {
   const { tier, images } = rank
   if (tier === 0) {
-    curl(images.small, path.join(deadlockDir, 'rank0-sm.png'))
+    curl(images.small, path.join(tmp, 'rank0.png'))
+    execSync(`magick "${path.join(tmp, 'rank0.png')}" -resize 150x "${path.join(deadlockDir, 'rank0-sm.png')}"`)
     continue
   }
-  curl(images.large, path.join(deadlockDir, `rank${tier}-lg.png`))
+  shrinkWebp(images.large_webp ?? images.large, path.join(deadlockDir, `rank${tier}-lg.webp`), '256x256')
   for (let sub = 1; sub <= 6; sub++) {
-    const key = `small_subrank${sub}`
-    if (images[key]) curl(images[key], path.join(deadlockDir, `rank${tier}-sub${sub}.png`))
+    const url = images[`small_subrank${sub}_webp`] ?? images[`small_subrank${sub}`]
+    if (url) shrinkWebp(url, path.join(deadlockDir, `rank${tier}-sub${sub}.webp`), '200x')
   }
 }
 

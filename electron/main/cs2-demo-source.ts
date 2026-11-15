@@ -116,6 +116,20 @@ export function nativeCs2DemoSource(pathOrBuf: string | Buffer): Cs2DemoSource {
   }
 }
 
+/**
+ * The parser could not read the demo itself (header or the timeline's player_death call threw).
+ * Valve game updates have changed the demo format three times so far; each time every older
+ * demoparser2 failed this way. Returns the parser's error, or null when the core calls worked.
+ */
+export function cs2DemoBundleReadError(bundle: Cs2DemoBundle): string | null {
+  const [deathName, deathPlayer, deathOther] = CS2_TIMELINE_EVENTS[0]!
+  for (const key of [HEADER_KEY, eventKey(deathName, deathPlayer, deathOther)]) {
+    const entry = bundle[key]
+    if (entry && !entry.ok) return entry.error
+  }
+  return null
+}
+
 /** Run the full plan against a source (the worker calls this with the native source). */
 export function collectCs2DemoBundle(source: Cs2DemoSource): Cs2DemoBundle {
   const bundle: Cs2DemoBundle = {}

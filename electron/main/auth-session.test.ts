@@ -276,3 +276,28 @@ describe('reading the saved session', () => {
     expect(readSignOutEvents(env.dir)).toEqual([])
   })
 })
+
+describe('email verification at sign-in', () => {
+  it('passes the email_unverified code through a refused login', async () => {
+    routes['POST /api/login'] = { status: 403, data: { success: false, error: 'Please verify your email address before logging in.', code: 'email_unverified' } }
+    const auth = new AuthManager(); install(auth)
+    const res = await auth.login('ada@example.com', 'pw')
+    expect(res).toEqual({ ok: false, error: 'Please verify your email address before logging in.', code: 'email_unverified' })
+    expect(tokenFileExists()).toBe(false)
+  })
+
+  it('resends through the signed-out endpoint with the trimmed email and no token', async () => {
+    routes['POST /api/email/resend-verification-public'] = { status: 200, data: { success: true, message: 'If that email…' } }
+    const auth = new AuthManager(); install(auth)
+    expect(await auth.resendVerificationEmail('  ada@example.com ')).toEqual({ ok: true, message: 'If that email…' })
+    expect(sent).toEqual([{ url: '/api/email/resend-verification-public', data: { email: 'ada@example.com' }, auth: null }])
+  })
+
+  it('does not call the API for a blank email and maps a 429 to a wait message', async () => {
+    const auth = new AuthManager(); install(auth)
+    expect((await auth.resendVerificationEmail('  ')).ok).toBe(false)
+    expect(sent).toEqual([])
+    routes['POST /api/email/resend-verification-public'] = { status: 429, data: {} }
+    expect(await auth.resendVerificationEmail('ada@example.com')).toEqual({ ok: false, error: 'Too many requests. Wait a few minutes, then try again.' })
+  })
+})

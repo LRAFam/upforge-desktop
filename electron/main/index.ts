@@ -1,6 +1,7 @@
 // Must stay the first import: redirects userData before any other module loads in self-test mode.
 import { selftestRequest } from './selftest-early'
 import { getApiBaseUrl } from './api-base'
+import { openExternalSafe } from './shell-open'
 import { buildQuitActivity, createQuitGuard } from './quit-guard'
 import { askQuitChoice } from './quit-dialog'
 import { canUseDeveloperTools, devOnly } from './dev-access'
@@ -23,7 +24,7 @@ import { setupReviewNotebookHandlers } from './ipc/review-notebook-ipc'
 import { setupRoundReviewHandlers } from './ipc/round-review-ipc'
 import { setupProgressPlanHandlers } from './ipc/progress-plan-ipc'
 import { setupMarketplaceHandlers } from './ipc/marketplace-ipc'
-import { buildTimelineFromDemo } from './demo-timeline'
+import { buildTimelineFromDemo, cs2DemoReadError, CS2_DEMO_UNREADABLE_MESSAGE } from './demo-timeline'
 import { Cs2DemoRetrieval, cs2DemoRetrievalStatus } from './cs2-demo-retrieval'
 import { setupOverstepIntegration } from './overstep-integration'
 import type { OverstepBridge } from './overstep-bridge'
@@ -155,7 +156,7 @@ import { readRecentMatchReport, saveRecentMatchExports } from './recent-match-ex
 import { shouldRetryFocusSync, syncMatchReports, type SyncResult } from './match-report-sync'
 import { focusReportDiagnostic, readFocusSyncState, writeFocusSyncState } from './focus-state'
 import { hydrateFocusResponse } from '../../src/lib/focus'
-import { decideRiotAccountSwitch } from './riot-account-switch'
+import { decideRiotAccountSwitch, riotSwitchNotice } from './riot-account-switch'
 import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, normalizeCs2GameMode, modeSkippedMessage } from './recorded-modes-filter'
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { withTimeout } from './promise-timeout'
@@ -179,6 +180,7 @@ import { applySpatialEnrichment } from './spatial/enrich'
 import { refreshMatchPopulationBenchmarks } from './spatial/enrich-population'
 import { applyDemoSpatialEnrichment } from './spatial/demo-enrich'
 import { UploadManager, savePendingJob, clearPendingJob } from './upload-manager'
+import { readAiTraining, saveAiTraining } from './ai-training'
 import { resolveUploadPlayerIdentity } from './upload-player-identity'
 import {
   activateUserSession,
@@ -344,7 +346,7 @@ import {
   sendPostGameEvent,
   sendPostGameEventForRecording,
 } from './post-game-session'
-import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, shouldScheduleLateClipRetry, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage, valorantMatchStatsPollIntervalMs } from './match-data-quality'
+import { hasDemoKillRows, hasRichMatchData, hasRichMatchDataForGame, MATCH_DETAILS_ENRICH_MAX_MS, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, shouldScheduleLateClipRetry, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage, valorantMatchStatsPollIntervalMs } from './match-data-quality'
 import {
   buildCoachingSubmissionExtras,
   topSkillFocus,
@@ -2502,7 +2504,7 @@ const cs2DemoRetrieval = new Cs2DemoRetrieval({
   getRecording: (id) => {
     const rec = recordingsStore.getById(id)
     return rec?.game === 'cs2'
-      ? { recordedAt: rec.recordedAt, complete: !!rec.analysed || hasRichMatchData(rec.timeline) }
+      ? { recordedAt: rec.recordedAt, complete: !!rec.analysed || hasDemoKillRows(rec.timeline) }
       : null
   },
   retrieve: (id) => refreshReplayTimelineForRecording(id, { notifyActivity: true }),
@@ -2590,6 +2592,9 @@ function refreshReplayTimelineForRecording(
   return attempt
 }
 
+/** Deadlock replay download failures already shown in the activity feed (recordingId:message). */
+const deadlockReplayFailureNotices = new Set<string>()
+
 /** Re-poll CS2 / Deadlock demo and merge stats into the dashboard recording. */
 async function retrieveReplayTimelineForRecording(
   recordingId: string,
@@ -2601,7 +2606,7 @@ async function retrieveReplayTimelineForRecording(
   if (!rec || (rec.game !== 'cs2' && rec.game !== 'deadlock')) return false
 
   const valid = () => scope === replayScope && recordingsStore.getById(recordingId) != null
-  if (hasRichMatchData(rec.timeline)) return true
+  if (hasDemoKillRows(rec.timeline)) return true
   if (rec.game === 'deadlock' && rec.deadlockReviewJobId) {
     // Deadlock replays are Source 2: the only real kill timeline is the user's cloud review.
     if (await fetchDeadlockReviewStatus(rec.deadlockReviewJobId) === 'completed') {
@@ -2655,7 +2660,7 @@ async function retrieveReplayTimelineForRecording(
 
   if (
     rec.game === 'cs2'
-    && (!parsed.timeline || !hasRichMatchData(parsed.timeline))
+    && (!parsed.timeline || !hasDemoKillRows(parsed.timeline))
     && !shouldDeferHeavyBackgroundWork(matchPriorityDeps())
   ) {
     try {
@@ -2690,7 +2695,7 @@ async function retrieveReplayTimelineForRecording(
 
   if (
     rec.game === 'deadlock'
-    && (!parsed.timeline || !hasRichMatchData(parsed.timeline))
+    && (!parsed.timeline || !hasDemoKillRows(parsed.timeline))
     && !shouldDeferHeavyBackgroundWork(matchPriorityDeps())
   ) {
     const salts = getDeadlockMatchSalts()
@@ -2705,6 +2710,12 @@ async function retrieveReplayTimelineForRecording(
           parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
         } else if (valve.code !== 'no_salt') {
           log.info('[DeadlockValve]', valve.error)
+          // Show the failure once per recording + message (this path re-polls).
+          const noticeKey = `${recordingId}:${valve.error}`
+          if (!deadlockReplayFailureNotices.has(noticeKey)) {
+            deadlockReplayFailureNotices.add(noticeKey)
+            logActivity(`Deadlock replay download failed: ${valve.error}`, 'deadlock')
+          }
         }
       } finally {
         clearDemoDownloadProgress(notifyWindows())
@@ -2713,10 +2724,11 @@ async function retrieveReplayTimelineForRecording(
   }
 
   if (!valid()) return false
-  if (!parsed.timeline || !hasRichMatchData(parsed.timeline)) {
+  if (!parsed.timeline || !hasDemoKillRows(parsed.timeline)) {
     if (cs2DemoRetrievalStatus.get(recordingId)?.state === 'syncing') {
       // Back off (not the 5 s default) so a bad local demo is not re-parsed every few seconds.
-      if (parsed.demoPath) setStatus('waiting_match_data', 'No usable match stats found in the demo. Check that it belongs to this recording.', 'download_failed')
+      if (parsed.demoPath && cs2DemoReadError(parsed.demoPath)) setStatus('waiting_match_data', CS2_DEMO_UNREADABLE_MESSAGE, 'demo_unreadable')
+      else if (parsed.demoPath) setStatus('waiting_match_data', 'No usable match stats found in the demo. Check that it belongs to this recording.', 'download_failed')
       else setStatus('waiting_match_data', 'Waiting for the CS2 demo.', 'gc_failed')
     }
     return false
@@ -4460,7 +4472,7 @@ function setupGameDetection(): void {
       }
 
       const matchId = timeline?.matchId
-      const richMatchData = hasRichMatchData(timeline)
+      const richMatchData = hasRichMatchDataForGame(game, timeline)
 
       // Register on the dashboard immediately — before compression/upload can take minutes.
       setPrepStep('dashboard_row')
@@ -5645,42 +5657,24 @@ function setupGameDetection(): void {
         maxAccounts: riotUser?.max_valorant_accounts ?? 1,
       })
 
+      // Never skip the match for an unlinked or unswitchable Riot ID: record it (the upload carries the
+      // in-game Riot ID and PUUID) and ask the player to link it alongside.
+      let activateFailed = false
       if (riotSwitch.action === 'activate') {
         const activated = await authManager.activateRiotAccount(riotSwitch.accountId)
-        if (!activated.ok) {
-          log.info(`[GameDetector] Riot account activate failed: ${activated.error ?? 'unknown'}`)
-          logActivity('Could not switch active Riot account. Recording skipped.')
-          notifyRecordingUx(
-            'Could not switch to the in-game Riot account. Open Settings to manage linked accounts.',
-          )
-          tray?.setToolTip(idleTooltip(game))
-          mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
-          await rearmGameDetection(game, true)
-          return
+        if (activated.ok) {
+          riotLocalApi.setLinkedAccountRegion(authManager.getUser()?.riot_region ?? null)
+        } else {
+          activateFailed = true
+          log.info(`[GameDetector] Riot account activate failed: ${activated.error ?? 'unknown'} (recording anyway)`)
         }
-        riotLocalApi.setLinkedAccountRegion(authManager.getUser()?.riot_region ?? null)
-      } else if (riotSwitch.action === 'prompt_link') {
-        log.info(`[GameDetector] Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag}, prompting link`)
-        logActivity(`Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag}. Link it before recording.`)
-        notifyRecordingUx(
-          'This Riot ID is not linked. Link it in Settings before recording, or confirm the link prompt.',
-        )
-        mainWindow?.webContents.send('riot:prompt-link', { name: riotSwitch.name, tag: riotSwitch.tag, atCap: false })
-        tray?.setToolTip(idleTooltip(game))
-        mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
-        await rearmGameDetection(game, true)
-        return
-      } else if (riotSwitch.action === 'prompt_manage') {
-        log.info(`[GameDetector] Unknown Riot ID at account cap: ${riotSwitch.name}#${riotSwitch.tag}`)
-        logActivity('Unknown Riot ID at account limit. Recording skipped.')
-        notifyRecordingUx(
-          'This Riot ID is not linked and you are at your account limit. Open Settings to switch or upgrade.',
-        )
-        mainWindow?.webContents.send('riot:prompt-link', { name: riotSwitch.name, tag: riotSwitch.tag, atCap: true })
-        tray?.setToolTip(idleTooltip(game))
-        mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
-        await rearmGameDetection(game, true)
-        return
+      }
+      const notice = riotSwitchNotice(riotSwitch, activateFailed)
+      if (notice) {
+        log.info(`[GameDetector] ${riotSwitch.action}: ${notice.message}`)
+        logActivity(notice.message)
+        notifyRecordingUx(notice.message)
+        if (notice.prompt) mainWindow?.webContents.send('riot:prompt-link', notice.prompt)
       }
     }
 
@@ -6460,7 +6454,6 @@ async function uploadArchiveOnlyImpl(
       agent,
       timeline,
       coachingExtras,
-      trainingConsent: settingsManager?.get().trainingConsent === true,
       onProgress: (pct) => send('post-game:upload-progress', pct),
     })
 
@@ -7033,7 +7026,7 @@ async function performUploadAndAnalyse(
         }
         // Results open in the app (notification / post-game). The web report opens only if the player turned this on.
         if (analysisId && isPrimaryGame(game) && settingsManager?.get()?.autoOpenBrowser === true) {
-          shell.openExternal(desktopVodResultsUrl(game, analysisId))
+          void openExternalSafe(desktopVodResultsUrl(game, analysisId))
         }
         void (async () => {
           try {
@@ -7535,6 +7528,13 @@ async function startApp(): Promise<void> {
     if (file.kind === 'clip') {
       for (const clip of clipStore.getAll()) if (String(clip.apiClipId) === file.id) clipStore.update(clip.id, { apiClipId: null, uploadStatus: 'local' })
     }
+  })
+  ipcMain.handle('ai-training:get', async () => {
+    if (!authManager.isAuthenticated()) return { optOut: null }
+    return readAiTraining(authManager.getApi())
+  })
+  ipcMain.handle('ai-training:set', async (_event, optOut: unknown) => {
+    return saveAiTraining(authManager.getApi(), optOut === true)
   })
   ipcMain.handle('coaching:preferences', async () => {
     return (await authManager.getApi().get('/api/user/coaching-preferences')).data

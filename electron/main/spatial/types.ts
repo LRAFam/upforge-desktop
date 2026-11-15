@@ -54,7 +54,8 @@ export interface MapCalloutPack {
 
 /** Attached to kill/death events sent to API and UI. */
 export interface KillSpatial {
-  norm: NormPoint
+  /** Radar position; absent on CS2 maps without a radar (callout + teammate facts still come from the demo). */
+  norm?: NormPoint
   callout: string
   site: string | null
   killerDistance: number | null

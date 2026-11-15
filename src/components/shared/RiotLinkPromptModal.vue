@@ -31,15 +31,15 @@ const riotLabel = () => `${props.name}#${props.tag}`
     v-if="uiV3"
     :open="show"
     :title="atCap ? 'Account limit reached' : 'Link this Riot account'"
-    kicker="Before recording"
+    kicker="Recording this match"
     :width="460"
     :persistent="linking"
     @close="emit('close')"
   >
     <p class="uf-t2" style="margin: 0">
       You are queueing as <span class="uf-riot-id">{{ name }}<span>#{{ tag }}</span></span>.
-      <template v-if="atCap">This Riot ID is not linked and you have no open slots on your plan.</template>
-      <template v-else>Link it to UpForge before recording, then re-queue.</template>
+      <template v-if="atCap">This match is still being recorded, but this Riot ID is not linked and your plan has no open slots.</template>
+      <template v-else>This match is still being recorded. Link this Riot ID to your UpForge account.</template>
     </p>
     <p v-if="error" class="uf-dialog-error" role="alert">{{ error }}</p>
     <template #actions>
@@ -65,12 +65,12 @@ const riotLabel = () => `${props.name}#${props.tag}`
         <p v-if="atCap" class="text-xs text-gray-400 mb-4">
           You are queueing as
           <span class="text-gray-200 font-semibold">{{ name }}</span><span class="text-red-400">#{{ tag }}</span>.
-          This Riot ID is not linked and you have no open slots on your plan.
+          This match is still being recorded, but this Riot ID is not linked and your plan has no open slots.
         </p>
         <p v-else class="text-xs text-gray-400 mb-4">
           You are queueing as
           <span class="text-gray-200 font-semibold">{{ name }}</span><span class="text-red-400">#{{ tag }}</span>.
-          Link this account to UpForge before recording. Re-queue after linking.
+          This match is still being recorded. Link this Riot ID to your UpForge account.
         </p>
 
         <p v-if="error" class="text-xs text-red-400 mb-3">{{ error }}</p>

@@ -208,7 +208,6 @@ export interface AppSettings {
    * When true, cloud-archived VODs may be used for anonymised model training (separate from storage).
    * Does not affect analysis quota.
    */
-  trainingConsent: boolean
 }
 
 export type InGameFeedbackMode = AppSettings['inGameFeedback']
@@ -270,7 +269,6 @@ const DEFAULTS: AppSettings = {
   trainerMouse: { ...DEFAULT_TRAINER_MOUSE },
   crosshairSettings: { ...DEFAULT_CROSSHAIR_SETTINGS },
   autoOpenBrowser: false,
-  trainingConsent: false,
 }
 
 export class SettingsManager {

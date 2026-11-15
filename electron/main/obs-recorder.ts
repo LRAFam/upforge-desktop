@@ -1,5 +1,6 @@
 import { waitForObsReady } from './obs-readiness'
 import { boundObsRequests } from './obs-request-timeout'
+import { describeObsError } from './obs-errors'
 import { OBSWebSocket } from 'obs-websocket-js'
 import { app, nativeImage } from 'electron'
 import { existsSync, statSync } from 'fs'
@@ -13,6 +14,7 @@ import {
 } from './disk-space'
 import {
   setupUpForgeScene,
+  getUpForgeSceneIdentity,
   UPFORGE_SCENE_NAME,
   retargetUpForgeCapture,
   fitUpForgeCaptureToCanvas,
@@ -29,6 +31,13 @@ import {
   resolveObsWebSocketPassword,
 } from './obs-profile-installer'
 import { applyObsRecordingSettings, type ObsApplyResult } from './obs-output-settings'
+import {
+  anyObsOutputActive,
+  enterUpForgeObsProfile,
+  isUpForgeProfileActive,
+  restorePlayerObsState,
+  type PlayerObsRestore,
+} from './obs-player-settings-guard'
 import { prepareRecordingDirectory } from './recording-save-safety'
 import {
   shouldKeepMatchOwnershipWhileDisconnected,
@@ -138,7 +147,11 @@ export class OBSRecorder {
   private _startedAt: number | null = null
   private _gameplayRefitDone = false
   private _outputPath: string | null = null
+  /** File from our match after OBS confirmed idle, before the match-end caller finalized it. */
+  private _releasedMatchOutputPath: string | null = null
   private _finalizingOutputPath: string | null = null
+  /** Player profile/scene UpForge switched away from for a match; put back after stop. */
+  private _playerObsRestore: PlayerObsRestore | null = null
   private _lastError: string | null = null
   private _obsVersion: string | null = null
   /** OBS Studio version from GetVersion — used for crash-safe recording format. */
@@ -348,7 +361,10 @@ export class OBSRecorder {
         this._lastError = null
         log.info('[OBSRecorder] OBS ready:', this._obsStudioVersion, 'via', tryHost)
 
-        if (replayBufferSeconds > 0) {
+        const { allowRecreate, outputsHot } = await this.captureSetupMutationFlags()
+        // Never write into the player's own profile; only UpForge's profile is ours to change.
+        const onUpForgeProfile = await isUpForgeProfileActive(this._obs)
+        if (replayBufferSeconds > 0 && onUpForgeProfile) {
           this._obs.call('SetProfileParameter', {
             parameterCategory: 'SimpleOutput',
             parameterName: 'RecRBTime',
@@ -358,12 +374,11 @@ export class OBSRecorder {
           })
         }
 
-        const { allowRecreate, outputsHot } = await this.captureSetupMutationFlags()
-
         this._gameplaySceneIdentity = this.getSettings().obsGameplayScene ?? null
         const setup = await setupUpForgeScene(this._obs, this.getPrimaryGame?.() ?? 'valorant', {
-          // Never switch a user's live recording away from its current scene.
-          switchScene: !outputsHot && !this.getSettings().obsPreserveActiveScene,
+          // Connecting never changes the player's program scene; a match switches it and puts it back.
+          switchScene: false,
+          writeProfile: onUpForgeProfile,
           allowRecreate,
         })
         this._registerGameplayScene(setup.sceneIdentity)
@@ -373,7 +388,7 @@ export class OBSRecorder {
         this._lastCaptureGame = this.getPrimaryGame?.() ?? 'valorant'
 
         const recConfig = this.getRecordingConfig?.()
-        if (recConfig) {
+        if (recConfig && onUpForgeProfile) {
           const applyResult = await applyObsRecordingSettings(
             this._obs,
             recConfig,
@@ -384,6 +399,9 @@ export class OBSRecorder {
         }
 
         this.onConnectionChange?.(true)
+        if (this._playerObsRestore && !this._matchOwnedRecording && !this._recording) {
+          void this._restorePlayerObsState()
+        }
         if (this._disconnectedDuringRecording && this._matchOwnedRecording) {
           void this.reclaimActiveRecording().then((ok) => {
             if (ok) this.onRecoveredDuringMatch?.()
@@ -505,8 +523,11 @@ export class OBSRecorder {
       return result.setup ?? { ok: true, sceneCreated: false, inputCreated: false }
     }
     const { allowRecreate, outputsHot } = await this.captureSetupMutationFlags()
+    // A live stream or replay buffer keeps its scene; only an explicit repair may switch.
+    const live = outputsHot || await anyObsOutputActive(this._obs)
     const setup = await setupUpForgeScene(this._obs, game, {
-      switchScene: !outputsHot && (forceSwitchScene || !this.getSettings().obsPreserveActiveScene),
+      switchScene: !live && forceSwitchScene,
+      writeProfile: await isUpForgeProfileActive(this._obs),
       allowRecreate,
     })
     this._registerGameplayScene(setup.sceneIdentity)
@@ -545,6 +566,31 @@ export class OBSRecorder {
       log.warn('[OBSRecorder] Could not query current program scene:', err)
       return null
     }
+  }
+
+  /**
+   * One recovery attempt before refusing a match: after an OBS restart or repair the
+   * UpForge scene can have a new UUID, and the scene switch inside retarget is best-effort.
+   * Re-read the UpForge scene in the current collection and, when switching is allowed,
+   * select it again. Never adopts any other scene.
+   */
+  private async _recoverGameplayScene(allowSwitch: boolean): Promise<boolean> {
+    try {
+      const identity = await getUpForgeSceneIdentity(this._obs)
+      if (identity) this._registerGameplayScene(identity)
+      if (allowSwitch) {
+        await withTimeout(
+          this._obs.call('SetCurrentProgramScene', { sceneName: UPFORGE_SCENE_NAME }),
+          3000,
+          'OBS scene switch timed out',
+        )
+      }
+    } catch (err) {
+      log.warn('[OBSRecorder] Gameplay scene recovery failed:', err)
+    }
+    const ok = await this.isCurrentProgramSceneGameplay()
+    if (ok) log.info('[OBSRecorder] Recovered the UpForge gameplay scene before recording')
+    return ok
   }
 
   /** Fail closed: only the registered UpForge gameplay scene may become a match session. */
@@ -755,6 +801,10 @@ export class OBSRecorder {
       '[OBSRecorder] Released stale match ownership — OBS idle '
       + `(was recordingFlag=${this._recording} clipsOnly=${this._clipsOnlySession})`,
     )
+    // Snapshot while ownership is still known. Later unowned OBS events may
+    // replace _outputPath, but must not become this match's completed recording.
+    this._releasedMatchOutputPath = this._clipsOnlySession ? null : this._outputPath
+    markOwnedRecordingFile(this._releasedMatchOutputPath)
     this._matchOwnedRecording = false
     this._recording = false
     this._startedAt = null
@@ -812,6 +862,7 @@ export class OBSRecorder {
       return false
     }
     if (isObsTestRecording(this._obs)) return false
+    this._releasedMatchOutputPath = null
     this._matchOwnedRecording = true
     this._recording = true
     this._startedAt = recordingStartedAt
@@ -877,6 +928,8 @@ export class OBSRecorder {
 
   async applyRecordingSettings(config: RecorderConfig): Promise<ObsApplyResult | null> {
     if (!this._connected) return null
+    // Settings land at the next match start, once UpForge's own profile is active.
+    if (!(await isUpForgeProfileActive(this._obs))) return null
     const { outputsHot } = await this.captureSetupMutationFlags()
     const result = await applyObsRecordingSettings(this._obs, config, this._obsStudioVersion, { outputsHot })
     this._noteAppliedSettings(config, result)
@@ -905,7 +958,8 @@ export class OBSRecorder {
       const { captureWindow } = await retargetUpForgeCapture(
         this._obs,
         target,
-        this.retargetOptionsForGame(target),
+        // Scene switching belongs to match start, which restores the player's scene after.
+        { ...this.retargetOptionsForGame(target), switchScene: false },
       )
       this._lastCaptureGame = target
       log.info('[OBSRecorder] Capture retargeted to', target, '→', captureWindow)
@@ -1025,6 +1079,7 @@ export class OBSRecorder {
 
   start(game: string, config?: RecorderConfig, options?: { signal?: AbortSignal; isCancelled?: () => boolean }): Promise<void> {
     if (this._startInFlight && !this._startContext?.isCancelled()) return this._startInFlight
+    this._releasedMatchOutputPath = null
     const context = {
       cancelled: false,
       isCancelled: (): boolean => context.cancelled || options?.signal?.aborted === true || options?.isCancelled?.() === true,
@@ -1114,15 +1169,38 @@ export class OBSRecorder {
       if (game === 'overstep' && !supportsHybridMp4(this._obsStudioVersion)) throw new Error('Overstep playback requires OBS Studio 30.2 or later for crash-safe MP4 recording. Update OBS before starting a new match.')
       // Game/window capture only — never desktop (privacy / policy safe when alt-tabbing)
       this._startDiagnostics.stage = 'capture_setup'
-      await retargetUpForgeCapture(this._obs, game, this.retargetOptionsForGame(game, true))
+      // Anything live (stream, player recording, replay buffer) keeps the player's
+      // profile and scene untouched. Otherwise UpForge uses its own profile and
+      // remembers what to put back once the match output stops.
+      const live = await anyObsOutputActive(this._obs)
+      checkCancelled()
+      const sceneOptions = this.retargetOptionsForGame(game, true)
+      const previousScene = !live && sceneOptions.switchScene !== false
+        ? await this._currentProgramSceneName()
+        : null
+      const profile = live ? null : await enterUpForgeObsProfile(this._obs)
+      const ownProfile = profile?.active === true
+      this._rememberPlayerObsState({
+        profileName: profile?.active ? profile.previousProfile : null,
+        sceneName: previousScene,
+      })
+      checkCancelled()
+      await retargetUpForgeCapture(this._obs, game, { ...sceneOptions, switchScene: !live && sceneOptions.switchScene !== false })
       checkCancelled()
       this._lastCaptureGame = game
-      if (!(await this.isCurrentProgramSceneGameplay())) {
+      if (
+        !(await this.isCurrentProgramSceneGameplay())
+        && !(await this._recoverGameplayScene(!live && sceneOptions.switchScene !== false))
+      ) {
         throw new Error('Switch OBS to the registered UpForge gameplay scene before starting match capture.')
       }
       checkCancelled()
 
-      if (config) {
+      if (config && !ownProfile) {
+        // Player profile is active (OBS was live or would not switch): record with their settings.
+        log.info('[OBSRecorder] Recording with the player OBS profile unchanged')
+        this._startupWarning = 'OBS was busy, so UpForge recorded with your own OBS settings and folder.'
+      } else if (config) {
         this._startDiagnostics.stage = 'output_settings'
         const applyResult = await applyObsRecordingSettings(this._obs, config, this._obsStudioVersion)
         checkCancelled()
@@ -1138,7 +1216,7 @@ export class OBSRecorder {
           ? `${applyResult.outputWidth}×${applyResult.outputHeight}`
           : config.quality
         log.info(`[OBSRecorder] Recording canvas synced: ${resLabel} @ ${config.fps ?? 30} fps (${config.quality})`)
-      } else {
+      } else if (ownProfile) {
         const savePath = join(app.getPath('userData'), 'recordings')
         await this._obs.call('SetProfileParameter', {
           parameterCategory: 'SimpleOutput',
@@ -1242,10 +1320,11 @@ export class OBSRecorder {
       // Begin polling Riot Live Client API for kill events
       if (game !== 'overstep') this._startLiveKillPoll()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = describeObsError(err)
       this._lastError = msg
       // Cleanup belongs to this operation; it must not cancel a newer queued start.
       if (this._matchOwnedRecording) await this._requestStop(isCancelled())
+      else await this._restorePlayerObsState()
       this._verifyingStart = false
       if (!isCancelled() && !this._recordingFailure) this.onStatusChange?.(false, msg, 'start')
       if (err instanceof ActivationError) {
@@ -1410,7 +1489,29 @@ export class OBSRecorder {
       // A queued match does not own an onboarding check's output.
       if (!this._matchOwnedRecording && !this._recording) return Promise.resolve(null)
     }
+    // Match-end and watchdog callers must never stop an unrelated OBS recording.
+    // Keep returning an existing operation while our own file finishes closing.
+    if (!this._matchOwnedRecording && !this._stopInFlight) {
+      const filePath = this._releasedMatchOutputPath
+      if (!filePath) return Promise.resolve(null)
+      this._stopInFlight = this._finalizeReleasedMatchFile(filePath)
+        .finally(() => { this._stopInFlight = null })
+      return this._stopInFlight
+    }
     return this._requestStop(false, true)
+  }
+
+  /** Finalize only the saved match file; current OBS output may belong to the user. */
+  private async _finalizeReleasedMatchFile(filePath: string): Promise<string | null> {
+    this._stopRecordingMonitors()
+    this._noteRecordingStopped()
+    try {
+      await this._finalizeRecordingFile(filePath, true)
+      return filePath
+    } catch (err) {
+      this._markRecordingFailure(describeObsError(err), 'stop')
+      return null
+    }
   }
 
   /** `retry`: keep retrying (match end / watchdog). Start-path cleanup fails fast instead. */
@@ -1464,13 +1565,7 @@ export class OBSRecorder {
   /** One stop attempt; throws on failure without marking the recording failed. */
   private async _stopAttempt(shutdownRequest?: Promise<{ outputPath?: string }>, suppressStoppedStatus = false): Promise<string | null> {
     const ownsMatchFile = this._matchOwnedRecording && !this._clipsOnlySession
-    this._stopProgressWatch()
-    this._stopReconnectLoop()
-    if (this._recordInactiveSettleTimer) {
-      clearTimeout(this._recordInactiveSettleTimer)
-      this._recordInactiveSettleTimer = null
-    }
-    this._stopLiveKillPoll()
+    this._stopRecordingMonitors()
     if (shutdownRequest) {
       const response = await withTimeout(shutdownRequest, 5000, 'OBS stop request timed out. Restart OBS.')
       if (response.outputPath) this._outputPath = response.outputPath
@@ -1512,22 +1607,66 @@ export class OBSRecorder {
     this._noteRecordingStopped()
     // After a crash the file only exists if OBS got to write it; the match-end path scan handles the rest.
     if (this._outputPath && (!obsGone || existsSync(this._outputPath))) {
-      const ready = await this._waitForRecordingFile(this._outputPath)
-      if (!ready) {
-        if (!ownsMatchFile || this._recordingFailure || suppressStoppedStatus) {
-          throw new Error(`OBS recording file did not finalize: ${this._outputPath}. Restart OBS before recording another match.`)
-        }
-        this._finalizingOutputPath = this._outputPath
-        log.info('[OBSRecorder] Stopped output is still finalizing; retaining it for background recovery:', this._outputPath)
-      } else this._finalizingOutputPath = null
+      await this._finalizeRecordingFile(this._outputPath, ownsMatchFile && !suppressStoppedStatus)
     }
     // A capture failure already sent the stopped state and its error. Successful
     // cleanup must not report that same failure again as a separate stop error.
     if (!this._recordingFailure && !suppressStoppedStatus) {
       this.onStatusChange?.(false, undefined, this._verifyingStart ? 'start' : 'stop')
     }
+    await this._restorePlayerObsState()
     log.info('[OBSRecorder] Recording stop confirmed. Output:', this._outputPath)
     return this._outputPath
+  }
+
+  private async _currentProgramSceneName(): Promise<string | null> {
+    try {
+      const program = await this._obs.call('GetCurrentProgramScene') as { currentProgramSceneName?: string }
+      const name = program.currentProgramSceneName ?? null
+      return name && name !== UPFORGE_SCENE_NAME ? name : null
+    } catch {
+      return null
+    }
+  }
+
+  /** Keep the earliest player state: a retried start must not remember UpForge's own profile. */
+  private _rememberPlayerObsState(next: PlayerObsRestore): void {
+    const pending = this._playerObsRestore
+    const merged = {
+      profileName: pending?.profileName ?? next.profileName,
+      sceneName: pending?.sceneName ?? next.sceneName,
+    }
+    this._playerObsRestore = merged.profileName || merged.sceneName ? merged : null
+  }
+
+  /** Best effort: put back the player's OBS profile and scene once nothing UpForge owns is live. */
+  private async _restorePlayerObsState(): Promise<void> {
+    const pending = this._playerObsRestore
+    if (!pending || !this._connected) return
+    if (await restorePlayerObsState(this._obs, pending, UPFORGE_SCENE_NAME)) {
+      if (this._playerObsRestore === pending) this._playerObsRestore = null
+    }
+  }
+
+  private _stopRecordingMonitors(): void {
+    this._stopProgressWatch()
+    this._stopReconnectLoop()
+    if (this._recordInactiveSettleTimer) {
+      clearTimeout(this._recordInactiveSettleTimer)
+      this._recordInactiveSettleTimer = null
+    }
+    this._stopLiveKillPoll()
+  }
+
+  private async _finalizeRecordingFile(filePath: string, allowDeferred: boolean): Promise<void> {
+    const ready = await this._waitForRecordingFile(filePath)
+    if (!ready) {
+      if (!allowDeferred || this._recordingFailure) {
+        throw new Error(`OBS recording file did not finalize: ${filePath}. Restart OBS before recording another match.`)
+      }
+      this._finalizingOutputPath = filePath
+      log.info('[OBSRecorder] Stopped output is still finalizing; retaining it for background recovery:', filePath)
+    } else this._finalizingOutputPath = null
   }
 
   forceStop(): void {

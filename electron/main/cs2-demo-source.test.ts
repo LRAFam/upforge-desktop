@@ -12,6 +12,9 @@ import { resetCs2IdentityState, setKnownCs2Identity } from './cs2-identity-state
 import {
   cachedCs2DemoSource,
   collectCs2DemoBundle,
+  cs2DemoBundleReadError,
+  CS2_TIMELINE_DEATH_FIELDS,
+  HEADER_KEY,
   eventKey,
   nativeCs2DemoSource,
   ticksKey,
@@ -97,5 +100,28 @@ describe('CS2 demo worker plan', () => {
     const source = cachedCs2DemoSource(bundle)
     expect(() => source.event('player_hurt', ['team_num'], ['total_rounds_played', 'is_warmup_period'])).toThrow('no hurt events')
     expect(() => source.event('not_planned', [], [])).toThrow('not in worker plan')
+  })
+})
+
+describe('cs2DemoBundleReadError', () => {
+  const deathKey = eventKey('player_death', [...CS2_TIMELINE_DEATH_FIELDS.playerExtra], [...CS2_TIMELINE_DEATH_FIELDS.otherExtra])
+
+  it('returns the parser error when player_death could not be read (demo format change)', () => {
+    expect(cs2DemoBundleReadError({
+      [HEADER_KEY]: { ok: true, value: {} },
+      [deathKey]: { ok: false, error: 'unknown field encoder' },
+    })).toBe('unknown field encoder')
+  })
+
+  it('returns the header error first', () => {
+    expect(cs2DemoBundleReadError({ [HEADER_KEY]: { ok: false, error: 'bad header' } })).toBe('bad header')
+  })
+
+  it('is null when the core calls worked, even if an optional event failed', () => {
+    expect(cs2DemoBundleReadError({
+      [HEADER_KEY]: { ok: true, value: {} },
+      [deathKey]: { ok: true, value: [] },
+      [eventKey('bomb_defused', [], ['total_rounds_played'])]: { ok: false, error: 'missing' },
+    })).toBeNull()
   })
 })

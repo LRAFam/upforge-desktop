@@ -74,13 +74,26 @@ export function chartGeometry(series: EloPoint[], box: ChartBox): ChartGeometry 
   return { points, line, area, min, max, xAt: t => round(xAt(t)) }
 }
 
-/** First-half vs second-half averages of a metric (oldest first). Null when fewer than 2 values. */
+/** Fewest values on each side of a first-half vs second-half comparison. Fewer is not a trend. */
+export const MIN_TREND_SIDE = 3
+
+/**
+ * First-half vs second-half averages of a metric (oldest first). Null with fewer than
+ * MIN_TREND_SIDE values per half, so no trend or "Up/Down" is shown from one or two matches.
+ */
 export function halfDelta(values: Array<number | null | undefined>): { first: number; last: number } | null {
   const v = values.filter((x): x is number => typeof x === 'number' && Number.isFinite(x))
-  if (v.length < 2) return null
+  if (v.length < MIN_TREND_SIDE * 2) return null
   const split = Math.max(1, Math.floor(v.length / 2))
   const avg = (a: number[]) => a.reduce((s, x) => s + x, 0) / a.length
   return { first: avg(v.slice(0, split)), last: avg(v.slice(split)) }
+}
+
+/** "Up 4%" / "Down 2" / "Steady"; "Early read" when there is no trend yet (halfDelta was null). */
+export function trendDeltaLabel(v: number | null, suffix = ''): string {
+  if (v == null) return 'Early read'
+  if (Math.abs(v) < 0.05) return 'Steady'
+  return `${v > 0 ? 'Up' : 'Down'} ${Math.abs(Math.abs(v) >= 10 ? Math.round(v) : Number(v.toFixed(1)))}${suffix}`
 }
 
 /** SVG polyline points for a small sparkline. */

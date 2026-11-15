@@ -1403,7 +1403,7 @@ const noVideoHint = computed((): string => {
 
           <p v-if="!canSeekFromSpatial" class="text-[10px] text-amber-300/80">
             <template v-if="spatialPreviewAvailable">1 free death seek ·</template>
-            <button type="button" class="underline hover:text-amber-200" @click="openUpgrade">Upgrade for unlimited seeks</button>
+            <button type="button" class="underline hover:text-amber-200" @click="openUpgrade">Upgrade to seek from every death</button>
           </p>
         </div>
         <div v-if="uiV3 && askMounted && askId" v-show="askOpen" class="flex-1 min-h-0 overflow-y-auto scrollbar-hide px-5 py-4">

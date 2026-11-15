@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { blindAt, buildCs2RoundFacts, flashHitsFromSamples, humanizeCs2Place, markPistolRounds, type Cs2RoundFactsInput } from './cs2-round-facts'
+import { blindAt, buildCs2RoundFacts, cs2GrenadeThrowRows, flashHitsFromSamples, humanizeCs2Place, markPistolRounds, type Cs2RoundFactsInput } from './cs2-round-facts'
 
 const ME = 'me', T1 = 'ally1', T2 = 'ally2', E1 = 'enemy1', E2 = 'enemy2'
 const RATE = 64
@@ -122,6 +122,34 @@ describe('buildCs2RoundFacts', () => {
     expect(res.flashCounts).toEqual({ enemies: 1, teammates: 1 })
     expect(res.playerFlashes).toEqual({ thrown: 1, enemies: 1, teammates: 1, min_seconds: 1, enemy_seconds_avg: 2.5 })
     expect(buildCs2RoundFacts({ ...input, flashHits: null }).flashCounts).toBeNull()
+  })
+})
+
+describe('cs2GrenadeThrowRows', () => {
+  const fires = [
+    { tick: 1, user_steamid: ME, weapon: 'weapon_flashbang' },
+    { tick: 2, user_steamid: ME, weapon: 'weapon_ak47' },
+    { tick: 3, user_steamid: T1, weapon: 'weapon_smokegrenade' },
+  ]
+  it('prefers grenade_thrown rows when the demo has them', () => {
+    const thrown = [{ tick: 5, user_steamid: ME, weapon: 'flashbang' }]
+    expect(cs2GrenadeThrowRows(thrown, fires)).toBe(thrown)
+  })
+  it('falls back to grenade weapon_fire rows on Valve demos with no grenade_thrown event', () => {
+    expect(cs2GrenadeThrowRows([], fires)).toEqual([fires[0], fires[2]])
+    expect(cs2GrenadeThrowRows(null, fires)).toEqual([fires[0], fires[2]])
+  })
+  it('is not measured (null) when neither event can be read, never an empty "none thrown"', () => {
+    expect(cs2GrenadeThrowRows([], null)).toBeNull()
+    expect(cs2GrenadeThrowRows(null, null)).toBeNull()
+  })
+  it('leaves opening utility and thrown flashes absent when throws were not measured', () => {
+    const input = base()
+    input.deaths = [death(1600, E1, 2, ME, 3)]
+    input.grenades = cs2GrenadeThrowRows([], null)
+    const res = buildCs2RoundFacts(input)
+    expect(res.rounds[0]!.openingUtility).toBeUndefined()
+    expect(res.playerFlashes).toBeNull()
   })
 })
 

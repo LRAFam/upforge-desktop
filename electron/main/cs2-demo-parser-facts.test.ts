@@ -124,4 +124,65 @@ describe('CS2 demo round facts on the timeline', () => {
     expect(t.playerDeaths[0]).not.toHaveProperty('blind')
     expect(t.playerDeaths[0]!.spatial?.alliesNearby).toBeUndefined()
   })
+
+  it('reads grenade throws from weapon_fire on Valve demos with no grenade_thrown event', () => {
+    const base = vi.mocked(parseEvent).getMockImplementation()!
+    vi.mocked(parseEvent).mockImplementation((p, name, ...rest) => {
+      if (name === 'grenade_thrown') return []
+      if (name === 'weapon_fire') {
+        return [
+          { tick: FREEZE + 17 * RATE, user_steamid: ALLY, weapon: 'weapon_flashbang', total_rounds_played: 0, is_warmup_period: false },
+          { tick: FREEZE + 18 * RATE, user_steamid: ME, weapon: 'weapon_flashbang', total_rounds_played: 0, is_warmup_period: false },
+          { tick: FREEZE + 18 * RATE, user_steamid: ME, weapon: 'weapon_ak47', total_rounds_played: 0, is_warmup_period: false },
+        ]
+      }
+      return base(p, name, ...rest)
+    })
+    const t = buildCs2TimelineFromDemo(opts)!
+    // Opening duel (enemy kills the player at 20 s): two team flashes in the 5 s before it.
+    expect(t.roundSummaries[0]!.openingUtility).toEqual({ flashbang: 2 })
+    // Same count as match_stats (both read weapon_fire), not a false 0.
+    expect(t.match_stats?.utility_stats.flashes_thrown).toBe(1)
+    expect(t.playerFlashes?.thrown).toBe(1)
+  })
+
+  it('does not claim "no utility" when grenade throws cannot be read', () => {
+    const base = vi.mocked(parseEvent).getMockImplementation()!
+    vi.mocked(parseEvent).mockImplementation((p, name, ...rest) => {
+      if (name === 'grenade_thrown') return []
+      if (name === 'weapon_fire') throw new Error('unreadable')
+      return base(p, name, ...rest)
+    })
+    const t = buildCs2TimelineFromDemo(opts)!
+    expect(t.roundSummaries[0]).not.toHaveProperty('openingUtility')
+    expect(t.playerFlashes).toBeUndefined()
+  })
+
+  it('keeps callouts and teammate counts on a map with no radar', () => {
+    vi.mocked(parseHeader).mockReturnValue({ map_name: 'de_poseidon', playback_ticks: 128000, playback_time: 2000 })
+    const t = buildCs2TimelineFromDemo(opts)!
+    const spatial = t.playerDeaths[0]!.spatial!
+    expect(spatial).toMatchObject({ callout: 'Underpass', killerCallout: 'Topof Mid', alliesAlive: 1, alliesNearby: 1, isolated: false })
+    expect(spatial).not.toHaveProperty('norm')
+    // No radar to draw on: no heatmap events, but the facts still reach the upload.
+    expect(t.spatialSummary?.events ?? []).toHaveLength(0)
+    expect(prepareMatchDataForUpload(t)!.playerDeaths[0]!.spatial).toMatchObject({ callout: 'Underpass', alliesNearby: 1 })
+  })
+
+  it('places Cache deaths on the radar and takes the site from the bombsite place name', () => {
+    vi.mocked(parseHeader).mockReturnValue({ map_name: 'de_cache', playback_ticks: 128000, playback_time: 2000 })
+    const base = vi.mocked(parseEvent).getMockImplementation()!
+    vi.mocked(parseEvent).mockImplementation((p, name, ...rest) => {
+      const rows = base(p, name, ...rest)
+      if (name !== 'player_death') return rows
+      // World point in Mid on the radar boxes, but Valve says the player died on B site.
+      return (rows as Record<string, unknown>[]).map(r => r.user_X === 0 ? { ...r, user_last_place_name: 'BombsiteB' } : r)
+    })
+    const t = buildCs2TimelineFromDemo(opts)!
+    const spatial = t.playerDeaths[0]!.spatial!
+    expect(spatial.norm).toBeTruthy()
+    expect(spatial).toMatchObject({ callout: 'B site', site: 'B', alliesNearby: 1 })
+    expect(t.spatialSummary).toMatchObject({ map: 'de_cache' })
+    expect(t.spatialSummary?.events.find(e => e.type === 'death')).toMatchObject({ callout: 'B site', site: 'B', alliesNearby: 1 })
+  })
 })

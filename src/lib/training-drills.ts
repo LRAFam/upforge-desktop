@@ -36,9 +36,13 @@ const WEAKNESS_TO_SCENARIO: Record<string, TrainerScenarioKey> = {
   multi: 'switching',
   peek: 'duel',
   peeking: 'duel',
-  trade: 'switching',
-  trading: 'switching',
 }
+
+/**
+ * Findings with no proven trainer drill (API rulebook: `untraded` assigns nothing). Trading is about
+ * where you die relative to teammates, not aim, so these never map to an aim scenario.
+ */
+const NO_TRAINER_DRILL_KEYWORDS = ['trade', 'trading', 'traded']
 
 export const SCENARIO_LABELS: Record<string, string> = {
   flick: 'Flick Training',
@@ -64,8 +68,9 @@ export const SCENARIO_LABELS: Record<string, string> = {
   retake_crossfire: 'Retake Crossfire',
 }
 
-export function pickTrainingScenario(...texts: (string | null | undefined)[]): TrainerScenarioKey {
+export function pickTrainingScenario(...texts: (string | null | undefined)[]): TrainerScenarioKey | null {
   const blob = texts.filter(Boolean).join(' ').toLowerCase()
+  if (NO_TRAINER_DRILL_KEYWORDS.some(k => blob.includes(k))) return null
   for (const [keyword, scenario] of Object.entries(WEAKNESS_TO_SCENARIO)) {
     if (blob.includes(keyword)) return scenario
   }

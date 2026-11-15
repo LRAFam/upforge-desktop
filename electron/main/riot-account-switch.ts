@@ -49,3 +49,33 @@ export function decideRiotAccountSwitch(input: RiotAccountSwitchInput): RiotSwit
 
   return { action: 'prompt_manage', ...identity }
 }
+
+/**
+ * What to tell the player when the in-game Riot ID is not the active linked account.
+ * The match is always recorded (the upload carries the in-game Riot ID and PUUID); linking can
+ * happen afterwards. Skipping lost the first match of new players with a mistyped or new Riot ID.
+ */
+export function riotSwitchNotice(
+  decision: RiotSwitchDecision,
+  activateFailed = false,
+): { message: string; prompt: { name: string; tag: string; atCap: boolean } | null } | null {
+  if (decision.action === 'prompt_link') {
+    return {
+      message: `Recording this match. ${decision.name}#${decision.tag} is not linked to your UpForge account yet: link it from the prompt or Settings.`,
+      prompt: { name: decision.name, tag: decision.tag, atCap: false },
+    }
+  }
+  if (decision.action === 'prompt_manage') {
+    return {
+      message: `Recording this match. ${decision.name}#${decision.tag} is not linked and your plan has no open Riot account slots: switch or upgrade in Settings.`,
+      prompt: { name: decision.name, tag: decision.tag, atCap: true },
+    }
+  }
+  if (decision.action === 'activate' && activateFailed) {
+    return {
+      message: 'Recording this match, but switching to the in-game Riot account failed. Check your linked accounts in Settings.',
+      prompt: null,
+    }
+  }
+  return null
+}

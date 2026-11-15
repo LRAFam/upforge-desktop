@@ -117,6 +117,18 @@ export interface LolLinkedAccount {
   verified: boolean
 }
 
+/**
+ * The API can refuse with HTTP 200 + `success: false` (e.g. `riot_api_unavailable` while Riot access
+ * is pending). Treat that body as a failure so nothing claims "linked" when nothing was saved.
+ */
+export function apiRefusal(data: unknown, fallback: string): { error: string; code?: string } | null {
+  const d = (data && typeof data === 'object' ? data : null) as { success?: unknown; message?: unknown; error?: unknown } | null
+  if (d?.success !== false) return null
+  const code = typeof d.error === 'string' && d.error ? d.error : undefined
+  const message = typeof d.message === 'string' && d.message.trim() ? d.message.trim() : fallback
+  return { error: message, ...(code ? { code } : {}) }
+}
+
 /** Keep only well-formed rows from /api/lol-accounts. */
 export function parseLolAccounts(raw: unknown): LolLinkedAccount[] {
   if (!Array.isArray(raw)) return []
@@ -355,7 +367,7 @@ export class AuthManager {
     }
   }
 
-  async login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
+  async login(email: string, password: string): Promise<{ ok: boolean; error?: string; code?: string }> {
     log.info('[Auth] login() called')
     try {
       log.info('[Auth] posting to /api/login')
@@ -377,7 +389,7 @@ export class AuthManager {
       log.info('[Auth] login succeeded for user:', this._user?.name ?? user?.name)
       return { ok: true }
     } catch (err: unknown) {
-      const axiosErr = err as { code?: string; message?: string; response?: { status?: number; data?: { success?: boolean; error?: string; message?: string } } }
+      const axiosErr = err as { code?: string; message?: string; response?: { status?: number; data?: { success?: boolean; error?: string; message?: string; code?: string } } }
       log.error('[Auth] login error:', axiosErr.code, axiosErr.message, axiosErr.response?.status, JSON.stringify(axiosErr.response?.data))
       // ErrorHelper uses success/error; Laravel validation uses message.
       const data = axiosErr.response?.data
@@ -386,7 +398,29 @@ export class AuthManager {
         || (axiosErr.code === 'ENOTFOUND' ? 'Cannot reach UpForge servers — check your internet connection' : null)
         || axiosErr.message
         || 'Login failed'
-      return { ok: false, error: message }
+      // Pass the API's machine code through (e.g. `email_unverified`) so the sign-in screen can offer a fix.
+      const code = typeof data?.code === 'string' ? data.code : undefined
+      return code ? { ok: false, error: message, code } : { ok: false, error: message }
+    }
+  }
+
+  /**
+   * Signed-out resend of the verification email. The API always answers 200 with a generic message
+   * (it never says whether the address exists) and rate-limits per email and per IP.
+   */
+  async resendVerificationEmail(email: string): Promise<{ ok: boolean; message?: string; error?: string }> {
+    const trimmed = String(email ?? '').trim()
+    if (!trimmed) return { ok: false, error: 'Enter your email address first.' }
+    try {
+      const res = await this._api.post('/api/email/resend-verification-public', { email: trimmed })
+      const message = typeof res.data?.message === 'string' ? res.data.message : undefined
+      return { ok: true, message }
+    } catch (err: unknown) {
+      const e = err as { code?: string; response?: { status?: number; data?: { message?: string } } }
+      log.warn('[Auth] resend verification failed:', e.code, e.response?.status)
+      if (e.response?.status === 429) return { ok: false, error: 'Too many requests. Wait a few minutes, then try again.' }
+      if (e.response?.status === 422) return { ok: false, error: 'Enter a valid email address.' }
+      return { ok: false, error: 'Could not send the email. Check your connection and try again.' }
     }
   }
 
@@ -852,6 +886,8 @@ export class AuthManager {
     if (!this._api) return { ok: false, error: 'Not logged in' }
     try {
       const res = await this._api.post(`/api/riot-accounts/${id}/activate`)
+      const refused = apiRefusal(res.data, 'Failed to activate Riot account')
+      if (refused) return { ok: false, error: refused.error }
       const account = res.data?.account as RiotAccount | undefined
       if (account) {
         this.applyActiveRiotMirror(account)
@@ -872,6 +908,8 @@ export class AuthManager {
     if (!this._api) return { ok: false, error: 'Not logged in' }
     try {
       const res = await this._api.post('/api/riot-accounts', payload)
+      const refused = apiRefusal(res.data, 'Failed to link Riot account')
+      if (refused) return { ok: false, ...refused }
       const account = res.data?.account as RiotAccount | undefined
       await this.listRiotAccounts()
       if (account?.is_active) {
@@ -909,6 +947,8 @@ export class AuthManager {
     if (!this._api) return { ok: false, error: 'Not logged in' }
     try {
       const res = await this._api.patch(`/api/riot-accounts/${id}`, payload)
+      const refused = apiRefusal(res.data, 'Failed to update Riot account')
+      if (refused) return { ok: false, ...refused }
       const account = res.data?.account as RiotAccount | undefined
       await this.listRiotAccounts()
       if (account?.is_active) {
@@ -933,6 +973,8 @@ export class AuthManager {
     if (!this._api) return { ok: false, error: 'Not logged in' }
     try {
       const res = await this._api.post('/api/profile/update-riot-account', payload)
+      const refused = apiRefusal(res.data, 'Failed to link Riot account')
+      if (refused) return { ok: false, error: refused.error }
       const account = res.data?.riot_account as {
         riot_name?: string
         riot_tag?: string
@@ -997,6 +1039,8 @@ export class AuthManager {
     if (!this._api) return { ok: false, error: 'Not logged in' }
     try {
       const res = await this._api.post('/api/profile/lol-account', payload)
+      const refused = apiRefusal(res.data, 'Failed to link League account')
+      if (refused) return { ok: false, error: refused.error }
       const account = res.data?.lol_account as {
         riot_name?: string
         riot_tag?: string
@@ -1044,7 +1088,9 @@ export class AuthManager {
     const platform = String(input?.platform ?? '').trim().toUpperCase()
     if (!name || !/^[A-Z0-9]{2,6}$/.test(platform)) return { ok: false, error: 'Enter your Riot ID and pick your League server.' }
     try {
-      await this._api.post('/api/lol-accounts', { riot_name: name, riot_tag: tag, platform })
+      const res = await this._api.post('/api/lol-accounts', { riot_name: name, riot_tag: tag, platform })
+      const refused = apiRefusal(res?.data, 'Could not link that League account')
+      if (refused) return { ok: false, limit: refused.code === 'account_limit_reached', error: refused.error }
       await this.listLolAccounts()
       await this.fetchUser()
       return { ok: true }

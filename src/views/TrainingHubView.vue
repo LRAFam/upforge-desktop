@@ -1480,7 +1480,7 @@ const CATEGORY_ICON: Record<string, string> = {
 
       <UfDialog
         :open="showResultModal && !!lastResult"
-        kicker="Drill complete"
+        kicker="Run complete"
         :title="lastResult ? (SCENARIO_META[lastResult.scenario]?.label ?? lastResult.scenario) : ''"
         :width="560"
         @close="showResultModal = false"

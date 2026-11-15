@@ -543,7 +543,7 @@ export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary 
     type: 'death' | 'kill',
     ev: KillEvent,
   ) => {
-    if (!ev.spatial) return
+    if (!ev.spatial?.norm) return
     const bomb = type === 'death' && isBombKill(ev)
     const labelParts: string[] = []
     if (bomb) {

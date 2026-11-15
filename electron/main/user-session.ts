@@ -31,7 +31,6 @@ function persistUserOverlay(userId: number, settings: SettingsManager): void {
     const current = settings.get()
     const overlay = {
       lastInsight: current.lastInsight ?? null,
-      trainingConsent: current.trainingConsent === true,
     }
     fs.writeFileSync(userOverlayPath(userId), JSON.stringify(overlay, null, 2))
   } catch (err) {
@@ -48,14 +47,10 @@ function loadUserOverlay(userId: number, settings: SettingsManager): void {
     const raw = fs.readFileSync(userOverlayPath(userId), 'utf-8')
     const parsed = JSON.parse(raw) as {
       lastInsight?: import('./settings-manager').AppSettings['lastInsight']
-      trainingConsent?: boolean
     }
-    settings.save({
-      lastInsight: parsed.lastInsight ?? null,
-      trainingConsent: parsed.trainingConsent === true,
-    })
+    settings.save({ lastInsight: parsed.lastInsight ?? null })
   } catch {
-    settings.save({ lastInsight: null, trainingConsent: false })
+    settings.save({ lastInsight: null })
   }
 }
 
@@ -130,7 +125,7 @@ export function clearUserSession(deps: UserSessionDeps): void {
   deps.clipStore.setUserScope(null)
   deps.recordingsStore.setUserScope(null)
   setClipsMediaDir(deps.clipStore.getClipsMediaDir())
-  deps.settingsManager.save({ lastInsight: null, trainingConsent: false })
+  deps.settingsManager.save({ lastInsight: null })
 
   deps.onScopeChanged?.()
   deps.getMainWindow()?.webContents.send('session:user-changed', { userId: null })

@@ -11,11 +11,11 @@ export interface LobbyRow {
 /** Measured from the replay positions (AI `_fight_context`). */
 export interface DeadlockFight {
   nearby_units?: number
-  deaths_total?: number; deaths_alone?: number; deaths_outnumbered?: number; deaths_enemy_side?: number; deaths_traded?: number
+  deaths_total?: number; deaths_measured?: number; deaths_alone?: number; deaths_outnumbered?: number; deaths_enemy_side?: number; deaths_traded?: number
   team_kills?: number; kills_and_assists?: number; kill_participation_pct?: number | null
   /** Abilities cast in the window before each death (boon `abilities`); absent on older reviews. */
   abilities_measured?: boolean; ability_window_seconds?: number; deaths_no_ability?: number | null
-  deaths?: Array<{ time_seconds: number; killer?: string; allies_nearby?: number; enemies_nearby?: number; alone?: boolean; outnumbered?: boolean; side?: 'own' | 'middle' | 'enemy'; traded?: boolean; abilities_used?: string[] | null }>
+  deaths?: Array<{ time_seconds: number; killer?: string; allies_nearby?: number | null; enemies_nearby?: number | null; alone?: boolean; outnumbered?: boolean; side?: 'own' | 'middle' | 'enemy'; traded?: boolean; abilities_used?: string[] | null }>
 }
 
 export interface DeadlockReviewDetail {
@@ -116,14 +116,26 @@ export function abilityRows(detail: DeadlockReviewDetail | null) {
   return (detail?.match_stats?.abilities ?? []).map(a => ({ at: clock(a.time_seconds), name: a.ability, level: a.level }))
 }
 
+/** Replay team numbers for the two player teams; Mid Boss events can carry other values (e.g. 4). */
+const PLAYER_TEAMS = new Set([2, 3])
+
 export function midBossRows(detail: DeadlockReviewDetail | null) {
   const team = detail?.match_stats?.player_team
-  return (detail?.match_stats?.mid_boss ?? []).map(m => ({
-    at: clock(m.time_seconds),
-    // Only say whose it was when we know the player's team.
-    who: typeof team === 'number' && typeof m.team === 'number' ? (m.team === team ? 'Your team' : 'Enemy team') : 'Taken',
-    ours: typeof team === 'number' && m.team === team,
-  }))
+  return (detail?.match_stats?.mid_boss ?? []).map(m => {
+    // Only say whose it was when both teams are real player teams; anything else is just "Taken".
+    const known = typeof team === 'number' && PLAYER_TEAMS.has(team) && typeof m.team === 'number' && PLAYER_TEAMS.has(m.team)
+    return {
+      at: clock(m.time_seconds),
+      who: known ? (m.team === team ? 'Your team' : 'Enemy team') : 'Taken',
+      ours: known && m.team === team,
+    }
+  })
+}
+
+/** "1 teammate · 2 enemies nearby", or "positions not measured" when the replay had no fresh positions. */
+function nearbyText(allies: number | null | undefined, enemies: number | null | undefined): string {
+  if (typeof allies !== 'number' || typeof enemies !== 'number') return 'positions not measured'
+  return `${allies} ${allies === 1 ? 'teammate' : 'teammates'} · ${enemies} ${enemies === 1 ? 'enemy' : 'enemies'} nearby`
 }
 
 const SIDE: Record<string, string> = { own: 'your side', middle: 'middle of the map', enemy: 'enemy side' }
@@ -137,7 +149,7 @@ export function deathRows(detail: DeadlockReviewDetail | null) {
       at: clock(d.time_seconds),
       by: d.killer && d.killer !== 'non-hero' ? d.killer : '',
       context: [
-        `${d.allies_nearby ?? 0} ${d.allies_nearby === 1 ? 'teammate' : 'teammates'} · ${d.enemies_nearby ?? 0} ${d.enemies_nearby === 1 ? 'enemy' : 'enemies'} nearby`,
+        nearbyText(d.allies_nearby, d.enemies_nearby),
         d.side ? SIDE[d.side] : '',
         d.traded ? 'traded' : '',
         // Only when measured: null/absent means the replay didn't say.
@@ -160,15 +172,19 @@ export function fightFacts(detail: DeadlockReviewDetail | null): Array<{ label: 
   if (typeof f.kill_participation_pct === 'number' && f.team_kills) {
     out.push({ label: 'Kill participation', value: `${f.kill_participation_pct}% (${f.kills_and_assists ?? 0} of ${f.team_kills})` })
   }
+  // The counts cover only deaths whose positions were measured; divide by that, and say so when it is fewer.
   const total = f.deaths_total ?? 0
-  if (total > 0) {
-    out.push({ label: 'No teammate nearby', value: `${f.deaths_alone ?? 0} of ${total} deaths` })
-    out.push({ label: 'Outnumbered', value: `${f.deaths_outnumbered ?? 0} of ${total} deaths` })
-    out.push({ label: 'On the enemy side', value: `${f.deaths_enemy_side ?? 0} of ${total} deaths` })
-    out.push({ label: 'Traded within 10 s', value: `${f.deaths_traded ?? 0} of ${total} deaths` })
+  const measured = typeof f.deaths_measured === 'number' ? f.deaths_measured : total
+  if (measured > 0) {
+    const of = (n: number | undefined) => `${n ?? 0} of ${measured} ${measured < total ? 'measured ' : ''}deaths`
+    out.push({ label: 'No teammate nearby', value: of(f.deaths_alone) })
+    out.push({ label: 'Outnumbered', value: of(f.deaths_outnumbered) })
+    out.push({ label: 'On the enemy side', value: of(f.deaths_enemy_side) })
+    out.push({ label: 'Traded within 10 s', value: of(f.deaths_traded) })
     if (f.abilities_measured && typeof f.deaths_no_ability === 'number') {
-      out.push({ label: `No ability in the ${f.ability_window_seconds ?? 8} s before`, value: `${f.deaths_no_ability} of ${total} deaths` })
+      out.push({ label: `No ability in the ${f.ability_window_seconds ?? 8} s before`, value: of(f.deaths_no_ability) })
     }
+    if (measured < total) out.push({ label: 'Positions measured', value: `${measured} of ${total} deaths` })
   }
   return out
 }

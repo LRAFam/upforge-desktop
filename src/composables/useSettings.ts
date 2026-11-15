@@ -526,7 +526,6 @@ function createSettings() {
       scopedMultiplier: 1.0,
     },
     autoOpenBrowser: false,
-    trainingConsent: false,
     crosshairSettings: {
       colorIndex: 1,
       customColor: '00FF6B',
@@ -875,10 +874,41 @@ function createSettings() {
     }, 500)
   }
   
-  async function toggleTrainingConsent(): Promise<void> {
-    settings.trainingConsent = !settings.trainingConsent
-    await window.api.settings.save({ trainingConsent: settings.trainingConsent })
-    showSaved()
+  // AI training: one account setting on the server (ai_training_opt_out, default false = included).
+  // null = not loaded / unknown, so the toggle is disabled rather than showing a guess.
+  const aiTrainingOn = ref<boolean | null>(null)
+  const aiTrainingBusy = ref(false)
+  const aiTrainingError = ref('')
+  const aiTrainingLoaded = ref(false)
+
+  async function loadAiTraining(): Promise<void> {
+    try {
+      const { optOut } = await window.api.aiTraining.get()
+      aiTrainingOn.value = optOut === null ? null : !optOut
+    } catch {
+      aiTrainingOn.value = null
+    } finally {
+      aiTrainingLoaded.value = true
+    }
+  }
+
+  async function toggleAiTraining(): Promise<void> {
+    if (aiTrainingOn.value === null || aiTrainingBusy.value) return
+    const before = aiTrainingOn.value
+    const next = !before
+    aiTrainingOn.value = next
+    aiTrainingBusy.value = true
+    aiTrainingError.value = ''
+    try {
+      const { optOut } = await window.api.aiTraining.set(!next)
+      aiTrainingOn.value = optOut === null ? next : !optOut
+      showSaved()
+    } catch {
+      aiTrainingOn.value = before
+      aiTrainingError.value = "Couldn't save that. Check your connection and try again."
+    } finally {
+      aiTrainingBusy.value = false
+    }
   }
   
   function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence' | 'autoSwitchGameTab'>): void {
@@ -1063,6 +1093,10 @@ function createSettings() {
     window.open('https://upforge.gg', '_blank')
   }
   
+  function openPrivacyAiTraining(): void {
+    window.open('https://upforge.gg/privacy#ai-training', '_blank')
+  }
+
   function openHelp(): void {
     window.open('https://upforge.gg/help', '_blank')
   }
@@ -1231,6 +1265,7 @@ function createSettings() {
       accountLinkFocus.value = linkQuery
     }
     window.addEventListener('keydown', handleKeydown)
+    void loadAiTraining()
     // UI v3: start the slow profile request now instead of after the other awaits below.
     const earlyProfile = uiV3.value ? window.api.profile.get().catch(() => null) : null
     try {
@@ -1533,7 +1568,12 @@ function createSettings() {
     toggleLaunchOnStartup,
     toggleMode,
     toggleSection,
-    toggleTrainingConsent,
+    toggleAiTraining,
+    openPrivacyAiTraining,
+    aiTrainingOn,
+    aiTrainingBusy,
+    aiTrainingError,
+    aiTrainingLoaded,
     toggles,
     upToDateTimer,
     updatePercent,

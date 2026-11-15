@@ -38,7 +38,6 @@ export interface UploadOptions {
   /** Awaited after S3 upload, before complete() — e.g. wait for Riot enrich. */
   beforeComplete?: () => Promise<void>
   /** Opt-in for anonymised training use of archived VODs (storage is separate). */
-  trainingConsent?: boolean
   /** Supported rank and client-version context for coaching. */
   coachingExtras?: CoachingSubmissionExtras
   /** Explicit request for this recording, optional for automatic submissions. */
@@ -636,7 +635,6 @@ export class UploadManager {
         enemy_agents:    completeCtx.enemy_agents,
         rank_snapshot:   completeCtx.rank_snapshot,
         file_size_bytes: totalBytes,
-        training_consent: opts.trainingConsent === true,
       }),
       token,
     )

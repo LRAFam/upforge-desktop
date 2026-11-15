@@ -1,5 +1,8 @@
-/** Values at or above this are treated as unlimited (API may send PHP_INT_MAX). */
+/** Values at or above this mean an admin account (API sends PHP_INT_MAX). Every paid plan has a numeric cap. */
 const UNLIMITED_THRESHOLD = 1_000_000
+
+/** Admin accounts only — paid plans always show their number. */
+export const ADMIN_NO_CAP = 'No cap (admin)'
 
 export function isUnlimitedQuota(value: number | null | undefined): boolean {
   if (value == null) return false
@@ -13,7 +16,7 @@ export function sharedAnalysesPoolHint(
 ): string {
   if (limit === undefined) return 'Coaching usage unavailable'
   if (limit === null || isUnlimitedQuota(limit)) {
-    return 'Unlimited coaching analyses · shared across all games'
+    return 'No cap (admin) · shared across all games'
   }
   if (used == null) return 'Coaching usage unavailable'
   const remaining = Math.max(0, limit - used)
@@ -27,8 +30,7 @@ export function analysesLeftSidebarLabel(
   limit: number | null | undefined,
 ): string {
   if (limit === undefined) return 'Usage unavailable'
-  if (limit === null) return 'Unlimited analyses'
-  if (isUnlimitedQuota(limit)) return 'Unlimited analyses'
+  if (limit === null || isUnlimitedQuota(limit)) return ADMIN_NO_CAP
   if (used == null) return 'Usage unavailable'
   const remaining = Math.max(0, limit - used)
   const noun = remaining === 1 ? 'analysis' : 'analyses'

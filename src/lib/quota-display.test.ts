@@ -20,12 +20,13 @@ describe('quota-display', () => {
     expect(analysesLeftSidebarLabel(14, 15)).toBe('1 analysis left')
   })
 
-  it('sidebar label unlimited', () => {
-    expect(analysesLeftSidebarLabel(0, 2_000_000)).toBe('Unlimited analyses')
+  it('admin-sized limits say "No cap (admin)", never "Unlimited"', () => {
+    expect(analysesLeftSidebarLabel(0, 2_000_000)).toBe('No cap (admin)')
+    expect(sharedAnalysesPoolHint(0, Number.MAX_SAFE_INTEGER)).toBe('No cap (admin) · shared across all games')
   })
 
-  it('explicit null remains the API unlimited value', () => {
-    expect(analysesLeftSidebarLabel(2, null)).toBe('Unlimited analyses')
+  it('explicit null (admin only on the API) also reads "No cap (admin)"', () => {
+    expect(analysesLeftSidebarLabel(2, null)).toBe('No cap (admin)')
   })
 
   it('sidebar tone escalates near and at limit', () => {

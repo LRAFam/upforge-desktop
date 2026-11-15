@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agentPortraitUrl, kdaText, metaLine, postGameFocusStrip, progressWidth, resultTone, resultWord, scoreText, toneColor, type PostGameSummary } from './post-game-v3'
+import { agentPortraitUrl, kdaText, metaLine, postGameFocusStrip, postGameFocusStripForGame, progressWidth, resultTone, resultWord, scoreText, toneColor, type PostGameSummary } from './post-game-v3'
 
 const s = (o: Partial<PostGameSummary>): PostGameSummary =>
   ({ result: null, ally: null, enemy: null, kills: null, deaths: null, assists: null, ...o })
@@ -82,5 +82,12 @@ describe('postGameFocusStrip result', () => {
     expect(postGameFocusStrip(f('achieved'))!.label).toBe('Focus complete · Opening deaths')
     expect(postGameFocusStrip(f('missed'))!.label).toBe('Not yet · Opening deaths')
     expect(postGameFocusStrip(f('active'))!.label).toBe('Opening deaths')
+  })
+
+  it('shows the Valorant focus strip only after a Valorant match', () => {
+    const focus = { label: 'First deaths', checks: [{ hit: true }], progress: { games_played: 1, hits: 1, games_required: 3, hits_required: 2, status: 'active' } }
+    expect(postGameFocusStripForGame(focus, 'valorant')?.label).toBe('First deaths')
+    for (const game of ['cs2', 'deadlock', 'lol']) expect(postGameFocusStripForGame(focus, game)).toBeNull()
+    expect(postGameFocusStripForGame(focus, null)?.label).toBe('First deaths')
   })
 })

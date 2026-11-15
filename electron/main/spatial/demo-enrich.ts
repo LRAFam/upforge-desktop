@@ -41,6 +41,11 @@ function resolveSiteLabel(mapName: string | null, norm: { x: number; y: number }
     if (norm.x > 0.55 && norm.y < 0.5) return 'B'
     return 'Mid'
   }
+  if (key === 'de_cache') {
+    if (norm.x < 0.5 && norm.y < 0.38) return 'A'
+    if (norm.x < 0.5 && norm.y > 0.72) return 'B'
+    return 'Mid'
+  }
   return null
 }
 
@@ -86,7 +91,7 @@ export function applyDemoSpatialEnrichment(match: MatchData): void {
   const events: SpatialTimelineEvent[] = []
 
   const push = (type: 'death' | 'kill', ev: KillEvent) => {
-    if (!ev.spatial) return
+    if (!ev.spatial?.norm) return
     const label = type === 'death'
       ? `Died @ ${ev.spatial.callout}${ev.killerName && ev.killerName !== 'You' ? ` vs ${ev.killerName}` : ''}`
       : `Kill @ ${ev.spatial.callout}`

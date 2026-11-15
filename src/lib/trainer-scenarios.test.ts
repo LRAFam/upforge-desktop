@@ -33,6 +33,11 @@ describe('pickTrainingScenario', () => {
     expect(Object.keys(CATEGORY_TO_TRAINER_SCENARIO)).not.toContain('utility_usage')
     expect(pickTrainingScenario('game sense')).toBe('switching')
   })
+  it('gives trading findings no aim drill (the API rulebook has no proven drill for them)', () => {
+    expect(pickTrainingScenario('Cut down on untraded deaths')).toBeNull()
+    expect(pickTrainingScenario('Die where a teammate can trade you')).toBeNull()
+    expect(pickTrainingScenario('flick timing')).toBe('flick')
+  })
 })
 
 describe('beta drills', () => {

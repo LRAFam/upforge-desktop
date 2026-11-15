@@ -9,6 +9,7 @@ import TrainingIcon from '../components/training/TrainingIcon.vue'
 import { useRouter } from 'vue-router'
 import { useTrainerResultStore } from '../stores/trainerResult'
 import type { TrainingHistory } from '../env'
+import { trainerSyncLine, type TrainerSyncOutcome } from '../lib/trainer-sync'
 import { uiV3 } from '../lib/ui-v3'
 import { scenarioIconUrl } from '../lib/training-icons'
 import UfButton from '../components/v3/UfButton.vue'
@@ -52,6 +53,17 @@ const SCENARIO_ROTATION = [
 // ── Computed ─────────────────────────────────────────────────────────────────
 const result = computed(() => store.result!)
 const isPB = computed(() => !!trainingComparisonRequest(result.value) && store.isPB)
+
+// Did this run reach the API, and what did it do to the assigned drill (attempt n of 3 / passed → next tier)?
+const syncOutcome = ref<TrainerSyncOutcome | null>(null)
+const syncLine = computed(() => trainerSyncLine(syncOutcome.value, !!store.launchConfig?.user_drill_id, 10))
+async function loadSyncStatus() {
+  const r = store.result
+  syncOutcome.value = null
+  if (!r) return
+  const outcome = await window.api.trainer.getSyncStatus?.(r.scenario, r.completed_at).catch(() => null)
+  if (store.result === r && outcome) syncOutcome.value = outcome
+}
 
 const scenarioMeta = computed(() =>
   SCENARIO_META[result.value?.scenario ?? ''] ?? { label: result.value?.scenario ?? '', color: 'text-gray-400', accent: '#9ca3af' }
@@ -346,6 +358,13 @@ async function loadComparison() {
 onMounted(async () => {
   if (!store.result) return
 
+  life.own(window.api.on('trainer:session-synced', (raw: unknown) => {
+    const o = raw as TrainerSyncOutcome | null
+    const r = store.result
+    if (o && r && o.key === `${r.scenario}|${r.completed_at}`) syncOutcome.value = o
+  }))
+  void loadSyncStatus()
+
   await loadComparison()
   drawHeatmap()
 
@@ -354,6 +373,7 @@ onMounted(async () => {
     const r = raw as typeof store.result
     if (!r) return
     store.setResult(r, launchConfigFromInfo(launch) ?? store.launchConfig, null)
+    void loadSyncStatus()
     launched.value = false
     trainerNotice.value = null
     await loadComparison()
@@ -405,6 +425,7 @@ onMounted(async () => {
             <span v-else-if="history?.by_scenario?.[result.scenario]?.sessions?.length === 0" class="uf-t4">First run with these settings</span>
             <span v-if="isPB" class="uf-t4" style="color: var(--uf-gold)">★ New personal best</span>
           </span>
+          <span class="uf-t4" role="status" :style="{ color: syncLine.tone === 'win' ? 'var(--uf-win)' : syncLine.tone === 'loss' ? 'var(--uf-loss)' : undefined }">{{ syncLine.text }}</span>
         </div>
         <div class="uf-tr-coach uf-rise uf-d1s">
           <span class="uf-label">Session feedback</span>

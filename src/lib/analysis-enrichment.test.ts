@@ -72,3 +72,18 @@ describe('UpForge score on GET /api/analysis/{id}', () => {
     expect([none.upforge_score, none.upforge_score_breakdown]).toEqual([null, null])
   })
 })
+
+describe('video evidence (#613)', () => {
+  it('reads N of M from stages.moments.video_evidence and keeps per-moment evidence_source', () => {
+    const detail = enrichAnalysisDetail({
+      stages: { moments: { video_evidence: { video_moments: 3, requested_moments: 8, match_data_moments: 5 } } },
+      duel_moments: [{ moment_id: 'm1', round: 2, evidence_source: 'match_data' }],
+    })
+    expect(detail.video_evidence).toEqual({ video_moments: 3, requested_moments: 8 })
+    expect(detail.duel_moments?.[0].evidence_source).toBe('match_data')
+  })
+
+  it('is null when the API does not pass video_evidence (older reports)', () => {
+    expect(enrichAnalysisDetail({ summary: 'x' }).video_evidence).toBeNull()
+  })
+})

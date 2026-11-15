@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import type { AuthManager } from '../auth-manager'
 import { CoachFlowCachedReplay, CoachFlowDemoRun, readCachedRun, RUN_BUDGET_USD, type FlowEvent } from '../coach-flow-demo'
 import { resolveCloudFirstPlaybackUrl } from '../recording-playback'
+import { ffmpegPath } from '../clip-extractor'
 
 const AI_URL = (process.env['COACH_FLOW_AI_URL'] || 'http://127.0.0.1:8011').replace(/\/$/, '')
 
@@ -56,7 +57,8 @@ export function setupCoachFlowDemoHandlers(ipcMain: IpcMain, auth: AuthManager, 
       })).url,
       aiUrl: AI_URL,
       aiKey: process.env['COACH_FLOW_AI_KEY'] || null,
-      ffmpeg: process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg',
+      // Bundled binary in packaged builds; a bare name only resolves via PATH in dev.
+      ffmpeg: ffmpegPath(),
       emit,
       cacheDir,
       habits: async () => (await auth.fetchRecurringInsights(5))

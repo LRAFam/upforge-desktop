@@ -66,6 +66,7 @@ function mockRecorder(obs: ReturnType<typeof mockObsClient>, connected = true) {
     isConnected: () => connected,
     connect: vi.fn(async () => ({ ok: true as const, version: '5.0.0' })),
     getObsClient: () => obs,
+    isCurrentProgramSceneGameplay: vi.fn(async () => true),
     setupScene: vi.fn(),
   }
 }
@@ -106,6 +107,27 @@ describe('runObsPreflight', () => {
     expect(result.ok).toBe(false)
     expect(result.errorCode).toBe('obs_scene_missing')
     expect(result.userMessage).toMatch(/Repair Setup/)
+  })
+
+  it('does not fail on another active scene when UpForge switches scenes itself at match start', async () => {
+    const obs = mockObsClient()
+    const recorder = mockRecorder(obs)
+    recorder.isCurrentProgramSceneGameplay.mockResolvedValue(false)
+    const result = await runObsPreflight({ obsRecorder: recorder as never, game: 'valorant', password: '', port: 4455, sleep: async () => {} })
+    expect(result.ok).toBe(true)
+    expect(result.steps.map((s) => s.step)).not.toContain('scene_active')
+  })
+
+  it('identifies a wrong active scene before starting any test recording when the player keeps their scene', async () => {
+    const obs = mockObsClient()
+    const recorder = mockRecorder(obs)
+    recorder.isCurrentProgramSceneGameplay.mockResolvedValue(false)
+    const result = await runObsPreflight({ obsRecorder: recorder as never, game: 'valorant', password: '', port: 4455, includeTestRecording: true, requireActiveGameplayScene: true })
+    expect(result.ok).toBe(false)
+    expect(result.errorCode).toBe('obs_wrong_scene')
+    expect(result.userMessage).toMatch(/Select.*UpForge.*scene/)
+    expect(obs.call).not.toHaveBeenCalledWith('StartRecord')
+    expect(obs.call).not.toHaveBeenCalledWith('SetCurrentProgramScene', expect.anything())
   })
 
   it('fails when capture source type is invalid', async () => {

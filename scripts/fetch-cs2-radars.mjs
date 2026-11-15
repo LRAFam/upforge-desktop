@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const outDir = join(__dirname, '..', 'resources', 'spatial', 'cs2', 'radars')
 
-const MAPS = ['de_dust2', 'de_mirage', 'de_inferno', 'de_nuke', 'de_overpass', 'de_ancient', 'de_anubis']
+const MAPS = ['de_dust2', 'de_mirage', 'de_inferno', 'de_nuke', 'de_overpass', 'de_ancient', 'de_anubis', 'de_cache', 'de_train', 'de_vertigo', 'cs_office']
 
 const BASE = 'https://raw.githubusercontent.com/saul/gamevis/master/overviews/csgo'
 const MURKY_RADAR = 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars'

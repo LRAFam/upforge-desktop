@@ -25,7 +25,8 @@ import {
   type PracticeTab,
 } from '../../components/v3/practice/practice-v3'
 import { focusDrillPlan } from '../../components/v3/practice/focus-drills'
-import { focusBeforeAfter } from '../../lib/focus'
+import { useDrillRulebook } from '../../lib/drill-rulebook'
+import { FOCUS_VERDICT_LABEL, focusBeforeAfter } from '../../lib/focus'
 import { usePracticeFocus } from '../../components/v3/practice/usePracticeFocus'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
 import '../../components/v3/practice/practice-v3.css'
@@ -97,7 +98,9 @@ const { primaryGame } = usePrimaryGame()
 const scope = computed(() => practiceGameScope(primaryGame.value))
 const matchCoaching = computed(() => scope.value.matchCoaching)
 const showSensLink = computed(() => primaryGame.value === 'cs2' || primaryGame.value === 'deadlock')
-const focusPlan = computed(() => focusDrillPlan(focus.value?.metric, props.drills.map(d => d.scenario)))
+// One finding → drill mapping: the API rulebook (empty = no proven drill, said plainly).
+const rulebook = useDrillRulebook(typeof window === 'undefined' ? undefined : window.api?.trainer)
+const focusPlan = computed(() => focusDrillPlan(focus.value?.metric, props.drills.map(d => d.scenario), rulebook.value))
 const focusProgress = computed(() => focusBeforeAfter(focus.value))
 // "Do this next": the match report's drill (from "Practise this"), else the top drill from matches.
 const route = useRoute() as ReturnType<typeof useRoute> | undefined
@@ -161,11 +164,11 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
           <p class="uf-t1" style="margin: 0; max-width: 760px">{{ focus.label }}</p>
           <p class="uf-t2" style="margin: 0; max-width: 620px">{{ focusPlan.caption }}</p>
           <p v-if="focusProgress" class="uf-t4" style="margin: 0">
-            Before: {{ focusProgress.before }} · Since: {{ focusProgress.since }} over {{ focusProgress.games }} game{{ focusProgress.games === 1 ? '' : 's' }}
-            <span :style="{ color: focusProgress.improved ? 'var(--uf-win)' : 'var(--uf-muted)' }">{{ focusProgress.improved ? '· better' : '· not yet' }}</span>
+            Starting point: {{ focusProgress.before }} · Since: {{ focusProgress.since }} over {{ focusProgress.games }} game{{ focusProgress.games === 1 ? '' : 's' }}
+            <span :style="{ color: focusProgress.verdict === 'better' ? 'var(--uf-win)' : 'var(--uf-muted)' }">· {{ FOCUS_VERDICT_LABEL[focusProgress.verdict] }}</span>
           </p>
           <div class="uf-session-row">
-            <ol class="uf-session-steps">
+            <ol v-if="focusDrills.length" class="uf-session-steps">
               <li v-for="(d, i) in focusDrills" :key="d.scenario">
                 <span class="uf-d4" style="color: var(--uf-faint)">{{ String(i + 1).padStart(2, '0') }}</span>
                 <span class="uf-session-step-text"><span class="uf-t4">{{ stepCaption(d) }}</span><span class="uf-t3">{{ d.label }}</span></span>
@@ -173,7 +176,7 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
             </ol>
             <div class="uf-session-actions">
               <UfButton v-if="sessionSteps.length" variant="link" :disabled="sessionDisabled" @click="emit('start-session')">Guided session instead</UfButton>
-              <UfButton variant="primary" icon="play" :disabled="busy || !focusDrills.length" @click="emit('play-drill', focusDrills[0].scenario)">Start with {{ focusDrills[0]?.label }}</UfButton>
+              <UfButton v-if="focusDrills.length" variant="primary" icon="play" :disabled="busy" @click="emit('play-drill', focusDrills[0].scenario)">Start with {{ focusDrills[0]?.label }}</UfButton>
             </div>
           </div>
         </div>
@@ -318,7 +321,7 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
           <template v-if="insights.length">
             <div class="uf-hair" />
             <section class="uf-aside-block">
-              <span class="uf-label">Did it carry over?</span>
+              <span class="uf-label">Trainer vs matches</span>
               <p v-for="(line, i) in insights" :key="i" class="uf-t4" style="margin: 0; color: var(--uf-bone); line-height: 1.5">{{ line }}</p>
             </section>
           </template>

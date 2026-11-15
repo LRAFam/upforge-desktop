@@ -5,7 +5,7 @@
 import fs from 'fs'
 import { hasSource2DemoPreamble } from './source2-demo-preamble'
 import { calculateCs2MatchStats, readCs2StatsInput } from './cs2-match-stats'
-import { buildCs2RoundFacts, flashHitsFromSamples, humanizeCs2Place, type Cs2FlashHit, type Cs2RoundFactsResult } from './cs2-round-facts'
+import { buildCs2RoundFacts, cs2GrenadeThrowRows, flashHitsFromSamples, humanizeCs2Place, cs2SiteFromPlace, type Cs2FlashHit, type Cs2RoundFactsResult } from './cs2-round-facts'
 import log from 'electron-log'
 import { parseHeader } from '@laihoe/demoparser2'
 import {
@@ -79,19 +79,34 @@ function normalizeTeamId(raw: unknown): number | null {
   return null
 }
 
-/** CS2 round_end reason → ceremony label for timeline icons (demoinfocs RoundEndReason). */
-function ceremonyFromRoundEndReason(reason: number | null): string | null {
-  if (reason == null) return null
+/**
+ * CS2 round_end → ceremony label for timeline icons. demoparser2 rows carry a text `reason`
+ * ("t_killed", "time_ran_out", …) next to the numeric `round_win_reason`; the text wins.
+ * Numeric values follow Valve's RoundEndReason: 1 bomb exploded, 7 defused, 8 CTs win by
+ * eliminating the Ts, 9 Ts win by eliminating the CTs, 12 time ran out (target saved).
+ */
+const ROUND_END_TEXT: Record<string, string> = {
+  bomb_exploded: 'detonation',
+  target_bombed: 'detonation',
+  bomb_defused: 'bombdefused',
+  t_killed: 'elimination',
+  ct_killed: 'elimination',
+  time_ran_out: 'timer',
+  target_saved: 'timer',
+}
+
+export function ceremonyFromRoundEnd(row: JsonRow): string | null {
+  const text = typeof row.reason === 'string' ? row.reason.trim().toLowerCase() : ''
+  if (text && ROUND_END_TEXT[text]) return ROUND_END_TEXT[text]!
+  const reason = rowNumber(row, 'reason', 'round_win_reason')
+  if (reason == null) return text ? 'elimination' : null
   switch (reason) {
     case 1:
       return 'detonation'
     case 7:
       return 'bombdefused'
-    case 8:
     case 12:
       return 'timer'
-    case 9:
-      return 'elimination'
     default:
       return 'elimination'
   }
@@ -415,26 +430,25 @@ export function buildCs2TimelineFromDemo(
 
       const mapName = timeline.map
       if (!opts.skipSpatial) {
+        // Valve's place name where the victim fell comes from the demo itself, so it works on every map,
+        // radar or not (same callout the AI's demo build uses). The radar only adds the position.
+        const place = humanizeCs2Place(death.user_last_place_name)
+        const killerCallout = humanizeCs2Place(death.attacker_last_place_name)
+        const distance = rowNumber(death, 'distance')
         const posX = rowNumber(death, 'user_X', 'user_x')
         const posY = rowNumber(death, 'user_Y', 'user_y')
-        if (posX != null && posY != null && getCs2MapTransform(mapName)) {
-          const norm = cs2WorldToNorm(mapName, posX, posY)
-          if (norm) {
-            const zone = resolveCs2Callout(mapName, norm)
-            // Valve's place name where the victim fell (same callout the AI's demo build uses); map zone as fallback.
-            const callout = humanizeCs2Place(death.user_last_place_name) ?? zone.callout
-            const site = zone.site
-            const killerCallout = humanizeCs2Place(death.attacker_last_place_name)
-            const distance = rowNumber(death, 'distance')
-            // isolated / alliesNearby are set from measured positions for the player's deaths only.
-            ev.spatial = {
-              norm,
-              callout,
-              site,
-              killerDistance: distance != null ? Math.round(distance * 10) / 10 : null,
-              ...(killerCallout ? { killerCallout } : {}),
-            }
-          }
+        const norm = posX != null && posY != null && getCs2MapTransform(mapName)
+          ? cs2WorldToNorm(mapName, posX, posY)
+          : null
+        const zone = norm ? resolveCs2Callout(mapName, norm) : null
+        // isolated / alliesNearby are set from measured positions for the player's deaths only.
+        ev.spatial = {
+          ...(norm ? { norm } : {}),
+          callout: place ?? zone?.callout ?? 'Unknown',
+          // A bombsite place name beats the coarse radar box (which can call "B site" Mid).
+          site: cs2SiteFromPlace(death.user_last_place_name) ?? zone?.site ?? null,
+          killerDistance: distance != null ? Math.round(distance * 10) / 10 : null,
+          ...(killerCallout ? { killerCallout } : {}),
         }
       }
 
@@ -511,8 +525,7 @@ export function buildCs2TimelineFromDemo(
       const roundNum = roundNumberForEnd(index)
       endRoundCount = Math.max(endRoundCount, roundNum + 1)
       if (winner != null) roundWinners.set(roundNum, winner)
-      const reason = rowNumber(row, 'reason', 'round_win_reason')
-      const ceremony = ceremonyFromRoundEndReason(reason)
+      const ceremony = ceremonyFromRoundEnd(row)
       if (ceremony) roundCeremonies.set(roundNum, ceremony)
       const tick = rowNumber(row, 'tick')
       if (tick != null) {
@@ -783,7 +796,7 @@ function applyCs2RoundFacts(args: {
   source: Cs2DemoSource
   localSteamId: string
   tickRate: number
-  statsInput: { starts: JsonRow[]; ends: JsonRow[]; snapshots: JsonRow[] }
+  statsInput: { starts: JsonRow[]; ends: JsonRow[]; snapshots: JsonRow[]; fires: JsonRow[] | null }
   deaths: JsonRow[]
   bombPlants: JsonRow[]
   killEvents: KillEvent[]
@@ -792,7 +805,11 @@ function applyCs2RoundFacts(args: {
 }): Cs2RoundFactsResult {
   const { source, localSteamId, tickRate, statsInput } = args
   const { playerExtra, otherExtra } = CS2_STATS_EVENT_FIELDS
-  const grenades = safeEventOrNull(source, 'grenade_thrown', [...playerExtra], [...otherExtra])
+  // Valve MM demos have no grenade_thrown rows; throws come from weapon_fire (same rows as match_stats).
+  const grenades = cs2GrenadeThrowRows(
+    safeEventOrNull(source, 'grenade_thrown', [...playerExtra], [...otherExtra]),
+    statsInput.fires,
+  )
   const detonations = safeEventOrNull(source, 'flashbang_detonate', [...playerExtra], [...otherExtra])
   let flashHits: Cs2FlashHit[] | null = null
   if (detonations) {

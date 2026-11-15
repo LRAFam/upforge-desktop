@@ -37,6 +37,8 @@ export function buildDeadlockLogTimeline(
   timeline.playerKills = snapshot.kills
   timeline.playerDeaths = snapshot.deaths
   timeline.killEvents = [...snapshot.kills, ...snapshot.deaths]
+  // Live console-log rows are not replay data: they must not unlock a demo review.
+  if (timeline.killEvents.length > 0) timeline.killRowsSource = 'live_log'
   timeline.finalStats = {
     kills: snapshot.kills.length,
     deaths: snapshot.deaths.length,

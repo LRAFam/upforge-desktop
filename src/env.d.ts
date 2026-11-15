@@ -256,7 +256,6 @@ export interface AppSettings {
   /** Auto-open the results page in the browser when analysis completes */
   autoOpenBrowser: boolean
   /** Opt-in: anonymised use of cloud-archived VODs for model training (separate from storage). */
-  trainingConsent: boolean
   /** Versioned proof of an explicit auto-analysis choice. */
   autoAnalyseConsentVersion: 1
   /** Last detected hardware encoder — cached to skip detection on next launch */
@@ -848,6 +847,11 @@ declare global {
         enable: () => Promise<import('./lib/overstep').OverstepStatus>
         disable: () => Promise<import('./lib/overstep').OverstepStatus>
       }
+      aiTraining: {
+        /** optOut null = server value unknown (signed out / offline) */
+        get: () => Promise<{ optOut: boolean | null }>
+        set: (optOut: boolean) => Promise<{ optOut: boolean | null }>
+      }
       coaching: {
         preferences: () => Promise<import('./lib/coaching-preferences').CoachingPreferences>
         savePreferences: (value: import('./lib/coaching-preferences').CoachingPreferences) => Promise<import('./lib/coaching-preferences').CoachingPreferences>
@@ -856,8 +860,9 @@ declare global {
         debrief: (id: string) => Promise<{ ok?: boolean; error?: string }>
       }
       auth: {
-        login: (email: string, password: string) => Promise<{ ok: boolean; user?: unknown; error?: string }>
+        login: (email: string, password: string) => Promise<{ ok: boolean; user?: unknown; error?: string; code?: string }>
         logout: () => Promise<void>
+        resendVerificationEmail: (email: string) => Promise<{ ok: boolean; message?: string; error?: string }>
         getUser: () => Promise<unknown>
         refreshUser: () => Promise<unknown>
         getOnboardingCampaign: () => Promise<import('./lib/desktop-onboarding-campaign').DesktopOnboardingCampaignResult>
@@ -1755,6 +1760,10 @@ declare global {
         kill: () => Promise<{ ok: boolean }>
         /** Last launched drill, kept after it ends (survives a view remount). */
         getLastLaunch: () => Promise<TrainerLaunchInfo | null>
+        /** Upload state of a finished run (saved / pending retry / failed) and its effect on the assigned drill. */
+        getSyncStatus: (scenario: string, completedAt: string) => Promise<import('./lib/trainer-sync').TrainerSyncOutcome | null>
+        /** Focus metric → allowed trainer drills (API rulebook); null when signed out or offline. */
+        getDrillRulebook: (game?: string) => Promise<import('./lib/drill-rulebook').DrillRulebook | null>
         getHistory: (comparison?: import('./lib/training-result-metrics').TrainingComparisonRequest) => Promise<TrainingHistory | null>
         getPlan: () => Promise<SharedTrainingPlan | null>
         getCoachingDrills: () => Promise<CoachingDrill[]>

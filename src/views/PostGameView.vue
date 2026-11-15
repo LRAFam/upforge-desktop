@@ -39,6 +39,7 @@
       :review-round="gameInfo.game === 'valorant' ? reviewRoundShown : null"
       :report-match-id="gameInfo.game === 'valorant' && matchId && matchId !== 'preview-match-id' ? matchId : null"
       :cloud-line="state === 'ready' && result?.analysis_id ? postGameCloud : null"
+      :game="gameInfo.game"
       @keep-cloud="handoffToMain({ path: '/cloud-storage', query: { keep: '1' } })"
       @primary="handleCompactPrimary"
       @secondary="viewFullAnalysis"
@@ -885,9 +886,10 @@
         >
           <p class="text-[11px] text-gray-400 leading-relaxed">{{ replayNotFoundHint }}</p>
           <ul class="text-[10px] text-gray-500 space-y-1 list-disc pl-4">
-            <li v-if="gameInfo.game === 'cs2'">Download the GOTV replay in CS2 (Watch → Your Matches)</li>
+            <li v-if="gameInfo.game === 'cs2'">Close CS2: UpForge fetches the demo from Steam once the game is closed</li>
+            <li v-if="gameInfo.game === 'cs2'">Or, between matches, download the GOTV replay in CS2 (Watch → Your Matches)</li>
             <li v-if="gameInfo.game === 'cs2'">Attach the <code class="text-cyan-400/80">.dem</code> file from the dashboard for kills and clips</li>
-            <li v-if="gameInfo.game === 'deadlock'">Download the replay from Deadlock match history, then attach the .dem file</li>
+            <li v-if="gameInfo.game === 'deadlock'">Choose Review replay on this match in Matches (uses 1 analysis)</li>
           </ul>
           <button
             type="button"
@@ -1648,7 +1650,7 @@ const preparingTitle = computed(() => {
 
 const replayNotFoundHint = computed(() => {
   if (gameInfo.value.game === 'deadlock') {
-    return 'No replay attached — download from Deadlock match history and attach the .dem file'
+    return 'No replay linked yet. Choose Review replay on this match in Matches and UpForge reads it in the cloud.'
   }
   return 'No demo attached — download the GOTV replay in CS2 and attach the .dem file'
 })
@@ -2229,7 +2231,7 @@ async function saveToCloudNow() {
       errorDetails.value = {
         title: result.title ?? 'Could not save to cloud',
         message: result.error,
-        hint: result.hint ?? 'Try again from the dashboard, or contact support if this keeps happening.',
+        hint: result.hint ?? 'Try again from the dashboard. If it keeps happening, see Help › Troubleshooting.',
         creditRefunded: false,
         canRetry: true,
         kind: 'upload',

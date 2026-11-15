@@ -234,12 +234,12 @@ export function cs2ReportView(t: Cs2ReportTimeline): MatchReportView | null {
   const zero = n(stats.round_stats?.zero_impact_rounds) ? (stats.round_stats!.zero_impact_rounds as number) : null
   const teamFlashed = n(stats.utility_stats?.teammates_flashed) ? (stats.utility_stats!.teammates_flashed as number) : null
   if (ok != null && od != null && od >= ok + 2) v.headline = `You lost ${od} of ${ok + od} opening duels.`
-  else if (zero != null && zero >= 4) v.headline = `${plural(zero, 'round')} with no kill, assist or damage.`
+  else if (zero != null && zero >= 4) v.headline = `${plural(zero, 'round')} with no kill or assist.`
   else if (p('kills') != null && p('deaths') != null) v.headline = `You finished ${p('kills')} / ${p('deaths')} / ${p('assists') ?? 0}.`
 
   const steps: NextStep[] = []
   if (ok != null && od != null && od >= ok + 2) steps.push({ text: `You lost ${od} of ${ok + od} opening duels. Next game, take the first fight with a teammate ready to trade.`, drillMetric: null })
-  if (zero != null && zero >= 4) steps.push({ text: `${plural(zero, 'round')} had no kill, assist or damage. Use your utility in those rounds even when you don't take a fight.`, drillMetric: null })
+  if (zero != null && zero >= 4) steps.push({ text: `${plural(zero, 'round')} had no kill or assist. Use your utility in those rounds even when you don't take a fight.`, drillMetric: null })
   if (teamFlashed != null && teamFlashed >= 3) steps.push({ text: `You flashed teammates ${plural(teamFlashed, 'time')}. Call your flashes before you throw them.`, drillMetric: null })
   v.nextSteps = steps.slice(0, 3)
   const cw = p('clutches_won')

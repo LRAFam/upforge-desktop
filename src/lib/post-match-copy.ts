@@ -46,7 +46,7 @@ export function waitingMatchDataBeforeUpload(game: Gameish): string {
 export function waitingMatchDataSubtitle(game: Gameish): string {
   const g = normalizeGame(game)
   if (g === 'valorant') return 'Waiting for Riot match stats…'
-  if (g === 'cs2') return 'Waiting for CS2 demo / match stats…'
+  if (g === 'cs2') return 'Coaching starts when you close CS2.'
   if (g === 'deadlock') return 'Waiting for Deadlock replay / match stats…'
   if (g === 'lol') return 'Waiting for League match stats…'
   return 'Waiting for match stats…'

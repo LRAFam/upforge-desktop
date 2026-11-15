@@ -6,6 +6,7 @@ import * as vue from 'vue'
 import { describe, expect, it } from 'vitest'
 import * as helpers from '../../components/v3/postgame/post-game-v3'
 import * as coachAllowances from '../../lib/coach-allowances'
+import * as helpLinks from '../../lib/help-links'
 
 const Stub = { name: 'Stub' }
 
@@ -20,6 +21,7 @@ function render(props: Record<string, unknown>): string {
       if (id === 'vue') return vue
       if (id.endsWith('/post-game-v3')) return helpers
       if (id.endsWith('/coach-allowances')) return coachAllowances
+      if (id.endsWith('/help-links')) return helpLinks
       if (id.endsWith('.vue')) return Stub
       throw new Error(`Unexpected import: ${id}`)
     },
@@ -74,5 +76,15 @@ describe('PostGameV3', () => {
     expect(out).toContain('~1m remaining')
     expect(out).toContain('Analysis usually takes')
     expect(out).not.toContain('Was this coaching useful?')
+  })
+
+  it('error: links to the troubleshooting help', () => {
+    const out = render({ tone: 'error', eyebrow: 'Needs attention', title: 'Analysis could not complete', body: 'Something went wrong.', progress: null, showExpectations: false })
+    expect(out).toContain('Something went wrong.')
+    expect(out).toContain('Troubleshooting help')
+  })
+
+  it('in progress: no help link', () => {
+    expect(render({})).not.toContain('Troubleshooting help')
   })
 })

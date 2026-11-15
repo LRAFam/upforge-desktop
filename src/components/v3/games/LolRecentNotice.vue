@@ -9,7 +9,9 @@ import { LOL_RECENT_ERROR_TITLE, LOL_RECENT_PARTIAL_TEXT, lolRecentErrorText, ty
 const props = defineProps<{ state: Pick<LolRecentResult, 'error' | 'errorReason' | 'partial'> | null; hasMatches: boolean; busy?: boolean }>()
 const emit = defineEmits<{ retry: [] }>()
 const failed = computed(() => !!props.state?.error)
-const title = computed(() => (props.state?.error === 'request_failed' ? 'Couldn’t load your League games' : LOL_RECENT_ERROR_TITLE))
+const title = computed(() => (props.state?.error === 'request_failed'
+  ? 'Couldn’t load your League games'
+  : props.state?.errorReason === 'pending_approval' ? 'Live League sync isn’t on yet' : LOL_RECENT_ERROR_TITLE))
 </script>
 
 <template>

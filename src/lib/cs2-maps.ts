@@ -1,11 +1,15 @@
 import cs2Manifest from '../../resources/spatial/cs2/maps-manifest.json'
+import csOfficeRadar from '../../resources/spatial/cs2/radars/cs_office.png'
 import deAncientRadar from '../../resources/spatial/cs2/radars/de_ancient.png'
 import deAnubisRadar from '../../resources/spatial/cs2/radars/de_anubis.png'
+import deCacheRadar from '../../resources/spatial/cs2/radars/de_cache.png'
 import deDust2Radar from '../../resources/spatial/cs2/radars/de_dust2.png'
 import deInfernoRadar from '../../resources/spatial/cs2/radars/de_inferno.png'
 import deMirageRadar from '../../resources/spatial/cs2/radars/de_mirage.png'
 import deNukeRadar from '../../resources/spatial/cs2/radars/de_nuke.png'
 import deOverpassRadar from '../../resources/spatial/cs2/radars/de_overpass.png'
+import deTrainRadar from '../../resources/spatial/cs2/radars/de_train.png'
+import deVertigoRadar from '../../resources/spatial/cs2/radars/de_vertigo.png'
 
 interface Cs2MapEntry {
   name: string
@@ -13,13 +17,17 @@ interface Cs2MapEntry {
 }
 
 const RADAR_BY_KEY: Record<string, string> = {
+  cs_office: csOfficeRadar,
   de_ancient: deAncientRadar,
   de_anubis: deAnubisRadar,
+  de_cache: deCacheRadar,
   de_dust2: deDust2Radar,
   de_inferno: deInfernoRadar,
   de_mirage: deMirageRadar,
   de_nuke: deNukeRadar,
   de_overpass: deOverpassRadar,
+  de_train: deTrainRadar,
+  de_vertigo: deVertigoRadar,
 }
 
 const DISPLAY_BY_KEY = new Map(

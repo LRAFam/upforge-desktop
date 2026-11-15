@@ -17,6 +17,7 @@ import { readCache, writeCache } from '../../lib/stale-cache'
 import type { ProfileData } from '../../env.d.ts'
 import UfIcon from './UfIcon.vue'
 import WebLinksMenuV3 from './shell/WebLinksMenuV3.vue'
+import { openHelp } from '../../lib/help-links'
 // Human coaching: one badge per job (Coaches = notes ready for you, Students = matches waiting for your notes).
 import { useCoachBadges } from './roster-flow/useCoachBadges'
 import { useCoachReplyWatch } from './roster-flow/useCoachReplyWatch'
@@ -111,6 +112,10 @@ onUnmounted(() => { if (typeof stopSettingsWatch === 'function') stopSettingsWat
     </button>
     <button v-if="devMode" type="button" class="uf-side-item" :class="{ 'is-on': route.path === '/overstep' }" @click="go('/overstep')">
       <UfIcon name="lab" :size="17" />Overstep
+    </button>
+    <!-- Help lives on upforge.gg (troubleshooting, stat glossary); opens in the browser. -->
+    <button type="button" class="uf-side-item" title="Opens upforge.gg/help in your browser" @click="openHelp()">
+      <UfIcon name="help" :size="17" />Help
     </button>
     <button type="button" class="uf-side-item" :class="{ 'is-on': settingsOn }" @click="go('/settings', $event)">
       <UfIcon name="settings" :size="17" />Settings

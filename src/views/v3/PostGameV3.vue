@@ -11,9 +11,10 @@ import { foundLine, type LiveUpdate } from '../../lib/coach-allowances'
 import UfIcon from '../../components/v3/UfIcon.vue'
 import SessionCoachV3 from '../../components/v3/ideas/SessionCoachV3.vue'
 import {
-  agentPortraitUrl, kdaText, metaLine, postGameFocusStrip, progressWidth, resultTone, resultWord, scoreText, toneColor,
+  agentPortraitUrl, kdaText, metaLine, postGameFocusStripForGame, progressWidth, resultTone, resultWord, scoreText, toneColor,
   type PostGameSummary, type PostGameTone,
 } from '../../components/v3/postgame/post-game-v3'
+import { HELP_TROUBLESHOOTING_URL, openHelp } from '../../lib/help-links'
 
 const props = defineProps<{
   ready: boolean
@@ -50,6 +51,8 @@ const props = defineProps<{
   reportMatchId?: string | null
   /** Cloud retention: how long this match's video stays in the cloud (null = kept, or nothing to say). */
   cloudLine?: string | null
+  /** Game this match was played in. The saved focus is Valorant's, so other games hide its strip. */
+  game?: string | null
 }>()
 
 defineEmits<{
@@ -79,7 +82,7 @@ const bar = computed(() => progressWidth(props.progress))
 const dot = computed(() => toneColor(props.tone))
 // Focus pips: read the saved focus (no network) and follow live updates from the main window.
 const focus = ref<Focus | null>(null)
-const focusStrip = computed(() => postGameFocusStrip(focus.value))
+const focusStrip = computed(() => postGameFocusStripForGame(focus.value, props.game))
 let offFocus: (() => void) | null = null
 onMounted(async () => {
   const api = window.api?.app
@@ -165,6 +168,7 @@ const clipsLine = computed(() => {
       <!-- In progress / saved / error -->
       <template v-else>
         <p class="uf-t4 pg3-body-text">{{ body }}</p>
+        <button v-if="tone === 'error'" type="button" class="uf-link pg3-help" title="Opens upforge.gg/help in your browser" @click="openHelp(HELP_TROUBLESHOOTING_URL)">Troubleshooting help →</button>
         <div v-if="bar != null" class="pg3-progress">
           <div class="pg3-track"><div class="pg3-fill" :style="{ width: `${bar}%`, background: dot }" /></div>
           <div class="pg3-progress-meta uf-t4">
@@ -255,5 +259,5 @@ const clipsLine = computed(() => {
 .pg3-pip { width: 10px; height: 4px; background: var(--uf-line-2); }
 .pg3-pip.is-hit { background: var(--uf-win); }
 .pg3-pip.is-miss { background: var(--uf-loss); }
-.pg3-send { align-self: flex-start; }
+.pg3-send, .pg3-help { align-self: flex-start; }
 </style>

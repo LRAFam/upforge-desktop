@@ -128,7 +128,7 @@ const focusSlots = computed(() => {
   return Array.from({ length: f.progress.games_required }, (_, i) => f.checks[i] ? (f.checks[i].hit ? 'hit' : 'miss') : 'pending')
 })
 
-const delta = (v: number | null, suffix = '') => (v == null || Math.abs(v) < 0.05 ? 'Steady' : `${v > 0 ? 'Up' : 'Down'} ${Math.abs(Math.abs(v) >= 10 ? Math.round(v) : Number(v.toFixed(1)))}${suffix}`)
+const delta = (v: number | null, suffix = '') => (v == null ? 'Early read' : Math.abs(v) < 0.05 ? 'Steady' : `${v > 0 ? 'Up' : 'Down'} ${Math.abs(Math.abs(v) >= 10 ? Math.round(v) : Number(v.toFixed(1)))}${suffix}`)
 const stats = computed(() => [
   { value: props.gameCount ? `${props.winRate}%` : '—', caption: 'Win rate', sub: delta(props.deltas.winRate, '%') },
   // Stats-based UpForge score (0–1000) when any match is scored; else the coach rating /10 under its own name.

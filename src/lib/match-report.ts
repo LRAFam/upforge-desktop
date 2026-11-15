@@ -125,7 +125,7 @@ export function recurrenceLine(r: MatchReportResponse['recurrence']): Recurrence
     return { tone: 'habit', text: `${r.streak + 1} matches in a row. This is a habit now, not a one-off, so it's the one to fix first.` }
   }
   if (r.seen >= 2) {
-    return { tone: 'habit', text: `Also came up in ${r.seen} of your last ${matches(r.of)}. It keeps costing you rounds, so fix this before anything else.` }
+    return { tone: 'habit', text: `Also came up in ${r.seen} of your last ${matches(r.of)}. It's a repeat, so it's the one to work on first.` }
   }
   if (r.seen === 1) return { tone: 'again', text: `Also came up in 1 of your last ${matches(r.of)}.` }
   return r.of >= 3 ? { tone: 'new', text: `New: not in your last ${matches(r.of)}.` } : null

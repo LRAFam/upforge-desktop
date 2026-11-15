@@ -10,6 +10,7 @@
 
 import { BrowserWindow, dialog, type IpcMain } from 'electron'
 import { cs2LiveRoundSummariesForVod } from '../cs2-gsi-timeline'
+import { DEADLOCK_REVIEW_REPLAY_HINT } from '../match-data-quality'
 import fs from 'fs'
 import log from 'electron-log'
 import type { AuthManager } from '../auth-manager'
@@ -333,6 +334,10 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
   })
 
   ipcMain.handle('recordings:attach-demo', async (_e, { id, demoPath }: { id: string; demoPath?: string }) => {
+    // Deadlock: no file picker that can only fail; say what works instead.
+    if (recordingsStore.getById(id)?.game === 'deadlock') {
+      return { ok: false as const, error: DEADLOCK_REVIEW_REPLAY_HINT, analysisReadiness: null }
+    }
     let chosen = demoPath?.trim()
     if (!chosen) {
       const win = BrowserWindow.getFocusedWindow() ?? getMainWindow()

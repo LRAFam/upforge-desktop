@@ -6,9 +6,15 @@
     :loading="loading"
     :error="error"
     :show-password="showPw"
+    :needs-verification="needsVerification"
+    :resending="resending"
+    :resend-note="resendNote"
+    :resend-error="resendError"
+    :return-note="showReturnNote ? returnNote : ''"
     @submit="handleLogin"
     @toggle-password="showPw = !showPw"
     @forgot="openForgot"
+    @resend="resend(email)"
     @signup="openSignup"
     @help="openHelp"
     @privacy="openPrivacy"
@@ -74,6 +80,15 @@
               </div>
             </Transition>
 
+            <p v-if="showReturnNote" class="verify-row" role="status">{{ returnNote }}</p>
+            <div v-if="needsVerification" class="verify-row">
+              <button type="button" class="link-accent" :disabled="resending" @click="resend(email)">
+                {{ resending ? 'Sending…' : 'Resend verification email' }}
+              </button>
+              <p v-if="resendNote" role="status">{{ resendNote }}</p>
+              <p v-if="resendError" class="verify-error" role="alert">{{ resendError }}</p>
+            </div>
+
             <button type="submit" class="btn-primary" :disabled="loading">
               <span v-if="loading" class="login-spinner" aria-hidden="true" />
               {{ loading ? 'Signing in…' : 'Sign in' }}<span v-if="!loading" aria-hidden="true">→</span>
@@ -97,6 +112,8 @@ import { useRouter } from 'vue-router'
 import { resolvePostAuthRoute } from '../lib/onboarding-gate'
 import { uiV3 } from '../lib/ui-v3'
 import LoginV3 from './v3/LoginV3.vue'
+import { useVerificationResend } from '../composables/useVerificationResend'
+import { useCreateAccountReturn } from '../composables/useCreateAccountReturn'
 
 const router = useRouter()
 const email = ref('')
@@ -104,6 +121,8 @@ const password = ref('')
 const loading = ref(false)
 const error = ref('')
 const showPw = ref(false)
+const { needsVerification, resending, resendNote, resendError, noteLoginResult, resend } = useVerificationResend()
+const { showReturnNote, returnNote, openCreateAccount, clearPendingSignup } = useCreateAccountReturn(email)
 
 
 
@@ -113,7 +132,9 @@ async function handleLogin() {
   error.value = ''
   try {
     const result = await window.api.auth.login(email.value, password.value)
+    noteLoginResult(result)
     if (result.ok) {
+      clearPendingSignup()
       const [s, campaign] = await Promise.all([
         window.api.settings.get(),
         window.api.auth.getOnboardingCampaign(),
@@ -138,7 +159,7 @@ function windowClose() { window.api.window.close() }
 
 function openHelp() { window.open('https://upforge.gg/help', '_blank') }
 function openPrivacy() { window.open('https://upforge.gg/privacy', '_blank') }
-function openSignup() { window.open('https://upforge.gg/register', '_blank') }
+function openSignup() { void openCreateAccount() }
 function openForgot() { window.open('https://upforge.gg/forgot-password', '_blank') }
 </script>
 
@@ -157,6 +178,7 @@ button{font:inherit}button:focus-visible{outline:2px solid #ff6687;outline-offse
 @media(max-height:740px){.login-content{padding-top:56px;padding-bottom:35px}.brand{width:174px;margin-bottom:18px}.form-head{margin-bottom:23px}h1{font-size:29px}.form{gap:16px}.login-footer{margin-top:27px}.signature{margin-bottom:8px}}
 @media(max-width:560px){.login-screen{padding:4px}.login-content{width:86%}.window-actions{top:12px}.login-art{background-image:linear-gradient(#0b0e102b,#0b0e1066),url('../assets/login-tactical-bg.png')}.login-content{padding-left:28px;padding-right:28px}h1{font-size:29px}.form-head p{font-size:12px}}
 .login-spinner{width:17px;height:17px;border:2px solid #ffffff50;border-top-color:white;border-radius:50%;animation:login-spin .8s linear infinite}
+.verify-row{display:flex;flex-direction:column;align-items:flex-start;gap:6px;font-size:12px;line-height:1.5;color:#abb3bd}.verify-row p{margin:0}.verify-row .verify-error{color:#ffc8d1}.link-accent:disabled{opacity:.6;cursor:wait}
 @keyframes login-spin{to{transform:rotate(360deg)}}
 @media(max-width:560px){.login-content{padding-top:66px;padding-bottom:52px}.window-actions{right:18%}h1{font-size:clamp(23px,5vw,29px);letter-spacing:-.7px}.signature{gap:8px;letter-spacing:.65px}.signature span{width:18px}}
 @media(prefers-reduced-motion:reduce){input,.btn-primary{transition:none}.login-spinner{animation:none}}

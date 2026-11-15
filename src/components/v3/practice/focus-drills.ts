@@ -1,40 +1,34 @@
 /**
- * Focus metric → drills (board 23 "Today's session, from your focus"). Renderer-only and static:
- * the keys are the focus-loop metrics the AI service measures (services/match_report_facts.py
- * FOCUS_METRICS). Captions describe what the drills practise — never a claim about the player.
+ * Focus metric → drills (board 23 "Today's session, from your focus"). The mapping is the API rulebook
+ * (src/lib/drill-rulebook.ts); this file only fits it to the drills loaded in this catalogue.
  */
+import type { DrillRulebook } from '../../../lib/drill-rulebook'
+
 export interface FocusDrillPlan {
   metric: string
   caption: string
   scenarios: string[]
+  /** The rulebook has no proven trainer drill for this finding (e.g. deaths traded). */
+  noDrill: boolean
 }
 
-const PLANS: Record<string, { caption: string; scenarios: string[] }> = {
-  opening_death_rate: { caption: 'Drills for clearing one angle at a time before the first fight.', scenarios: ['angle_clearing', 'head_height'] },
-  early_opening_death_rate: { caption: 'Drills for clearing one angle at a time before the first fight.', scenarios: ['angle_clearing', 'head_height'] },
-  traded_death_rate: { caption: 'Drills for snapping to a second target fast, so you can trade.', scenarios: ['switching', 'flick'] },
-  zero_damage_round_rate: { caption: 'Drills for landing damage in the first duel.', scenarios: ['duel', 'strafe_aim'] },
-  headshot_hit_rate: { caption: 'Drills for keeping your crosshair at head height and fixing small misses.', scenarios: ['head_height', 'microadjust'] },
-  leg_hit_rate: { caption: 'Drills for keeping your crosshair at head height instead of low on the body.', scenarios: ['head_height', 'sixshot'] },
-}
+export const NO_DRILL_CAPTION = 'No trainer drill for this yet. Play your next matches with this in mind; the coach checks it after each one.'
 
 /**
- * The plan for a focus metric, limited to drills that exist in the loaded catalogue.
- * Returns null for unknown metrics or when none of the mapped drills are available.
+ * The plan for a focus metric from the rulebook, limited to drills that exist in the loaded catalogue.
+ * Null while the rulebook is not loaded, for unknown metrics, or when none of its drills are loaded.
  */
-export function focusDrillPlan(metric: string | null | undefined, available: readonly string[]): FocusDrillPlan | null {
-  if (!metric) return null
-  const plan = PLANS[metric]
-  if (!plan) return null
+export function focusDrillPlan(metric: string | null | undefined, available: readonly string[], rulebook: DrillRulebook | null): FocusDrillPlan | null {
+  if (!metric || !rulebook) return null
+  const entry = rulebook[metric]
+  if (!entry) return null
+  if (!entry.scenarios.length) return { metric, caption: NO_DRILL_CAPTION, scenarios: [], noDrill: true }
   const have = new Set(available)
-  const scenarios = plan.scenarios.filter(s => have.has(s))
-  return scenarios.length ? { metric, caption: plan.caption, scenarios } : null
+  const scenarios = entry.scenarios.map(s => s.key).filter(s => have.has(s))
+  return scenarios.length ? { metric, caption: entry.title, scenarios, noDrill: false } : null
 }
 
-/** First trainer drill for a focus metric (unchecked against the catalogue; Practice validates it). */
-export function focusMetricScenario(metric: string | null | undefined): string | null {
-  return (metric && PLANS[metric]?.scenarios[0]) || null
+/** First rulebook drill for a focus metric (unchecked against the catalogue; Practice validates it). */
+export function focusMetricScenario(metric: string | null | undefined, rulebook: DrillRulebook | null): string | null {
+  return (metric && rulebook?.[metric]?.scenarios[0]?.key) || null
 }
-
-/** Metric keys this mapping knows about (for tests and notes). */
-export const FOCUS_DRILL_METRICS = Object.keys(PLANS)

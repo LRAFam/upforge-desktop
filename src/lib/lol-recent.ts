@@ -8,7 +8,7 @@ import { DDRAGON_BASE, FALLBACK_VERSION } from './lol'
 
 /** `riot_unavailable` comes from the API; `request_failed` = the app couldn't reach UpForge. */
 export type LolRecentError = 'riot_unavailable' | 'request_failed'
-export type LolRecentReason = 'rate_limited' | 'bad_key' | 'riot_down' | 'unreachable' | 'not_configured' | 'riot_error'
+export type LolRecentReason = 'rate_limited' | 'bad_key' | 'riot_down' | 'unreachable' | 'not_configured' | 'pending_approval' | 'riot_error'
 
 export interface LolRecentResult {
   matches: LolMatchSummary[]
@@ -18,13 +18,14 @@ export interface LolRecentResult {
   partial: boolean
 }
 
-const REASONS: readonly LolRecentReason[] = ['rate_limited', 'bad_key', 'riot_down', 'unreachable', 'not_configured', 'riot_error']
+const REASONS: readonly LolRecentReason[] = ['rate_limited', 'bad_key', 'riot_down', 'unreachable', 'not_configured', 'pending_approval', 'riot_error']
 
 /** Read the API body (`{ matches, error?, error_reason?, partial? }`) defensively. */
 export function normalizeLolRecent(data: unknown): LolRecentResult {
   const d = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
   const matches = Array.isArray(d.matches) ? d.matches as LolMatchSummary[] : []
-  const error = d.error === 'riot_unavailable' ? 'riot_unavailable' : null
+  // `riot_api_unavailable` = live League sync is switched off on the server (e.g. pending Riot approval).
+  const error = d.error === 'riot_unavailable' || d.error === 'riot_api_unavailable' ? 'riot_unavailable' : null
   const reason = typeof d.error_reason === 'string' && (REASONS as readonly string[]).includes(d.error_reason)
     ? d.error_reason as LolRecentReason
     : null
@@ -40,6 +41,7 @@ export function lolRecentErrorText(r: Pick<LolRecentResult, 'error' | 'errorReas
     case 'rate_limited': return 'Riot is limiting how often UpForge can ask for match data. Try again in a minute.'
     case 'riot_down': return 'Riot’s match service is having problems. Try again in a few minutes.'
     case 'unreachable': return 'UpForge’s server couldn’t connect to Riot. Try again in a few minutes.'
+    case 'pending_approval': return 'Live League match sync isn’t available yet. Your recordings and saved reports still work.'
     case 'bad_key':
     case 'not_configured': return 'UpForge’s access to Riot match data isn’t working at the moment. This is on our side; try again later.'
     default: return 'Riot returned an error when UpForge asked for your games. Try again in a few minutes.'

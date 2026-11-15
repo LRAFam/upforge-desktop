@@ -7,7 +7,7 @@ import { waitForRecordingProgress, waitForRecordingStopped } from './obs-record-
 import { runObsTestRecording } from './obs-preflight'
 import { withObsRecordingOperation } from './obs-recording-operation'
 import { startRecordingWhenReady } from './recording-start'
-import { retargetUpForgeCapture } from './obs-setup'
+import { getUpForgeSceneIdentity, retargetUpForgeCapture } from './obs-setup'
 import { getFreeDiskSpace } from './disk-space'
 
 const mock = vi.hoisted(() => ({ call: vi.fn(), on: vi.fn(), fileSize: 100, root: '' }))
@@ -15,7 +15,7 @@ vi.mock('obs-websocket-js', () => ({ OBSWebSocket: class { call = mock.call; on 
 vi.mock('electron', () => ({ app: { getPath: () => mock.root, getAppPath: () => mock.root }, nativeImage: {} }))
 vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 vi.mock('./disk-space', () => ({ getFreeDiskSpace: vi.fn(async () => Infinity), CRITICAL_FREE_DISK_BYTES: 100, WARN_FREE_DISK_BYTES: 200 }))
-vi.mock('./obs-setup', () => ({ retargetUpForgeCapture: vi.fn(), fitUpForgeCaptureToCanvas: vi.fn() }))
+vi.mock('./obs-setup', () => ({ UPFORGE_SCENE_NAME: 'UpForge', retargetUpForgeCapture: vi.fn(), fitUpForgeCaptureToCanvas: vi.fn(), getUpForgeSceneIdentity: vi.fn(async () => null) }))
 vi.mock('./game-window-finder', () => ({ resolveObsCaptureWindow: async () => 'CS2', findObsWindowString: async () => null }))
 vi.mock('fs', async (original) => ({
   ...await original<typeof import('fs')>(),
@@ -49,6 +49,7 @@ describe('profile recording directory startup', () => {
     let bytes = 0
     mock.call.mockImplementation(async (method) => {
       if (method === 'GetProfileParameter') return { parameterValue: 'Simple' }
+      if (method === 'GetProfileList') return { currentProfileName: 'UpForge', profiles: ['UpForge'] }
       if (method === 'StartRecord') active = true
       return { outputActive: active, outputBytes: bytes += 100 }
     })
@@ -69,6 +70,161 @@ describe('profile recording directory startup', () => {
       vi.mocked(getFreeDiskSpace).mockResolvedValue(Infinity)
       fs.rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('wrong OBS scene at match start', () => {
+  function startingRecorder() {
+    let active = false
+    let bytes = 0
+    mock.call.mockImplementation(async (method) => {
+      if (method === 'GetProfileParameter') return { parameterValue: 'Simple' }
+      if (method === 'GetProfileList') return { currentProfileName: 'UpForge', profiles: ['UpForge'] }
+      if (method === 'StartRecord') active = true
+      return { outputActive: active, outputBytes: bytes += 100 }
+    })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null,
+      _gameplaySceneIdentity: { collectionName: 'Main', sceneName: 'UpForge', sceneUuid: 'old-uuid' } })
+    vi.spyOn(rec as unknown as { _startLiveKillPoll(): void }, '_startLiveKillPoll').mockImplementation(() => {})
+    return rec
+  }
+  const config = { quality: '720p', bitrate: 5, audioEnabled: true, savePath: '', captureMonitor: 'auto', manageObsVideo: false } as const
+
+  it('re-reads the UpForge scene and selects it again instead of refusing the match', async () => {
+    const rec = startingRecorder()
+    const fresh = { collectionName: 'Main', sceneName: 'UpForge', sceneUuid: 'new-uuid' }
+    vi.mocked(getUpForgeSceneIdentity).mockResolvedValueOnce(fresh)
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValueOnce(false).mockResolvedValue(true)
+    const starting = Promise.allSettled([rec.start('valorant', { ...config, savePath: mock.root })])
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await starting).toEqual([{ status: 'fulfilled', value: undefined }])
+    expect(mock.call).toHaveBeenCalledWith('SetCurrentProgramScene', { sceneName: 'UpForge' })
+    expect((rec as unknown as { _gameplaySceneIdentity: unknown })._gameplaySceneIdentity).toEqual(fresh)
+    expect(mock.call).toHaveBeenCalledWith('StartRecord')
+  })
+
+  it('still refuses (and never records) when the player keeps another scene active', async () => {
+    const rec = startingRecorder()
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(false)
+    const starting = Promise.allSettled([rec.start('valorant', { ...config, savePath: mock.root })])
+    await vi.advanceTimersByTimeAsync(1000)
+    const [result] = await starting
+    expect(result.status).toBe('rejected')
+    expect(String((result as PromiseRejectedResult).reason)).toMatch(/registered UpForge gameplay scene/)
+    expect(mock.call).not.toHaveBeenCalledWith('StartRecord')
+  })
+})
+
+/** Fake OBS with per-profile output settings, like basic.ini on disk. */
+function fakePlayerObs(options: { streaming?: boolean; upforgeProfileExists?: boolean } = {}) {
+  type ProfileState = { video: Record<string, number>; recordDirectory: string; params: Record<string, string> }
+  const playerVideo = { baseWidth: 2560, baseHeight: 1440, outputWidth: 1920, outputHeight: 1080, fpsNumerator: 60, fpsDenominator: 1 }
+  const profiles: Record<string, ProfileState> = {
+    Streaming: { video: { ...playerVideo }, recordDirectory: '/player/videos', params: { 'Output/Mode': 'Advanced' } },
+  }
+  if (options.upforgeProfileExists !== false) {
+    profiles.UpForge = { video: { ...playerVideo }, recordDirectory: '/upforge', params: { 'Output/Mode': 'Simple' } }
+  }
+  const state = { profile: 'Streaming', scene: 'Just Chatting', recording: false, streaming: options.streaming === true, bytes: 0 }
+  mock.call.mockImplementation(async (method: string, args: Record<string, unknown> = {}) => {
+    const current = profiles[state.profile]
+    switch (method) {
+      case 'GetProfileList': return { currentProfileName: state.profile, profiles: Object.keys(profiles) }
+      case 'SetCurrentProfile': state.profile = String(args.profileName); return {}
+      case 'CreateProfile':
+        profiles[String(args.profileName)] = { video: { ...playerVideo }, recordDirectory: '/default', params: {} }
+        state.profile = String(args.profileName)
+        return {}
+      case 'GetProfileParameter': return { parameterValue: current.params[`${args.parameterCategory}/${args.parameterName}`] ?? null }
+      case 'SetProfileParameter': current.params[`${args.parameterCategory}/${args.parameterName}`] = String(args.parameterValue); return {}
+      case 'GetVideoSettings': return { ...current.video }
+      case 'SetVideoSettings': current.video = { ...(args as Record<string, number>) }; return {}
+      case 'SetRecordDirectory': current.recordDirectory = String(args.recordDirectory); return {}
+      case 'GetCurrentProgramScene': return { currentProgramSceneName: state.scene }
+      case 'SetCurrentProgramScene': state.scene = String(args.sceneName); return {}
+      case 'GetStreamStatus': return { outputActive: state.streaming }
+      case 'GetReplayBufferStatus':
+      case 'GetVirtualCamStatus': return { outputActive: false }
+      case 'StartRecord': state.recording = true; return {}
+      case 'StopRecord': state.recording = false; return { outputPath: '/upforge/match.mp4' }
+      default: return { outputActive: state.recording, outputBytes: state.bytes += 100, outputPath: '/upforge/match.mp4' }
+    }
+  })
+  vi.mocked(retargetUpForgeCapture).mockImplementation(async (obs, _game, opts) => {
+    if (opts?.switchScene !== false) await obs.call('SetCurrentProgramScene', { sceneName: 'UpForge' })
+    return { captureWindow: 'VALORANT' }
+  })
+  return { profiles, state, playerVideo }
+}
+
+async function playMatch(rec: OBSRecorder, savePath: string) {
+  vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+  vi.spyOn(rec as unknown as { _startLiveKillPoll(): void }, '_startLiveKillPoll').mockImplementation(() => {})
+  const started = Promise.allSettled([rec.start('valorant', {
+    quality: '720p', bitrate: 5, fps: 30, audioEnabled: true, savePath, captureMonitor: 'auto', manageObsVideo: true,
+  })])
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(await started).toEqual([{ status: 'fulfilled', value: undefined }])
+  const stopped = rec.stop()
+  await vi.advanceTimersByTimeAsync(5000)
+  return stopped
+}
+
+describe('player OBS profile and scene are left as found', () => {
+  function idleRecorder() {
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null, _outputPath: null })
+    return rec
+  }
+
+  it('records in the UpForge profile and restores the player profile and scene after the match', async () => {
+    const obs = fakePlayerObs()
+    const rec = idleRecorder()
+    expect(await playMatch(rec, mock.root)).toBe('/upforge/match.mp4')
+    expect(obs.state.profile).toBe('Streaming')
+    expect(obs.state.scene).toBe('Just Chatting')
+    expect(obs.profiles.Streaming.video).toEqual(obs.playerVideo)
+    expect(obs.profiles.Streaming.recordDirectory).toBe('/player/videos')
+    expect(obs.profiles.Streaming.params).toEqual({ 'Output/Mode': 'Advanced' })
+    // UpForge's own profile received the match settings.
+    expect(obs.profiles.UpForge.video).toMatchObject({ baseWidth: 1280, baseHeight: 720, fpsNumerator: 30 })
+    expect(obs.profiles.UpForge.recordDirectory).toBe(mock.root)
+    expect(obs.profiles.UpForge.params['Output/Mode']).toBe('Simple')
+  })
+
+  it('creates the UpForge profile when OBS does not have one yet', async () => {
+    const obs = fakePlayerObs({ upforgeProfileExists: false })
+    const rec = idleRecorder()
+    await playMatch(rec, mock.root)
+    expect(mock.call).toHaveBeenCalledWith('CreateProfile', { profileName: 'UpForge' })
+    expect(obs.state.profile).toBe('Streaming')
+    expect(obs.profiles.Streaming.video).toEqual(obs.playerVideo)
+    expect(obs.profiles.Streaming.recordDirectory).toBe('/player/videos')
+  })
+
+  it('changes nothing in OBS while the player is streaming', async () => {
+    const obs = fakePlayerObs({ streaming: true })
+    obs.state.scene = 'UpForge'
+    const rec = idleRecorder()
+    await playMatch(rec, mock.root)
+    for (const method of ['SetCurrentProfile', 'CreateProfile', 'SetVideoSettings', 'SetRecordDirectory', 'SetProfileParameter', 'SetCurrentProgramScene']) {
+      expect(mock.call).not.toHaveBeenCalledWith(method, expect.anything())
+    }
+    expect(obs.state.profile).toBe('Streaming')
+    expect(obs.profiles.Streaming.video).toEqual(obs.playerVideo)
+    expect(rec.getStartupWarning() ?? '').toMatch(/your own OBS settings/)
+  })
+
+  it('does not touch the player profile when settings change between matches', async () => {
+    fakePlayerObs()
+    const rec = idleRecorder()
+    expect(await rec.applyRecordingSettings({
+      quality: '1080p', bitrate: 8, fps: 60, audioEnabled: true, savePath: mock.root, captureMonitor: 'auto', manageObsVideo: true,
+    })).toBeNull()
+    expect(mock.call).not.toHaveBeenCalledWith('SetVideoSettings', expect.anything())
+    expect(mock.call).not.toHaveBeenCalledWith('SetRecordDirectory', expect.anything())
+    expect(mock.call).not.toHaveBeenCalledWith('SetProfileParameter', expect.anything())
   })
 })
 
@@ -175,6 +331,93 @@ describe('recovered recording clock', () => {
 })
 
 describe('OBS recording completion', () => {
+  it('finalizes the owned match file after reconnect confirms idle and releases ownership', async () => {
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    Object.assign(rec, { _disconnectedDuringRecording: true })
+    expect(await rec.releaseStaleMatchOwnership()).toBe(true)
+    expect(rec.isRecording()).toBe(false)
+    const stopped = rec.stop()
+    expect(rec.stop()).toBe(stopped)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await stopped).toBe('/tmp/match.mp4')
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+    expect(mock.call).not.toHaveBeenCalledWith('StopReplayBuffer')
+    expect(rec.hasRecordingFailure()).toBe(false)
+  })
+
+  it('keeps the released match path separate from a later user-owned recording', async () => {
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    expect(await rec.releaseStaleMatchOwnership()).toBe(true)
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(false)
+    mock.call.mockResolvedValue({ outputActive: true })
+    const changed = mock.on.mock.calls.find(([event]) => event === 'RecordStateChanged')![1]
+    changed({ outputActive: true, outputPath: '/tmp/user-recording.mp4' })
+    const stopped = rec.stop()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await stopped).toBe('/tmp/match.mp4')
+    expect(rec.getLastRecordingPath()).toBe('/tmp/user-recording.mp4')
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('keeps the post-stop cooldown after finalizing a released match file', async () => {
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    expect(await rec.releaseStaleMatchOwnership()).toBe(true)
+    const stopped = rec.stop()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await stopped).toBe('/tmp/match.mp4')
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    let bytes = 100
+    mock.call.mockImplementation(async () => ({ outputActive: true, outputDuration: 1000, outputBytes: bytes += 100 }))
+    const reclaimed = rec.reclaimActiveRecording()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await reclaimed).toBe(false)
+    expect(rec.isRecording()).toBe(false)
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('never returns an arbitrary unowned path when OBS is idle', async () => {
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null, _outputPath: '/tmp/user-recording.mp4' })
+    expect(await rec.stop()).toBeNull()
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('does not associate the previous released match file with a cancelled new start', async () => {
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    expect(await rec.releaseStaleMatchOwnership()).toBe(true)
+    await expect(rec.start('overstep', undefined, { isCancelled: () => true })).rejects.toThrow('cancelled')
+    expect(await rec.stop()).toBeNull()
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('retains a released owned file that is still finalizing', async () => {
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    expect(await rec.releaseStaleMatchOwnership()).toBe(true)
+    mock.fileSize = 0
+    const stopped = rec.stop()
+    await vi.advanceTimersByTimeAsync(46_000)
+    expect(await stopped).toBe('/tmp/match.mp4')
+    expect(rec.getFinalizingRecordingPath()).toBe('/tmp/match.mp4')
+    expect(rec.hasRecordingFailure()).toBe(false)
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('normal stop leaves a user-started OBS recording unowned and running', async () => {
+    mock.call.mockResolvedValue({ outputActive: true, outputBytes: 100 })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    const stopped = rec.stop()
+    await vi.advanceTimersByTimeAsync(150_000)
+    expect(await stopped).toBeNull()
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+    expect(rec.hasRecordingFailure()).toBe(false)
+  })
   it('does not release ownership when the status query fails', async () => {
     mock.call.mockRejectedValue(new Error('connection lost'))
     const rec = recorder()
@@ -406,6 +649,18 @@ describe('mid-match progress watchdog', () => {
 })
 
 describe('recording progress verification', () => {
+  it('keeps a usable failure reason when OBS rejects startup with a blank message', async () => {
+    mock.call.mockImplementation(async (method) => {
+      if (method === 'StartRecord') throw Object.assign(new Error(''), { code: 702 })
+      return { outputActive: false, outputBytes: 0 }
+    })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    await expect(rec.start('valorant')).rejects.toThrow(/OBS request failed.*702/)
+    expect(rec.getLastError()).toMatch(/702/)
+    expect(rec.isRecording()).toBe(false)
+  })
   it('starts a separate sustained match recording after the onboarding test completes', async () => {
     let active = false
     let bytes = 0
@@ -541,7 +796,8 @@ describe('recording progress verification', () => {
     })
     const rec = recorder()
     Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
-    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValueOnce(false).mockResolvedValue(true)
+    // Wrong scene on the first check and after the one recovery attempt.
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValue(true)
     vi.spyOn(rec as unknown as { _startLiveKillPoll(): void }, '_startLiveKillPoll').mockImplementation(() => {})
     await expect(rec.start('cs2')).rejects.toThrow('registered UpForge gameplay scene')
     const retry = rec.start('cs2')

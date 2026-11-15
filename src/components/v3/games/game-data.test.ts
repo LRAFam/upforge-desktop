@@ -59,14 +59,14 @@ describe('Deadlock rank history', () => {
   })
   it('reverses newest-first history and drops unranked entries', () => {
     const s = deadlockRankSeries([{ rank: 31 }, { rank: null }, { rank: 26 }, { rank: 0 }, { rank: 25 }])
-    expect(s.map(p => p.label)).toEqual(['Seeker 5', 'Seeker 6', 'Alchemist 1'])
+    expect(s.map(p => p.label)).toEqual(['Seeker 5', 'Seeker 6', 'Acolyte 1'])
     // Crossing a tier boundary is one step, not ten.
     expect(s[2].score - s[1].score).toBe(1)
     expect(deadlockRankSeries(undefined)).toEqual([])
   })
   it('writes a sentence only with 2+ points', () => {
     const s = deadlockRankSeries([{ rank: 31 }, { rank: 25 }])
-    expect(rankSentence(s)).toBe('Your rank is up from Seeker 5 to Alchemist 1 over your last 2 rank updates.')
+    expect(rankSentence(s)).toBe('Your rank is up from Seeker 5 to Acolyte 1 over your last 2 rank updates.')
     expect(rankSentence(s.slice(0, 1))).toBe('')
     expect(rankSentence(deadlockRankSeries([{ rank: 25 }, { rank: 25 }]))).toMatch(/held at Seeker 5/)
   })

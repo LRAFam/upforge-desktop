@@ -7,14 +7,37 @@ import type { MatchData } from './riot-types'
 export function hasRichMatchData(timeline: MatchData | null | undefined): boolean {
   if (!timeline) return false
 
-  if ((timeline.killEvents?.length ?? 0) > 0 || (timeline.playerKills?.length ?? 0) > 0) {
-    return true
-  }
+  if (hasKillRows(timeline)) return true
 
   const fs = timeline.finalStats
   if (!fs) return false
 
   return ((fs.kills ?? 0) + (fs.deaths ?? 0) + (fs.assists ?? 0)) > 0
+}
+
+/** At least one kill row in killEvents OR playerKills (an empty killEvents must not hide playerKills). */
+export function hasKillRows(timeline: MatchData | null | undefined): boolean {
+  if (!timeline) return false
+  return (timeline.killEvents?.length ?? 0) > 0 || (timeline.playerKills?.length ?? 0) > 0
+}
+
+/**
+ * CS2 / Deadlock coaching is "from the demo": K/D/A totals alone are not demo data, and
+ * Deadlock kill rows from the live console log are not either. Mirrors API
+ * MatchDataQualityService::isReadyForCs2Desktop (kill rows required); stricter on live-only rows.
+ */
+export function hasDemoKillRows(timeline: MatchData | null | undefined): boolean {
+  if (!hasKillRows(timeline)) return false
+  return timeline?.killRowsSource !== 'live_log'
+}
+
+/** Per-game Analyse data bar: demo kill rows for CS2 / Deadlock, otherwise hasRichMatchData. */
+export function hasRichMatchDataForGame(
+  game: string | null | undefined,
+  timeline: MatchData | null | undefined,
+): boolean {
+  if (game === 'cs2' || game === 'deadlock') return hasDemoKillRows(timeline)
+  return hasRichMatchData(timeline)
 }
 
 /**
@@ -26,7 +49,7 @@ export function shouldScheduleLateClipRetry(
   timeline: MatchData | null | undefined,
   matchId?: string | null,
 ): boolean {
-  if (hasRichMatchData(timeline)) return false
+  if (hasRichMatchDataForGame(game, timeline)) return false
   return game === 'valorant' || game === 'cs2' || game === 'deadlock' || !!matchId || !!timeline?.matchId
 }
 
@@ -128,13 +151,17 @@ export function shouldDeferPostGameForDemoSync(
 
 export function demoAttachHint(game: string | null | undefined): string {
   if (game === 'cs2') {
-    return 'Download the GOTV demo in CS2 (Watch → Your Matches), then attach the .dem file. Analyse stays locked until the demo is linked.'
+    return 'Coaching starts when you close CS2: UpForge then fetches the demo from Steam. Between matches, download the GOTV demo in CS2 (Watch → Your Matches) and attach the .dem file.'
   }
-  if (game === 'deadlock') {
-    return 'Download the replay in Deadlock match history, then attach the .dem file. Analyse stays locked until the replay is linked.'
-  }
+  if (game === 'deadlock') return DEADLOCK_REVIEW_REPLAY_HINT
   return ''
 }
+
+/**
+ * Deadlock replays are read in the cloud ("Review replay"); a local .dem attach cannot parse them,
+ * so every Deadlock "attach" prompt points here instead of the CS2 attach flow.
+ */
+export const DEADLOCK_REVIEW_REPLAY_HINT = 'Choose Review replay on this match (uses 1 analysis). UpForge finds the replay, reads it in the cloud and adds your kills and deaths.'
 
 /** Deadlock Valve replay wait copy (same timing band as CS2 GOTV). */
 export function deadlockDemoSyncMessage(elapsedMs: number): string {
@@ -143,12 +170,12 @@ export function deadlockDemoSyncMessage(elapsedMs: number): string {
     return `Waiting for Deadlock replay (${elapsedMin}m). Usually a few minutes after the match`
   }
   if (elapsedMin < 15) {
-    return `Still waiting for Deadlock replay (${elapsedMin}m). Keep Steam open, or attach the .dem`
+    return `Still waiting for Deadlock replay (${elapsedMin}m). Keep Steam open, or choose Review replay on this match`
   }
   if (elapsedMin < 30) {
-    return `Still waiting for Deadlock replay (${elapsedMin}m). Attach the .dem from match history if needed`
+    return `Still waiting for Deadlock replay (${elapsedMin}m). Choose Review replay on this match if needed`
   }
-  return `Deadlock replay not linked (${elapsedMin}m). Attach the .dem to unlock Analyse`
+  return `Deadlock replay not linked (${elapsedMin}m). Choose Review replay on this match to unlock Analyse`
 }
 
 export function cs2RecordingSavedDashboardMessage(map: string | null | undefined): string {

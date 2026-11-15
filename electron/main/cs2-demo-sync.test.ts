@@ -73,9 +73,9 @@ describe('shouldDeferPostGameForDemoSync', () => {
 })
 
 describe('demoAttachHint', () => {
-  it('mentions attach and Analyse lock for CS2', () => {
+  it('says coaching starts when CS2 closes, with attach as the between-match route', () => {
+    expect(demoAttachHint('cs2')).toMatch(/Coaching starts when you close CS2/)
     expect(demoAttachHint('cs2')).toMatch(/attach/i)
-    expect(demoAttachHint('cs2')).toMatch(/Analyse/i)
   })
 })
 

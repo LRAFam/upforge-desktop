@@ -216,7 +216,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { DeadlockProfileStats } from '../env.d.ts'
-import { getDeadlockRankIconUrl, getDeadlockHeroIconUrl } from '../lib/deadlock'
+import { deadlockCurrentRankIconUrl, getDeadlockHeroIconUrl } from '../lib/deadlock'
 import { formatDeadlockMatchDate, fmtDeadlockDuration, fmtDeadlockNW } from '../lib/deadlock-analyses'
 import { deadlockMatchWon } from '../lib/deadlock-queues'
 import { inMatchPollGuard } from '../lib/in-match-poll-pause'
@@ -226,11 +226,7 @@ const stats = ref<DeadlockProfileStats | null>(null)
 const linked = ref(false)
 const fetchError = ref(false)
 
-const rankIconUrl = computed(() => {
-  const rank = stats.value?.current_rank
-  if (!rank) return getDeadlockRankIconUrl('Obscurus')
-  return getDeadlockRankIconUrl(rank.name, rank.subtier) ?? getDeadlockRankIconUrl('Obscurus')
-})
+const rankIconUrl = computed(() => deadlockCurrentRankIconUrl(stats.value?.current_rank))
 
 let refreshCleanup: (() => void) | null = null
 

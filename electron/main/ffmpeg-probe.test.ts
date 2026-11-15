@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isMissingFfmpegBinary,
   isRetryableProbeFailure,
   parseFfmpegProbeStderr,
   parseRecordingDurationMs,
@@ -60,5 +61,19 @@ describe('probe helpers', () => {
     expect(probeTimeoutMs(10 * 1024 * 1024)).toBe(20_000)
     expect(probeTimeoutMs(500 * 1024 * 1024)).toBeGreaterThan(20_000)
     expect(probeTimeoutMs(5_000 * 1024 * 1024)).toBe(60_000)
+  })
+})
+
+describe('isMissingFfmpegBinary', () => {
+  it('flags a spawn failure of the ffmpeg tool, not the recording', () => {
+    expect(isMissingFfmpegBinary('ffmpeg error: spawn ffmpeg.exe ENOENT')).toBe(true)
+    expect(isMissingFfmpegBinary('Error: ffmpeg error: spawn C:\\Program Files\\UpForge\\resources\\ffmpeg\\ffmpeg.exe ENOENT')).toBe(true)
+    expect(isMissingFfmpegBinary('spawn /Applications/UpForge.app/Contents/Resources/ffmpeg/ffmpeg EACCES')).toBe(true)
+  })
+
+  it('leaves real recording problems alone', () => {
+    expect(isMissingFfmpegBinary('Recording is incomplete — moov atom not found.')).toBe(false)
+    expect(isMissingFfmpegBinary('Recording file not found.')).toBe(false)
+    expect(isMissingFfmpegBinary(undefined)).toBe(false)
   })
 })
