@@ -11,7 +11,7 @@ import { foundLine, type LiveUpdate } from '../../lib/coach-allowances'
 import UfIcon from '../../components/v3/UfIcon.vue'
 import SessionCoachV3 from '../../components/v3/ideas/SessionCoachV3.vue'
 import {
-  agentPortraitUrl, kdaText, metaLine, postGameFocusStrip, progressWidth, resultTone, resultWord, scoreText, toneColor,
+  agentPortraitUrl, kdaText, metaLine, postGameFocusStripForGame, progressWidth, resultTone, resultWord, scoreText, toneColor,
   type PostGameSummary, type PostGameTone,
 } from '../../components/v3/postgame/post-game-v3'
 import { HELP_TROUBLESHOOTING_URL, openHelp } from '../../lib/help-links'
@@ -51,6 +51,8 @@ const props = defineProps<{
   reportMatchId?: string | null
   /** Cloud retention: how long this match's video stays in the cloud (null = kept, or nothing to say). */
   cloudLine?: string | null
+  /** Game this match was played in. The saved focus is Valorant's, so other games hide its strip. */
+  game?: string | null
 }>()
 
 defineEmits<{
@@ -80,7 +82,7 @@ const bar = computed(() => progressWidth(props.progress))
 const dot = computed(() => toneColor(props.tone))
 // Focus pips: read the saved focus (no network) and follow live updates from the main window.
 const focus = ref<Focus | null>(null)
-const focusStrip = computed(() => postGameFocusStrip(focus.value))
+const focusStrip = computed(() => postGameFocusStripForGame(focus.value, props.game))
 let offFocus: (() => void) | null = null
 onMounted(async () => {
   const api = window.api?.app

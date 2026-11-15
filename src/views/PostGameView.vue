@@ -39,6 +39,7 @@
       :review-round="gameInfo.game === 'valorant' ? reviewRoundShown : null"
       :report-match-id="gameInfo.game === 'valorant' && matchId && matchId !== 'preview-match-id' ? matchId : null"
       :cloud-line="state === 'ready' && result?.analysis_id ? postGameCloud : null"
+      :game="gameInfo.game"
       @keep-cloud="handoffToMain({ path: '/cloud-storage', query: { keep: '1' } })"
       @primary="handleCompactPrimary"
       @secondary="viewFullAnalysis"
