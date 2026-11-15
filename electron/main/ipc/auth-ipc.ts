@@ -59,6 +59,10 @@ export function setupAuthHandlers(
     }
   })
 
+  ipcMain.handle('auth:resend-verification-email', async (_e, email: unknown) => {
+    return auth.resendVerificationEmail(typeof email === 'string' ? email : '')
+  })
+
   ipcMain.handle('auth:logout', async () => {
     // Capture continues locally. Its owner is pinned independently of login state.
     uploadManager?.abort()

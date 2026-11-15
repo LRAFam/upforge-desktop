@@ -367,7 +367,7 @@ export class AuthManager {
     }
   }
 
-  async login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
+  async login(email: string, password: string): Promise<{ ok: boolean; error?: string; code?: string }> {
     log.info('[Auth] login() called')
     try {
       log.info('[Auth] posting to /api/login')
@@ -389,7 +389,7 @@ export class AuthManager {
       log.info('[Auth] login succeeded for user:', this._user?.name ?? user?.name)
       return { ok: true }
     } catch (err: unknown) {
-      const axiosErr = err as { code?: string; message?: string; response?: { status?: number; data?: { success?: boolean; error?: string; message?: string } } }
+      const axiosErr = err as { code?: string; message?: string; response?: { status?: number; data?: { success?: boolean; error?: string; message?: string; code?: string } } }
       log.error('[Auth] login error:', axiosErr.code, axiosErr.message, axiosErr.response?.status, JSON.stringify(axiosErr.response?.data))
       // ErrorHelper uses success/error; Laravel validation uses message.
       const data = axiosErr.response?.data
@@ -398,7 +398,29 @@ export class AuthManager {
         || (axiosErr.code === 'ENOTFOUND' ? 'Cannot reach UpForge servers — check your internet connection' : null)
         || axiosErr.message
         || 'Login failed'
-      return { ok: false, error: message }
+      // Pass the API's machine code through (e.g. `email_unverified`) so the sign-in screen can offer a fix.
+      const code = typeof data?.code === 'string' ? data.code : undefined
+      return code ? { ok: false, error: message, code } : { ok: false, error: message }
+    }
+  }
+
+  /**
+   * Signed-out resend of the verification email. The API always answers 200 with a generic message
+   * (it never says whether the address exists) and rate-limits per email and per IP.
+   */
+  async resendVerificationEmail(email: string): Promise<{ ok: boolean; message?: string; error?: string }> {
+    const trimmed = String(email ?? '').trim()
+    if (!trimmed) return { ok: false, error: 'Enter your email address first.' }
+    try {
+      const res = await this._api.post('/api/email/resend-verification-public', { email: trimmed })
+      const message = typeof res.data?.message === 'string' ? res.data.message : undefined
+      return { ok: true, message }
+    } catch (err: unknown) {
+      const e = err as { code?: string; response?: { status?: number; data?: { message?: string } } }
+      log.warn('[Auth] resend verification failed:', e.code, e.response?.status)
+      if (e.response?.status === 429) return { ok: false, error: 'Too many requests. Wait a few minutes, then try again.' }
+      if (e.response?.status === 422) return { ok: false, error: 'Enter a valid email address.' }
+      return { ok: false, error: 'Could not send the email. Check your connection and try again.' }
     }
   }
 

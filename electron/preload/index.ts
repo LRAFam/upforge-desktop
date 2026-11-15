@@ -41,6 +41,8 @@ const api = {
     login: (email: string, password: string) =>
       ipcRenderer.invoke('auth:login', { email, password }),
     logout: () => ipcRenderer.invoke('auth:logout'),
+    resendVerificationEmail: (email: string) =>
+      ipcRenderer.invoke('auth:resend-verification-email', email) as Promise<{ ok: boolean; message?: string; error?: string }>,
     getUser: () => ipcRenderer.invoke('auth:get-user'),
     refreshUser: () => ipcRenderer.invoke('auth:refresh-user'),
     getOnboardingCampaign: () => ipcRenderer.invoke('auth:get-onboarding-campaign'),

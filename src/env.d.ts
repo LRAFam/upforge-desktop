@@ -856,8 +856,9 @@ declare global {
         debrief: (id: string) => Promise<{ ok?: boolean; error?: string }>
       }
       auth: {
-        login: (email: string, password: string) => Promise<{ ok: boolean; user?: unknown; error?: string }>
+        login: (email: string, password: string) => Promise<{ ok: boolean; user?: unknown; error?: string; code?: string }>
         logout: () => Promise<void>
+        resendVerificationEmail: (email: string) => Promise<{ ok: boolean; message?: string; error?: string }>
         getUser: () => Promise<unknown>
         refreshUser: () => Promise<unknown>
         getOnboardingCampaign: () => Promise<import('./lib/desktop-onboarding-campaign').DesktopOnboardingCampaignResult>
