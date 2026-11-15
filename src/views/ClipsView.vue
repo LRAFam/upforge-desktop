@@ -734,7 +734,7 @@
     <div v-if="pendingClipAnalysis" class="fixed inset-0 z-[80] flex items-center justify-center bg-black/80" role="dialog" aria-modal="true" aria-labelledby="clip-analysis-confirm-title">
       <section class="max-w-md rounded-lg border border-white/20 bg-[#171b23] p-6 text-white">
         <h2 id="clip-analysis-confirm-title" class="font-semibold">Analyse this clip?</h2>
-        <p class="my-3 text-sm text-gray-300">Uses 1 AI clip review. {{ pendingClipAnalysis.limit === null ? 'Your plan has unlimited clip reviews.' : `You have ${pendingClipAnalysis.remaining} of ${pendingClipAnalysis.limit} remaining this month.` }} This does not use a full-match report.</p>
+        <p class="my-3 text-sm text-gray-300">Uses 1 AI clip review. {{ pendingClipAnalysis.limit === null ? 'No cap (admin).' : `You have ${pendingClipAnalysis.remaining} of ${pendingClipAnalysis.limit} remaining this month.` }} This does not use a full-match report.</p>
         <p class="mb-4 text-xs text-gray-400">Feedback covers what is visible in this clip. It is not a full-match assessment.</p>
         <button class="rounded bg-rose-600 px-4 py-2" @click="confirmClipAnalysis">Use 1 clip review</button>
         <button class="ml-3 px-3 py-2" @click="pendingClipAnalysis=null">Cancel</button>
@@ -1208,7 +1208,7 @@
       <!-- Analysis confirm -->
       <UfDialog :open="!!pendingClipAnalysis" kicker="AI clip review" title="Analyse this clip?" :width="480" @close="pendingClipAnalysis = null">
         <template v-if="pendingClipAnalysis">
-          <p class="uf-t2" style="margin: 0">Uses 1 AI clip review. {{ pendingClipAnalysis.limit === null ? 'Your plan has unlimited clip reviews.' : `You have ${pendingClipAnalysis.remaining} of ${pendingClipAnalysis.limit} remaining this month.` }} This does not use a full-match report.</p>
+          <p class="uf-t2" style="margin: 0">Uses 1 AI clip review. {{ pendingClipAnalysis.limit === null ? 'No cap (admin).' : `You have ${pendingClipAnalysis.remaining} of ${pendingClipAnalysis.limit} remaining this month.` }} This does not use a full-match report.</p>
           <p class="uf-t4" style="margin: 0">Feedback covers what is visible in this clip. It is not a full-match assessment.</p>
         </template>
         <template #actions>

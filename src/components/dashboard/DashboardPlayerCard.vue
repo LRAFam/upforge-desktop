@@ -255,7 +255,7 @@ function deadlockRankIconUrl() {
           <div class="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
             <div class="h-full w-full rounded-full bg-green-500" />
           </div>
-          <span class="text-xs font-medium tabular-nums shrink-0 text-gray-400">∞</span>
+          <span class="text-xs font-medium shrink-0 text-gray-400">No cap (admin)</span>
         </template>
         <template v-else-if="profile.user.analysis_stats.limit != null">
           <div class="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">

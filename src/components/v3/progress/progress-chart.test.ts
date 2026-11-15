@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { badgeIndexes, chartGeometry, habitTone, HABIT_METRICS, inRange, eloDelta, eloSeries, formatMetric, halfDelta, metricLabel, rankChanges, sparkline } from './progress-chart'
+import { badgeIndexes, chartGeometry, habitTone, HABIT_METRICS, inRange, eloDelta, eloSeries, formatMetric, halfDelta, metricLabel, rankChanges, sparkline, trendDeltaLabel } from './progress-chart'
 
 const snap = (date: string, rank: string | null, rr: number, elo: number) => ({ date, rank, rr, elo })
 
@@ -49,8 +49,20 @@ describe('chartGeometry', () => {
 
 describe('helpers', () => {
   it('halfDelta averages the first and second half', () => {
-    expect(halfDelta([0.4, 0.3, 0.2, 0.1])).toEqual({ first: 0.35, last: 0.15000000000000002 })
+    const d = halfDelta([0.4, 0.3, 0.2, 0.2, 0.1, 0.0])!
+    expect(d.first).toBeCloseTo(0.3)
+    expect(d.last).toBeCloseTo(0.1)
+  })
+  it('halfDelta shows no trend below 3 matches per half (#595)', () => {
+    expect(halfDelta([0.4, 0.3, 0.2, 0.1])).toBeNull()
+    expect(halfDelta([0.4, 0.3, 0.2, 0.1, 0.1, null])).toBeNull()
     expect(halfDelta([0.4, null])).toBeNull()
+  })
+  it('trendDeltaLabel says "Early read" without a trend', () => {
+    expect(trendDeltaLabel(null)).toBe('Early read')
+    expect(trendDeltaLabel(0.01)).toBe('Steady')
+    expect(trendDeltaLabel(12.4, '%')).toBe('Up 12%')
+    expect(trendDeltaLabel(-1.25)).toBe('Down 1.3')
   })
   it('sparkline spans the width', () => {
     expect(sparkline([1, 2, 3], 100, 20).split(' ')).toHaveLength(3)

@@ -12,6 +12,7 @@ describe('account usage contract', () => {
   it('supports explicit unlimited and exhausted limits', () => {
     expect(validAccountUsage({ ...usage, clips: { used: 0, limit: null, remaining: null } })).toBe(true)
     expect(capacityLabel({used: 8, limit: 5, remaining: 0})).toBe('8 / 5 used · 0 available')
+    expect(capacityLabel({used: 4, limit: null, remaining: null})).toBe('4 stored')
   })
 })
 

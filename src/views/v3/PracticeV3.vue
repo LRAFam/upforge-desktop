@@ -25,7 +25,7 @@ import {
   type PracticeTab,
 } from '../../components/v3/practice/practice-v3'
 import { focusDrillPlan } from '../../components/v3/practice/focus-drills'
-import { focusBeforeAfter } from '../../lib/focus'
+import { FOCUS_VERDICT_LABEL, focusBeforeAfter } from '../../lib/focus'
 import { usePracticeFocus } from '../../components/v3/practice/usePracticeFocus'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
 import '../../components/v3/practice/practice-v3.css'
@@ -161,8 +161,8 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
           <p class="uf-t1" style="margin: 0; max-width: 760px">{{ focus.label }}</p>
           <p class="uf-t2" style="margin: 0; max-width: 620px">{{ focusPlan.caption }}</p>
           <p v-if="focusProgress" class="uf-t4" style="margin: 0">
-            Before: {{ focusProgress.before }} · Since: {{ focusProgress.since }} over {{ focusProgress.games }} game{{ focusProgress.games === 1 ? '' : 's' }}
-            <span :style="{ color: focusProgress.improved ? 'var(--uf-win)' : 'var(--uf-muted)' }">{{ focusProgress.improved ? '· better' : '· not yet' }}</span>
+            Starting point: {{ focusProgress.before }} · Since: {{ focusProgress.since }} over {{ focusProgress.games }} game{{ focusProgress.games === 1 ? '' : 's' }}
+            <span :style="{ color: focusProgress.verdict === 'better' ? 'var(--uf-win)' : 'var(--uf-muted)' }">· {{ FOCUS_VERDICT_LABEL[focusProgress.verdict] }}</span>
           </p>
           <div class="uf-session-row">
             <ol class="uf-session-steps">
@@ -318,7 +318,7 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
           <template v-if="insights.length">
             <div class="uf-hair" />
             <section class="uf-aside-block">
-              <span class="uf-label">Did it carry over?</span>
+              <span class="uf-label">Trainer vs matches</span>
               <p v-for="(line, i) in insights" :key="i" class="uf-t4" style="margin: 0; color: var(--uf-bone); line-height: 1.5">{{ line }}</p>
             </section>
           </template>

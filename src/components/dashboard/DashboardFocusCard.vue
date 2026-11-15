@@ -84,7 +84,7 @@ onUnmounted(() => {
     <h2 v-else-if="loadError" id="focus-title" class="focus-title">Your focus is temporarily unavailable</h2>
     <template v-else>
       <h2 id="focus-title" class="focus-title">Get your first focus, no recording needed</h2>
-      <p class="focus-sub">With Valorant open, UpForge reads your recent matches, finds the habit costing you most rounds, and checks it after every game.</p>
+      <p class="focus-sub">With Valorant open, UpForge reads your recent matches, finds the habit that shows up most in your ranked matches, and checks it after every game.</p>
     </template>
 
     <div class="focus-actions">

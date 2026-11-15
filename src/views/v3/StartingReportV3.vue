@@ -55,7 +55,7 @@ function back() { if (window.history.length > 1) router.back(); else void router
           </div>
 
           <section class="sr3-col">
-            <span class="uf-label">What's costing you games</span>
+            <span class="uf-label">Habits that showed up most</span>
             <div v-for="(h, i) in view.habits" :key="i" class="sr3-habit">
               <p class="uf-t3">{{ h }}</p>
               <!-- One pip per match read, filled where the habit showed up. -->
