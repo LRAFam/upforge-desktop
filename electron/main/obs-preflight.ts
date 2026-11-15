@@ -394,6 +394,11 @@ export interface RunObsPreflightOptions {
   port: number
   recordVerifyMs?: number
   includeTestRecording?: boolean
+  /**
+   * The player keeps their own OBS scene at match start (obsPreserveActiveScene), so UpForge
+   * will not switch for them: a wrong active scene must show up here, before a match.
+   */
+  requireActiveGameplayScene?: boolean
   onActivity?: (msg: string) => void
   sleep?: (ms: number) => Promise<void>
 }
@@ -435,11 +440,13 @@ export async function runObsPreflight(opts: RunObsPreflightOptions): Promise<Obs
   steps.push(sceneStep)
   if (!sceneStep.ok) return { steps, ...buildPreflightFailure(steps) }
 
-  if (!(await opts.obsRecorder.isCurrentProgramSceneGameplay())) {
-    steps.push(stepFailure('scene_active', 'Switch OBS to the registered UpForge gameplay scene before starting match capture.'))
-    return { steps, ...buildPreflightFailure(steps) }
+  if (opts.requireActiveGameplayScene) {
+    if (!(await opts.obsRecorder.isCurrentProgramSceneGameplay())) {
+      steps.push(stepFailure('scene_active', 'Switch OBS to the registered UpForge gameplay scene before starting match capture.'))
+      return { steps, ...buildPreflightFailure(steps) }
+    }
+    steps.push(stepOk('scene_active'))
   }
-  steps.push(stepOk('scene_active'))
 
   const sourceStep = await checkSourceExists(obs)
   steps.push(sourceStep)
