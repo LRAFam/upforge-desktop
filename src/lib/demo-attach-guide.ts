@@ -74,9 +74,9 @@ export function demoAttachGuideSteps(game: DemoAttachGame): DemoAttachGuideStep[
     },
     {
       parts: [
-        { text: 'In UpForge: open this match → ' },
-        { text: 'Match replay', emphasis: true },
-        { text: ' and pick the file saved closest to your game time' },
+        { text: 'In UpForge: choose ' },
+        { text: 'Review replay', emphasis: true },
+        { text: ' on this match (uses 1 analysis). UpForge finds the file and reads it in the cloud' },
       ],
     },
   ]

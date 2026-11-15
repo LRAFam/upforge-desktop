@@ -153,11 +153,15 @@ export function demoAttachHint(game: string | null | undefined): string {
   if (game === 'cs2') {
     return 'Coaching starts when you close CS2: UpForge then fetches the demo from Steam. Between matches, download the GOTV demo in CS2 (Watch → Your Matches) and attach the .dem file.'
   }
-  if (game === 'deadlock') {
-    return 'Download the replay in Deadlock match history, then attach the .dem file. Analyse stays locked until the replay is linked.'
-  }
+  if (game === 'deadlock') return DEADLOCK_REVIEW_REPLAY_HINT
   return ''
 }
+
+/**
+ * Deadlock replays are read in the cloud ("Review replay"); a local .dem attach cannot parse them,
+ * so every Deadlock "attach" prompt points here instead of the CS2 attach flow.
+ */
+export const DEADLOCK_REVIEW_REPLAY_HINT = 'Choose Review replay on this match (uses 1 analysis). UpForge finds the replay, reads it in the cloud and adds your kills and deaths.'
 
 /** Deadlock Valve replay wait copy (same timing band as CS2 GOTV). */
 export function deadlockDemoSyncMessage(elapsedMs: number): string {
@@ -166,12 +170,12 @@ export function deadlockDemoSyncMessage(elapsedMs: number): string {
     return `Waiting for Deadlock replay (${elapsedMin}m). Usually a few minutes after the match`
   }
   if (elapsedMin < 15) {
-    return `Still waiting for Deadlock replay (${elapsedMin}m). Keep Steam open, or attach the .dem`
+    return `Still waiting for Deadlock replay (${elapsedMin}m). Keep Steam open, or choose Review replay on this match`
   }
   if (elapsedMin < 30) {
-    return `Still waiting for Deadlock replay (${elapsedMin}m). Attach the .dem from match history if needed`
+    return `Still waiting for Deadlock replay (${elapsedMin}m). Choose Review replay on this match if needed`
   }
-  return `Deadlock replay not linked (${elapsedMin}m). Attach the .dem to unlock Analyse`
+  return `Deadlock replay not linked (${elapsedMin}m). Choose Review replay on this match to unlock Analyse`
 }
 
 export function cs2RecordingSavedDashboardMessage(map: string | null | undefined): string {

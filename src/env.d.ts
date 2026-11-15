@@ -1750,6 +1750,10 @@ declare global {
         kill: () => Promise<{ ok: boolean }>
         /** Last launched drill, kept after it ends (survives a view remount). */
         getLastLaunch: () => Promise<TrainerLaunchInfo | null>
+        /** Upload state of a finished run (saved / pending retry / failed) and its effect on the assigned drill. */
+        getSyncStatus: (scenario: string, completedAt: string) => Promise<import('./lib/trainer-sync').TrainerSyncOutcome | null>
+        /** Focus metric → allowed trainer drills (API rulebook); null when signed out or offline. */
+        getDrillRulebook: (game?: string) => Promise<import('./lib/drill-rulebook').DrillRulebook | null>
         getHistory: (comparison?: import('./lib/training-result-metrics').TrainingComparisonRequest) => Promise<TrainingHistory | null>
         getPlan: () => Promise<SharedTrainingPlan | null>
         getCoachingDrills: () => Promise<CoachingDrill[]>

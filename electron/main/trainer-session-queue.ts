@@ -1,0 +1,210 @@
+/**
+ * trainer-session-queue.ts
+ * Uploads finished trainer runs to POST /api/training/sessions and keeps the ones that could not be
+ * sent (offline, API down, signed out) on disk, retrying with backoff until they land. Each run gets a
+ * `metadata.client_run_id`, so a resend after a lost response is stored once by the API.
+ * No Electron imports (unit-tested); the IPC layer wires post / token / notify.
+ */
+import fs from 'fs'
+import path from 'path'
+import { randomUUID } from 'crypto'
+
+import type { TrainerDrillState, TrainerSyncOutcome } from '../../src/lib/trainer-sync'
+
+export type { TrainerDrillState, TrainerSyncOutcome } from '../../src/lib/trainer-sync'
+
+interface PendingRun {
+  clientRunId: string
+  key: string
+  payload: Record<string, unknown>
+  attempts: number
+  nextAt: number
+  createdAt: number
+}
+
+export interface TrainerSessionQueueOptions {
+  file: string
+  post: (payload: Record<string, unknown>) => Promise<unknown>
+  hasToken: () => boolean
+  notify?: (outcome: TrainerSyncOutcome) => void
+  now?: () => number
+  log?: { info: (...a: unknown[]) => void; warn: (...a: unknown[]) => void }
+  /** Test hook; defaults to setTimeout (unref'd). */
+  schedule?: (fn: () => void, ms: number) => unknown
+}
+
+/** Give up on a run after this many tries or this age (it is then reported as failed). */
+export const MAX_ATTEMPTS = 12
+export const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const DELAYS_MS = [5_000, 30_000, 120_000, 600_000, 1_800_000]
+
+/** Backoff after the Nth failed attempt (1-based): 5 s, 30 s, 2 min, 10 min, then every 30 min. */
+export function retryDelayMs(attempts: number): number {
+  return DELAYS_MS[Math.min(Math.max(attempts, 1), DELAYS_MS.length) - 1]
+}
+
+/** Network errors, timeouts, auth expiry, rate limits and server errors are worth retrying; 4xx validation is not. */
+export function isRetryableUploadError(err: unknown): boolean {
+  const status = (err as { status?: unknown } | null)?.status
+  if (typeof status !== 'number') return true
+  return status === 401 || status === 408 || status === 429 || status >= 500
+}
+
+/** One run = one scenario + finish time (what the result screen shows). */
+export function trainerRunKey(scenario: unknown, completedAt: unknown): string {
+  return `${String(scenario ?? '')}|${String(completedAt ?? '')}`
+}
+
+export function drillStateFrom(response: unknown): TrainerDrillState | null {
+  const d = (response as { drill?: unknown } | null)?.drill
+  if (!d || typeof d !== 'object') return null
+  const o = d as Record<string, unknown>
+  if (typeof o.id !== 'number' || typeof o.status !== 'string') return null
+  const n = o.next as Record<string, unknown> | null | undefined
+  return {
+    id: o.id,
+    title: typeof o.title === 'string' ? o.title : null,
+    status: o.status,
+    completed: o.completed === true,
+    attempt_count: Number(o.attempt_count) || 0,
+    attempts_allowed: Number(o.attempts_allowed) || 3,
+    pass_score: Number(o.pass_score) || 70,
+    next: n && typeof n === 'object' && typeof n.id === 'number'
+      ? {
+          id: n.id,
+          title: typeof n.title === 'string' ? n.title : null,
+          trainer_difficulty: typeof n.trainer_difficulty === 'string' ? n.trainer_difficulty : null,
+          pass_score: Number(n.pass_score) || 70,
+        }
+      : null,
+  }
+}
+
+export class TrainerSessionQueue {
+  private pending: PendingRun[] = []
+  private outcomes = new Map<string, TrainerSyncOutcome>()
+  private flushing = false
+  private timerAt: number | null = null
+  private readonly now: () => number
+
+  constructor(private readonly opts: TrainerSessionQueueOptions) {
+    this.now = opts.now ?? Date.now
+    this.pending = this.read()
+  }
+
+  /** Runs still waiting to upload (for tests and diagnostics). */
+  get pendingCount(): number { return this.pending.length }
+
+  /** Latest known sync state for a run shown on the results screen. */
+  outcomeFor(key: string): TrainerSyncOutcome | null {
+    return this.outcomes.get(key) ?? null
+  }
+
+  /** Upload a finished run now; if it cannot be sent it is saved and retried. */
+  async submit(payload: Record<string, unknown>): Promise<TrainerSyncOutcome> {
+    const clientRunId = randomUUID()
+    const metadata = { ...((payload.metadata as Record<string, unknown> | undefined) ?? {}), client_run_id: clientRunId }
+    const run: PendingRun = {
+      clientRunId,
+      key: trainerRunKey(payload.scenario, payload.completed_at),
+      payload: { ...payload, metadata },
+      attempts: 0,
+      nextAt: this.now(),
+      createdAt: this.now(),
+    }
+    return this.attempt(run, true)
+  }
+
+  /** Try every pending run that is due. Safe to call often (sign-in, app start, timer). */
+  async flush(): Promise<void> {
+    if (this.flushing) return
+    this.flushing = true
+    try {
+      for (const run of [...this.pending]) {
+        if (run.nextAt > this.now()) continue
+        await this.attempt(run, false)
+      }
+    } finally {
+      this.flushing = false
+      this.scheduleNext()
+    }
+  }
+
+  private async attempt(run: PendingRun, isNew: boolean): Promise<TrainerSyncOutcome> {
+    if (!this.opts.hasToken()) return this.keep(run, isNew, false)
+    try {
+      const res = await this.opts.post(run.payload)
+      this.drop(run)
+      this.opts.log?.info('[Trainer] Session synced to API', run.attempts ? `(after ${run.attempts} retries)` : '')
+      return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'saved', drill: drillStateFrom(res) })
+    } catch (err) {
+      const retry = isRetryableUploadError(err)
+      this.opts.log?.warn('[Trainer] Session upload failed:', (err as Error)?.message, retry ? '(will retry)' : '(not retried)')
+      if (!retry) {
+        this.drop(run)
+        return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'failed', drill: null })
+      }
+      return this.keep(run, isNew, true)
+    }
+  }
+
+  private keep(run: PendingRun, isNew: boolean, tried: boolean): TrainerSyncOutcome {
+    if (tried) run.attempts += 1
+    const expired = run.attempts >= MAX_ATTEMPTS || this.now() - run.createdAt > MAX_AGE_MS
+    if (expired) {
+      this.drop(run)
+      return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'failed', drill: null })
+    }
+    run.nextAt = this.now() + retryDelayMs(Math.max(run.attempts, 1))
+    if (isNew) this.pending.push(run)
+    this.write()
+    this.scheduleNext()
+    return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'pending', drill: null })
+  }
+
+  private drop(run: PendingRun): void {
+    const before = this.pending.length
+    this.pending = this.pending.filter(p => p.clientRunId !== run.clientRunId)
+    if (this.pending.length !== before) this.write()
+  }
+
+  private report(outcome: TrainerSyncOutcome): TrainerSyncOutcome {
+    this.outcomes.set(outcome.key, outcome)
+    if (this.outcomes.size > 50) this.outcomes.delete(this.outcomes.keys().next().value as string)
+    this.opts.notify?.(outcome)
+    return outcome
+  }
+
+  private scheduleNext(): void {
+    if (!this.pending.length) return
+    const due = Math.min(...this.pending.map(p => p.nextAt))
+    if (this.timerAt !== null && this.timerAt <= due) return
+    this.timerAt = due
+    const schedule = this.opts.schedule ?? ((fn: () => void, ms: number) => {
+      const t = setTimeout(fn, ms)
+      ;(t as { unref?: () => void }).unref?.()
+      return t
+    })
+    schedule(() => { this.timerAt = null; void this.flush() }, Math.max(0, due - this.now()))
+  }
+
+  private read(): PendingRun[] {
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.opts.file, 'utf8')) as unknown
+      return Array.isArray(raw)
+        ? raw.filter((r): r is PendingRun => !!r && typeof r === 'object' && typeof (r as PendingRun).clientRunId === 'string' && !!(r as PendingRun).payload)
+        : []
+    } catch {
+      return []
+    }
+  }
+
+  private write(): void {
+    try {
+      fs.mkdirSync(path.dirname(this.opts.file), { recursive: true })
+      fs.writeFileSync(this.opts.file, JSON.stringify(this.pending))
+    } catch (err) {
+      this.opts.log?.warn('[Trainer] Could not save pending sessions:', (err as Error)?.message)
+    }
+  }
+}

@@ -329,7 +329,7 @@ function openWeb() {
               <span class="uf-t4">Report →</span>
             </button>
             <p v-if="!deadlockRecent.length" class="uf-t2">No recent matches yet.</p>
-            <p v-if="metaTop.length" class="uf-t4">Strongest heroes this patch: {{ metaTop.map(h => `${h.hero_name} ${Math.round(h.win_rate)}%`).join(' · ') }}</p>
+            <p v-if="metaTop.length" class="uf-t4">Highest hero win rates, last 30 days: {{ metaTop.map(h => `${h.hero_name} ${Math.round(h.win_rate)}%`).join(' · ') }}</p>
             <span class="uf-label" style="margin-top: 14px">Replay reviews</span>
             <button v-for="r in deadlockReviews" :key="r.job_id" type="button" class="gprog-line gprog-btn"
               :disabled="r.status !== 'completed'" @click="review = { jobId: r.job_id, hero: r.hero }">

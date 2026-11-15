@@ -101,7 +101,8 @@ export function apiPost(base: string, pathname: string, body: string, token: str
             (typeof json.error === 'string' && json.error) ||
             (typeof json.message === 'string' && json.message) ||
             ''
-          reject(new Error(apiMessage || `Request failed (${res.statusCode})`))
+          // status lets callers tell a retryable failure (5xx, 401, 429) from a rejected request (422).
+          reject(Object.assign(new Error(apiMessage || `Request failed (${res.statusCode})`), { status: res.statusCode }))
         } else {
           resolve(json)
         }

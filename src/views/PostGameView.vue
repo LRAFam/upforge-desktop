@@ -889,7 +889,7 @@
             <li v-if="gameInfo.game === 'cs2'">Close CS2: UpForge fetches the demo from Steam once the game is closed</li>
             <li v-if="gameInfo.game === 'cs2'">Or, between matches, download the GOTV replay in CS2 (Watch → Your Matches)</li>
             <li v-if="gameInfo.game === 'cs2'">Attach the <code class="text-cyan-400/80">.dem</code> file from the dashboard for kills and clips</li>
-            <li v-if="gameInfo.game === 'deadlock'">Download the replay from Deadlock match history, then attach the .dem file</li>
+            <li v-if="gameInfo.game === 'deadlock'">Choose Review replay on this match in Matches (uses 1 analysis)</li>
           </ul>
           <button
             type="button"
@@ -1650,7 +1650,7 @@ const preparingTitle = computed(() => {
 
 const replayNotFoundHint = computed(() => {
   if (gameInfo.value.game === 'deadlock') {
-    return 'No replay attached — download from Deadlock match history and attach the .dem file'
+    return 'No replay linked yet. Choose Review replay on this match in Matches and UpForge reads it in the cloud.'
   }
   return 'No demo attached — download the GOTV replay in CS2 and attach the .dem file'
 })

@@ -451,6 +451,10 @@ const api = {
     launch: (config: Record<string, unknown>) => ipcRenderer.invoke('trainer:launch', config),
     kill: () => ipcRenderer.invoke('trainer:kill'),
     getLastLaunch: () => ipcRenderer.invoke('trainer:get-last-launch'),
+    /** Upload state of a finished run (saved / pending retry / failed) and what it did to the assigned drill. */
+    getSyncStatus: (scenario: string, completedAt: string) => ipcRenderer.invoke('trainer:get-sync-status', scenario, completedAt),
+    /** Focus metric → allowed trainer drills, from the API rulebook (null when offline). */
+    getDrillRulebook: (game?: string) => ipcRenderer.invoke('trainer:get-drill-rulebook', game),
     getHistory: (comparison?: import('../../src/lib/training-result-metrics').TrainingComparisonRequest) => ipcRenderer.invoke('trainer:get-history', comparison),
     getPlan: () => ipcRenderer.invoke('trainer:get-plan'),
     getCoachingDrills: () => ipcRenderer.invoke('trainer:get-coaching-drills'),
@@ -604,6 +608,7 @@ const api = {
       'obs:status',
       'trainer:session-result',
       'trainer:session-ended',
+      'trainer:session-synced',
       'post-game:demo-status',
       'post-game:demo-progress',
       'post-game:demo-download-progress',
