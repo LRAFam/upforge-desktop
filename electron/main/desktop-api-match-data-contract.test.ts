@@ -10,8 +10,10 @@
  * Regression: v2.9.5–v2.10.64 allowed ready:true with "attach a demo" hint.
  */
 import { describe, expect, it } from 'vitest'
+import contract from './__fixtures__/desktop-api-readiness-contract.json'
 import { getAnalysisReadiness } from './analysis-readiness'
-import { hasDemoKillRows, hasRichMatchData } from './match-data-quality'
+import { lolModule } from './analyse-modules/lol'
+import { hasDemoKillRows, hasRichMatchData, hasRichMatchDataForGame } from './match-data-quality'
 import type { PendingRecording } from './recordings-store'
 import type { MatchData } from './riot-types'
 
@@ -210,4 +212,28 @@ describe('desktop/API match-data readiness contract', () => {
     expect(readiness.ready).toBe(true)
     expect(readiness.state).toBe('ready')
   })
+})
+
+/**
+ * Shared cases: the API runs the same JSON (tests/fixtures/desktop-api-readiness-contract.json in
+ * upforge-api) against MatchDataQualityService, and its CI fails when the two copies differ.
+ */
+describe('shared desktop/API readiness contract', () => {
+  type Case = { name: string; game: 'cs2' | 'deadlock' | 'valorant' | 'lol'; matchData: Partial<MatchData>; expect: { api: boolean; desktop: boolean }; known_drift?: string }
+  const cases = contract.cases as Case[]
+
+  it('covers every desktop game', () => {
+    expect([...new Set(cases.map(c => c.game))].sort()).toEqual(['cs2', 'deadlock', 'lol', 'valorant'])
+  })
+
+  for (const c of cases) {
+    it(c.name, () => {
+      const timeline = c.matchData as MatchData
+      const ready = c.game === 'lol'
+        ? lolModule.isReady({ ...baseRec('lol'), timeline }).ready
+        : hasRichMatchDataForGame(c.game, timeline)
+      expect(ready).toBe(c.expect.desktop)
+      if (c.expect.desktop !== c.expect.api) expect(c.known_drift).toBeTruthy()
+    })
+  }
 })
