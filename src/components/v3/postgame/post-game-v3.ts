@@ -98,3 +98,13 @@ export function postGameFocusStrip(focus: FocusLike | null | undefined): PostGam
   const label = status === 'achieved' ? `Focus complete · ${focus.label}` : status === 'missed' ? `Not yet · ${focus.label}` : focus.label
   return { label, pips, line }
 }
+
+/**
+ * The pop-up's focus comes from `focus:get`, which is the Valorant focus. Show its strip only
+ * after a Valorant match; CS2, Deadlock and League matches never moved it.
+ * An unknown game (older callers) keeps the strip, as before.
+ */
+export function postGameFocusStripForGame(focus: FocusLike | null | undefined, game: string | null | undefined): PostGameFocusStrip | null {
+  if (game && game !== 'valorant') return null
+  return postGameFocusStrip(focus)
+}

@@ -4,6 +4,7 @@
  */
 
 import type { DuelFailureDiagnostics } from './duel-diagnostics'
+import { HELP_TROUBLESHOOTING_URL } from './help-links'
 
 export type AnalysisFailureKind =
   | 'refunded_quality'
@@ -43,6 +44,8 @@ export interface AnalysisErrorPayload {
   failureCode?: string
   /** Suggested user recovery action from activation taxonomy. */
   recoveryAction?: string
+  /** Help page for this failure (upforge.gg/help#troubleshooting). */
+  helpUrl?: string
 }
 
 function extractXmlErrorParts(raw: string): { code?: string; message?: string } {
@@ -309,7 +312,7 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
       : (err || 'Something went wrong while analysing this match.'),
     hint: /credit.*refund|refunded/i.test(lower)
       ? 'Your coaching credit was refunded. Try again from the dashboard.'
-      : 'Try again from the dashboard, or contact support if this keeps happening.',
+      : 'Try again from the dashboard. If it keeps happening, see Help › Troubleshooting.',
     creditRefunded: /credit.*refund|refunded/i.test(lower),
     canRetry: true,
   }
@@ -327,6 +330,7 @@ export function buildAnalysisErrorPayload(
     creditRefunded: presentation.creditRefunded,
     canRetry: presentation.canRetry,
     kind: presentation.kind,
+    helpUrl: HELP_TROUBLESHOOTING_URL,
     ...extras,
   }
 }
