@@ -12,7 +12,7 @@ import { ensureObsConnected } from '../obs-ensure'
 import { createGuidedObsSetupRunner, readGuidedObsOutputs, runGuidedObsSetup } from '../obs-guided-setup'
 import { isObsProcessRunning } from '../obs-process'
 import { explainObsConnectionFailure } from '../obs-connect'
-import { installObsViaWinget, isObsInstalled } from '../obs-installer'
+import { discoverObsInstallPaths, installObsViaWinget, isObsInstalled } from '../obs-installer'
 import { restartObsStudioElevated } from '../obs-launcher'
 import { ensureObsProfileInstalled, resolveObsWebSocketPassword } from '../obs-profile-installer'
 import {
@@ -223,6 +223,8 @@ export function setupMediaHandlers(
 
   ipcMain.handle('obs:get-process-state', async () => {
     const processRunning = await isObsProcessRunning()
+    // Custom folder, Steam or running copy: only searched when the default folders miss.
+    if (!isObsInstalled()) await discoverObsInstallPaths()
     return {
       installed: isObsInstalled(),
       processRunning,

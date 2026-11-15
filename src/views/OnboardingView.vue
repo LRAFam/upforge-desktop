@@ -341,13 +341,13 @@
                 <p v-else-if="obsConnecting" class="uf-t4">This runs in the background. If Windows asks, approve the OBS installation.</p>
                 <div v-if="obsError" class="ob3-inline">
                   <button type="button" class="uf-btn-secondary" :disabled="obsConnecting || isPreview" @click="setupRecordingAutomatically">Check again</button>
+                  <button type="button" class="uf-link" @click="openObsDownload">Get OBS from the official website</button>
                 </div>
               </div>
 
               <details class="ob3-details">
                 <summary class="uf-t4">Already use OBS?</summary>
                 <p class="uf-t4">UpForge adds its own scene and records with its own OBS profile, then switches back to yours after each match. Your scenes, canvas and recording folder stay as they are. If a recording, stream or replay buffer is active, finish it and check again.</p>
-                <button v-if="obsError" type="button" class="uf-link" @click="openObsDownload">Get OBS from the official website</button>
               </details>
               <p v-if="isPreview" class="uf-t4">This preview does not change OBS.</p>
               <p v-if="bonusEligible" class="uf-t4">Your first Pro match review is included. Try it when you're ready to play; it isn't required to finish setup.</p>
