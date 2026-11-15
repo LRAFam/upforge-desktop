@@ -61,5 +61,41 @@
     "scale": 5.22,
     "radarSize": 1024,
     "displayBounds": { "minX": 0.02, "minY": 0.02, "maxX": 0.98, "maxY": 0.98 }
+  },
+  {
+    "name": "de_cache",
+    "displayName": "Cache",
+    "posX": -2000,
+    "posY": 3250,
+    "scale": 5.5,
+    "radarSize": 1024,
+    "displayBounds": { "minX": 0.02, "minY": 0.02, "maxX": 0.98, "maxY": 0.98 }
+  },
+  {
+    "name": "de_train",
+    "displayName": "Train",
+    "posX": -2308,
+    "posY": 2078,
+    "scale": 4.082077,
+    "radarSize": 1024,
+    "displayBounds": { "minX": 0.02, "minY": 0.02, "maxX": 0.98, "maxY": 0.98 }
+  },
+  {
+    "name": "de_vertigo",
+    "displayName": "Vertigo",
+    "posX": -3168,
+    "posY": 1762,
+    "scale": 4,
+    "radarSize": 1024,
+    "displayBounds": { "minX": 0.02, "minY": 0.02, "maxX": 0.98, "maxY": 0.98 }
+  },
+  {
+    "name": "cs_office",
+    "displayName": "Office",
+    "posX": -1838,
+    "posY": 1858,
+    "scale": 4.1,
+    "radarSize": 1024,
+    "displayBounds": { "minX": 0.02, "minY": 0.02, "maxX": 0.98, "maxY": 0.98 }
   }
 ]

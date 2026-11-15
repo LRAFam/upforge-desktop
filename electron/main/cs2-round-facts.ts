@@ -133,6 +133,13 @@ export function humanizeCs2Place(raw: unknown): string | null {
   return PLACE_ALIASES[s.toLowerCase()] ?? s.replace(/(?<=[a-z0-9])(?=[A-Z])/g, ' ')
 }
 
+/** Bombsite letter from Valve's place name ("BombsiteA" → "A"), or null for any other place. */
+export function cs2SiteFromPlace(raw: unknown): 'A' | 'B' | null {
+  if (typeof raw !== 'string') return null
+  const m = /^bombsite([ab])$/i.exec(raw.trim())
+  return m ? (m[1]!.toUpperCase() as 'A' | 'B') : null
+}
+
 /** Who each flash blinded: flash_duration changed between the tick before and after detonation. */
 export function flashHitsFromSamples(detonations: Row[], samples: Row[]): Cs2FlashHit[] {
   const byTick = new Map<unknown, Map<unknown, unknown>>()

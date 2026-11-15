@@ -1,6 +1,8 @@
 # CS2 spatial / heatmaps
 
-Phase 1: death position heatmaps from demo parsing (Dust II + Mirage).
+Death position heatmaps from demo parsing. Radars: Dust II, Mirage, Inferno, Nuke, Overpass, Ancient, Anubis, Cache, Train, Vertigo, Office.
+
+Callouts (Valve place names) and teammate facts come from the demo on every map; a radar only adds the position.
 
 ## Files
 
@@ -9,7 +11,7 @@ Phase 1: death position heatmaps from demo parsing (Dust II + Mirage).
 
 ## Adding a map
 
-1. Add entry to `maps-manifest.json` (copy from `resource/overviews/<map>.txt` in CS2 VPK or demoinfocs metadata)
+1. Add entry to `maps-manifest.json` (copy from `resource/overviews/<map>.txt` in the CS2 VPK; mirrored at github.com/SteamTracking/GameTracking-CS2 under `game/csgo/pak01_dir/resource/overviews/`)
 2. Add `radars/<map>.png`
 3. Register in `src/lib/cs2-maps.ts` (`RADAR_BY_KEY` import)
 4. Optional: coarse A/B/Mid buckets in `electron/main/spatial/demo-enrich.ts`
