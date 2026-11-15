@@ -331,6 +331,93 @@ describe('recovered recording clock', () => {
 })
 
 describe('OBS recording completion', () => {
+  it('finalizes the owned match file after reconnect confirms idle and releases ownership', async () => {
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    Object.assign(rec, { _disconnectedDuringRecording: true })
+    expect(await rec.releaseStaleMatchOwnership()).toBe(true)
+    expect(rec.isRecording()).toBe(false)
+    const stopped = rec.stop()
+    expect(rec.stop()).toBe(stopped)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await stopped).toBe('/tmp/match.mp4')
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+    expect(mock.call).not.toHaveBeenCalledWith('StopReplayBuffer')
+    expect(rec.hasRecordingFailure()).toBe(false)
+  })
+
+  it('keeps the released match path separate from a later user-owned recording', async () => {
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    expect(await rec.releaseStaleMatchOwnership()).toBe(true)
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(false)
+    mock.call.mockResolvedValue({ outputActive: true })
+    const changed = mock.on.mock.calls.find(([event]) => event === 'RecordStateChanged')![1]
+    changed({ outputActive: true, outputPath: '/tmp/user-recording.mp4' })
+    const stopped = rec.stop()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await stopped).toBe('/tmp/match.mp4')
+    expect(rec.getLastRecordingPath()).toBe('/tmp/user-recording.mp4')
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('keeps the post-stop cooldown after finalizing a released match file', async () => {
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    expect(await rec.releaseStaleMatchOwnership()).toBe(true)
+    const stopped = rec.stop()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await stopped).toBe('/tmp/match.mp4')
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    let bytes = 100
+    mock.call.mockImplementation(async () => ({ outputActive: true, outputDuration: 1000, outputBytes: bytes += 100 }))
+    const reclaimed = rec.reclaimActiveRecording()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await reclaimed).toBe(false)
+    expect(rec.isRecording()).toBe(false)
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('never returns an arbitrary unowned path when OBS is idle', async () => {
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null, _outputPath: '/tmp/user-recording.mp4' })
+    expect(await rec.stop()).toBeNull()
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('does not associate the previous released match file with a cancelled new start', async () => {
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    expect(await rec.releaseStaleMatchOwnership()).toBe(true)
+    await expect(rec.start('overstep', undefined, { isCancelled: () => true })).rejects.toThrow('cancelled')
+    expect(await rec.stop()).toBeNull()
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('retains a released owned file that is still finalizing', async () => {
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    expect(await rec.releaseStaleMatchOwnership()).toBe(true)
+    mock.fileSize = 0
+    const stopped = rec.stop()
+    await vi.advanceTimersByTimeAsync(46_000)
+    expect(await stopped).toBe('/tmp/match.mp4')
+    expect(rec.getFinalizingRecordingPath()).toBe('/tmp/match.mp4')
+    expect(rec.hasRecordingFailure()).toBe(false)
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('normal stop leaves a user-started OBS recording unowned and running', async () => {
+    mock.call.mockResolvedValue({ outputActive: true, outputBytes: 100 })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    const stopped = rec.stop()
+    await vi.advanceTimersByTimeAsync(150_000)
+    expect(await stopped).toBeNull()
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+    expect(rec.hasRecordingFailure()).toBe(false)
+  })
   it('does not release ownership when the status query fails', async () => {
     mock.call.mockRejectedValue(new Error('connection lost'))
     const rec = recorder()
@@ -562,6 +649,18 @@ describe('mid-match progress watchdog', () => {
 })
 
 describe('recording progress verification', () => {
+  it('keeps a usable failure reason when OBS rejects startup with a blank message', async () => {
+    mock.call.mockImplementation(async (method) => {
+      if (method === 'StartRecord') throw Object.assign(new Error(''), { code: 702 })
+      return { outputActive: false, outputBytes: 0 }
+    })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    await expect(rec.start('valorant')).rejects.toThrow(/OBS request failed.*702/)
+    expect(rec.getLastError()).toMatch(/702/)
+    expect(rec.isRecording()).toBe(false)
+  })
   it('starts a separate sustained match recording after the onboarding test completes', async () => {
     let active = false
     let bytes = 0
