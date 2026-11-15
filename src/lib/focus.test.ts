@@ -1,5 +1,7 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { describe, expect, it } from 'vitest'
-import { decidedStats, focusBeforeAfter, deriveRoundFacts, sanitizeRoundFacts, focusHeadline, focusResult, pickFocusResult, focusSlots, focusSubline, focusSyncMessage, focusTransitionText, hydrateFocusResponse, pct, type Focus, type FocusResponse, type FocusUpdate } from './focus'
+import { decidedStats, focusBeforeAfter, deriveRoundFacts, sanitizeRoundFacts, focusHeadline, focusResult, pickFocusResult, focusSlots, focusSubline, focusSyncMessage, focusTransitionText, hydrateFocusResponse, pct, type Focus, type FocusResponse, type FocusUpdate, VALORANT_FOCUS_DESKTOP_ONLY } from './focus'
 
 const base: Focus = {
   id: 1, metric: 'opening_death_rate', label: 'Opening deaths', better: 'lower', baseline: 0.364, target: 0.22,
@@ -210,5 +212,15 @@ describe('pickFocusResult', () => {
   it('ignores running and old focuses', () => {
     expect(pickFocusResult([f(1, 'active', null), null, undefined], new Set(), now)).toBeNull()
     expect(pickFocusResult([f(1, 'achieved', '2026-11-01T10:00:00Z')], new Set(), now)).toBeNull()
+  })
+})
+
+describe('Valorant focus desktop-only line', () => {
+  it('says the focus updates only with the desktop app running', () => {
+    expect(VALORANT_FOCUS_DESKTOP_ONLY).toMatch(/desktop app running/)
+  })
+  it('is shown in onboarding for Valorant', () => {
+    const vue = readFileSync(join(__dirname, '../views/OnboardingView.vue'), 'utf8')
+    expect(vue.match(/selectedGame === 'valorant'"[^>]*>\{\{ VALORANT_FOCUS_DESKTOP_ONLY \}\}/g)?.length).toBe(2)
   })
 })

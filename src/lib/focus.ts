@@ -81,6 +81,9 @@ export function focusTransitionText(update: FocusUpdate | null | undefined): str
   return `Your focus changed from ${title} after a new match.`
 }
 
+/** The Valorant focus only moves when the desktop app reads matches from the Riot client; the web companion cannot. */
+export const VALORANT_FOCUS_DESKTOP_ONLY = 'Your Valorant focus updates after matches played with the UpForge desktop app running.'
+
 export function focusSyncMessage(result: FocusSyncResult | null): string {
   if (!result || result.reason === 'sign_in_required') return 'Sign in to check your matches.'
   if (result.reason === 'sync_in_progress') return 'Your matches are already being checked.'
