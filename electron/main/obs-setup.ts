@@ -368,6 +368,8 @@ export async function refitCaptureWithSettle(
 export type ObsSceneSwitchOptions = {
   /** When false, update capture on the UpForge scene but leave the streamer's active scene alone. */
   switchScene?: boolean
+  /** When false, skip profile writes (recording format, replay buffer) — the player's profile is active. */
+  writeProfile?: boolean
   forceRecreate?: boolean
   /** When false, never RemoveInput/CreateInput — prefer SetInputSettings in-place. Default true. */
   allowRecreate?: boolean
@@ -433,22 +435,24 @@ export async function setupUpForgeScene(
     await fitUpForgeCaptureToCanvas(obs)
     sceneIdentity = await getUpForgeSceneIdentity(obs) ?? sceneIdentity
 
-    try {
-      const versionInfo = await obs.call('GetVersion') as { obsVersion?: string }
-      await applyCrashSafeObsRecFormat(obs, versionInfo.obsVersion)
-    } catch {
-      await applyCrashSafeObsRecFormat(obs, null)
-    }
+    if (options.writeProfile !== false) {
+      try {
+        const versionInfo = await obs.call('GetVersion') as { obsVersion?: string }
+        await applyCrashSafeObsRecFormat(obs, versionInfo.obsVersion)
+      } catch {
+        await applyCrashSafeObsRecFormat(obs, null)
+      }
 
-    const profileParams: Array<[string, string, string]> = [
-      ['SimpleOutput', 'ReplayBufferEnable', 'true'],
-    ]
-    for (const [parameterCategory, parameterName, parameterValue] of profileParams) {
-      await obs.call('SetProfileParameter', {
-        parameterCategory,
-        parameterName,
-        parameterValue,
-      }).catch(() => { /* profile layout varies — non-fatal */ })
+      const profileParams: Array<[string, string, string]> = [
+        ['SimpleOutput', 'ReplayBufferEnable', 'true'],
+      ]
+      for (const [parameterCategory, parameterName, parameterValue] of profileParams) {
+        await obs.call('SetProfileParameter', {
+          parameterCategory,
+          parameterName,
+          parameterValue,
+        }).catch(() => { /* profile layout varies — non-fatal */ })
+      }
     }
 
     return { ok: true, sceneCreated, inputCreated, inputUpgraded, captureWindow, sceneIdentity }

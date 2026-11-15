@@ -15,7 +15,7 @@ vi.mock('obs-websocket-js', () => ({ OBSWebSocket: class { call = mock.call; on 
 vi.mock('electron', () => ({ app: { getPath: () => mock.root, getAppPath: () => mock.root }, nativeImage: {} }))
 vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 vi.mock('./disk-space', () => ({ getFreeDiskSpace: vi.fn(async () => Infinity), CRITICAL_FREE_DISK_BYTES: 100, WARN_FREE_DISK_BYTES: 200 }))
-vi.mock('./obs-setup', () => ({ retargetUpForgeCapture: vi.fn(), fitUpForgeCaptureToCanvas: vi.fn() }))
+vi.mock('./obs-setup', () => ({ UPFORGE_SCENE_NAME: 'UpForge', retargetUpForgeCapture: vi.fn(), fitUpForgeCaptureToCanvas: vi.fn() }))
 vi.mock('./game-window-finder', () => ({ resolveObsCaptureWindow: async () => 'CS2', findObsWindowString: async () => null }))
 vi.mock('fs', async (original) => ({
   ...await original<typeof import('fs')>(),
@@ -49,6 +49,7 @@ describe('profile recording directory startup', () => {
     let bytes = 0
     mock.call.mockImplementation(async (method) => {
       if (method === 'GetProfileParameter') return { parameterValue: 'Simple' }
+      if (method === 'GetProfileList') return { currentProfileName: 'UpForge', profiles: ['UpForge'] }
       if (method === 'StartRecord') active = true
       return { outputActive: active, outputBytes: bytes += 100 }
     })
@@ -69,6 +70,118 @@ describe('profile recording directory startup', () => {
       vi.mocked(getFreeDiskSpace).mockResolvedValue(Infinity)
       fs.rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+/** Fake OBS with per-profile output settings, like basic.ini on disk. */
+function fakePlayerObs(options: { streaming?: boolean; upforgeProfileExists?: boolean } = {}) {
+  type ProfileState = { video: Record<string, number>; recordDirectory: string; params: Record<string, string> }
+  const playerVideo = { baseWidth: 2560, baseHeight: 1440, outputWidth: 1920, outputHeight: 1080, fpsNumerator: 60, fpsDenominator: 1 }
+  const profiles: Record<string, ProfileState> = {
+    Streaming: { video: { ...playerVideo }, recordDirectory: '/player/videos', params: { 'Output/Mode': 'Advanced' } },
+  }
+  if (options.upforgeProfileExists !== false) {
+    profiles.UpForge = { video: { ...playerVideo }, recordDirectory: '/upforge', params: { 'Output/Mode': 'Simple' } }
+  }
+  const state = { profile: 'Streaming', scene: 'Just Chatting', recording: false, streaming: options.streaming === true, bytes: 0 }
+  mock.call.mockImplementation(async (method: string, args: Record<string, unknown> = {}) => {
+    const current = profiles[state.profile]
+    switch (method) {
+      case 'GetProfileList': return { currentProfileName: state.profile, profiles: Object.keys(profiles) }
+      case 'SetCurrentProfile': state.profile = String(args.profileName); return {}
+      case 'CreateProfile':
+        profiles[String(args.profileName)] = { video: { ...playerVideo }, recordDirectory: '/default', params: {} }
+        state.profile = String(args.profileName)
+        return {}
+      case 'GetProfileParameter': return { parameterValue: current.params[`${args.parameterCategory}/${args.parameterName}`] ?? null }
+      case 'SetProfileParameter': current.params[`${args.parameterCategory}/${args.parameterName}`] = String(args.parameterValue); return {}
+      case 'GetVideoSettings': return { ...current.video }
+      case 'SetVideoSettings': current.video = { ...(args as Record<string, number>) }; return {}
+      case 'SetRecordDirectory': current.recordDirectory = String(args.recordDirectory); return {}
+      case 'GetCurrentProgramScene': return { currentProgramSceneName: state.scene }
+      case 'SetCurrentProgramScene': state.scene = String(args.sceneName); return {}
+      case 'GetStreamStatus': return { outputActive: state.streaming }
+      case 'GetReplayBufferStatus':
+      case 'GetVirtualCamStatus': return { outputActive: false }
+      case 'StartRecord': state.recording = true; return {}
+      case 'StopRecord': state.recording = false; return { outputPath: '/upforge/match.mp4' }
+      default: return { outputActive: state.recording, outputBytes: state.bytes += 100, outputPath: '/upforge/match.mp4' }
+    }
+  })
+  vi.mocked(retargetUpForgeCapture).mockImplementation(async (obs, _game, opts) => {
+    if (opts?.switchScene !== false) await obs.call('SetCurrentProgramScene', { sceneName: 'UpForge' })
+    return { captureWindow: 'VALORANT' }
+  })
+  return { profiles, state, playerVideo }
+}
+
+async function playMatch(rec: OBSRecorder, savePath: string) {
+  vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+  vi.spyOn(rec as unknown as { _startLiveKillPoll(): void }, '_startLiveKillPoll').mockImplementation(() => {})
+  const started = Promise.allSettled([rec.start('valorant', {
+    quality: '720p', bitrate: 5, fps: 30, audioEnabled: true, savePath, captureMonitor: 'auto', manageObsVideo: true,
+  })])
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(await started).toEqual([{ status: 'fulfilled', value: undefined }])
+  const stopped = rec.stop()
+  await vi.advanceTimersByTimeAsync(5000)
+  return stopped
+}
+
+describe('player OBS profile and scene are left as found', () => {
+  function idleRecorder() {
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null, _outputPath: null })
+    return rec
+  }
+
+  it('records in the UpForge profile and restores the player profile and scene after the match', async () => {
+    const obs = fakePlayerObs()
+    const rec = idleRecorder()
+    expect(await playMatch(rec, mock.root)).toBe('/upforge/match.mp4')
+    expect(obs.state.profile).toBe('Streaming')
+    expect(obs.state.scene).toBe('Just Chatting')
+    expect(obs.profiles.Streaming.video).toEqual(obs.playerVideo)
+    expect(obs.profiles.Streaming.recordDirectory).toBe('/player/videos')
+    expect(obs.profiles.Streaming.params).toEqual({ 'Output/Mode': 'Advanced' })
+    // UpForge's own profile received the match settings.
+    expect(obs.profiles.UpForge.video).toMatchObject({ baseWidth: 1280, baseHeight: 720, fpsNumerator: 30 })
+    expect(obs.profiles.UpForge.recordDirectory).toBe(mock.root)
+    expect(obs.profiles.UpForge.params['Output/Mode']).toBe('Simple')
+  })
+
+  it('creates the UpForge profile when OBS does not have one yet', async () => {
+    const obs = fakePlayerObs({ upforgeProfileExists: false })
+    const rec = idleRecorder()
+    await playMatch(rec, mock.root)
+    expect(mock.call).toHaveBeenCalledWith('CreateProfile', { profileName: 'UpForge' })
+    expect(obs.state.profile).toBe('Streaming')
+    expect(obs.profiles.Streaming.video).toEqual(obs.playerVideo)
+    expect(obs.profiles.Streaming.recordDirectory).toBe('/player/videos')
+  })
+
+  it('changes nothing in OBS while the player is streaming', async () => {
+    const obs = fakePlayerObs({ streaming: true })
+    obs.state.scene = 'UpForge'
+    const rec = idleRecorder()
+    await playMatch(rec, mock.root)
+    for (const method of ['SetCurrentProfile', 'CreateProfile', 'SetVideoSettings', 'SetRecordDirectory', 'SetProfileParameter', 'SetCurrentProgramScene']) {
+      expect(mock.call).not.toHaveBeenCalledWith(method, expect.anything())
+    }
+    expect(obs.state.profile).toBe('Streaming')
+    expect(obs.profiles.Streaming.video).toEqual(obs.playerVideo)
+    expect(rec.getStartupWarning() ?? '').toMatch(/your own OBS settings/)
+  })
+
+  it('does not touch the player profile when settings change between matches', async () => {
+    fakePlayerObs()
+    const rec = idleRecorder()
+    expect(await rec.applyRecordingSettings({
+      quality: '1080p', bitrate: 8, fps: 60, audioEnabled: true, savePath: mock.root, captureMonitor: 'auto', manageObsVideo: true,
+    })).toBeNull()
+    expect(mock.call).not.toHaveBeenCalledWith('SetVideoSettings', expect.anything())
+    expect(mock.call).not.toHaveBeenCalledWith('SetRecordDirectory', expect.anything())
+    expect(mock.call).not.toHaveBeenCalledWith('SetProfileParameter', expect.anything())
   })
 })
 

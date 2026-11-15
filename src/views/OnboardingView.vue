@@ -345,7 +345,7 @@
 
               <details class="ob3-details">
                 <summary class="uf-t4">Already use OBS?</summary>
-                <p class="uf-t4">Your existing scenes stay in OBS. If a recording, stream or replay buffer is active, finish it and check again.</p>
+                <p class="uf-t4">UpForge adds its own scene and records with its own OBS profile, then switches back to yours after each match. Your scenes, canvas and recording folder stay as they are. If a recording, stream or replay buffer is active, finish it and check again.</p>
                 <button v-if="obsError" type="button" class="uf-link" @click="openObsDownload">Get OBS from the official website</button>
               </details>
               <p v-if="isPreview" class="uf-t4">This preview does not change OBS.</p>
@@ -970,7 +970,7 @@
               </div>
               <details class="text-xs text-gray-400 leading-relaxed">
                 <summary class="cursor-pointer py-2 text-gray-300">Already use OBS?</summary>
-                <p class="mt-1">Your existing scenes stay in OBS. If a recording, stream or replay buffer is active, finish it and check again.</p>
+                <p class="mt-1">UpForge adds its own scene and records with its own OBS profile, then switches back to yours after each match. Your scenes, canvas and recording folder stay as they are. If a recording, stream or replay buffer is active, finish it and check again.</p>
                 <button v-if="obsError" type="button" class="text-gray-200 underline mt-3" @click="openObsDownload">Get OBS from the official website</button>
               </details>
               <p v-if="isPreview" class="text-xs text-gray-400 mt-3">This preview does not change OBS.</p>
