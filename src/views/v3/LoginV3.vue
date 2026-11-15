@@ -16,6 +16,8 @@ defineProps<{
   resending?: boolean
   resendNote?: string
   resendError?: string
+  /** Back from web sign-up: "Verify your email, then sign in here." */
+  returnNote?: string
 }>()
 const email = defineModel<string>('email', { required: true })
 const password = defineModel<string>('password', { required: true })
@@ -66,6 +68,7 @@ defineEmits<{
           </div>
         </div>
 
+        <p v-if="returnNote" class="uf-t4 uf-login-return" role="status">{{ returnNote }}</p>
         <p v-if="error" id="login-error" class="uf-login-error" role="alert">{{ error }}</p>
         <div v-if="needsVerification" class="uf-login-verify">
           <button type="button" class="uf-link" :disabled="resending" @click="$emit('resend')">
@@ -119,6 +122,7 @@ defineEmits<{
 .uf-login-error { margin: 0; padding-left: 12px; border-left: 2px solid var(--uf-loss); font: 400 13px/1.4 var(--uf-body); color: var(--uf-bone); overflow-wrap: anywhere; }
 .uf-login-verify { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .uf-login-verify p { margin: 0; }
+.uf-login-return { margin: 0; color: var(--uf-bone); }
 .uf-login-submit { align-self: flex-start; margin-top: 6px; }
 .uf-login-foot { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
 .uf-login-create { color: var(--uf-bone); }
