@@ -1,6 +1,6 @@
 import { sanitizeHabitHistory } from '../components/analysis/habit-history'
 import type { DuelMoment } from './duel-moments'
-import { normalizeDuelMoment, normalizeDuelMoments } from './duel-moments'
+import { normalizeDuelMoment, normalizeDuelMoments, parseVideoEvidence, type VideoEvidence } from './duel-moments'
 import { parseMatchHighlightsFromApi, type MatchHighlight } from './match-highlights'
 import type { SkillProfileSnapshot } from './skill-profile'
 import type { MatchSpatialSummary } from './spatial-types'
@@ -57,6 +57,8 @@ export interface AnalysisDetailEnriched {
   ally_score: number | null
   enemy_score: number | null
   duel_moments: DuelMoment[] | null
+  /** N of M duels reviewed from video (AI ≥ 2026-11-15); null/absent when the API does not pass it. */
+  video_evidence?: VideoEvidence | null
   match_highlights: MatchHighlight[] | null
   timing_comparisons: TimingComparisonRow[]
   spatial_summary: MatchSpatialSummary | null
@@ -226,6 +228,7 @@ export function enrichAnalysisDetail(analysis: Record<string, unknown>): Analysi
     duel_moments: Array.isArray(analysis.duel_moments)
       ? normalizeDuelMoments(analysis.duel_moments as DuelMoment[])
       : null,
+    video_evidence: parseVideoEvidence(analysis),
     match_highlights: matchHighlights,
     timing_comparisons: parseTimingComparisons(analysis.timing_comparisons),
     spatial_summary: spatial,

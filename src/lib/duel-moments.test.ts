@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isMatchDataMoment,
+  parseVideoEvidence,
+  videoEvidenceLine,
   duelMomentKindLabel,
   duelMomentScrubberTitle,
   duelMomentTimestampLabel,
@@ -78,5 +81,22 @@ describe('duel-moments', () => {
     expect(isUntradedDuelMoment({ allies_alive: 2, traded: true })).toBe(false)
     expect(isUntradedDuelMoment({ allies_alive: 0, traded: false })).toBe(false)
     expect(isUntradedDuelMoment({ allies_alive: 2, traded: false })).toBe(true)
+  })
+})
+
+describe('video evidence helpers (#613)', () => {
+  it('formats the N of M line and hides it when missing or malformed', () => {
+    expect(videoEvidenceLine(parseVideoEvidence({ video_evidence: { video_moments: 1, requested_moments: 8 } })))
+      .toBe('1 of 8 duels reviewed from video')
+    expect(videoEvidenceLine(parseVideoEvidence({ video_evidence: { video_moments: 1, requested_moments: 1 } })))
+      .toBe('1 of 1 duel reviewed from video')
+    expect(parseVideoEvidence({})).toBeNull()
+    expect(parseVideoEvidence({ video_evidence: { video_moments: 2, requested_moments: 0 } })).toBeNull()
+    expect(parseVideoEvidence({ video_evidence: { video_moments: 9, requested_moments: 8 } })).toBeNull()
+    expect(parseVideoEvidence({ video_evidence: { video_moments: '3', requested_moments: 8 } })).toBeNull()
+    expect(videoEvidenceLine(null)).toBeNull()
+    expect(isMatchDataMoment({ evidence_source: 'match_data' })).toBe(true)
+    expect(isMatchDataMoment({ evidence_source: 'video' })).toBe(false)
+    expect(isMatchDataMoment({})).toBe(false)
   })
 })
