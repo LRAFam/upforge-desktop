@@ -84,6 +84,14 @@ describe('pollDeadlockReplayReview', () => {
     expect(tl.playerKills).toHaveLength(1)
     expect(tl.map).toBe('Cursed Apple')
   })
+
+  it('replay kill rows clear the live console-log marker so Analyse can unlock', async () => {
+    const updateTimeline = vi.fn((_id: string, _t: unknown) => true)
+    const r = rec({ deadlockReviewJobId: 'job-12345678', timeline: { recordingStartTime: 5, killRowsSource: 'live_log' } as never })
+    await linkReviewTimeline({ getDetail: async () => ({ match_stats: { kill_events: events } }), updateTimeline, notify: () => {} }, r, 'job-12345678')
+    const tl = updateTimeline.mock.calls[0][1] as unknown as { killRowsSource?: string }
+    expect(tl.killRowsSource).toBeUndefined()
+  })
 })
 
 describe('helpers', () => {

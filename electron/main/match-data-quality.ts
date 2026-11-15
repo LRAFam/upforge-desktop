@@ -7,14 +7,37 @@ import type { MatchData } from './riot-types'
 export function hasRichMatchData(timeline: MatchData | null | undefined): boolean {
   if (!timeline) return false
 
-  if ((timeline.killEvents?.length ?? 0) > 0 || (timeline.playerKills?.length ?? 0) > 0) {
-    return true
-  }
+  if (hasKillRows(timeline)) return true
 
   const fs = timeline.finalStats
   if (!fs) return false
 
   return ((fs.kills ?? 0) + (fs.deaths ?? 0) + (fs.assists ?? 0)) > 0
+}
+
+/** At least one kill row in killEvents OR playerKills (an empty killEvents must not hide playerKills). */
+export function hasKillRows(timeline: MatchData | null | undefined): boolean {
+  if (!timeline) return false
+  return (timeline.killEvents?.length ?? 0) > 0 || (timeline.playerKills?.length ?? 0) > 0
+}
+
+/**
+ * CS2 / Deadlock coaching is "from the demo": K/D/A totals alone are not demo data, and
+ * Deadlock kill rows from the live console log are not either. Mirrors API
+ * MatchDataQualityService::isReadyForCs2Desktop (kill rows required); stricter on live-only rows.
+ */
+export function hasDemoKillRows(timeline: MatchData | null | undefined): boolean {
+  if (!hasKillRows(timeline)) return false
+  return timeline?.killRowsSource !== 'live_log'
+}
+
+/** Per-game Analyse data bar: demo kill rows for CS2 / Deadlock, otherwise hasRichMatchData. */
+export function hasRichMatchDataForGame(
+  game: string | null | undefined,
+  timeline: MatchData | null | undefined,
+): boolean {
+  if (game === 'cs2' || game === 'deadlock') return hasDemoKillRows(timeline)
+  return hasRichMatchData(timeline)
 }
 
 /**
@@ -26,7 +49,7 @@ export function shouldScheduleLateClipRetry(
   timeline: MatchData | null | undefined,
   matchId?: string | null,
 ): boolean {
-  if (hasRichMatchData(timeline)) return false
+  if (hasRichMatchDataForGame(game, timeline)) return false
   return game === 'valorant' || game === 'cs2' || game === 'deadlock' || !!matchId || !!timeline?.matchId
 }
 

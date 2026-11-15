@@ -13,6 +13,7 @@ import TacticalIntelBrief from '../../TacticalIntelBrief.vue'
 import MatchRecapPanel from '../../MatchRecapPanel.vue'
 import TimingComparisonPanel from '../../TimingComparisonPanel.vue'
 import DuelMomentCards from '../../analysis/DuelMomentCards.vue'
+import { videoEvidenceLine } from '../../../lib/duel-moments'
 import UfHeroBand from '../UfHeroBand.vue'
 import UfButton from '../UfButton.vue'
 import UfStatRow from '../UfStatRow.vue'
@@ -70,6 +71,8 @@ const statsOnly = computed(() => statsOnlyNotice(expandedDetail.value as Paramet
 
 const reportOpen = ref(false)
 watch(selectedId, () => { reportOpen.value = false })
+
+const videoEvidence = computed(() => videoEvidenceLine(expandedDetail.value?.video_evidence))
 
 const hasPlayableMoments = computed(() => Boolean(
   expandedDetail.value?.match_highlights?.length || expandedDetail.value?.timing_comparisons?.length || expandedDetail.value?.duel_moments?.length,
@@ -322,7 +325,7 @@ const trendLast = computed(() => (chartData.value ? matchScore({ overall_score: 
               />
               <TimingComparisonPanel v-if="expandedDetail?.timing_comparisons?.length" :comparisons="expandedDetail.timing_comparisons" @seek="seekAnalysisMoment" />
               <details v-if="expandedDetail?.duel_moments?.length" class="rv3-duels">
-                <summary class="rv3-toggle"><span class="uf-t3">Duel analysis</span><span class="uf-t4">{{ expandedDetail.duel_moments.length }} moments · expand</span></summary>
+                <summary class="rv3-toggle"><span class="uf-t3">Duel analysis</span><span class="uf-t4">{{ videoEvidence ? `${videoEvidence} · ` : '' }}{{ expandedDetail.duel_moments.length }} moments · expand</span></summary>
                 <DuelMomentCards :moments="expandedDetail.duel_moments" @seek="(ms) => seekAnalysisMoment(Math.max(0, ms - 3000))" />
               </details>
             </div>

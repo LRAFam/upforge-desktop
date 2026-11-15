@@ -7,7 +7,7 @@ import log from 'electron-log'
 import { peekDemoHeader } from './demo-header-peek'
 import { isDemoLikelyIncomplete, sanitizeDemoMapName } from './demo-text-sanitize'
 import { buildTimelineFromDemo, cs2DemoReadError, CS2_DEMO_UNREADABLE_MESSAGE } from './demo-timeline'
-import { cs2PlayerIdentityMismatch, hasRichMatchData } from './match-data-quality'
+import { cs2PlayerIdentityMismatch, hasDemoKillRows } from './match-data-quality'
 import { recomputeTimelineVideoOffsets } from './riot-local-api'
 import { resolveMatchSessionStartMs } from './recording-sync'
 import type { RecordingsStore } from './recordings-store'
@@ -68,7 +68,7 @@ export async function attachDemoFileToRecording(opts: {
     cs2Live: rec.game === 'cs2' ? rec.timeline?.cs2Live ?? null : null,
   })
 
-  if (!timeline || !hasRichMatchData(timeline)) {
+  if (!timeline || !hasDemoKillRows(timeline)) {
     const peek = !timeline ? await peekDemoHeader(normalized, rec.game as SourceGame) : null
     const incomplete = isDemoLikelyIncomplete(normalized, peek)
     const hasHeader = Boolean(sanitizeDemoMapName(peek?.mapName) || peek?.playbackTime)

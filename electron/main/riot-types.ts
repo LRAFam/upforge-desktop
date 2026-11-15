@@ -340,6 +340,11 @@ export interface MatchData {
   playerFlashes?: import('./cs2-round-facts').Cs2PlayerFlashes
   /** CS2 kills / deaths / rounds seen live via GSI (no demo). Never counts as rich match data. */
   cs2Live?: import('./cs2-gsi-timeline').Cs2LiveSummary | null
+  /**
+   * Deadlock: kill rows came from the live console log, not a parsed replay/demo.
+   * Live-only kill rows never unlock a demo review (hasDemoKillRows).
+   */
+  killRowsSource?: 'live_log'
   lolLocalReview?: LolLocalReview | null
   /** League client identity captured with this recording, independent of linked accounts. */
   lolAccount?: import('./lol-account-identity').LolAccountIdentity | null

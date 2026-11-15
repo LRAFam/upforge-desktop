@@ -51,9 +51,45 @@ export interface DuelMomentObservation {
   /** May arrive as a single string from malformed JSON. */
   caveats?: string | string[]
   death_timestamp?: string
+  /** AI ≥ 2026-11-15: where this moment's text came from. `match_data` = written from Riot data, clip gave nothing. */
+  evidence_source?: 'video' | 'match_data' | 'low_confidence_video' | string
 }
 
 export type DuelMoment = DuelMomentManifest & DuelMomentObservation
+
+/** True when the AI wrote this moment from match data because the clip gave nothing usable. */
+export function isMatchDataMoment(moment: Pick<DuelMomentObservation, 'evidence_source'>): boolean {
+  return moment.evidence_source === 'match_data'
+}
+
+/** How much of a video report came from video (AI `stages.moments.video_evidence`). */
+export interface VideoEvidence {
+  video_moments: number
+  requested_moments: number
+}
+
+function nonNegativeInt(v: unknown): number | null {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null
+}
+
+/** Reads `video_evidence` from the analysis (top level or `stages.moments`). Null when missing or malformed. */
+export function parseVideoEvidence(analysis: Record<string, unknown> | null | undefined): VideoEvidence | null {
+  if (!analysis) return null
+  const stages = analysis.stages as { moments?: { video_evidence?: unknown } } | null | undefined
+  const raw = (analysis.video_evidence ?? stages?.moments?.video_evidence) as Record<string, unknown> | null | undefined
+  if (!raw || typeof raw !== 'object') return null
+  const video = nonNegativeInt(raw.video_moments)
+  const requested = nonNegativeInt(raw.requested_moments)
+  if (video == null || requested == null || requested === 0 || video > requested) return null
+  return { video_moments: video, requested_moments: requested }
+}
+
+/** "3 of 8 duels reviewed from video", or null when the AI did not report it. */
+export function videoEvidenceLine(ev: VideoEvidence | null | undefined): string | null {
+  if (!ev) return null
+  const noun = ev.requested_moments === 1 ? 'duel' : 'duels'
+  return `${ev.video_moments} of ${ev.requested_moments} ${noun} reviewed from video`
+}
 
 export function mergeDuelMoments(
   manifest: DuelMomentManifest[],

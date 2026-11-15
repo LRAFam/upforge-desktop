@@ -2,14 +2,14 @@ import { cs2DemoRetrievalStatus } from '../cs2-demo-retrieval'
 import { duelMomentsForUpload } from '../moment-picker'
 import {
   cs2PlayerIdentityMismatch,
-  hasRichMatchData,
+  hasDemoKillRows,
 } from '../match-data-quality'
 import type { AnalyseReadiness, GameAnalyseModule, ReadinessRecording } from './types'
 
 export const cs2Module: GameAnalyseModule = {
   id: 'cs2',
   isReady(rec: ReadinessRecording): AnalyseReadiness {
-    if (hasRichMatchData(rec.timeline)) {
+    if (hasDemoKillRows(rec.timeline)) {
       const duelMomentCount = duelMomentsForUpload(rec.timeline ?? null).length
       if (cs2PlayerIdentityMismatch(rec.timeline)) {
         return {

@@ -1,8 +1,9 @@
 /**
  * Desktop ↔ API readiness contract.
  *
- * API MatchDataQualityService::isReadyForCs2Desktop requires rich match_data
- * (kills / finalStats) for CS2 and Deadlock. LoL uses isReadyForLolDesktop
+ * API MatchDataQualityService::isReadyForCs2Desktop requires at least one kill row
+ * (killEvents OR playerKills) for CS2 and Deadlock — K/D/A totals alone stay locked.
+ * Desktop is stricter on Deadlock: live console-log kill rows never unlock a demo review. LoL uses isReadyForLolDesktop
  * (Match-V5 enrich + combat stats). Desktop must never mark Analyse ready
  * without the same bar, or jobs fail after upload.
  *
@@ -10,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { getAnalysisReadiness } from './analysis-readiness'
-import { hasRichMatchData } from './match-data-quality'
+import { hasDemoKillRows, hasRichMatchData } from './match-data-quality'
 import type { PendingRecording } from './recordings-store'
 import type { MatchData } from './riot-types'
 
@@ -132,6 +133,27 @@ describe('desktop/API match-data readiness contract', () => {
       expect(['syncing', 'waiting_match_data']).toContain(readiness.state)
     })
 
+    it(`${game}: K/D/A totals without kill rows stay locked (mirrors API #607)`, () => {
+      const tl: MatchData = {
+        ...sparseTimeline(game),
+        finalStats: { kills: 5, deaths: 3, assists: 1 } as MatchData['finalStats'],
+      }
+      expect(hasDemoKillRows(tl)).toBe(false)
+      const readiness = getAnalysisReadiness(baseRec(game, { timeline: tl }))
+      expect(readiness.ready).toBe(false)
+      expect(['syncing', 'waiting_match_data']).toContain(readiness.state)
+    })
+
+    it(`${game}: empty killEvents do not hide real playerKills`, () => {
+      const tl: MatchData = {
+        ...sparseTimeline(game),
+        killEvents: [],
+        playerKills: [{ EventID: 1 } as MatchData['playerKills'][number]],
+      }
+      expect(hasDemoKillRows(tl)).toBe(true)
+      expect(getAnalysisReadiness(baseRec(game, { timeline: tl })).ready).toBe(true)
+    })
+
     it(`${game}: Analyse unlocks only when demo stats are rich`, () => {
       const rich = baseRec(game, { timeline: richTimeline(game) })
       expect(hasRichMatchData(rich.timeline)).toBe(true)
@@ -141,6 +163,14 @@ describe('desktop/API match-data readiness contract', () => {
       expect(readiness.state).toBe('ready')
     })
   }
+
+  it('deadlock: live console-log kill rows alone do not unlock a demo review', () => {
+    const tl: MatchData = { ...richTimeline('deadlock'), killRowsSource: 'live_log' }
+    expect(hasDemoKillRows(tl)).toBe(false)
+    const readiness = getAnalysisReadiness(baseRec('deadlock', { timeline: tl }))
+    expect(readiness.ready).toBe(false)
+    expect(['syncing', 'waiting_match_data']).toContain(readiness.state)
+  })
 
   it('lol: Analyse stays locked with Live Client stats only (mirrors API isReadyForLolDesktop)', () => {
     const sparse = baseRec('lol', { timeline: lolSparseLiveClientTimeline() })

@@ -112,6 +112,8 @@ export async function linkReviewTimeline(
   if (!built) return 'no_events'
   // Keep what the recording already knew (map, ids) and add the replay's kills on top.
   const merged = rec.timeline ? mergeKeepingKnown(rec.timeline, built) : built
+  // The replay's kill rows replace any live console-log rows.
+  delete merged.killRowsSource
   if (!deps.updateTimeline(rec.id, merged)) return 'not_found'
   deps.notify()
   return 'linked'

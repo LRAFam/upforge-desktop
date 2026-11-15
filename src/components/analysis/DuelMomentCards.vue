@@ -12,6 +12,7 @@ import {
   formatKillStreakLabel,
   formatPeekSequence,
   isWinDuelMoment,
+  isMatchDataMoment,
   isUntradedDuelMoment,
   normalizeStringList,
   type DuelMoment,
@@ -57,6 +58,7 @@ function confidenceClass(conf: string | undefined): string {
               <span class="uf-label" :style="{ color: isWinDuelMoment(moment) ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ duelMomentKindLabel(moment) }}</span>
               <span v-if="isUntradedDuelMoment(moment) && !isWinDuelMoment(moment)" class="uf-label" style="color: var(--uf-loss)">· Untraded</span>
               <span v-if="moment.callout" class="uf-t4">{{ moment.callout }}</span>
+              <span v-if="isMatchDataMoment(moment)" class="uf-t4">· From match data</span>
             </p>
             <p class="uf-t4 uf-num">{{ duelMomentTimestampLabel(moment) }} · {{ duelMomentWindowDurationLabel(moment) }}</p>
             <p v-if="formatKillStreakLabel(moment.kill_count ?? 0)" class="uf-t4" style="color: var(--uf-win)">Full spree captured in one clip</p>
@@ -149,6 +151,7 @@ function confidenceClass(conf: string | undefined): string {
         <div v-if="moment.key_observation" class="mt-2 text-xs text-gray-300 leading-relaxed">
           {{ moment.key_observation }}
         </div>
+        <p v-if="isMatchDataMoment(moment)" class="mt-1 text-[10px] text-gray-500">From match data</p>
 
         <p
           v-if="moment.player_action_visibility === 'obscured' || moment.movement_actor === 'enemy' || moment.movement_actor === 'uncertain'"
