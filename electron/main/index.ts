@@ -4086,14 +4086,8 @@ function setupGameDetection(): void {
     async function maybeUploadDemoOnly(reason: string): Promise<void> {
       if (!autoAnalyse || !usesDemoReplay(game)) return
       if (!canUploadCapture()) return
-      logActivity(`${gameLabel(game)} replay uploading (${reason})`)
-      showAppNotification({
-        title: `${gameLabel(game)} replay analysis`,
-        body: 'No VOD saved — uploading match replay for AI coaching.',
-        silent: notifySilent(),
-      })
       const notifyWin = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
-      await tryAutoUploadSourceReplay({
+      const uploading = await tryAutoUploadSourceReplay({
         game: game as 'cs2' | 'deadlock',
         demoPath: pendingReplayPath,
         matchSessionStart: matchSessionStart,
@@ -4103,7 +4097,19 @@ function setupGameDetection(): void {
         onJobId: game === 'deadlock'
           ? (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: getDeadlockLobbyMatchId(), sessionStart: matchSessionStart })
           : undefined,
+        // Only announce an upload once a replay file was actually found.
+        onUploadStarting: () => {
+          logActivity(`${gameLabel(game)} replay uploading (${reason})`)
+          showAppNotification({
+            title: `${gameLabel(game)} replay analysis`,
+            body: 'No VOD saved — uploading match replay for AI coaching.',
+            silent: notifySilent(),
+          })
+        },
       })
+      if (!uploading && game === 'cs2') {
+        logActivity('CS2: no VOD saved — download the demo in CS2 (Watch → Your Matches) and attach it to get coaching')
+      }
       mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
     }
     const clipsOnly = !captureNeverStarted && (config?.fullMatchRecording === false || obsRecorder.isClipsOnlySession())

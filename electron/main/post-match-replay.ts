@@ -143,16 +143,21 @@ export async function tryAutoUploadSourceReplay(opts: {
   customReplayDir?: string
   meta?: ReplayUploadMeta
   onJobId?: (jobId: string) => void
-}): Promise<void> {
+  /** Called only when a replay file was found and the upload is about to start. */
+  onUploadStarting?: (demoPath: string) => void
+}): Promise<boolean> {
   let demoPath = opts.demoPath
-  if (!demoPath && opts.game === 'cs2') return
+  // CS2 has no local auto-saved replay to search for; the player attaches the demo by hand.
+  if (!demoPath && opts.game === 'cs2') return false
   if (!demoPath) {
     const found = await findLatestReplay(opts.game, opts.matchSessionStart, opts.customReplayDir)
     demoPath = found.demoPath
   }
-  if (!demoPath) return
+  if (!demoPath) return false
+  opts.onUploadStarting?.(demoPath)
   const meta = opts.meta ?? (opts.game === 'deadlock'
     ? { matchStartedAt: Math.floor(opts.matchSessionStart / 1000) }
     : undefined)
   await uploadReplayInBackground(opts.game, demoPath, opts.auth, opts.notifyWindow, meta, opts.onJobId)
+  return true
 }
