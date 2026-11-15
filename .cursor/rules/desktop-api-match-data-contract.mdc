@@ -8,7 +8,7 @@ alwaysApply: false
 
 ## Hard rule
 
-Never mark CS2 or Deadlock Analyse `ready` without rich Valve demo/replay stats (`hasRichMatchData`).
+Never mark CS2 or Deadlock Analyse `ready` without demo/replay kill rows (`hasDemoKillRows`: at least one `killEvents` or `playerKills` row, not from the Deadlock live console log). K/D/A totals alone do not count.
 
 API `MatchDataQualityService::isReadyForCs2Desktop` rejects sparse jobs with `DEMO_NOT_READY` / `missing_coaching_inputs`.
 

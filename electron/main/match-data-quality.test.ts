@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasRichMatchData, timelineNeedsEnrichRefresh, shouldScheduleLateClipRetry, valorantMatchStatsPollIntervalMs } from './match-data-quality'
+import { hasDemoKillRows, hasRichMatchData, hasRichMatchDataForGame, timelineNeedsEnrichRefresh, shouldScheduleLateClipRetry, valorantMatchStatsPollIntervalMs } from './match-data-quality'
 import type { MatchData } from './riot-types'
 
 function sparseTimeline(): MatchData {
@@ -107,6 +107,34 @@ describe('hasRichMatchData', () => {
     const tl = sparseTimeline()
     tl.roundSummaries = [roundSummary({ roundNumber: 1 })]
     expect(hasRichMatchData(tl)).toBe(false)
+  })
+})
+
+describe('hasDemoKillRows (CS2 / Deadlock Analyse bar, #607)', () => {
+  const kda = { kills: 14, deaths: 10, assists: 3 } as MatchData['finalStats']
+
+  it('K/D/A totals alone are not demo data', () => {
+    const tl = sparseTimeline()
+    tl.finalStats = kda
+    expect(hasRichMatchData(tl)).toBe(true)
+    expect(hasDemoKillRows(tl)).toBe(false)
+    expect(hasRichMatchDataForGame('cs2', tl)).toBe(false)
+    expect(hasRichMatchDataForGame('deadlock', tl)).toBe(false)
+    expect(hasRichMatchDataForGame('valorant', tl)).toBe(true)
+  })
+
+  it('an empty killEvents does not hide playerKills', () => {
+    const tl = sparseTimeline()
+    tl.killEvents = []
+    tl.playerKills = [{ EventID: 1 } as MatchData['playerKills'][number]]
+    expect(hasDemoKillRows(tl)).toBe(true)
+  })
+
+  it('live console-log kill rows do not count', () => {
+    const tl = sparseTimeline()
+    tl.killEvents = [{ EventID: 1 } as MatchData['killEvents'][number]]
+    tl.killRowsSource = 'live_log'
+    expect(hasDemoKillRows(tl)).toBe(false)
   })
 })
 

@@ -7,7 +7,7 @@
  * Recordings still waiting on a CS2/Deadlock demo, with a failed upload/analysis,
  * or mid-pipeline are never auto-deleted.
  */
-import { hasRichMatchData } from './match-data-quality'
+import { hasDemoKillRows } from './match-data-quality'
 import type { PendingRecording } from './recordings-store'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -48,7 +48,7 @@ export function expiryProtection(rec: ExpiryRecording): ExpiryProtection | null 
   if (rec.pipelineDeferReason || rec.manualAnalyseRequested) return 'in_progress'
   if (rec.lastAnalysisError || rec.lastFailureCode || rec.orphanRecoveryError) return 'upload_failed'
   // CS2 / Deadlock Analyse stays locked until rich demo stats exist — the match is waiting on its demo.
-  if ((rec.game === 'cs2' || rec.game === 'deadlock') && !hasRichMatchData(rec.timeline)) {
+  if ((rec.game === 'cs2' || rec.game === 'deadlock') && !hasDemoKillRows(rec.timeline)) {
     return 'waiting_for_demo'
   }
   return null

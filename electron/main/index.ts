@@ -342,7 +342,7 @@ import {
   sendPostGameEvent,
   sendPostGameEventForRecording,
 } from './post-game-session'
-import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, shouldScheduleLateClipRetry, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage, valorantMatchStatsPollIntervalMs } from './match-data-quality'
+import { hasDemoKillRows, hasRichMatchData, hasRichMatchDataForGame, MATCH_DETAILS_ENRICH_MAX_MS, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, shouldScheduleLateClipRetry, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage, valorantMatchStatsPollIntervalMs } from './match-data-quality'
 import {
   buildCoachingSubmissionExtras,
   topSkillFocus,
@@ -2500,7 +2500,7 @@ const cs2DemoRetrieval = new Cs2DemoRetrieval({
   getRecording: (id) => {
     const rec = recordingsStore.getById(id)
     return rec?.game === 'cs2'
-      ? { recordedAt: rec.recordedAt, complete: !!rec.analysed || hasRichMatchData(rec.timeline) }
+      ? { recordedAt: rec.recordedAt, complete: !!rec.analysed || hasDemoKillRows(rec.timeline) }
       : null
   },
   retrieve: (id) => refreshReplayTimelineForRecording(id, { notifyActivity: true }),
@@ -2602,7 +2602,7 @@ async function retrieveReplayTimelineForRecording(
   if (!rec || (rec.game !== 'cs2' && rec.game !== 'deadlock')) return false
 
   const valid = () => scope === replayScope && recordingsStore.getById(recordingId) != null
-  if (hasRichMatchData(rec.timeline)) return true
+  if (hasDemoKillRows(rec.timeline)) return true
   if (rec.game === 'deadlock' && rec.deadlockReviewJobId) {
     // Deadlock replays are Source 2: the only real kill timeline is the user's cloud review.
     if (await fetchDeadlockReviewStatus(rec.deadlockReviewJobId) === 'completed') {
@@ -2656,7 +2656,7 @@ async function retrieveReplayTimelineForRecording(
 
   if (
     rec.game === 'cs2'
-    && (!parsed.timeline || !hasRichMatchData(parsed.timeline))
+    && (!parsed.timeline || !hasDemoKillRows(parsed.timeline))
     && !shouldDeferHeavyBackgroundWork(matchPriorityDeps())
   ) {
     try {
@@ -2691,7 +2691,7 @@ async function retrieveReplayTimelineForRecording(
 
   if (
     rec.game === 'deadlock'
-    && (!parsed.timeline || !hasRichMatchData(parsed.timeline))
+    && (!parsed.timeline || !hasDemoKillRows(parsed.timeline))
     && !shouldDeferHeavyBackgroundWork(matchPriorityDeps())
   ) {
     const salts = getDeadlockMatchSalts()
@@ -2720,7 +2720,7 @@ async function retrieveReplayTimelineForRecording(
   }
 
   if (!valid()) return false
-  if (!parsed.timeline || !hasRichMatchData(parsed.timeline)) {
+  if (!parsed.timeline || !hasDemoKillRows(parsed.timeline)) {
     if (cs2DemoRetrievalStatus.get(recordingId)?.state === 'syncing') {
       // Back off (not the 5 s default) so a bad local demo is not re-parsed every few seconds.
       if (parsed.demoPath && cs2DemoReadError(parsed.demoPath)) setStatus('waiting_match_data', CS2_DEMO_UNREADABLE_MESSAGE, 'demo_unreadable')
@@ -4468,7 +4468,7 @@ function setupGameDetection(): void {
       }
 
       const matchId = timeline?.matchId
-      const richMatchData = hasRichMatchData(timeline)
+      const richMatchData = hasRichMatchDataForGame(game, timeline)
 
       // Register on the dashboard immediately — before compression/upload can take minutes.
       setPrepStep('dashboard_row')

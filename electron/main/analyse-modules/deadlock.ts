@@ -2,7 +2,7 @@ import { duelMomentsForUpload } from '../moment-picker'
 import {
   deadlockDemoSyncMessage,
   demoSyncMaxMsForGame,
-  hasRichMatchData,
+  hasDemoKillRows,
 } from '../match-data-quality'
 import type { AnalyseReadiness, GameAnalyseModule, ReadinessRecording } from './types'
 import { recordingAgeMs } from './types'
@@ -13,7 +13,7 @@ export const deadlockModule: GameAnalyseModule = {
     const ageMs = recordingAgeMs(rec)
     const withinSyncWindow = ageMs < demoSyncMaxMsForGame(rec.game)
 
-    if (hasRichMatchData(rec.timeline)) {
+    if (hasDemoKillRows(rec.timeline)) {
       const duelMomentCount = duelMomentsForUpload(rec.timeline ?? null).length
       return { ready: true, state: 'ready', message: '', duelMomentCount }
     }

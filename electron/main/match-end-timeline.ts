@@ -141,6 +141,8 @@ export async function buildMatchEndTimeline(
         timeline.playerKills = logTimeline.playerKills
         timeline.playerDeaths = logTimeline.playerDeaths
         timeline.killEvents = logTimeline.killEvents
+        // Kill rows now come from the live log, not the replay: keep Analyse locked.
+        timeline.killRowsSource = 'live_log'
         log.info(`[MatchEndTimeline] merged ${logTimeline.playerKills.length} kills from console log`)
       }
     }
