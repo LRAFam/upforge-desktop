@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GameDetector } from './game-detector'
-import { POLL_ACTIVE_MS, POLL_CONFIRMED_MS, nextProcessPollDelayMs, probeFromSnapshot } from './process-poll-plan'
+import { POLL_ACTIVE_MS, POLL_CONFIRMED_MS, VALORANT_IN_MATCH_PROCESS_CHECK_MS, nextProcessPollDelayMs, probeFromSnapshot } from './process-poll-plan'
 
 vi.mock('./steam-gsi-server', () => ({
   isGsiMatchLive: vi.fn(() => true),
@@ -28,6 +28,10 @@ describe('process poll plan', () => {
     expect(nextProcessPollDelayMs({ activeGame: 'cs2', matchConfirmed: false, missedPollStreak: 0 })).toBe(POLL_ACTIVE_MS)
     expect(nextProcessPollDelayMs({ activeGame: 'cs2', matchConfirmed: true, missedPollStreak: 0 })).toBe(POLL_CONFIRMED_MS)
     expect(nextProcessPollDelayMs({ activeGame: 'cs2', matchConfirmed: true, missedPollStreak: 1 })).toBe(POLL_ACTIVE_MS)
+  })
+
+  it('re-checks the Valorant match process every 35 s while recording (owner call)', () => {
+    expect(VALORANT_IN_MATCH_PROCESS_CHECK_MS).toBe(35_000)
   })
 
   it('answers from a fresh snapshot and refuses a stale one', () => {

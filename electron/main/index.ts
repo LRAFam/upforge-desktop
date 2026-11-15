@@ -34,7 +34,7 @@ import { initProductActivity, trackProductActivity } from './product-activity'
 import { backgroundWork } from './background-work'
 import { BackgroundMatchState } from './background-match-state'
 import { matchPollPause } from './poll-pause'
-import { REARM_PROCESS_MAX_AGE_MS } from './process-poll-plan'
+import { REARM_PROCESS_MAX_AGE_MS, VALORANT_IN_MATCH_PROCESS_CHECK_MS } from './process-poll-plan'
 import {
   RECORDING_MAX_DURATION_CHECK_MS,
   checkRecordingMaxDuration,
@@ -982,10 +982,9 @@ let rearmWatchInFlight: string | null = null
 let matchFinalizeInFlight: Promise<boolean> | null = null
 // Overlay polling timer — cleared when match ends or game stops
 let overlayPollTimer: ReturnType<typeof setInterval> | null = null
-/** Cached Shipping.exe status — tasklist is expensive; check every 5s not every overlay tick. */
+/** Cached Shipping.exe status — tasklist is expensive; see VALORANT_IN_MATCH_PROCESS_CHECK_MS. */
 let cachedShippingProcessUp = true
 let lastShippingProcessCheckAt = 0
-const SHIPPING_PROCESS_CHECK_MS = 10_000
 let gsiPollTimer: ReturnType<typeof setInterval> | null = null
 
 let lastReplayRetryContext: ReplayRetryContext | null = null
@@ -5981,7 +5980,7 @@ function setupGameDetection(): void {
         const state = await riotLocalApi.getSharedSessionState()
         if (obsRecorder.isRecording() && !matchHandled) {
           const now = Date.now()
-          if (now - lastShippingProcessCheckAt >= SHIPPING_PROCESS_CHECK_MS) {
+          if (now - lastShippingProcessCheckAt >= VALORANT_IN_MATCH_PROCESS_CHECK_MS) {
             lastShippingProcessCheckAt = now
             cachedShippingProcessUp = await gameDetector.isMatchProcessRunningRecent()
           }
