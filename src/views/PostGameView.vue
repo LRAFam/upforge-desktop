@@ -2230,7 +2230,7 @@ async function saveToCloudNow() {
       errorDetails.value = {
         title: result.title ?? 'Could not save to cloud',
         message: result.error,
-        hint: result.hint ?? 'Try again from the dashboard, or contact support if this keeps happening.',
+        hint: result.hint ?? 'Try again from the dashboard. If it keeps happening, see Help › Troubleshooting.',
         creditRefunded: false,
         canRetry: true,
         kind: 'upload',

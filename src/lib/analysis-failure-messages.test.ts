@@ -119,6 +119,13 @@ describe('formatAnalysisFailureMessage', () => {
 })
 
 describe('buildAnalysisErrorPayload', () => {
+  it('links every failure to the troubleshooting help', () => {
+    for (const raw of ['Server error', 'quota exceeded', 'timed out', 'match data not ready', '']) {
+      expect(buildAnalysisErrorPayload(raw).helpUrl).toBe('https://upforge.gg/help#troubleshooting')
+    }
+    expect(classifyAnalysisFailure('Server error').hint).not.toMatch(/contact support/i)
+  })
+
   it('includes recording id when provided', () => {
     const payload = buildAnalysisErrorPayload('Server error', { recordingId: 'rec-1' })
     expect(payload.recordingId).toBe('rec-1')
