@@ -30,6 +30,10 @@ const api = {
     enable: () => ipcRenderer.invoke('overstep:enable'),
     disable: () => ipcRenderer.invoke('overstep:disable'),
   },
+  aiTraining: {
+    get: () => ipcRenderer.invoke('ai-training:get'),
+    set: (optOut: boolean) => ipcRenderer.invoke('ai-training:set', optOut),
+  },
   coaching: {
     preferences: () => ipcRenderer.invoke('coaching:preferences'),
     savePreferences: (value: import('../../src/lib/coaching-preferences').CoachingPreferences) => ipcRenderer.invoke('coaching:save-preferences', value),
