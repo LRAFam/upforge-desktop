@@ -12,6 +12,7 @@ import UfHeroBand from '../../components/v3/UfHeroBand.vue'
 import UfButton from '../../components/v3/UfButton.vue'
 import { practiceRouteFromReport } from '../../components/v3/practice/practice-v3'
 import { focusMetricScenario } from '../../components/v3/practice/focus-drills'
+import { useDrillRulebook } from '../../lib/drill-rulebook'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import { formatMapLabel, getAgentImage, getMapImage } from '../../lib/valorant'
 import { matchReportView, type MatchReportState } from '../../lib/match-report'
@@ -257,10 +258,11 @@ onBeforeUnmount(() => { stopUpdates?.(); reportPoller.stop(); notesPoller.stop()
 watch(matchId, () => { moments.value = []; flowState.value = null; void loadCoachFlow() })
 
 // Practice opens on this report's drill ("Do this next"), not a generic page.
+const rulebook = useDrillRulebook(typeof window === 'undefined' ? undefined : window.api?.trainer)
 function practise(): void {
   const v = view.value
   const metric = v?.nextSteps.find(s => s.drillMetric)?.drillMetric ?? null
-  router.push(practiceRouteFromReport(v?.drill ?? null, focusMetricScenario(metric))).catch(() => {})
+  router.push(practiceRouteFromReport(v?.drill ?? null, focusMetricScenario(metric, rulebook.value))).catch(() => {})
 }
 function back(): void { if (window.history.length > 1) router.back(); else router.push('/dashboard').catch(() => {}) }
 </script>

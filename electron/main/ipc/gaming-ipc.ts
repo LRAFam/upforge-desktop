@@ -4,7 +4,7 @@
  * and ForgeRank prestige. Also holds the crosshair→Godot conversion helper.
  */
 
-import { BrowserWindow, IpcMain, shell } from 'electron'
+import { app, BrowserWindow, IpcMain, shell } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
@@ -18,6 +18,7 @@ import { TrainerBridge } from '../trainer-bridge'
 import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest } from '../trainer-payload'
 import { sendOverlayData } from '../overlay-window'
 import { apiPost } from './api-helpers'
+import { TrainerSessionQueue, trainerRunKey } from '../trainer-session-queue'
 import { dismissCoachingDrill } from '../coaching-drill-dismiss'
 import { listRecentDemosInDir } from '../demo-finder'
 import { SourceReplayUploader } from '../source-replay-uploader'
@@ -78,16 +79,32 @@ export function setupGamingHandlers(
 
   // ── Aim Trainer ───────────────────────────────────────────────────────────
 
+  // Runs that could not be uploaded are kept on disk and retried, so practice is never silently lost.
+  const trainerQueue = new TrainerSessionQueue({
+    file: path.join(app.getPath('userData'), 'trainer-pending-sessions.json'),
+    post: (payload) => {
+      const token = auth.getToken()
+      if (!token) return Promise.reject(Object.assign(new Error('Signed out'), { status: 401 }))
+      return apiPost(apiBase, '/api/training/sessions', JSON.stringify(payload), token)
+    },
+    hasToken: () => !!auth.getToken(),
+    notify: (outcome) => {
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send('trainer:session-synced', outcome)
+      }
+    },
+    log,
+  })
+  void trainerQueue.flush()
+
   trainerBridge?.setResultCallback((result, launch) => {
     sendOverlayData('overlay:trainer-result', result)
-    const token = auth.getToken()
-    if (token) {
-      const payload = buildTrainingSessionPayload(result, launch)
-      apiPost(apiBase, '/api/training/sessions', JSON.stringify(payload), token)
-        .then(() => log.info('[Trainer] Session synced to API'))
-        .catch((err) => log.warn('[Trainer] Failed to sync session to API:', (err as Error)?.message))
-    }
+    void trainerQueue.flush() // earlier runs first, e.g. after signing back in
+    void trainerQueue.submit(buildTrainingSessionPayload(result, launch))
   })
+
+  ipcMain.handle('trainer:get-sync-status', (_e, scenario: unknown, completedAt: unknown) =>
+    trainerQueue.outcomeFor(trainerRunKey(scenario, completedAt)))
 
   // A drill that ends without a result must clear the overlay's "in progress" card.
   trainerBridge?.setEndedCallback((ended) => {
@@ -154,6 +171,19 @@ export function setupGamingHandlers(
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch coaching drills:', err?.message)
       return []
+    }
+  })
+
+  ipcMain.handle('trainer:get-drill-rulebook', async (_e, game?: unknown) => {
+    const token = auth.getToken()
+    if (!token) return null
+    try {
+      const res = await auth.getApi().get('/api/drills/rulebook', { params: { game: typeof game === 'string' ? game : 'valorant' } })
+      const metrics = (res.data as { metrics?: unknown } | null)?.metrics
+      return metrics && typeof metrics === 'object' ? metrics : null
+    } catch (err: any) {
+      log.warn('[Trainer] Failed to fetch drill rulebook:', err?.message)
+      return null
     }
   })
 
