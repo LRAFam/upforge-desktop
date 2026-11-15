@@ -403,7 +403,7 @@ function fileSizeOrNull(p: string): number | null {
 import { pregameKey, pregameQuery, sanitizePregameContext } from './pregame-view'
 import { DEEP_LINK_SCHEME, PendingDeepLink, findDeepLinkInArgv } from './deep-link'
 import { downloadDeadlockValveReplay } from './deadlock-valve-replay'
-import { ensureCs2DemoRecordingConfig } from './cs2-steam-setup'
+import { removeLegacyCs2DemoConfig } from './cs2-steam-setup'
 import { resolveCs2LocalPlayerName } from './cs2-player-identity'
 import {
   uploadsSourceReplay,
@@ -3551,9 +3551,8 @@ function setupGameDetection(): void {
     if (r.needsRestart) log.info('[SteamGSI] CS2 GSI cfg updated with auth token — restart CS2 once to load it')
   }).catch(() => {})
   gameDetector.setWatchGame(normalizePrimaryGame(settingsManager.get().primaryGame))
-  if (normalizePrimaryGame(settingsManager.get().primaryGame) === 'cs2') {
-    void ensureCs2DemoRecordingConfig()
-  }
+  // Undo the old autoexec edit for a CS2 cvar that does not exist.
+  void removeLegacyCs2DemoConfig()
 
   onRecordingLost = (error: string) => {
     const game = gameDetector.currentGame() ?? 'valorant'
@@ -5052,18 +5051,11 @@ function setupGameDetection(): void {
         )
       }
       const gsiInstall = await installSteamGsiConfig('cs2')
-      let gsiNeedsRestart = gsiInstall.needsRestart
+      const gsiNeedsRestart = gsiInstall.needsRestart
       if (gsiInstall.needsRestart) {
         logActivity('CS2 detected — restart CS2 once so UpForge can auto-start recording when a match begins')
       } else if (!gsiInstall.ok) {
         logActivity('CS2 detected — could not install match auto-record config (check Steam/CS2 is installed)')
-      }
-      const demoSetup = await ensureCs2DemoRecordingConfig()
-      if (demoSetup.needsRestart) {
-        gsiNeedsRestart = true
-        logActivity('CS2 detected — restart CS2 once for automatic demo recording (highlight clips)')
-      } else if (!demoSetup.ok && demoSetup.error) {
-        log.warn('[CS2Setup] Demo recording cfg failed:', demoSetup.error)
       }
       logActivity('CS2 detected — waiting for a live match to start recording')
 

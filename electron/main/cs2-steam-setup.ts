@@ -1,5 +1,5 @@
 /**
- * CS2 Steam setup — auto demo recording cfg + Steam persona for demo player matching.
+ * CS2 Steam setup — Steam persona for demo player matching, plus cleanup of a legacy demo cfg.
  */
 
 import fs from 'fs'
@@ -12,17 +12,11 @@ import { getCandidateCS2CsgoDirs } from './cs2-demo-finder'
 const execAsync = promisify(exec)
 const IS_WIN = process.platform === 'win32'
 
-const DEMO_CFG_NAME = 'upforge_demo.cfg'
-const AUTOEXEC_EXEC_LINE = 'exec upforge_demo'
-const DEMO_CVAR_LINE = 'cl_demo_auto_recording 1'
+// Legacy (removed): we used to write these into the player's CS2 cfg folder.
+const LEGACY_DEMO_CFG_NAME = 'upforge_demo.cfg'
+const LEGACY_AUTOEXEC_EXEC_LINE = 'exec upforge_demo'
+const LEGACY_DEMO_CVAR_LINE = 'cl_demo_auto_recording 1'
 const STEAM_ID_BASE = BigInt('76561197960265728')
-
-export interface Cs2DemoSetupResult {
-  ok: boolean
-  cfgPaths: string[]
-  needsRestart: boolean
-  error?: string
-}
 
 async function getSteamPath(): Promise<string | null> {
   if (!IS_WIN) return null
@@ -123,63 +117,54 @@ export async function getSteamPersonaName(): Promise<string | null> {
   }
 }
 
-function writeDemoCfg(cfgDir: string): string {
-  const demoCfgPath = path.join(cfgDir, DEMO_CFG_NAME)
-  const contents = `${DEMO_CVAR_LINE}\n`
-  if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true })
+/**
+ * Older builds wrote `cfg/upforge_demo.cfg` (containing `cl_demo_auto_recording 1`)
+ * and appended `exec upforge_demo` to the player's autoexec. That cvar does not
+ * exist in CS2, so the edit did nothing. Undo it: drop our exec line and delete
+ * our cfg only when it still holds exactly what we wrote.
+ */
+export function removeLegacyDemoCfgFromDir(cfgDir: string): boolean {
+  let changed = false
+  const autoexecPath = path.join(cfgDir, 'autoexec.cfg')
+  if (fs.existsSync(autoexecPath)) {
+    const content = fs.readFileSync(autoexecPath, 'utf-8')
+    const lines = content.split(/\r?\n/)
+    const kept = lines.filter((line) => line.trim() !== LEGACY_AUTOEXEC_EXEC_LINE)
+    if (kept.length !== lines.length) {
+      const eol = content.includes('\r\n') ? '\r\n' : '\n'
+      const body = kept.join(eol).trimEnd()
+      fs.writeFileSync(autoexecPath, body ? `${body}${eol}` : '', 'utf-8')
+      changed = true
+    }
+  }
+  const demoCfgPath = path.join(cfgDir, LEGACY_DEMO_CFG_NAME)
   if (fs.existsSync(demoCfgPath)) {
     const existing = fs.readFileSync(demoCfgPath, 'utf-8').trim()
-    if (existing === contents.trim()) return demoCfgPath
+    if (existing === LEGACY_DEMO_CVAR_LINE) {
+      fs.unlinkSync(demoCfgPath)
+      changed = true
+    }
   }
-  fs.writeFileSync(demoCfgPath, contents, 'utf-8')
-  return demoCfgPath
+  return changed
 }
 
-function mergeAutoexec(cfgDir: string): boolean {
-  const autoexecPath = path.join(cfgDir, 'autoexec.cfg')
-  let content = ''
-  if (fs.existsSync(autoexecPath)) {
-    content = fs.readFileSync(autoexecPath, 'utf-8')
-    if (/cl_demo_auto_recording\s+1/i.test(content)) return false
-    if (content.includes(AUTOEXEC_EXEC_LINE)) return false
-  }
-
-  if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true })
-  const next = content.trimEnd() + (content.trim() ? '\n' : '') + `${AUTOEXEC_EXEC_LINE}\n`
-  fs.writeFileSync(autoexecPath, next, 'utf-8')
-  return true
-}
-
-/**
- * Install cl_demo_auto_recording via cfg/upforge_demo.cfg + autoexec exec line.
- * Writes to every CS2 cfg folder on disk (game/csgo and legacy csgo paths).
- */
-export async function ensureCs2DemoRecordingConfig(): Promise<Cs2DemoSetupResult> {
-  if (!IS_WIN) {
-    return { ok: false, cfgPaths: [], needsRestart: false, error: 'Windows only' }
-  }
-
-  const csgoDirs = await getCandidateCS2CsgoDirs()
-  if (!csgoDirs.length) {
-    return { ok: false, cfgPaths: [], needsRestart: false, error: 'CS2 not found' }
-  }
-
+/** Remove the legacy demo cfg from every CS2 cfg folder on disk. Never throws. */
+export async function removeLegacyCs2DemoConfig(): Promise<{ cleaned: string[] }> {
+  if (!IS_WIN) return { cleaned: [] }
+  const cleaned: string[] = []
   try {
-    const cfgPaths: string[] = []
-    let needsRestart = false
-
+    const csgoDirs = await getCandidateCS2CsgoDirs()
     for (const csgoDir of csgoDirs) {
       const cfgDir = path.join(csgoDir, 'cfg')
-      writeDemoCfg(cfgDir)
-      if (mergeAutoexec(cfgDir)) needsRestart = true
-      cfgPaths.push(path.join(cfgDir, DEMO_CFG_NAME))
-      log.info('[CS2Setup] Demo recording cfg ready at', cfgDir)
+      try {
+        if (removeLegacyDemoCfgFromDir(cfgDir)) {
+          cleaned.push(cfgDir)
+          log.info('[CS2Setup] Removed legacy demo cfg from', cfgDir)
+        }
+      } catch (err) {
+        log.warn('[CS2Setup] Could not remove legacy demo cfg:', err instanceof Error ? err.message : String(err))
+      }
     }
-
-    return { ok: true, cfgPaths, needsRestart }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    log.warn('[CS2Setup] Failed to write demo cfg:', msg)
-    return { ok: false, cfgPaths: [], needsRestart: false, error: msg }
-  }
+  } catch { /* CS2 not found — nothing to undo */ }
+  return { cleaned }
 }

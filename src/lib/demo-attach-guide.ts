@@ -10,8 +10,6 @@ export interface DemoAttachGuideStep {
   parts: DemoAttachGuidePart[]
 }
 
-export const CS2_AUTOEXEC_LINE = 'cl_demo_auto_recording 1'
-
 export function isDemoAttachGame(game: string | null | undefined): game is DemoAttachGame {
   return game === 'cs2' || game === 'deadlock'
 }
@@ -37,14 +35,7 @@ export function demoAttachGuideSteps(game: DemoAttachGame): DemoAttachGuideStep[
         parts: [
           { text: 'Download saves to ' },
           { text: CS2_REPLAYS_FOLDER_HINT, mono: true },
-          { text: ' — extra .dem files from auto-record or other matches are normal' },
-        ],
-      },
-      {
-        parts: [
-          { text: 'Or add ' },
-          { text: CS2_AUTOEXEC_LINE, mono: true },
-          { text: ' to autoexec — demos may also land in the csgo folder after each game' },
+          { text: ' — extra .dem files from other matches are normal' },
         ],
       },
       {

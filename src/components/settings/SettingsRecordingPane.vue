@@ -127,7 +127,7 @@ const statusItems = computed<StatusItem[]>(() => {
       <div v-if="settings.primaryGame === 'cs2'" class="uf-inset">
         <div class="uf-set-row-text">
           <p class="uf-t3">CS2 demo recording</p>
-          <p class="uf-t4">UpForge auto-installs demo recording when CS2 launches. Restart CS2 once after first setup. Highlight clips (3K/ace/clutch) are cut from your VOD using the demo.</p>
+          <p class="uf-t4">CS2 does not save your match demo by itself. Download it in CS2 (Watch → Your Matches) and attach it to the match. Highlight clips (3K/ace/clutch) are then cut from your VOD using the demo.</p>
         </div>
         <label class="uf-field"><span class="uf-t4">Steam / in-game name (for clip matching)</span>
           <input v-model="cs2SteamNameField" type="text" placeholder="Auto-detect from Steam" class="uf-input" @change="debouncedSave()">
@@ -297,7 +297,7 @@ const statusItems = computed<StatusItem[]>(() => {
       <div v-if="settings.primaryGame === 'cs2'" class="rounded-2xl border border-orange-500/20 bg-orange-500/[0.05] p-4 space-y-3">
         <div>
           <p class="text-sm font-semibold text-white">CS2 demo recording</p>
-          <p class="mt-1 text-xs text-gray-500 leading-relaxed">UpForge auto-installs demo recording when CS2 launches. Restart CS2 once after first setup. Highlight clips (3K/ace/clutch) are cut from your VOD using the demo.</p>
+          <p class="mt-1 text-xs text-gray-500 leading-relaxed">CS2 does not save your match demo by itself. Download it in CS2 (Watch → Your Matches) and attach it to the match. Highlight clips (3K/ace/clutch) are then cut from your VOD using the demo.</p>
         </div>
         <div>
           <label class="mb-1 block text-xs text-gray-400">Steam / in-game name (for clip matching)</label>
