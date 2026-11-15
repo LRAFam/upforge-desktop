@@ -13,19 +13,26 @@ export interface FaceitAttachView {
   canAttach: boolean
 }
 
+/**
+ * FACEIT coaching is a separate server-side review: it does not attach the demo to this
+ * recording, so the video timeline, clips and Analyse stay locked until the player attaches
+ * the .dem from the match page. Say so before they spend an analysis.
+ */
+export const FACEIT_SEPARATE_REVIEW = 'It is a separate written review: it does not unlock this recording\'s timeline, clips or Analyse. For those, attach the match demo here too.'
+
 const mapLabel = (map: string | null | undefined) => {
   const m = (map ?? '').replace(/^de_|^cs_/i, '')
   return m ? m.charAt(0).toUpperCase() + m.slice(1) : null
 }
 
 export function faceitAttachView(lookup: FaceitLookup | null, linked: { jobId: string } | null): FaceitAttachView {
-  if (linked) return { visible: true, line: 'FACEIT coaching is queued for this match. It appears in Coaching reviews when ready.', canAttach: false }
+  if (linked) return { visible: true, line: `FACEIT coaching is queued for this match. It appears in Coaching reviews when ready. ${FACEIT_SEPARATE_REVIEW}`, canAttach: false }
   if (!lookup) return { visible: false, line: '', canAttach: false }
   switch (lookup.status) {
     case 'matched': {
       const where = mapLabel(lookup.match.map)
       const score = lookup.match.score ? ` (${lookup.match.score})` : ''
-      return { visible: true, line: `This looks like your FACEIT match${where ? ` on ${where}` : ''}${score}. FACEIT coaching reads the full demo and coaches you, not the lobby.`, canAttach: true }
+      return { visible: true, line: `This looks like your FACEIT match${where ? ` on ${where}` : ''}${score}. FACEIT coaching reads the full demo and coaches you, not the lobby. ${FACEIT_SEPARATE_REVIEW}`, canAttach: true }
     }
     case 'no_match':
       return lookup.reason === 'ambiguous'
