@@ -1,4 +1,4 @@
-import { globalShortcut, BrowserWindow } from 'electron'
+import { globalShortcut } from 'electron'
 import log from 'electron-log'
 
 export type HotkeyAction = 'save-clip' | 'toggle-overlay' | 'take-screenshot'
@@ -12,6 +12,8 @@ const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = {
 export class HotkeyManager {
   private registered: Map<HotkeyAction, string> = new Map()
   private callbacks: Map<HotkeyAction, () => void> = new Map()
+  /** Keys we tried to claim at startup; used to retry once another app releases them. */
+  private wanted: Map<HotkeyAction, string> = new Map()
 
   on(action: HotkeyAction, callback: () => void): void {
     this.callbacks.set(action, callback)
@@ -22,6 +24,7 @@ export class HotkeyManager {
     const results = {} as Record<HotkeyAction, boolean>
     for (const [action, defaultKey] of Object.entries(DEFAULT_HOTKEYS) as [HotkeyAction, string][]) {
       const key = overrides[action] ?? defaultKey
+      this.wanted.set(action, key)
       results[action] = this._register(action, key)
     }
     const failed = (Object.entries(results) as [HotkeyAction, boolean][]).filter(([, ok]) => !ok).map(([a]) => a)
@@ -38,13 +41,29 @@ export class HotkeyManager {
     return this.registered.has(action)
   }
 
-  /** Update a single hotkey binding (unregisters old, registers new) */
+  /**
+   * Try again to claim keys that failed (e.g. another app held F9 and has since closed).
+   * Returns the actions that are registered now but were not before.
+   */
+  retryFailed(): HotkeyAction[] {
+    const recovered: HotkeyAction[] = []
+    for (const [action, key] of this.wanted) {
+      if (this.registered.has(action)) continue
+      if (this._register(action, key)) recovered.push(action)
+    }
+    return recovered
+  }
+
+  /** Keep the working binding until its replacement has been acquired. */
   update(action: HotkeyAction, accelerator: string): boolean {
     const old = this.registered.get(action)
+    if (old === accelerator) return true
+    if (!this._register(action, accelerator)) return false
+    this.wanted.set(action, accelerator)
     if (old) {
       try { globalShortcut.unregister(old) } catch { /* ignore */ }
     }
-    return this._register(action, accelerator)
+    return true
   }
 
   unregisterAll(): void {

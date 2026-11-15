@@ -1,6 +1,7 @@
 // Must stay the first import: redirects userData before any other module loads in self-test mode.
 import { selftestRequest } from './selftest-early'
 import { getApiBaseUrl } from './api-base'
+import { openExternalSafe } from './shell-open'
 import { buildQuitActivity, createQuitGuard } from './quit-guard'
 import { askQuitChoice } from './quit-dialog'
 import { canUseDeveloperTools, devOnly } from './dev-access'
@@ -7025,7 +7026,7 @@ async function performUploadAndAnalyse(
         }
         // Results open in the app (notification / post-game). The web report opens only if the player turned this on.
         if (analysisId && isPrimaryGame(game) && settingsManager?.get()?.autoOpenBrowser === true) {
-          shell.openExternal(desktopVodResultsUrl(game, analysisId))
+          void openExternalSafe(desktopVodResultsUrl(game, analysisId))
         }
         void (async () => {
           try {

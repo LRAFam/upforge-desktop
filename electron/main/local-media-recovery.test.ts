@@ -238,6 +238,22 @@ describe('durable logged-out media', () => {
     expect(await pipeline.extractMatchClips(mediaFile('unfinished.mp4'), null, null)).toBe(false)
   })
 
+  it('says the video tool is missing (not the recording) when ffmpeg cannot be started, and keeps the file', async () => {
+    const logActivity = vi.fn()
+    const source = mediaFile('kept.mp4')
+    const pipeline = new ClipPipeline({
+      clipStore: new ClipStore(),
+      clipExtractor: { probeWithRetry: async () => ({ ok: false, reason: 'ffmpeg error: spawn ffmpeg.exe ENOENT' }) } as unknown as ClipExtractor,
+      hotkeyBookmarks: [42000], getRecordingStartTime: () => 10000,
+      getClipCapture: () => ({ singleKills: true, multiKills: true, aces: true, clutches: true, deaths: true, objectives: true }),
+      logActivity, notifySilent: () => true, notifyMainWindow: vi.fn(),
+    })
+    expect(await pipeline.extractMatchClips(source, null, null)).toBe(false)
+    expect(logActivity).toHaveBeenCalledWith(expect.stringMatching(/ffmpeg\) is missing.*recording is kept/))
+    expect(logActivity).not.toHaveBeenCalledWith(expect.stringMatching(/could not be read/))
+    expect(fs.existsSync(source)).toBe(true)
+  })
+
   it('retains the last account through credential expiry/restart, but clears it on explicit logout', () => {
     const ownership = new CaptureOwnership()
     expect(ownership.get()).toBeNull()

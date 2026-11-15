@@ -156,11 +156,15 @@ export function setupClipHandlers(
 
   ipcMain.handle('clips:get-hotkeys', () => hotkeyManager.getBindings())
 
-  ipcMain.handle('clips:get-hotkey-status', () => ({
-    saveClipRegistered: hotkeyManager.isRegistered('save-clip'),
-    toggleOverlayRegistered: hotkeyManager.isRegistered('toggle-overlay'),
-    screenshotRegistered: hotkeyManager.isRegistered('take-screenshot'),
-  }))
+  ipcMain.handle('clips:get-hotkey-status', () => {
+    // Opening Settings re-checks keys another app held at startup, so closing that app recovers F9.
+    hotkeyManager.retryFailed()
+    return {
+      saveClipRegistered: hotkeyManager.isRegistered('save-clip'),
+      toggleOverlayRegistered: hotkeyManager.isRegistered('toggle-overlay'),
+      screenshotRegistered: hotkeyManager.isRegistered('take-screenshot'),
+    }
+  })
 
   ipcMain.handle('clips:set-hotkey', (_e, { action, accelerator }: { action: string; accelerator: string }) => {
     const ok = hotkeyManager.update(action as 'save-clip' | 'toggle-overlay' | 'take-screenshot', accelerator)

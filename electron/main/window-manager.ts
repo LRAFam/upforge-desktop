@@ -4,12 +4,12 @@
  * and for setting up the system tray. Extracted from index.ts.
  */
 
-import { BrowserWindow, Tray, Menu, nativeImage, screen, shell } from 'electron'
+import { BrowserWindow, Tray, Menu, nativeImage, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import log from 'electron-log'
 import { ClipExtractor } from './clip-extractor'
-import { openPathSafe } from './shell-open'
+import { openExternalSafe, openPathSafe } from './shell-open'
 import { trackUpgradeClicked } from './funnel-events'
 import { isSafeExternalUrl, isTrustedRendererUrl } from './renderer-trust'
 import { lockDownWindowNavigation } from './window-security'
@@ -31,13 +31,13 @@ function attachExternalLinkHandler(win: BrowserWindow, source: string): void {
     if (/\/pricing|\/checkout|subscription=/i.test(url)) {
       void trackUpgradeClicked(source)
     }
-    if (isSafeExternalUrl(url)) void shell.openExternal(url)
+    if (isSafeExternalUrl(url)) void openExternalSafe(url)
     return { action: 'deny' }
   })
   const guardNavigation = (event: Electron.Event, url: string) => {
     if (isTrustedRendererUrl(url)) return
     event.preventDefault()
-    if (isSafeExternalUrl(url)) void shell.openExternal(url)
+    if (isSafeExternalUrl(url)) void openExternalSafe(url)
     log.warn(`[WindowSecurity] Blocked untrusted navigation from ${source}`)
   }
   win.webContents.on('will-navigate', guardNavigation)
@@ -285,7 +285,7 @@ export function createTray(deps: TrayDeps): TrayResult {
     const template: Electron.MenuItemConstructorOptions[] = [
       { label: 'Open UpForge', click: focusOrCreate },
       { type: 'separator' },
-      { label: 'Open in Browser', click: () => shell.openExternal('https://upforge.gg/dashboard') },
+      { label: 'Open in Browser', click: () => { void openExternalSafe('https://upforge.gg/dashboard') } },
       { type: 'separator' },
       { label: 'Recording: ' + (deps.isRecording() ? '● Active' : '○ Idle'), enabled: false },
     ]

@@ -4,6 +4,7 @@
  */
 
 import { IpcMain, BrowserWindow, shell } from 'electron'
+import { openExternalSafe } from '../shell-open'
 import log from 'electron-log'
 import { enrichAnalysisDetail } from '../../../src/lib/analysis-enrichment'
 import { AuthManager, type RecurringStatus } from '../auth-manager'
@@ -203,8 +204,8 @@ export function setupAuthHandlers(
   ipcMain.handle('billing:open-portal', async () => {
     const result = await auth.createBillingPortalSession()
     if (!result.ok) return result
-    await shell.openExternal(result.url)
-    return { ok: true as const }
+    const opened = await openExternalSafe(result.url)
+    return opened.ok ? { ok: true as const } : { ok: false as const, error: opened.error ?? 'Could not open your browser.' }
   })
 
   ipcMain.handle('stats:rr-history', async (_e, range?: unknown) => {
