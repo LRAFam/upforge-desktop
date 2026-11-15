@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { uiV3 } from '../../lib/ui-v3'
 import UfButton from '../v3/UfButton.vue'
+import UfDialog from '../v3/UfDialog.vue'
 import { useRouter } from 'vue-router'
 import DemoAttachGuide from '../DemoAttachGuide.vue'
 import DemoAttachPickerModal from '../shared/DemoAttachPickerModal.vue'
@@ -26,7 +27,32 @@ const statusMessage = ref<string | null>(null)
 function openPicker() {
   if (!props.recordingId) return
   statusMessage.value = null
+  // Deadlock replays are read in the cloud (a local .dem attach cannot parse them).
+  if (props.game === 'deadlock') { reviewError.value = null; reviewOpen.value = true; return }
   pickerOpen.value = true
+}
+
+// Deadlock "Review replay": confirmed first because it uses 1 analysis.
+const reviewOpen = ref(false)
+const reviewBusy = ref(false)
+const reviewError = ref<string | null>(null)
+async function startReview() {
+  if (!props.recordingId) return
+  reviewBusy.value = true
+  reviewError.value = null
+  try {
+    const res = await window.api.deadlock.reviewReplay(props.recordingId)
+    if (res.ok) {
+      reviewOpen.value = false
+      statusMessage.value = 'Replay review started. Your kills and deaths are added to this recording when it finishes.'
+    } else {
+      reviewError.value = res.error
+    }
+  } catch {
+    reviewError.value = 'The review could not start. Try again in a moment.'
+  } finally {
+    reviewBusy.value = false
+  }
 }
 
 function onAttached() {
@@ -49,7 +75,7 @@ function openSettings() {
       <span v-if="map" class="uf-t4" style="text-transform: uppercase">{{ cs2MapDisplayName(map) || map }}</span>
     </div>
     <div class="dp3-body">
-      <p class="uf-t2">You can watch your recording now. Attach the matching demo to enable AI coaching. {{ demoSyncExplainer(game) }}</p>
+      <p class="uf-t2">You can watch your recording now. {{ game === 'deadlock' ? '' : 'Attach the matching demo to enable AI coaching. ' }}{{ demoSyncExplainer(game) }}</p>
       <p v-if="liveOnly" class="uf-t4">Your kills, deaths and round results on the video bar come from live game data, so times can be about a second off. The demo adds who you fought, weapons and exact timing.</p>
       <DemoAttachGuide :game="game" default-open />
       <div class="dp3-why">
@@ -59,12 +85,21 @@ function openSettings() {
         <p v-if="game === 'cs2'" class="uf-t4">Set your CS2 Steam name in Recording settings</p>
       </div>
       <div class="dp3-actions">
-        <UfButton variant="primary" :disabled="!recordingId" @click="openPicker">Choose matching demo</UfButton>
+        <UfButton variant="primary" :disabled="!recordingId" @click="openPicker">{{ game === 'deadlock' ? 'Review replay' : 'Choose matching demo' }}</UfButton>
         <UfButton variant="link" @click="openSettings">Recording settings</UfButton>
       </div>
       <p v-if="statusMessage" role="status" class="uf-t4" style="color: var(--uf-win)">{{ statusMessage }}</p>
     </div>
     <DemoAttachPickerModal v-if="recordingId" :show="pickerOpen" :recording-id="recordingId" :game="game" :map="map" :recorded-at="recordedAt" @close="pickerOpen = false" @attached="onAttached" />
+    <UfDialog :open="reviewOpen" title="Review this replay?" kicker="Deadlock" :width="440" @close="reviewOpen = false">
+      <p class="uf-t2" style="margin: 0">UpForge reads this match's replay and adds your kills and deaths to the recording, with coaching on your souls, items and fights.</p>
+      <p class="uf-t4" style="margin: 0">This uses 1 analysis from your plan.</p>
+      <p v-if="reviewError" class="uf-t4" style="margin: 0; color: var(--uf-loss)">{{ reviewError }}</p>
+      <template #actions>
+        <UfButton variant="secondary" :disabled="reviewBusy" @click="reviewOpen = false">Cancel</UfButton>
+        <UfButton variant="primary" :disabled="reviewBusy" @click="startReview">{{ reviewBusy ? 'Starting…' : 'Review replay' }}</UfButton>
+      </template>
+    </UfDialog>
   </aside>
 </template>
 <template v-else>
@@ -79,7 +114,7 @@ function openSettings() {
 
     <div class="flex-1 overflow-y-auto px-4 py-4 space-y-4">
       <p class="text-[13px] text-gray-400 leading-relaxed">
-        You can watch your recording now. Attach the matching demo to enable AI coaching. {{ demoSyncExplainer(game) }}
+        You can watch your recording now. {{ game === 'deadlock' ? '' : 'Attach the matching demo to enable AI coaching. ' }}{{ demoSyncExplainer(game) }}
       </p>
 
       <DemoAttachGuide :game="game" default-open />
@@ -99,7 +134,7 @@ function openSettings() {
         :disabled="!recordingId"
         @click="openPicker"
       >
-        Choose matching demo
+        {{ game === 'deadlock' ? 'Review replay' : 'Choose matching demo' }}
       </button>
       <button
         type="button"
@@ -123,6 +158,15 @@ function openSettings() {
       @close="pickerOpen = false"
       @attached="onAttached"
     />
+    <UfDialog :open="reviewOpen" title="Review this replay?" kicker="Deadlock" :width="440" @close="reviewOpen = false">
+      <p class="uf-t2" style="margin: 0">UpForge reads this match's replay and adds your kills and deaths to the recording, with coaching on your souls, items and fights.</p>
+      <p class="uf-t4" style="margin: 0">This uses 1 analysis from your plan.</p>
+      <p v-if="reviewError" class="uf-t4" style="margin: 0; color: var(--uf-loss)">{{ reviewError }}</p>
+      <template #actions>
+        <UfButton variant="secondary" :disabled="reviewBusy" @click="reviewOpen = false">Cancel</UfButton>
+        <UfButton variant="primary" :disabled="reviewBusy" @click="startReview">{{ reviewBusy ? 'Starting…' : 'Review replay' }}</UfButton>
+      </template>
+    </UfDialog>
   </aside>
 </template>
 </template>

@@ -106,4 +106,31 @@ describe('fight context', () => {
     const rows = deathRows({ match_stats: { kill_events: detail.match_stats.kill_events } })
     expect(rows).toEqual([{ at: '8:20', by: 'Haze', context: '', alone: false }])
   })
+
+  it('never prints an unmeasured position as zero, and divides by measured deaths', () => {
+    const partial = {
+      match_stats: {
+        fight: {
+          deaths_total: 5, deaths_measured: 2, deaths_alone: 1, deaths_outnumbered: 0, deaths_enemy_side: 1, deaths_traded: 1,
+          deaths: [{ time_seconds: 60, killer: 'Haze', allies_nearby: null, enemies_nearby: null, side: 'own' as const, traded: false }],
+        },
+      },
+    }
+    expect(deathRows(partial)[0].context).toBe('positions not measured · your side')
+    const facts = fightFacts(partial)
+    expect(facts).toContainEqual({ label: 'No teammate nearby', value: '1 of 2 measured deaths' })
+    expect(facts).toContainEqual({ label: 'Positions measured', value: '2 of 5 deaths' })
+    // All measured: plain wording, no extra row.
+    expect(fightFacts(detail)).toContainEqual({ label: 'No teammate nearby', value: '1 of 2 deaths' })
+    expect(fightFacts(detail).map(f => f.label)).not.toContain('Positions measured')
+  })
+})
+
+describe('Mid Boss side from a real replay', () => {
+  // Real parsed replay (AI bench fixture drifter-ci): mid_boss team 4 while the player is on team 2.
+  it('says "Taken" for a team value outside the two player teams instead of "Enemy team"', () => {
+    const rows = midBossRows({ match_stats: { player_team: 2, mid_boss: [{ time_seconds: 1500, team: 4 }, { time_seconds: 2400, team: 4 }] } })
+    expect(rows.map(r => r.who)).toEqual(['Taken', 'Taken'])
+    expect(rows.some(r => r.ours)).toBe(false)
+  })
 })

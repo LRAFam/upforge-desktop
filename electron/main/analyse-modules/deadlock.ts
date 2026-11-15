@@ -1,5 +1,6 @@
 import { duelMomentsForUpload } from '../moment-picker'
 import {
+  DEADLOCK_REVIEW_REPLAY_HINT,
   deadlockDemoSyncMessage,
   demoSyncMaxMsForGame,
   hasDemoKillRows,
@@ -30,7 +31,7 @@ export const deadlockModule: GameAnalyseModule = {
     return {
       ready: false,
       state: 'waiting_match_data',
-      message: 'Attach the Deadlock replay (.dem) to unlock Analyse. Coaching needs match stats from the replay.',
+      message: `Analyse needs match stats from the replay. ${DEADLOCK_REVIEW_REPLAY_HINT}`,
       duelMomentCount: 0,
     }
   },
