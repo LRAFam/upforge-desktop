@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   candidateLolLockfilePaths,
+  discoverLolInstallDirs,
+  lolInstallDirFromProductSettings,
+  lolInstallDirsFromProcessPaths,
   normalizeLolQueueId,
   parseGameflowSession,
   parseLolLockfileContent,
@@ -93,5 +96,29 @@ describe('candidateLolLockfilePaths', () => {
       'ProgramFiles(x86)': 'C:\\Program Files (x86)',
     })
     expect(paths.some((p) => p.includes('League of Legends') && p.endsWith('lockfile'))).toBe(true)
+  })
+})
+
+describe('League install on another drive', () => {
+  it('reads the install folder from the running client path', () => {
+    expect(lolInstallDirsFromProcessPaths(
+      'E:\\Games\\League of Legends\\LeagueClient.exe\r\nE:\\Games\\League of Legends\\LeagueClientUx.exe\r\n',
+    )).toEqual(['E:\\Games\\League of Legends'])
+  })
+
+  it('reads the install folder from Riot product settings', () => {
+    const yaml = 'product_install_full_path: "F:/Riot Games/League of Legends"\nproduct_install_root: "F:/Riot Games"\n'
+    expect(lolInstallDirFromProductSettings(yaml)).toBe('F:\\Riot Games\\League of Legends')
+  })
+
+  it('checks discovered folders before the fixed ones', () => {
+    const paths = candidateLolLockfilePaths('win32', {}, ['E:\\Games\\League of Legends'])
+    expect(paths[0]).toBe('E:\\Games\\League of Legends\\lockfile')
+  })
+
+  it('discovery is Windows-only and never throws', async () => {
+    const run = async () => { throw new Error('no powershell') }
+    const dirs = await discoverLolInstallDirs({ ProgramData: '/nonexistent' }, run)
+    expect(Array.isArray(dirs)).toBe(true)
   })
 })
