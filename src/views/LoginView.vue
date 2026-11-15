@@ -10,6 +10,7 @@
     :resending="resending"
     :resend-note="resendNote"
     :resend-error="resendError"
+    :return-note="showReturnNote ? returnNote : ''"
     @submit="handleLogin"
     @toggle-password="showPw = !showPw"
     @forgot="openForgot"
@@ -79,6 +80,7 @@
               </div>
             </Transition>
 
+            <p v-if="showReturnNote" class="verify-row" role="status">{{ returnNote }}</p>
             <div v-if="needsVerification" class="verify-row">
               <button type="button" class="link-accent" :disabled="resending" @click="resend(email)">
                 {{ resending ? 'Sending…' : 'Resend verification email' }}
@@ -111,6 +113,7 @@ import { resolvePostAuthRoute } from '../lib/onboarding-gate'
 import { uiV3 } from '../lib/ui-v3'
 import LoginV3 from './v3/LoginV3.vue'
 import { useVerificationResend } from '../composables/useVerificationResend'
+import { useCreateAccountReturn } from '../composables/useCreateAccountReturn'
 
 const router = useRouter()
 const email = ref('')
@@ -119,6 +122,7 @@ const loading = ref(false)
 const error = ref('')
 const showPw = ref(false)
 const { needsVerification, resending, resendNote, resendError, noteLoginResult, resend } = useVerificationResend()
+const { showReturnNote, returnNote, openCreateAccount, clearPendingSignup } = useCreateAccountReturn(email)
 
 
 
@@ -130,6 +134,7 @@ async function handleLogin() {
     const result = await window.api.auth.login(email.value, password.value)
     noteLoginResult(result)
     if (result.ok) {
+      clearPendingSignup()
       const [s, campaign] = await Promise.all([
         window.api.settings.get(),
         window.api.auth.getOnboardingCampaign(),
@@ -154,7 +159,7 @@ function windowClose() { window.api.window.close() }
 
 function openHelp() { window.open('https://upforge.gg/help', '_blank') }
 function openPrivacy() { window.open('https://upforge.gg/privacy', '_blank') }
-function openSignup() { window.open('https://upforge.gg/register', '_blank') }
+function openSignup() { void openCreateAccount() }
 function openForgot() { window.open('https://upforge.gg/forgot-password', '_blank') }
 </script>
 
