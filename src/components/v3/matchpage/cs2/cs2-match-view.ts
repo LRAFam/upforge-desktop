@@ -41,7 +41,7 @@ const money = (v: Num) => (num(v) == null ? NOT : `$${Math.round(v as number).to
 const of = (a: Num, b: Num) => (num(a) == null || num(b) == null ? NOT : `${Math.round(a as number)} of ${Math.round(b as number)}`)
 
 const CEREMONY: Record<string, string> = {
-  elimination: 'Elimination', bombdefused: 'Bomb defused', detonation: 'Bomb exploded', time: 'Time ran out', timeout: 'Time ran out',
+  elimination: 'Elimination', bombdefused: 'Bomb defused', detonation: 'Bomb exploded', time: 'Time ran out', timeout: 'Time ran out', timer: 'Time ran out',
 }
 
 /** "ak47" / "weapon_ak47" → "AK-47"-ish display; unknown weapons keep their name, title-cased. */
@@ -96,7 +96,7 @@ export function buildCs2MatchView(
       { label: 'Clutches won', value: of(p('clutches_won'), p('clutches_attempted')) },
       { label: 'Rounds with 2+ kills', value: multiTotal == null ? NOT : String(multiTotal) },
       { label: 'Rounds with a kill', value: of(num(rs?.rounds_with_kills), num(stats?.rounds)) },
-      { label: 'Rounds with no kill, assist or damage', value: int(num(rs?.zero_impact_rounds)) },
+      { label: 'Rounds with no kill or assist', value: int(num(rs?.zero_impact_rounds)) },
     ],
     weapons,
     utility: [

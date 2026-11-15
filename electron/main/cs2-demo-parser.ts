@@ -79,19 +79,34 @@ function normalizeTeamId(raw: unknown): number | null {
   return null
 }
 
-/** CS2 round_end reason → ceremony label for timeline icons (demoinfocs RoundEndReason). */
-function ceremonyFromRoundEndReason(reason: number | null): string | null {
-  if (reason == null) return null
+/**
+ * CS2 round_end → ceremony label for timeline icons. demoparser2 rows carry a text `reason`
+ * ("t_killed", "time_ran_out", …) next to the numeric `round_win_reason`; the text wins.
+ * Numeric values follow Valve's RoundEndReason: 1 bomb exploded, 7 defused, 8 CTs win by
+ * eliminating the Ts, 9 Ts win by eliminating the CTs, 12 time ran out (target saved).
+ */
+const ROUND_END_TEXT: Record<string, string> = {
+  bomb_exploded: 'detonation',
+  target_bombed: 'detonation',
+  bomb_defused: 'bombdefused',
+  t_killed: 'elimination',
+  ct_killed: 'elimination',
+  time_ran_out: 'timer',
+  target_saved: 'timer',
+}
+
+export function ceremonyFromRoundEnd(row: JsonRow): string | null {
+  const text = typeof row.reason === 'string' ? row.reason.trim().toLowerCase() : ''
+  if (text && ROUND_END_TEXT[text]) return ROUND_END_TEXT[text]!
+  const reason = rowNumber(row, 'reason', 'round_win_reason')
+  if (reason == null) return text ? 'elimination' : null
   switch (reason) {
     case 1:
       return 'detonation'
     case 7:
       return 'bombdefused'
-    case 8:
     case 12:
       return 'timer'
-    case 9:
-      return 'elimination'
     default:
       return 'elimination'
   }
@@ -510,8 +525,7 @@ export function buildCs2TimelineFromDemo(
       const roundNum = roundNumberForEnd(index)
       endRoundCount = Math.max(endRoundCount, roundNum + 1)
       if (winner != null) roundWinners.set(roundNum, winner)
-      const reason = rowNumber(row, 'reason', 'round_win_reason')
-      const ceremony = ceremonyFromRoundEndReason(reason)
+      const ceremony = ceremonyFromRoundEnd(row)
       if (ceremony) roundCeremonies.set(roundNum, ceremony)
       const tick = rowNumber(row, 'tick')
       if (tick != null) {
