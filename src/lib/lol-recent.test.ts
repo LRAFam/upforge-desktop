@@ -66,3 +66,11 @@ describe('lolProfileIconId', () => {
     expect(lolProfileIconId(undefined)).toBeNull()
   })
 })
+
+describe('League live sync switched off on the server', () => {
+  it('shows a truthful notice instead of "no ranked games"', () => {
+    const r = normalizeLolRecent({ success: true, error: 'riot_api_unavailable', error_reason: 'pending_approval', matches: [] })
+    expect(r).toMatchObject({ error: 'riot_unavailable', errorReason: 'pending_approval', matches: [] })
+    expect(lolRecentErrorText(r)).toContain('isn’t available yet')
+  })
+})
