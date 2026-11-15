@@ -17,6 +17,13 @@ describe('game queue split', () => {
     for (const m of ['SWIFTPLAY', 'CLASSIC', 'TEAMDEATHMATCH', 'DEATHMATCH', 'SPIKERUSH']) expect(countsTowardProgress('valorant', m)).toBe(false)
   })
 
+  it('Valorant: Skirmish 2v2 and unrecognised queue ids are unranked (#595)', () => {
+    for (const m of ['SKIRMISH2V2', 'skirmish_2v2', 'HURM', 'SOME_NEW_EVENT_QUEUE']) expect(countsTowardProgress('valorant', m)).toBe(false)
+    expect(modeQueueLabel('valorant', 'SKIRMISH2V2')).toBe('Skirmish 2v2 · Unranked')
+    // No mode at all still counts: we cannot tell, and old recordings must not vanish.
+    expect(countsTowardProgress('valorant', null)).toBe(true)
+  })
+
   it('unknown modes still count (nothing silently disappears)', () => {
     expect(countsTowardProgress('cs2', null)).toBe(true)
     expect(countsTowardProgress('lol', 'CLASSIC')).toBe(true)

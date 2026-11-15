@@ -302,6 +302,7 @@ import ProgressV3 from './v3/ProgressV3.vue'
 import { uiV3 } from '../lib/ui-v3'
 import { averageMatchScore, matchScore } from '../lib/upforge-score'
 import { analysisCountsTowardProgress } from '../lib/game-queue'
+import { halfDelta, trendDeltaLabel } from '../components/v3/progress/progress-chart'
 import { readCache, writeCache } from '../lib/stale-cache'
 import { useRouter } from 'vue-router'
 import type { AnalysisItem } from '../env.d.ts'
@@ -401,19 +402,10 @@ function scoreColor(s: number): string {
   return 'text-red-400'
 }
 
-function averageOf(values: number[]): number | null {
-  if (!values.length) return null
-  return values.reduce((sum, value) => sum + value, 0) / values.length
-}
-
+// Same minimum sample as Progress: ≥3 matches per half, else no delta ("Early read").
 function buildDelta(values: Array<number | null | undefined>): number | null {
-  const clean = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
-  if (clean.length < 2) return null
-  const splitIndex = Math.max(1, Math.floor(clean.length / 2))
-  const previous = averageOf(clean.slice(0, splitIndex))
-  const recent = averageOf(clean.slice(splitIndex))
-  if (previous == null || recent == null) return null
-  return recent - previous
+  const d = halfDelta(values)
+  return d ? d.last - d.first : null
 }
 
 const statDeltas = computed(() => ({
@@ -429,9 +421,7 @@ function metricDeltaClass(value: number | null): string {
 }
 
 function metricDeltaLabel(value: number | null, suffix = ''): string {
-  if (value == null || Math.abs(value) < 0.05) return 'Stable'
-  const rounded = Math.abs(value) >= 10 ? Math.round(value) : Number(value.toFixed(1))
-  return `${value > 0 ? 'Up' : 'Down'} ${Math.abs(rounded)}${suffix}`
+  return trendDeltaLabel(value, suffix)
 }
 
 // ── Recent form + sparkline ───────────────────────────────────────────────────

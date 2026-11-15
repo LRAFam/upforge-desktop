@@ -127,16 +127,38 @@ export function focusSubline(focus: Focus): string {
 }
 
 
+/** Fewest checked games before a focus may be called better or worse; fewer is an "early read". */
+export const MIN_FOCUS_TREND_GAMES = 3
+/** Smallest change (in share points, 0–1) that counts as a change rather than "about the same". */
+export const MIN_FOCUS_CHANGE = 0.02
+
+export type FocusVerdict = 'better' | 'worse' | 'same' | 'early'
+
+export const FOCUS_VERDICT_LABEL: Record<FocusVerdict, string> = {
+  better: 'better',
+  worse: 'not yet',
+  same: 'about the same',
+  early: 'early read',
+}
+
+/** Better / worse / same only from ≥ MIN_FOCUS_TREND_GAMES checked games and a real change. */
+export function focusVerdict(focus: Pick<Focus, 'better' | 'baseline'>, values: number[]): FocusVerdict {
+  if (values.length < MIN_FOCUS_TREND_GAMES) return 'early'
+  const avg = values.reduce((a, b) => a + b, 0) / values.length
+  if (Math.abs(avg - focus.baseline) < MIN_FOCUS_CHANGE) return 'same'
+  return (focus.better === 'lower' ? avg < focus.baseline : avg > focus.baseline) ? 'better' : 'worse'
+}
+
 /**
- * "Before → since" for practice: the focus baseline against the average of the games checked
- * since it started. Null until at least one game has been checked (no invented progress).
+ * "Starting point → since" for practice. The starting point is the focus baseline (the API's
+ * focus_suggestion.current: the median of recent ranked matches). Null until at least one game has
+ * been checked (no invented progress); below MIN_FOCUS_TREND_GAMES the verdict is "early".
  */
-export function focusBeforeAfter(focus: Focus | null | undefined): { before: string; since: string; games: number; improved: boolean } | null {
+export function focusBeforeAfter(focus: Focus | null | undefined): { before: string; since: string; games: number; verdict: FocusVerdict } | null {
   const values = (focus?.checks ?? []).map(c => c.value).filter(v => typeof v === 'number' && Number.isFinite(v))
   if (!focus || !values.length || !Number.isFinite(focus.baseline)) return null
   const avg = values.reduce((a, b) => a + b, 0) / values.length
-  const improved = focus.better === 'lower' ? avg < focus.baseline : avg > focus.baseline
-  return { before: pct(focus.baseline), since: pct(avg), games: values.length, improved }
+  return { before: pct(focus.baseline), since: pct(avg), games: values.length, verdict: focusVerdict(focus, values) }
 }
 
 /** Bounded round summary for the last synced match (won/lost and where the player died first). */
@@ -232,7 +254,8 @@ export function focusResult(done: Focus | null | undefined, next: Focus | null |
   const p = done.progress
   const goal = `${done.better === 'lower' ? 'under' : 'over'} ${pct(done.target)}`
   const label = done.label.toLowerCase()
-  const moved = `${pct(done.baseline)} → ${pct(avg)} average`
+  const n = values.length
+  const moved = `Started at ${pct(done.baseline)}, ${pct(avg)} average over ${n} game${n === 1 ? '' : 's'}${n < MIN_FOCUS_TREND_GAMES ? ' (early read)' : ''}`
   const sameNext = !!next && next.id !== done.id && next.metric === done.metric && next.progress.status === 'active'
   const otherNext = !!next && next.id !== done.id && next.metric !== done.metric && next.progress.status === 'active'
   const nextTitle = next ? `${next.label} ${next.better === 'lower' ? 'under' : 'over'} ${pct(next.target)}` : ''
@@ -253,7 +276,7 @@ export function focusResult(done: Focus | null | undefined, next: Focus | null |
     title: `Not yet: ${label}`,
     body: `On target in ${p.hits} of ${p.games_played} games (goal ${goal}). ${moved}.`,
     next: sameNext
-      ? `This is still costing you rounds, so it stays your focus. ${ordinal(attempt!)} attempt — practise it before you queue.`
+      ? `It stays your focus. ${ordinal(attempt!)} attempt — practise it before you queue.`
       : otherNext ? `New focus: ${nextTitle}.` : 'Your next focus comes from your next ranked match.',
   }
 }

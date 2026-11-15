@@ -44,7 +44,7 @@ function open() { void router.push(`/starting-report/${props.game}`) }
     </template>
     <template v-else-if="view.kind === 'insufficient'">
       <p class="uf-t3">Play {{ view.needed - view.available === 1 ? '1 more match' : `${view.needed - view.available} more matches` }} and your starting report appears here.</p>
-      <p class="uf-t4">It reads your last matches and shows how you play right now, what's costing you games and your first focus.</p>
+      <p class="uf-t4">It reads your last matches and shows how you play right now, the habits that showed up most and your first focus.</p>
     </template>
     <template v-else>
       <p class="uf-t4">Your starting report appears here once your recent matches are synced.</p>

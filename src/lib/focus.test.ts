@@ -142,11 +142,17 @@ describe('focusBeforeAfter', () => {
   it('is null until a game has been checked', () => {
     expect(focusBeforeAfter({ ...base, checks: [] })).toBeNull()
   })
-  it('compares the baseline with the average since, respecting direction', () => {
-    const r = focusBeforeAfter({ ...base, checks: [{ match_id: 'a', value: 0.2, hit: false, played_at: null }, { match_id: 'b', value: 0.1, hit: true, played_at: null }] })
-    expect(r).toMatchObject({ games: 2, improved: true })
+  const check = (value: number, i: number) => ({ match_id: `m${i}`, value, hit: false, played_at: null })
+  it('is an early read below 3 checked games, however big the change', () => {
+    const r = focusBeforeAfter({ ...base, checks: [0.2, 0.1].map(check) })
+    expect(r).toMatchObject({ games: 2, verdict: 'early' })
     expect(r!.before).toMatch(/30/)
     expect(r!.since).toMatch(/15/)
+  })
+  it('compares the baseline with the average from 3 games, respecting direction and a minimum change', () => {
+    expect(focusBeforeAfter({ ...base, checks: [0.2, 0.1, 0.15].map(check) })!.verdict).toBe('better')
+    expect(focusBeforeAfter({ ...base, checks: [0.4, 0.35, 0.45].map(check) })!.verdict).toBe('worse')
+    expect(focusBeforeAfter({ ...base, checks: [0.29, 0.31, 0.3].map(check) })!.verdict).toBe('same')
   })
 })
 
@@ -174,7 +180,7 @@ describe('focusResult', () => {
     const r = focusResult(done('achieved', [0.1, 0.2], 2), next(2, 'traded_death_rate'))!
     expect(r.tone).toBe('achieved')
     expect(r.title).toBe('Focus complete: opening deaths')
-    expect(r.body).toBe('On target in 2 of 2 games (goal under 22%). 36% → 15% average.')
+    expect(r.body).toBe('On target in 2 of 2 games (goal under 22%). Started at 36%, 15% average over 2 games (early read).')
     expect(r.next).toBe('New focus: Deaths traded over 26%.')
   })
 

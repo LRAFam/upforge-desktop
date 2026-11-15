@@ -20,7 +20,7 @@ const RANKED: Record<string, ReadonlySet<string>> = {
 }
 
 const UNRANKED: Record<string, ReadonlySet<string>> = {
-  valorant: new Set(['CLASSIC', 'UNRATED', 'SWIFTPLAY', 'SPIKERUSH', 'DEATHMATCH', 'TEAMDEATHMATCH', 'SNOWBALL', 'SHOOTING_RANGE', 'RANGEV2', 'CUSTOM', 'NEWMAP', 'ONEFA', 'GGTEAM']),
+  valorant: new Set(['CLASSIC', 'UNRATED', 'SWIFTPLAY', 'SPIKERUSH', 'DEATHMATCH', 'TEAMDEATHMATCH', 'HURM', 'SNOWBALL', 'SHOOTING_RANGE', 'RANGEV2', 'CUSTOM', 'NEWMAP', 'ONEFA', 'GGTEAM', 'SKIRMISH2V2', 'SKIRMISH_2V2']),
   cs2: new Set(['WINGMAN', 'CASUAL', 'DEATHMATCH', 'ARMS_RACE', 'GUNGAME', 'DEMOLITION', 'RETAKES', 'CUSTOM', 'TRAINING', 'SKIRMISH']),
   lol: new Set(['ARAM', 'ARENA', 'CUSTOM', 'BOT', 'NORMAL_DRAFT', 'NORMAL_BLIND', 'SWIFTPLAY']),
   // Mirrors the API's GameQueue: Standard matchmaking, Street Brawl, bots, lobbies, Hero Labs… never move ranked stats.
@@ -34,7 +34,7 @@ function modeKey(mode: string | null | undefined): string | null {
 }
 
 /**
- * 'ranked' / 'unranked' when the mode says so; null when we cannot tell (no mode, League's CLASSIC
+ * 'ranked' / 'unranked' when the mode says so (an unrecognised Valorant queue is unranked); null when we cannot tell (no mode, League's CLASSIC
  * which covers ranked and normals, Deadlock's COMPETITIVE placeholder before match metadata arrives). Callers treat null as "count it" so nothing silently
  * disappears from Progress.
  */
@@ -44,6 +44,9 @@ export function queueTypeFor(game: string | null | undefined, mode: string | nul
   if (!key) return null
   if (RANKED[g]?.has(key)) return 'ranked'
   if (UNRANKED[g]?.has(key)) return 'unranked'
+  // Valorant ranks only Competitive and Premier, so any other named queue (Skirmish 2v2, a new
+  // event mode, an id we have never seen) is unranked and must not move focus, trends or score.
+  if (g === 'valorant') return 'unranked'
   return null
 }
 
@@ -79,6 +82,9 @@ const MODE_NAMES: Record<string, string> = {
   CUSTOM: 'Custom',
   TRAINING: 'Training',
   SKIRMISH: 'War Games',
+  SKIRMISH2V2: 'Skirmish 2v2',
+  SKIRMISH_2V2: 'Skirmish 2v2',
+  HURM: 'Team Deathmatch',
   CLASSIC: 'Unrated',
   UNRATED: 'Unrated',
   SWIFTPLAY: 'Swiftplay',

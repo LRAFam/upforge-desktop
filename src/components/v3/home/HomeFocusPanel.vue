@@ -122,7 +122,7 @@ onUnmounted(() => {
     </div>
     <template v-else>
       <h2 id="hf-title" class="uf-t3">No focus yet</h2>
-      <p class="uf-t4 hf-sub">With Valorant open, UpForge reads your recent matches and picks the habit costing you the most rounds. No recording needed.</p>
+      <p class="uf-t4 hf-sub">With Valorant open, UpForge reads your recent matches and picks the habit that shows up most in your ranked matches. No recording needed.</p>
     </template>
     <p v-if="loadError && !data" class="uf-t4" role="alert">{{ loadError }}</p>
     <p v-else-if="loadError" class="uf-t4" role="status" style="color: var(--uf-faint)">Couldn't refresh your focus · showing the last one.</p>
