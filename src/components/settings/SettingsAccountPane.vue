@@ -42,7 +42,12 @@ const {
   paymentPastDue,
   settings,
   showBillingError,
-  toggleTrainingConsent,
+  toggleAiTraining,
+  aiTrainingOn,
+  aiTrainingBusy,
+  aiTrainingError,
+  aiTrainingLoaded,
+  openPrivacyAiTraining,
   user,
 } = useSettings()
 
@@ -200,15 +205,23 @@ const identity = computed(() => {
     >
       <AccountUsagePanel @upgrade="openUpgrade" />
 
-      <!-- v3: "Help improve UpForge AI" lives in App › Privacy & data. -->
+      <!-- v3: the AI-training toggle lives in App › Privacy & data. Same account setting. -->
       <div v-if="!uiV3" class="flex items-center justify-between gap-4 border-t border-white/[0.06] pt-4">
         <div>
-          <p class="text-sm text-gray-200">Help improve UpForge AI</p>
+          <p class="text-sm text-gray-200">Use my gameplay to improve UpForge's AI</p>
           <p class="mt-1 text-xs text-gray-500">
-            Allow anonymised use of cloud-archived VODs for model training. Separate from saving to cloud. Off by default.
+            On by default. We use your recordings and match data to make UpForge's coaching more accurate. Audio is never used. Switch it off any time and your gameplay is left out of future training.
           </p>
+          <p v-if="aiTrainingLoaded && aiTrainingOn === null" class="mt-1 text-xs text-gray-500">Sign in and go online to change this setting.</p>
+          <p v-if="aiTrainingError" class="mt-1 text-xs text-red-400" role="alert">{{ aiTrainingError }}</p>
+          <button type="button" class="mt-1 text-xs text-orange-400 hover:underline" @click="openPrivacyAiTraining">How we use gameplay →</button>
         </div>
-        <SettingsToggle label="Help improve UpForge AI" :on="!!settings.trainingConsent" @click="toggleTrainingConsent" />
+        <SettingsToggle
+          label="Use my gameplay to improve UpForge's AI"
+          :on="aiTrainingOn === true"
+          :disabled="aiTrainingOn === null || aiTrainingBusy"
+          @click="toggleAiTraining"
+        />
       </div>
 
       <SettingsRow

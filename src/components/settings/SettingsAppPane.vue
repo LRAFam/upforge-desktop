@@ -17,7 +17,12 @@ const {
   settings,
   toggleKey,
   toggleLaunchOnStartup,
-  toggleTrainingConsent,
+  toggleAiTraining,
+  aiTrainingOn,
+  aiTrainingBusy,
+  aiTrainingError,
+  aiTrainingLoaded,
+  openPrivacyAiTraining,
   toggles,
 } = useSettings()
 
@@ -160,11 +165,19 @@ function onToggle(key: (typeof toggles)[number]['key']): void {
       divided
     >
       <SettingsRow
-        label="Help improve UpForge AI"
-        hint="Allow anonymised use of cloud-archived VODs for model training. Separate from saving to cloud. Off by default."
+        label="Use my gameplay to improve UpForge's AI"
+        hint="On by default. We use your recordings and match data to make UpForge's coaching more accurate. Audio is never used. Switch it off any time and your gameplay is left out of future training."
       >
-        <SettingsToggle label="Help improve UpForge AI" :on="!!settings.trainingConsent" @click="toggleTrainingConsent" />
+        <SettingsToggle
+          label="Use my gameplay to improve UpForge's AI"
+          :on="aiTrainingOn === true"
+          :disabled="aiTrainingOn === null || aiTrainingBusy"
+          @click="toggleAiTraining"
+        />
       </SettingsRow>
+      <p v-if="aiTrainingLoaded && aiTrainingOn === null" class="uf-t4">Sign in and go online to change this setting.</p>
+      <p v-if="aiTrainingError" class="uf-t4" role="alert">{{ aiTrainingError }}</p>
+      <button type="button" class="uf-link" @click="openPrivacyAiTraining">How we use gameplay →</button>
     </SettingsSection>
   </div>
 </template>

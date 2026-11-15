@@ -256,7 +256,6 @@ export interface AppSettings {
   /** Auto-open the results page in the browser when analysis completes */
   autoOpenBrowser: boolean
   /** Opt-in: anonymised use of cloud-archived VODs for model training (separate from storage). */
-  trainingConsent: boolean
   /** Versioned proof of an explicit auto-analysis choice. */
   autoAnalyseConsentVersion: 1
   /** Last detected hardware encoder — cached to skip detection on next launch */
@@ -847,6 +846,11 @@ declare global {
         status: () => Promise<import('./lib/overstep').OverstepStatus>
         enable: () => Promise<import('./lib/overstep').OverstepStatus>
         disable: () => Promise<import('./lib/overstep').OverstepStatus>
+      }
+      aiTraining: {
+        /** optOut null = server value unknown (signed out / offline) */
+        get: () => Promise<{ optOut: boolean | null }>
+        set: (optOut: boolean) => Promise<{ optOut: boolean | null }>
       }
       coaching: {
         preferences: () => Promise<import('./lib/coaching-preferences').CoachingPreferences>

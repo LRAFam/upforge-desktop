@@ -178,6 +178,7 @@ import { applySpatialEnrichment } from './spatial/enrich'
 import { refreshMatchPopulationBenchmarks } from './spatial/enrich-population'
 import { applyDemoSpatialEnrichment } from './spatial/demo-enrich'
 import { UploadManager, savePendingJob, clearPendingJob } from './upload-manager'
+import { readAiTraining, saveAiTraining } from './ai-training'
 import { resolveUploadPlayerIdentity } from './upload-player-identity'
 import {
   activateUserSession,
@@ -6453,7 +6454,6 @@ async function uploadArchiveOnlyImpl(
       agent,
       timeline,
       coachingExtras,
-      trainingConsent: settingsManager?.get().trainingConsent === true,
       onProgress: (pct) => send('post-game:upload-progress', pct),
     })
 
@@ -7528,6 +7528,13 @@ async function startApp(): Promise<void> {
     if (file.kind === 'clip') {
       for (const clip of clipStore.getAll()) if (String(clip.apiClipId) === file.id) clipStore.update(clip.id, { apiClipId: null, uploadStatus: 'local' })
     }
+  })
+  ipcMain.handle('ai-training:get', async () => {
+    if (!authManager.isAuthenticated()) return { optOut: null }
+    return readAiTraining(authManager.getApi())
+  })
+  ipcMain.handle('ai-training:set', async (_event, optOut: unknown) => {
+    return saveAiTraining(authManager.getApi(), optOut === true)
   })
   ipcMain.handle('coaching:preferences', async () => {
     return (await authManager.getApi().get('/api/user/coaching-preferences')).data
