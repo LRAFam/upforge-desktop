@@ -56,4 +56,4 @@ export function validAccountUsage(value: unknown): value is AccountUsage {
     && (v.footage.stored_bytes === null || count(v.footage.stored_bytes))
     && (v.footage.retention_days === null || count(v.footage.retention_days)) && date(v.footage.next_expiry_at) && count(v.coach_credits)
 }
-export function capacityLabel(c: Capacity): string { return c.limit === null ? `${c.used} stored · unlimited` : `${c.used} / ${c.limit} used · ${c.remaining} available` }
+export function capacityLabel(c: Capacity): string { return c.limit === null ? `${c.used} stored` : `${c.used} / ${c.limit} used · ${c.remaining} available` }
