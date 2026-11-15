@@ -98,6 +98,16 @@ export const ACTIVATION_ERRORS: Record<string, ActivationErrorDefinition> = {
     userMessage: 'UpForge could not find your recording scene. Click Repair Setup to recreate it.',
     recoveryAction: 'repair_obs_setup',
   },
+  obs_wrong_scene: {
+    code: 'obs_wrong_scene',
+    category: 'obs',
+    stage: 'obs_setup',
+    retryable: true,
+    userActionRequired: true,
+    userMessage:
+      'Select the registered UpForge gameplay scene in OBS, or click Repair Setup before recording.',
+    recoveryAction: 'repair_obs_setup',
+  },
   obs_source_missing: {
     code: 'obs_source_missing',
     category: 'obs',
@@ -457,6 +467,9 @@ function matchActivationErrorCode(lower: string, raw: string): ActivationErrorCo
   }
   if (/not a scene|is not a scene|specified source is not a scene/i.test(lower)) {
     return 'obs_invalid_source_type'
+  }
+  if (/registered upforge gameplay scene/i.test(lower)) {
+    return 'obs_wrong_scene'
   }
   if (/invalid (source )?type|wrong type|monitor_capture|display_capture|screen_capture/i.test(lower)) {
     return 'obs_invalid_source_type'

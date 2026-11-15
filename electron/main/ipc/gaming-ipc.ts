@@ -4,7 +4,7 @@
  * and ForgeRank prestige. Also holds the crosshair→Godot conversion helper.
  */
 
-import { app, BrowserWindow, IpcMain, shell } from 'electron'
+import { app, BrowserWindow, IpcMain } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
@@ -12,7 +12,7 @@ import { AuthManager } from '../auth-manager'
 import { getApiBaseUrl, getFrontendBaseUrl } from '../api-base'
 import { GameDetector } from '../game-detector'
 import { SettingsManager } from '../settings-manager'
-import { openPathSafe } from '../shell-open'
+import { openExternalSafe, openPathSafe } from '../shell-open'
 import { PerformanceManager } from '../performance-manager'
 import { TrainerBridge } from '../trainer-bridge'
 import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest } from '../trainer-payload'
@@ -276,23 +276,19 @@ export function setupGamingHandlers(
   })
 
   ipcMain.handle('deadlock:open-analyze', () => {
-    shell.openExternal(`${getFrontendBaseUrl()}/deadlock/analyze`)
-    return { ok: true }
+    return openExternalSafe(`${getFrontendBaseUrl()}/deadlock/analyze`)
   })
 
   ipcMain.handle('deadlock:open-results', (_event, jobId: string) => {
-    shell.openExternal(`${getFrontendBaseUrl()}/deadlock/results/${jobId}`)
-    return { ok: true }
+    return openExternalSafe(`${getFrontendBaseUrl()}/deadlock/results/${jobId}`)
   })
 
   ipcMain.handle('deadlock:open-dashboard', () => {
-    shell.openExternal(`${getFrontendBaseUrl()}/deadlock`)
-    return { ok: true }
+    return openExternalSafe(`${getFrontendBaseUrl()}/deadlock`)
   })
 
   ipcMain.handle('deadlock:open-connect-steam', () => {
-    shell.openExternal(`${getFrontendBaseUrl()}/profile?tab=games`)
-    return { ok: true }
+    return openExternalSafe(`${getFrontendBaseUrl()}/profile?tab=games`)
   })
 
   ipcMain.handle('deadlock:get-analyses', async (_event, limit = 10) => {
@@ -413,18 +409,15 @@ export function setupGamingHandlers(
   })
 
   ipcMain.handle('cs2:open-analyze', () => {
-    shell.openExternal(`${getFrontendBaseUrl()}/cs2/analyze`)
-    return { ok: true }
+    return openExternalSafe(`${getFrontendBaseUrl()}/cs2/analyze`)
   })
 
   ipcMain.handle('cs2:open-dashboard', () => {
-    shell.openExternal(`${getFrontendBaseUrl()}/cs2`)
-    return { ok: true }
+    return openExternalSafe(`${getFrontendBaseUrl()}/cs2`)
   })
 
   ipcMain.handle('cs2:open-connect-faceit', () => {
-    shell.openExternal(`${getFrontendBaseUrl()}/profile?tab=games`)
-    return { ok: true }
+    return openExternalSafe(`${getFrontendBaseUrl()}/profile?tab=games`)
   })
 
   ipcMain.handle('cs2:connect-faceit', async (_event, nickname: string) => {
@@ -517,24 +510,20 @@ export function setupGamingHandlers(
     return auth.analyzeLolMatch(String(matchId))
   })
   ipcMain.handle('lol:open-analyze', () => {
-    shell.openExternal(`${getFrontendBaseUrl()}/lol/analyze`)
-    return { ok: true }
+    return openExternalSafe(`${getFrontendBaseUrl()}/lol/analyze`)
   })
 
   ipcMain.handle('lol:open-history', () => {
-    shell.openExternal(`${getFrontendBaseUrl()}/lol/history`)
-    return { ok: true }
+    return openExternalSafe(`${getFrontendBaseUrl()}/lol/history`)
   })
 
   ipcMain.handle('lol:open-results', (_event, analysisId: number | string) => {
     // Desktop LoL coaching rows live in analysis_logs, not lol_analyses.
-    shell.openExternal(`${getFrontendBaseUrl()}/lol/results/${analysisId}`)
-    return { ok: true }
+    return openExternalSafe(`${getFrontendBaseUrl()}/lol/results/${analysisId}`)
   })
 
   ipcMain.handle('lol:open-connect-riot', () => {
-    shell.openExternal(`${getFrontendBaseUrl()}/profile?tab=games`)
-    return { ok: true }
+    return openExternalSafe(`${getFrontendBaseUrl()}/profile?tab=games`)
   })
 
   // ── ForgeRank ─────────────────────────────────────────────────────────────

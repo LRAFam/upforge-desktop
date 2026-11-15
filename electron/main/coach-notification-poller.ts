@@ -1,4 +1,5 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow } from 'electron'
+import { openExternalSafe } from './shell-open'
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import log from 'electron-log'
@@ -145,7 +146,7 @@ function openVodReviewForAnalysis(
 function openCoachReviewsInBrowser(reviewId?: number): void {
   const base = `${getFrontendBaseUrl()}/coach-dashboard/reviews/feed`
   const url = reviewId ? `${base}?review=${reviewId}` : base
-  void shell.openExternal(url)
+  void openExternalSafe(url)
 }
 
 async function markNotificationRead(authManager: AuthManager, id: number): Promise<void> {
@@ -203,7 +204,7 @@ async function pollOnce(deps: PollerDeps): Promise<void> {
           })()
           return
         }
-        void shell.openExternal(`${getFrontendBaseUrl()}/my-coaches`)
+        void openExternalSafe(`${getFrontendBaseUrl()}/my-coaches`)
       }
 
       showAppNotification({

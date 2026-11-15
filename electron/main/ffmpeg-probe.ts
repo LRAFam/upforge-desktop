@@ -44,6 +44,19 @@ export function isRetryableProbeFailure(reason: string | undefined): boolean {
   return /moov atom|timed out|finalis/i.test(reason)
 }
 
+/**
+ * The ffmpeg tool itself could not be started (spawn … ENOENT/EACCES), as opposed to the
+ * recording being unreadable. The recording is fine; the bundled binary is missing or blocked
+ * (antivirus quarantine, broken install) — or a dev build without ffmpeg on PATH.
+ */
+export function isMissingFfmpegBinary(reason: string | undefined): boolean {
+  if (!reason) return false
+  return /spawn\s+(?:.*[\\/])?ffmpeg(?:\.exe)?\s+(ENOENT|EACCES|EPERM|UNKNOWN)\b/i.test(reason)
+}
+
+export const MISSING_FFMPEG_ACTIVITY =
+  'Clips skipped — the video tool (ffmpeg) is missing or blocked. Your recording is kept. Reinstall UpForge or allow it in your antivirus, then retry.'
+
 export function shouldReportClipProbeFailure(reason: string | undefined): boolean {
   if (!reason) return false
   if (isRetryableProbeFailure(reason)) return false

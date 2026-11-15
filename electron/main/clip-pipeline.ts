@@ -16,7 +16,7 @@ import { ClipStore } from './clip-store'
 import { ClipExtractor } from './clip-extractor'
 import type { ExtractOptions } from './clip-extractor'
 import { reportError } from './error-reporter'
-import { shouldReportClipProbeFailure } from './ffmpeg-probe'
+import { MISSING_FFMPEG_ACTIVITY, isMissingFfmpegBinary, shouldReportClipProbeFailure } from './ffmpeg-probe'
 import type { MatchData, KillEvent } from './riot-types'
 import { detectClutchRoundsForGame } from './demo-clutch'
 import type { ClipGame } from './clip-game'
@@ -269,6 +269,15 @@ export class ClipPipeline {
     }
 
     const probe = await clipExtractor.probeWithRetry(videoPath)
+    if (!probe.ok && isMissingFfmpegBinary(probe.reason)) {
+      log.warn('[ClipExtract] ffmpeg could not be started — skipping clip extraction:', probe.reason)
+      logActivity(MISSING_FFMPEG_ACTIVITY)
+      reportError({
+        message: `[ClipExtract] ffmpeg binary missing: ${probe.reason}`,
+        component: 'desktop:ClipExtract',
+      })
+      return false
+    }
     if (!probe.ok) {
       log.warn('[ClipExtract] Recording is unreadable — skipping all clip extraction:', probe.reason)
       logActivity('Clip extraction skipped — recording file could not be read (interrupted or still finalising)')
@@ -500,6 +509,15 @@ export class ClipPipeline {
     }
 
     const probe = await clipExtractor.probeWithRetry(videoPath)
+    if (!probe.ok && isMissingFfmpegBinary(probe.reason)) {
+      log.warn('[LateClipExtract] ffmpeg could not be started — skipping clip extraction:', probe.reason)
+      logActivity(MISSING_FFMPEG_ACTIVITY)
+      reportError({
+        message: `[LateClipExtract] ffmpeg binary missing: ${probe.reason}`,
+        component: 'desktop:ClipExtract',
+      })
+      return
+    }
     if (!probe.ok) {
       log.warn('[LateClipExtract] Recording is unreadable — skipping all clip extraction:', probe.reason)
       logActivity('Late clip extraction skipped — recording file could not be read (interrupted or still finalising)')

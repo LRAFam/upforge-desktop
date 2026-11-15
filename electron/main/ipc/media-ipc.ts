@@ -388,6 +388,7 @@ export function setupMediaHandlers(
           port,
           recordVerifyMs: resolveObsRecordVerifyMs({ settingsMs: cfg.obsRecordVerifyMs }),
           includeTestRecording: options?.includeTestRecording === true,
+          requireActiveGameplayScene: cfg.obsPreserveActiveScene === true,
         }),
         OBS_IPC_TIMEOUT_MS,
         'OBS preflight',
