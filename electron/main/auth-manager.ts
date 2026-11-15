@@ -117,6 +117,18 @@ export interface LolLinkedAccount {
   verified: boolean
 }
 
+/**
+ * The API can refuse with HTTP 200 + `success: false` (e.g. `riot_api_unavailable` while Riot access
+ * is pending). Treat that body as a failure so nothing claims "linked" when nothing was saved.
+ */
+export function apiRefusal(data: unknown, fallback: string): { error: string; code?: string } | null {
+  const d = (data && typeof data === 'object' ? data : null) as { success?: unknown; message?: unknown; error?: unknown } | null
+  if (d?.success !== false) return null
+  const code = typeof d.error === 'string' && d.error ? d.error : undefined
+  const message = typeof d.message === 'string' && d.message.trim() ? d.message.trim() : fallback
+  return { error: message, ...(code ? { code } : {}) }
+}
+
 /** Keep only well-formed rows from /api/lol-accounts. */
 export function parseLolAccounts(raw: unknown): LolLinkedAccount[] {
   if (!Array.isArray(raw)) return []
@@ -852,6 +864,8 @@ export class AuthManager {
     if (!this._api) return { ok: false, error: 'Not logged in' }
     try {
       const res = await this._api.post(`/api/riot-accounts/${id}/activate`)
+      const refused = apiRefusal(res.data, 'Failed to activate Riot account')
+      if (refused) return { ok: false, error: refused.error }
       const account = res.data?.account as RiotAccount | undefined
       if (account) {
         this.applyActiveRiotMirror(account)
@@ -872,6 +886,8 @@ export class AuthManager {
     if (!this._api) return { ok: false, error: 'Not logged in' }
     try {
       const res = await this._api.post('/api/riot-accounts', payload)
+      const refused = apiRefusal(res.data, 'Failed to link Riot account')
+      if (refused) return { ok: false, ...refused }
       const account = res.data?.account as RiotAccount | undefined
       await this.listRiotAccounts()
       if (account?.is_active) {
@@ -909,6 +925,8 @@ export class AuthManager {
     if (!this._api) return { ok: false, error: 'Not logged in' }
     try {
       const res = await this._api.patch(`/api/riot-accounts/${id}`, payload)
+      const refused = apiRefusal(res.data, 'Failed to update Riot account')
+      if (refused) return { ok: false, ...refused }
       const account = res.data?.account as RiotAccount | undefined
       await this.listRiotAccounts()
       if (account?.is_active) {
@@ -933,6 +951,8 @@ export class AuthManager {
     if (!this._api) return { ok: false, error: 'Not logged in' }
     try {
       const res = await this._api.post('/api/profile/update-riot-account', payload)
+      const refused = apiRefusal(res.data, 'Failed to link Riot account')
+      if (refused) return { ok: false, error: refused.error }
       const account = res.data?.riot_account as {
         riot_name?: string
         riot_tag?: string
@@ -997,6 +1017,8 @@ export class AuthManager {
     if (!this._api) return { ok: false, error: 'Not logged in' }
     try {
       const res = await this._api.post('/api/profile/lol-account', payload)
+      const refused = apiRefusal(res.data, 'Failed to link League account')
+      if (refused) return { ok: false, error: refused.error }
       const account = res.data?.lol_account as {
         riot_name?: string
         riot_tag?: string
@@ -1044,7 +1066,9 @@ export class AuthManager {
     const platform = String(input?.platform ?? '').trim().toUpperCase()
     if (!name || !/^[A-Z0-9]{2,6}$/.test(platform)) return { ok: false, error: 'Enter your Riot ID and pick your League server.' }
     try {
-      await this._api.post('/api/lol-accounts', { riot_name: name, riot_tag: tag, platform })
+      const res = await this._api.post('/api/lol-accounts', { riot_name: name, riot_tag: tag, platform })
+      const refused = apiRefusal(res?.data, 'Could not link that League account')
+      if (refused) return { ok: false, limit: refused.code === 'account_limit_reached', error: refused.error }
       await this.listLolAccounts()
       await this.fetchUser()
       return { ok: true }

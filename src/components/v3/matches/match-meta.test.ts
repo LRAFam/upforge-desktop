@@ -57,7 +57,8 @@ describe('matchMapLabel / matchMapArt', () => {
     expect(matchMapLabel('valorant', 'Summit')).toBe('Summit')
   })
   it('falls back to the CS2 card art when a map has no radar art', () => {
-    expect(matchMapArt('cs2', 'de_vertigo')).toMatch(/cs2-card-bg/)
+    expect(matchMapArt('cs2', 'de_poseidon')).toMatch(/cs2-card-bg/)
+    expect(matchMapArt('cs2', 'de_cache')).toMatch(/de_cache/)
     expect(matchMapArt('cs2', 'de_mirage')).toMatch(/de_mirage/)
   })
 })

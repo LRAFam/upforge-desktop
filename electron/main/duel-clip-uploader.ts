@@ -254,8 +254,8 @@ export async function extractAndUploadDuelClips(opts: {
       }
     })
 
-    let withKeys = await uploadLocalClips(uploadManager, jobId, moments, localPaths, failures)
-    let uploaded = countMomentsWithClipKeys(withKeys)
+    const withKeys = await uploadLocalClips(uploadManager, jobId, moments, localPaths, failures)
+    const uploaded = countMomentsWithClipKeys(withKeys)
 
     if (uploaded > 0 && uploaded < moments.length) {
       log.info(

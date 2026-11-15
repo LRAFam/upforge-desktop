@@ -37,7 +37,7 @@ const TTL_MS = 6 * 60 * 60 * 1000
 
 let bundled: BundledPopulationFile | null = null
 const apiCache = new Map<string, { pack: PopulationMapPack; fetchedAt: number }>()
-let inflight = new Map<string, Promise<PopulationMapPack | null>>()
+const inflight = new Map<string, Promise<PopulationMapPack | null>>()
 /**
  * The UpForge API has no /api/spatial/population route yet. After the first 404, stop asking for the
  * rest of the session (bundled data is used) instead of logging a 404 for every match and map.

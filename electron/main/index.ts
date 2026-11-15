@@ -153,7 +153,7 @@ import { readRecentMatchReport, saveRecentMatchExports } from './recent-match-ex
 import { shouldRetryFocusSync, syncMatchReports, type SyncResult } from './match-report-sync'
 import { focusReportDiagnostic, readFocusSyncState, writeFocusSyncState } from './focus-state'
 import { hydrateFocusResponse } from '../../src/lib/focus'
-import { decideRiotAccountSwitch } from './riot-account-switch'
+import { decideRiotAccountSwitch, riotSwitchNotice } from './riot-account-switch'
 import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, normalizeCs2GameMode } from './recorded-modes-filter'
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { withTimeout } from './promise-timeout'
@@ -5655,42 +5655,24 @@ function setupGameDetection(): void {
         maxAccounts: riotUser?.max_valorant_accounts ?? 1,
       })
 
+      // Never skip the match for an unlinked or unswitchable Riot ID: record it (the upload carries the
+      // in-game Riot ID and PUUID) and ask the player to link it alongside.
+      let activateFailed = false
       if (riotSwitch.action === 'activate') {
         const activated = await authManager.activateRiotAccount(riotSwitch.accountId)
-        if (!activated.ok) {
-          log.info(`[GameDetector] Riot account activate failed: ${activated.error ?? 'unknown'}`)
-          logActivity('Could not switch active Riot account. Recording skipped.')
-          notifyRecordingUx(
-            'Could not switch to the in-game Riot account. Open Settings to manage linked accounts.',
-          )
-          tray?.setToolTip(idleTooltip(game))
-          mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
-          await rearmGameDetection(game, true)
-          return
+        if (activated.ok) {
+          riotLocalApi.setLinkedAccountRegion(authManager.getUser()?.riot_region ?? null)
+        } else {
+          activateFailed = true
+          log.info(`[GameDetector] Riot account activate failed: ${activated.error ?? 'unknown'} (recording anyway)`)
         }
-        riotLocalApi.setLinkedAccountRegion(authManager.getUser()?.riot_region ?? null)
-      } else if (riotSwitch.action === 'prompt_link') {
-        log.info(`[GameDetector] Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag}, prompting link`)
-        logActivity(`Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag}. Link it before recording.`)
-        notifyRecordingUx(
-          'This Riot ID is not linked. Link it in Settings before recording, or confirm the link prompt.',
-        )
-        mainWindow?.webContents.send('riot:prompt-link', { name: riotSwitch.name, tag: riotSwitch.tag, atCap: false })
-        tray?.setToolTip(idleTooltip(game))
-        mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
-        await rearmGameDetection(game, true)
-        return
-      } else if (riotSwitch.action === 'prompt_manage') {
-        log.info(`[GameDetector] Unknown Riot ID at account cap: ${riotSwitch.name}#${riotSwitch.tag}`)
-        logActivity('Unknown Riot ID at account limit. Recording skipped.')
-        notifyRecordingUx(
-          'This Riot ID is not linked and you are at your account limit. Open Settings to switch or upgrade.',
-        )
-        mainWindow?.webContents.send('riot:prompt-link', { name: riotSwitch.name, tag: riotSwitch.tag, atCap: true })
-        tray?.setToolTip(idleTooltip(game))
-        mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
-        await rearmGameDetection(game, true)
-        return
+      }
+      const notice = riotSwitchNotice(riotSwitch, activateFailed)
+      if (notice) {
+        log.info(`[GameDetector] ${riotSwitch.action}: ${notice.message}`)
+        logActivity(notice.message)
+        notifyRecordingUx(notice.message)
+        if (notice.prompt) mainWindow?.webContents.send('riot:prompt-link', notice.prompt)
       }
     }
 

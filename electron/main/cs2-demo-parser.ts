@@ -5,7 +5,7 @@
 import fs from 'fs'
 import { hasSource2DemoPreamble } from './source2-demo-preamble'
 import { calculateCs2MatchStats, readCs2StatsInput } from './cs2-match-stats'
-import { buildCs2RoundFacts, cs2GrenadeThrowRows, flashHitsFromSamples, humanizeCs2Place, type Cs2FlashHit, type Cs2RoundFactsResult } from './cs2-round-facts'
+import { buildCs2RoundFacts, cs2GrenadeThrowRows, flashHitsFromSamples, humanizeCs2Place, cs2SiteFromPlace, type Cs2FlashHit, type Cs2RoundFactsResult } from './cs2-round-facts'
 import log from 'electron-log'
 import { parseHeader } from '@laihoe/demoparser2'
 import {
@@ -415,26 +415,25 @@ export function buildCs2TimelineFromDemo(
 
       const mapName = timeline.map
       if (!opts.skipSpatial) {
+        // Valve's place name where the victim fell comes from the demo itself, so it works on every map,
+        // radar or not (same callout the AI's demo build uses). The radar only adds the position.
+        const place = humanizeCs2Place(death.user_last_place_name)
+        const killerCallout = humanizeCs2Place(death.attacker_last_place_name)
+        const distance = rowNumber(death, 'distance')
         const posX = rowNumber(death, 'user_X', 'user_x')
         const posY = rowNumber(death, 'user_Y', 'user_y')
-        if (posX != null && posY != null && getCs2MapTransform(mapName)) {
-          const norm = cs2WorldToNorm(mapName, posX, posY)
-          if (norm) {
-            const zone = resolveCs2Callout(mapName, norm)
-            // Valve's place name where the victim fell (same callout the AI's demo build uses); map zone as fallback.
-            const callout = humanizeCs2Place(death.user_last_place_name) ?? zone.callout
-            const site = zone.site
-            const killerCallout = humanizeCs2Place(death.attacker_last_place_name)
-            const distance = rowNumber(death, 'distance')
-            // isolated / alliesNearby are set from measured positions for the player's deaths only.
-            ev.spatial = {
-              norm,
-              callout,
-              site,
-              killerDistance: distance != null ? Math.round(distance * 10) / 10 : null,
-              ...(killerCallout ? { killerCallout } : {}),
-            }
-          }
+        const norm = posX != null && posY != null && getCs2MapTransform(mapName)
+          ? cs2WorldToNorm(mapName, posX, posY)
+          : null
+        const zone = norm ? resolveCs2Callout(mapName, norm) : null
+        // isolated / alliesNearby are set from measured positions for the player's deaths only.
+        ev.spatial = {
+          ...(norm ? { norm } : {}),
+          callout: place ?? zone?.callout ?? 'Unknown',
+          // A bombsite place name beats the coarse radar box (which can call "B site" Mid).
+          site: cs2SiteFromPlace(death.user_last_place_name) ?? zone?.site ?? null,
+          killerDistance: distance != null ? Math.round(distance * 10) / 10 : null,
+          ...(killerCallout ? { killerCallout } : {}),
         }
       }
 
