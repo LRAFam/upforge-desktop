@@ -29,6 +29,7 @@ export type ObsPreflightStepId =
   | 'obs_running'
   | 'websocket_auth'
   | 'scene_exists'
+  | 'scene_active'
   | 'source_exists'
   | 'source_active'
   | 'test_recording'
@@ -433,6 +434,12 @@ export async function runObsPreflight(opts: RunObsPreflightOptions): Promise<Obs
   const sceneStep = await checkSceneExists(obs)
   steps.push(sceneStep)
   if (!sceneStep.ok) return { steps, ...buildPreflightFailure(steps) }
+
+  if (!(await opts.obsRecorder.isCurrentProgramSceneGameplay())) {
+    steps.push(stepFailure('scene_active', 'Switch OBS to the registered UpForge gameplay scene before starting match capture.'))
+    return { steps, ...buildPreflightFailure(steps) }
+  }
+  steps.push(stepOk('scene_active'))
 
   const sourceStep = await checkSourceExists(obs)
   steps.push(sourceStep)

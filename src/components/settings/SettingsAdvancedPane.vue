@@ -148,7 +148,7 @@ function previewOnboarding(): void {
       </div>
       <SettingsRow
         label="Keep my active OBS scene when a match starts"
-        hint="Off by default so matches record the UpForge scene (gameplay). Turn on if you stream with face cam and overlays; UpForge still retargets game capture but will not force-switch scenes."
+        hint="Off by default so UpForge selects its gameplay scene automatically. Turn on to keep your current OBS scene; select the registered UpForge gameplay scene yourself before recording a match."
       >
         <SettingsToggle label="Keep my active OBS scene when a match starts" :on="!!settings.obsPreserveActiveScene" @click="settings.obsPreserveActiveScene = !settings.obsPreserveActiveScene; debouncedSave()" />
       </SettingsRow>
@@ -301,7 +301,7 @@ function previewOnboarding(): void {
         <span>
           <span class="text-sm text-white">Keep my active OBS scene when a match starts</span>
           <span class="mt-0.5 block text-[11px] leading-relaxed text-gray-500">
-            Off by default so matches record the UpForge scene (gameplay). Turn on if you stream with face cam and overlays; UpForge still retargets game capture but will not force-switch scenes.
+            Off by default so UpForge selects its gameplay scene automatically. Turn on to keep your current OBS scene; select the registered UpForge gameplay scene yourself before recording a match.
           </span>
         </span>
       </label>

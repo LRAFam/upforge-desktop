@@ -7,7 +7,7 @@ import { waitForRecordingProgress, waitForRecordingStopped } from './obs-record-
 import { runObsTestRecording } from './obs-preflight'
 import { withObsRecordingOperation } from './obs-recording-operation'
 import { startRecordingWhenReady } from './recording-start'
-import { retargetUpForgeCapture } from './obs-setup'
+import { getUpForgeSceneIdentity, retargetUpForgeCapture } from './obs-setup'
 import { getFreeDiskSpace } from './disk-space'
 
 const mock = vi.hoisted(() => ({ call: vi.fn(), on: vi.fn(), fileSize: 100, root: '' }))
@@ -15,7 +15,7 @@ vi.mock('obs-websocket-js', () => ({ OBSWebSocket: class { call = mock.call; on 
 vi.mock('electron', () => ({ app: { getPath: () => mock.root, getAppPath: () => mock.root }, nativeImage: {} }))
 vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 vi.mock('./disk-space', () => ({ getFreeDiskSpace: vi.fn(async () => Infinity), CRITICAL_FREE_DISK_BYTES: 100, WARN_FREE_DISK_BYTES: 200 }))
-vi.mock('./obs-setup', () => ({ UPFORGE_SCENE_NAME: 'UpForge', retargetUpForgeCapture: vi.fn(), fitUpForgeCaptureToCanvas: vi.fn() }))
+vi.mock('./obs-setup', () => ({ UPFORGE_SCENE_NAME: 'UpForge', retargetUpForgeCapture: vi.fn(), fitUpForgeCaptureToCanvas: vi.fn(), getUpForgeSceneIdentity: vi.fn(async () => null) }))
 vi.mock('./game-window-finder', () => ({ resolveObsCaptureWindow: async () => 'CS2', findObsWindowString: async () => null }))
 vi.mock('fs', async (original) => ({
   ...await original<typeof import('fs')>(),
@@ -70,6 +70,49 @@ describe('profile recording directory startup', () => {
       vi.mocked(getFreeDiskSpace).mockResolvedValue(Infinity)
       fs.rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('wrong OBS scene at match start', () => {
+  function startingRecorder() {
+    let active = false
+    let bytes = 0
+    mock.call.mockImplementation(async (method) => {
+      if (method === 'GetProfileParameter') return { parameterValue: 'Simple' }
+      if (method === 'GetProfileList') return { currentProfileName: 'UpForge', profiles: ['UpForge'] }
+      if (method === 'StartRecord') active = true
+      return { outputActive: active, outputBytes: bytes += 100 }
+    })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null,
+      _gameplaySceneIdentity: { collectionName: 'Main', sceneName: 'UpForge', sceneUuid: 'old-uuid' } })
+    vi.spyOn(rec as unknown as { _startLiveKillPoll(): void }, '_startLiveKillPoll').mockImplementation(() => {})
+    return rec
+  }
+  const config = { quality: '720p', bitrate: 5, audioEnabled: true, savePath: '', captureMonitor: 'auto', manageObsVideo: false } as const
+
+  it('re-reads the UpForge scene and selects it again instead of refusing the match', async () => {
+    const rec = startingRecorder()
+    const fresh = { collectionName: 'Main', sceneName: 'UpForge', sceneUuid: 'new-uuid' }
+    vi.mocked(getUpForgeSceneIdentity).mockResolvedValueOnce(fresh)
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValueOnce(false).mockResolvedValue(true)
+    const starting = Promise.allSettled([rec.start('valorant', { ...config, savePath: mock.root })])
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await starting).toEqual([{ status: 'fulfilled', value: undefined }])
+    expect(mock.call).toHaveBeenCalledWith('SetCurrentProgramScene', { sceneName: 'UpForge' })
+    expect((rec as unknown as { _gameplaySceneIdentity: unknown })._gameplaySceneIdentity).toEqual(fresh)
+    expect(mock.call).toHaveBeenCalledWith('StartRecord')
+  })
+
+  it('still refuses (and never records) when the player keeps another scene active', async () => {
+    const rec = startingRecorder()
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(false)
+    const starting = Promise.allSettled([rec.start('valorant', { ...config, savePath: mock.root })])
+    await vi.advanceTimersByTimeAsync(1000)
+    const [result] = await starting
+    expect(result.status).toBe('rejected')
+    expect(String((result as PromiseRejectedResult).reason)).toMatch(/registered UpForge gameplay scene/)
+    expect(mock.call).not.toHaveBeenCalledWith('StartRecord')
   })
 })
 
@@ -654,7 +697,8 @@ describe('recording progress verification', () => {
     })
     const rec = recorder()
     Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
-    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValueOnce(false).mockResolvedValue(true)
+    // Wrong scene on the first check and after the one recovery attempt.
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValue(true)
     vi.spyOn(rec as unknown as { _startLiveKillPoll(): void }, '_startLiveKillPoll').mockImplementation(() => {})
     await expect(rec.start('cs2')).rejects.toThrow('registered UpForge gameplay scene')
     const retry = rec.start('cs2')

@@ -13,6 +13,7 @@ import {
 } from './disk-space'
 import {
   setupUpForgeScene,
+  getUpForgeSceneIdentity,
   UPFORGE_SCENE_NAME,
   retargetUpForgeCapture,
   fitUpForgeCaptureToCanvas,
@@ -562,6 +563,31 @@ export class OBSRecorder {
       log.warn('[OBSRecorder] Could not query current program scene:', err)
       return null
     }
+  }
+
+  /**
+   * One recovery attempt before refusing a match: after an OBS restart or repair the
+   * UpForge scene can have a new UUID, and the scene switch inside retarget is best-effort.
+   * Re-read the UpForge scene in the current collection and, when switching is allowed,
+   * select it again. Never adopts any other scene.
+   */
+  private async _recoverGameplayScene(allowSwitch: boolean): Promise<boolean> {
+    try {
+      const identity = await getUpForgeSceneIdentity(this._obs)
+      if (identity) this._registerGameplayScene(identity)
+      if (allowSwitch) {
+        await withTimeout(
+          this._obs.call('SetCurrentProgramScene', { sceneName: UPFORGE_SCENE_NAME }),
+          3000,
+          'OBS scene switch timed out',
+        )
+      }
+    } catch (err) {
+      log.warn('[OBSRecorder] Gameplay scene recovery failed:', err)
+    }
+    const ok = await this.isCurrentProgramSceneGameplay()
+    if (ok) log.info('[OBSRecorder] Recovered the UpForge gameplay scene before recording')
+    return ok
   }
 
   /** Fail closed: only the registered UpForge gameplay scene may become a match session. */
@@ -1153,7 +1179,10 @@ export class OBSRecorder {
       await retargetUpForgeCapture(this._obs, game, { ...sceneOptions, switchScene: !live && sceneOptions.switchScene !== false })
       checkCancelled()
       this._lastCaptureGame = game
-      if (!(await this.isCurrentProgramSceneGameplay())) {
+      if (
+        !(await this.isCurrentProgramSceneGameplay())
+        && !(await this._recoverGameplayScene(!live && sceneOptions.switchScene !== false))
+      ) {
         throw new Error('Switch OBS to the registered UpForge gameplay scene before starting match capture.')
       }
       checkCancelled()

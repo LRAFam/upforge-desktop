@@ -76,7 +76,7 @@ async function getSceneCollectionName(obs: OBSWebSocket): Promise<string | null>
   }
 }
 
-async function getUpForgeSceneIdentity(obs: OBSWebSocket): Promise<ObsSceneIdentity | null> {
+export async function getUpForgeSceneIdentity(obs: OBSWebSocket): Promise<ObsSceneIdentity | null> {
   const sceneList = await obs.call('GetSceneList') as unknown as {
     scenes?: Array<{ sceneName: string; sceneUuid?: string }>
   }
