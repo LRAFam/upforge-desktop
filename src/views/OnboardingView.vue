@@ -109,6 +109,13 @@
                   </label>
                 </div>
                 <p v-if="signInError" class="ob3-status uf-t4" role="alert"><span class="ob3-dot is-error" />{{ signInError }}</p>
+                <div v-if="needsVerification" class="ob3-inline">
+                  <button type="button" class="uf-link" :disabled="resending" @click="resend(email)">
+                    {{ resending ? 'Sending…' : 'Resend verification email →' }}
+                  </button>
+                </div>
+                <p v-if="resendNote" class="uf-t4" role="status">{{ resendNote }}</p>
+                <p v-if="resendError" class="ob3-status uf-t4" role="alert"><span class="ob3-dot is-error" />{{ resendError }}</p>
                 <div class="ob3-inline">
                   <button v-if="isPreview && !isAuthed" type="button" class="uf-btn-secondary" @click="nextStep">
                     Continue without signing in
@@ -623,6 +630,13 @@
                 </div>
 
                 <p v-if="signInError" class="text-[12px] text-red-400 mb-4">{{ signInError }}</p>
+                <div v-if="needsVerification" class="mb-4 text-[12px]">
+                  <button type="button" class="text-[#ff4655] font-semibold hover:underline" :disabled="resending" @click="resend(email)">
+                    {{ resending ? 'Sending…' : 'Resend verification email' }}
+                  </button>
+                  <p v-if="resendNote" class="text-gray-400 mt-1.5" role="status">{{ resendNote }}</p>
+                  <p v-if="resendError" class="text-red-400 mt-1.5" role="alert">{{ resendError }}</p>
+                </div>
 
                 <button
                   type="button"
@@ -1255,6 +1269,7 @@ import {
   shouldRequestOnboardingPreview,
 } from '../lib/onboarding-capture-preview'
 import type { PendingRecording, RecordingTimeline } from '../env'
+import { useVerificationResend } from '../composables/useVerificationResend'
 
 const DISCORD_INVITE_URL = 'https://discord.gg/MDD3WVRaEq'
 const OBS_DOWNLOAD_URL = 'https://obsproject.com/download'
@@ -1284,6 +1299,7 @@ const initializing = ref(!isPreview.value)
 const email = ref('')
 const password = ref('')
 const signInError = ref('')
+const { needsVerification, resending, resendNote, resendError, noteLoginResult, resend } = useVerificationResend()
 const signInLoading = ref(false)
 const isAuthed = ref(false)
 const isAdmin = ref(false)
@@ -2158,6 +2174,7 @@ async function handleSignIn() {
   signInLoading.value = true
   try {
     const result = await window.api.auth.login(email.value, password.value)
+    noteLoginResult(result)
     if (result.ok) {
       isAuthed.value = true
       await refreshAuthState()
