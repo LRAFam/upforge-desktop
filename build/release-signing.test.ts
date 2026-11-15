@@ -180,12 +180,17 @@ describe('electron-builder release config', () => {
     ).toThrow(/AZURE_SIGNING_ENDPOINT/)
   })
 
-  it('uses the SSL.com signer hook', () => {
-    const config = loadReleaseConfig({ WIN_SIGNING_PROVIDER: 'sslcom' })
+  it('uses the SSL.com signer hook and names the publisher for update verification', () => {
+    const config = loadReleaseConfig({ WIN_SIGNING_PROVIDER: 'sslcom', WIN_SIGNING_PUBLISHER: 'UpForge Ltd' })
     expect(config.win.signtoolOptions).toMatchObject({
       sign: './build/sign-windows-sslcom.cjs',
       signingHashAlgorithms: ['sha256'],
+      publisherName: 'UpForge Ltd',
     })
+  })
+
+  it('requires the SSL.com publisher name', () => {
+    expect(() => loadReleaseConfig({ WIN_SIGNING_PROVIDER: 'sslcom' })).toThrow(/WIN_SIGNING_PUBLISHER/)
   })
 
   it('rejects unknown providers', () => {

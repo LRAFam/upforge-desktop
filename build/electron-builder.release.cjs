@@ -29,6 +29,9 @@ function windowsConfig() {
       ...(win.signtoolOptions || {}),
       signingHashAlgorithms: ['sha256'],
       sign: './build/sign-windows-sslcom.cjs',
+      // The custom signer has no local certificate to read the subject from: without this,
+      // app-update.yml has no publisherName and electron-updater skips signature checks.
+      publisherName: required('WIN_SIGNING_PUBLISHER'),
     }
   } else if (provider !== '') {
     throw new Error(`Unknown WIN_SIGNING_PROVIDER "${provider}" (use "azure" or "sslcom")`)
