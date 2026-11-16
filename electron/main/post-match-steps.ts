@@ -1,3 +1,5 @@
+import { deadlockAllowsAutoAnalyse } from './deadlock-auto-analyse'
+
 /**
  * Pure post-match step decision after the local VOD is saved.
  * Keeps match-end branching out of index.ts spaghetti.
@@ -19,11 +21,15 @@ export interface PostMatchStepInput {
  * Historical recordings predate explicit auto-analysis intent. Treat a missing
  * value as manual-only so an app reopen or later match cannot opt them in.
  * A recorded failure requires an explicit retry; stats updates must not restart it.
+ * Deadlock Standard / Street Brawl matches are never analysed automatically (deadlock-auto-analyse.ts).
  */
 export function canAutoEnqueueRecording(recording: {
   autoAnalyseRequested?: boolean
   lastAnalysisError?: string | null
+  game?: string | null
+  gameMode?: string | null
 }): boolean {
+  if (recording.game === 'deadlock' && !deadlockAllowsAutoAnalyse(recording.gameMode)) return false
   return recording.autoAnalyseRequested === true && !recording.lastAnalysisError
 }
 

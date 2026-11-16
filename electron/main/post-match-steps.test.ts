@@ -50,4 +50,14 @@ describe('canAutoEnqueueRecording', () => {
     expect(canAutoEnqueueRecording({ autoAnalyseRequested: false })).toBe(false)
     expect(canAutoEnqueueRecording({})).toBe(false)
   })
+
+  it('never auto-analyses a Deadlock Standard or Street Brawl match (owner decision 16 Nov)', () => {
+    const rec = { autoAnalyseRequested: true, game: 'deadlock' }
+    expect(canAutoEnqueueRecording({ ...rec, gameMode: 'UNRANKED' })).toBe(false)
+    expect(canAutoEnqueueRecording({ ...rec, gameMode: 'STREET_BRAWL' })).toBe(false)
+    expect(canAutoEnqueueRecording({ ...rec, gameMode: 'RANKED' })).toBe(true)
+    // Queue not known yet (placeholder): stays automatic so a Ranked match is never held back.
+    expect(canAutoEnqueueRecording({ ...rec, gameMode: 'COMPETITIVE' })).toBe(true)
+    expect(canAutoEnqueueRecording({ autoAnalyseRequested: true, game: 'cs2', gameMode: 'UNRANKED' })).toBe(true)
+  })
 })

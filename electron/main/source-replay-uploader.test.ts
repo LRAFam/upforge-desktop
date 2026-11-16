@@ -42,3 +42,21 @@ describe('SourceReplayUploader: already analysed match', () => {
     expect(calls).toEqual(['presign', 'put', 'confirm'])
   })
 })
+
+describe('SourceReplayUploader: automatic Deadlock uploads', () => {
+  it('tells the API the upload is automatic and which queue it was', async () => {
+    const up = new SourceReplayUploader({ getToken: () => 'token' } as never)
+    const bodies: Array<Record<string, unknown>> = []
+    const anyUp = up as unknown as { _apiPost: (url: string, body: string) => Promise<Record<string, unknown>>; _putToS3: () => Promise<void> }
+    anyUp._apiPost = vi.fn(async (url: string, body: string) => {
+      if (url.endsWith('/presign')) bodies.push(JSON.parse(body))
+      return url.endsWith('/presign') ? { job_id: 'job-auto', upload_url: 'https://s3.example/put' } : {}
+    })
+    anyUp._putToS3 = vi.fn(async () => {})
+    await up.upload({ game: 'deadlock', demoPath: demo, matchId: 557, trigger: 'auto', queue: 'ranked', onProgress: () => {} })
+    await up.upload({ game: 'deadlock', demoPath: demo, matchId: 558, onProgress: () => {} })
+    expect(bodies[0]).toMatchObject({ match_id: 557, trigger: 'auto', queue: 'ranked' })
+    expect(bodies[1]).not.toHaveProperty('trigger')
+    expect(bodies[1]).not.toHaveProperty('queue')
+  })
+})

@@ -11,6 +11,10 @@ export interface ReplayUploadMeta {
   matchId?: number | null
   matchStartedAt?: number | null
   heroId?: number | null
+  /** 'auto' when no one tapped Analyse: the API refuses it for a known non-ranked Deadlock queue. */
+  trigger?: 'auto' | 'manual'
+  /** Deadlock queue from match metadata (ranked · standard · street_brawl · other) when known. */
+  queue?: string | null
 }
 
 export interface PostMatchReplayContext {
@@ -103,6 +107,8 @@ export async function uploadReplayInBackground(
       matchId: meta?.matchId ?? null,
       matchStartedAt: meta?.matchStartedAt ?? null,
       heroId: meta?.heroId ?? null,
+      trigger: meta?.trigger,
+      queue: meta?.queue ?? null,
       onProgress: (pct) => send('post-game:demo-progress', pct),
     })
 
