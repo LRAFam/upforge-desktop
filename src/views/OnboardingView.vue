@@ -1252,6 +1252,7 @@ import { readCache } from '../lib/stale-cache'
 import type { ProfileData } from '../env.d.ts'
 import { readJoinCoachLater, setJoinCoachLater } from '../components/v3/roster-flow/roster-flow'
 import { resolveOnboardingCompletionRoute } from '../lib/onboarding-gate'
+import { syncPendingOnboardingCampaign } from '../lib/desktop-onboarding-campaign'
 import { resolveOnboardingStep } from '../lib/onboarding-flow'
 import { VALORANT_FOCUS_DESKTOP_ONLY } from '../lib/focus'
 import { useRoute, useRouter } from 'vue-router'
@@ -2591,11 +2592,6 @@ async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; r
   }
   saving.value = true
   try {
-    const campaign = await window.api.auth.completeOnboardingCampaign()
-    if (!campaign.ok) {
-      completeError.value = campaign.error
-      return
-    }
     const current = await window.api.settings.get()
     if (recordingSetupReady.value) clearObsSkipFlag()
     else {
@@ -2604,6 +2600,8 @@ async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; r
     await window.api.settings.save({
       onboardingComplete: true,
       onboardingRecordingVerified: recordingSetupReady.value,
+      // Local first: the campaign call syncs in the background and retries on the next launch.
+      onboardingCampaignSyncPending: true,
       firstRun: false,
       primaryGame: selectedGame.value,
       trainerMouse: {
@@ -2611,10 +2609,14 @@ async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; r
         game: selectedGame.value,
       },
     })
+    void syncPendingOnboardingCampaign({
+      complete: () => window.api.auth.completeOnboardingCampaign(),
+      saveSettings: (patch) => window.api.settings.save(patch),
+    })
     router.push(resolveOnboardingCompletionRoute(opts))
   } catch (e) {
     console.error('[Onboarding] Failed to save settings:', e)
-    completeError.value = 'Could not save setup. Check your connection and try again.'
+    completeError.value = 'Could not save setup on this PC. Try again.'
   } finally {
     saving.value = false
   }

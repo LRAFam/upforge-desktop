@@ -39,3 +39,22 @@ export function parseDesktopOnboardingCampaignState(
 
   return state as unknown as DesktopOnboardingCampaignState
 }
+
+/**
+ * Finishing onboarding is local first: the campaign-complete call is bookkeeping and must not
+ * keep a player out of the app. Call this after `onboardingCampaignSyncPending: true` is saved;
+ * it clears the flag once the API confirms. Returns whether the API confirmed.
+ */
+export async function syncPendingOnboardingCampaign(deps: {
+  complete: () => Promise<DesktopOnboardingCampaignResult>
+  saveSettings: (patch: { onboardingCampaignSyncPending: boolean }) => Promise<unknown>
+}): Promise<boolean> {
+  try {
+    const result = await deps.complete()
+    if (!result.ok) return false
+    await deps.saveSettings({ onboardingCampaignSyncPending: false })
+    return true
+  } catch {
+    return false
+  }
+}

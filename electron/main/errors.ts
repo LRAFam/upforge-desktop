@@ -39,3 +39,24 @@ export class UpgradeRequiredError extends Error {
     this.ppaUrl = ppaUrl
   }
 }
+
+/** Plan message for a replay-analysis quota wall (the API copy for these routes is not player-ready). */
+export const REPLAY_QUOTA_MESSAGE =
+  "You've used all your match reviews for now. Upgrade your plan to keep reviewing — your replay is still saved."
+
+/**
+ * Error for a failed replay API call. A 402 becomes an {@link UpgradeRequiredError}
+ * with the plan message instead of "Request failed (402)".
+ */
+export function replayApiError(status: number, json: Record<string, unknown> | null): Error {
+  if (status === 402) {
+    const upgradeUrl = typeof json?.upgrade_url === 'string' && /^https:\/\/upforge\.gg\//.test(json.upgrade_url)
+      ? json.upgrade_url
+      : undefined
+    return new UpgradeRequiredError(REPLAY_QUOTA_MESSAGE, 'analysis_limit_reached', upgradeUrl)
+  }
+  const message = typeof json?.message === 'string' && json.message
+    ? json.message
+    : typeof json?.error === 'string' && json.error ? json.error : `Request failed (${status})`
+  return new Error(message)
+}

@@ -77,6 +77,10 @@ export interface AppSettings {
   onboardingComplete?: boolean
   /** Recording verification in this wizard session at completion; absent for older clients. */
   onboardingRecordingVerified?: boolean
+  /** Onboarding finished locally but the API campaign-complete call has not succeeded yet. */
+  onboardingCampaignSyncPending?: boolean
+  /** Why the latest match was not recorded; shown on Home until dismissed (a toast is missed in-game). */
+  lastSkippedMatch?: { game: string; message: string; at: number } | null
   /** Resumable guided match that grants one server-authorised bonus analysis. */
   onboardingMatchMission?: {
     active: boolean

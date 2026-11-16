@@ -219,6 +219,8 @@ export interface AppSettings {
   firstRun: boolean
   onboardingComplete?: boolean
   onboardingRecordingVerified?: boolean
+  onboardingCampaignSyncPending?: boolean
+  lastSkippedMatch?: { game: string; message: string; at: number } | null
   onboardingMatchMission?: {
     active: boolean
     game: PrimaryGame

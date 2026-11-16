@@ -13,6 +13,8 @@ const {
   openBillingPortal,
   warning,
   warningAction,
+  skippedMatchNotice,
+  dismissSkippedMatchNotice,
   upgradeNeeded,
   goWarningAction,
   openPpa,
@@ -29,6 +31,7 @@ const {
   showMacPreviewBanner,
   dismissMacPreviewBanner,
   profile,
+  router,
 } = useDashboard()
 
 /** Stats-based UpForge score when the API has it; else the coach's rating out of 10. */
@@ -73,6 +76,15 @@ function dismissWarning() {
         <button v-if="upgradeNeeded" type="button" class="uf-banner-link" @click="userIsPaid ? openBundles() : openPpa()">View report packs</button>
         <button v-if="upgradeNeeded && !userIsPaid" type="button" class="uf-banner-link" @click="openUpgrade">Upgrade</button>
         <button type="button" class="uf-banner-x" aria-label="Dismiss" @click="dismissWarning"><UfIcon name="close" :size="14" /></button>
+      </div>
+    </div>
+
+    <div v-if="skippedMatchNotice" class="uf-banner" role="status">
+      <span class="uf-banner-dot is-gold" aria-hidden="true" />
+      <p class="uf-banner-text" style="margin: 0"><span class="uf-banner-main">{{ skippedMatchNotice.message }}</span></p>
+      <div class="uf-banner-actions">
+        <button type="button" class="uf-banner-link" @click="router.push('/settings?tab=recording')">Recording settings</button>
+        <button type="button" class="uf-banner-x" aria-label="Dismiss" @click="dismissSkippedMatchNotice"><UfIcon name="close" :size="14" /></button>
       </div>
     </div>
 

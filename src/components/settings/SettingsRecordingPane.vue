@@ -45,7 +45,6 @@ const {
   storageSummary,
   storageUploadProgress,
   storageUsagePercent,
-  toggleAudio,
   toggleClipCapture,
   toggleFullMatchRecording,
   toggleMode,
@@ -171,9 +170,7 @@ const statusItems = computed<StatusItem[]>(() => {
         </div>
         <p v-if="settings.recordingPreset === 'creator'" class="uf-t4">Coaching uploads are compressed automatically. Your local file stays at full quality.</p>
       </div>
-      <SettingsRow label="Record game audio" hint="Includes in-game sound via OBS">
-        <SettingsToggle label="Record game audio" :on="!!settings.audioEnabled" @click="toggleAudio()" />
-      </SettingsRow>
+      <SettingsRow label="Audio" hint="UpForge records whatever audio your OBS captures. By default that is game sound and your microphone, so voice chat can be in the recording. To change it, mute or remove sources in OBS → Settings → Audio." />
       <SettingsRow label="Record full match VODs" hint="Off = replay-buffer kill clips only. No AI match coaching without a VOD.">
         <SettingsToggle label="Record full match VODs" :on="settings.fullMatchRecording !== false" @click="toggleFullMatchRecording()" />
       </SettingsRow>
@@ -404,12 +401,7 @@ const statusItems = computed<StatusItem[]>(() => {
         <p v-if="settings.recordingPreset === 'creator'" class="text-[11px] text-gray-600">
           Coaching uploads are compressed automatically. Your local file stays at full quality.
         </p>
-        <SettingsRow
-          label="Record game audio"
-          hint="Includes in-game sound via OBS"
-        >
-          <SettingsToggle label="Record game audio" :on="!!settings.audioEnabled" @click="toggleAudio()" />
-        </SettingsRow>
+        <SettingsRow label="Audio" hint="UpForge records whatever audio your OBS captures. By default that is game sound and your microphone, so voice chat can be in the recording. To change it, mute or remove sources in OBS → Settings → Audio." />
         <SettingsRow
           label="Record full match VODs"
           hint="Off = replay-buffer kill clips only. No AI match coaching without a VOD."
