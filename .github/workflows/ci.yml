@@ -32,6 +32,10 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # Fails when the API drill list changed and the bundled copy was not refreshed (npm run drills:sync).
+      - name: Drill list matches API
+        run: npm run drills:check
+
   test-windows:
     runs-on: windows-latest
     timeout-minutes: 15

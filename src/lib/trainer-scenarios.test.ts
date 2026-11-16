@@ -68,3 +68,23 @@ describe('beta drills', () => {
     expect(isScenarioForGame('strafe_track', 'deadlock')).toBe(true)
   })
 })
+
+describe('drill list contract (API manifest)', () => {
+  it('has desktop copy for every API drill and no drill the API does not list', async () => {
+    const { TRAINER_MANIFEST, DRILL_COPY, TRAINER_SCENARIO_KEYS } = await import('./trainer-scenarios')
+    const apiKeys = TRAINER_MANIFEST.scenarios.map(s => s.key)
+    expect(TRAINER_MANIFEST.version).toBe(1)
+    expect(Object.keys(DRILL_COPY).sort()).toEqual([...apiKeys].sort())
+    expect(TRAINER_SCENARIO_KEYS).toEqual(apiKeys)
+  })
+  it('takes labels, groups and flags from the manifest only', async () => {
+    const { TRAINER_MANIFEST, trainerScenarioDef } = await import('./trainer-scenarios')
+    for (const s of TRAINER_MANIFEST.scenarios) {
+      const def = trainerScenarioDef(s.key)
+      expect(def).toMatchObject({ label: s.label, uiGroup: s.ui_group, radar: s.radar, vodCategories: s.categories })
+      expect(!!def?.beta).toBe(s.beta)
+      expect(def?.games ?? null).toEqual(s.games)
+      expect(['aim', 'reaction', 'precision', 'duel']).toContain(s.ui_group)
+    }
+  })
+})
