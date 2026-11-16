@@ -23,6 +23,12 @@ export interface Capacity { used: number; limit: number | null; remaining: numbe
 export interface CloudStorageUsage {
   included_bytes: number | null; addon_bytes: number; capacity_bytes: number | null
   used_bytes: number; reserved_bytes: number; remaining_bytes: number | null; unknown_size_files: number
+  /** Optional quota fields (newer API): early warning at 80/95/100 % and the grace date. */
+  warning_level?: number | null; message?: string | null; grace_until?: string | null; uploads_blocked?: boolean
+}
+/** The API's own warning text, only when a warning level is reached. */
+export function cloudQuotaMessage(q: CloudStorageUsage | null | undefined): string | null {
+  return q && typeof q.warning_level === 'number' && typeof q.message === 'string' && q.message.trim() ? q.message : null
 }
 export function validCloudStorageUsage(value: unknown): value is CloudStorageUsage {
   if (!value || typeof value !== 'object') return false
