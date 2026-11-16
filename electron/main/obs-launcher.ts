@@ -4,6 +4,7 @@ import { existsSync } from 'fs'
 import log from 'electron-log'
 import {
   candidateObsPaths,
+  discoverObsInstallPaths,
   installObsViaWinget,
   isObsInstalled,
 } from './obs-installer'
@@ -131,6 +132,7 @@ export async function launchObsStudio(opts: LaunchObsOptions = {}): Promise<{ ok
   const wsArgs = obsLaunchArgs(password, port)
   const allowWingetInstall = opts.allowWingetInstall !== false
 
+  if (process.platform === 'win32' && !isObsInstalled()) await discoverObsInstallPaths()
   if (process.platform === 'win32' && !isObsInstalled() && allowWingetInstall) {
     const installed = await installObsViaWinget()
     if (!installed.ok) {

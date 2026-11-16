@@ -10,7 +10,7 @@ import {
   classifyActivationError,
   type ActivationErrorCode,
 } from './activation-error-codes'
-import { isObsInstalled } from './obs-installer'
+import { discoverObsInstallPaths, isObsInstalled } from './obs-installer'
 import { ensureObsConnected } from './obs-ensure'
 import type { OBSRecorder } from './obs-recorder'
 import {
@@ -407,6 +407,7 @@ export async function runObsPreflight(opts: RunObsPreflightOptions): Promise<Obs
   const steps: ObsPreflightStepResult[] = []
   const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
 
+  if (!isObsInstalled()) await discoverObsInstallPaths()
   if (!isObsInstalled()) {
     steps.push(stepFailure('obs_installed', 'OBS is not running — OBS Studio is not installed on this PC'))
     return { steps, ...buildPreflightFailure(steps) }

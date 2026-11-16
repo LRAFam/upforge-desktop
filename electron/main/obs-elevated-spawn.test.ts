@@ -9,6 +9,7 @@ vi.mock('./obs-installer', () => ({
   candidateObsPaths: () => ['C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe'],
   installObsViaWinget: vi.fn(),
   isObsInstalled: () => true,
+  discoverObsInstallPaths: vi.fn(async () => []),
 }))
 vi.mock('./obs-crash-sentinel', () => ({ clearObsCrashSentinel: vi.fn() }))
 vi.mock('./obs-profile-installer', () => ({

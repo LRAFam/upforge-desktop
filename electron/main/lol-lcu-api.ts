@@ -3,12 +3,15 @@
  * Used by Developer diagnostics to verify queue detection before we wire recording filters.
  *
  * Lockfile format: Name:PID:Port:Password:Protocol
- * Typical Windows path: C:\Riot Games\League of Legends\lockfile
+ * Typical Windows path: C:\Riot Games\League of Legends\lockfile — other installs are found
+ * from the running client process or Riot's product settings (discoverLolInstallDirs).
  */
 
+import { exec } from 'child_process'
 import fs from 'fs'
 import https from 'https'
 import path from 'path'
+import { promisify } from 'util'
 import { LoLLiveClientApi } from './lol-live-client-api'
 import { captureLolAccount, type LolCaptureContext } from './lol-account-identity'
 export { lolPlatformToMatchV5Region } from './lol-account-identity'
@@ -45,13 +48,68 @@ export interface LolLcuProbeResult {
   probedAt: number
 }
 
+const execAsync = promisify(exec)
+
+/** League install folders found from the running client / Riot metadata (any drive). */
+let discoveredLolInstallDirs: string[] = []
+let lastLolDiscoveryAt = 0
+const LOL_DISCOVERY_MIN_INTERVAL_MS = 30_000
+
+/** Install folders from running LeagueClient / LeagueClientUx executable paths (one per line). */
+export function lolInstallDirsFromProcessPaths(stdout: string): string[] {
+  const dirs = stdout
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => /\\LeagueClient(?:Ux)?\.exe$/i.test(l))
+    .map((exe) => path.win32.dirname(exe))
+  return dirs.filter((d, i) => dirs.indexOf(d) === i)
+}
+
+/** Riot Client metadata: product_install_full_path in league_of_legends.live.product_settings.yaml. */
+export function lolInstallDirFromProductSettings(yaml: string): string | null {
+  const m = /product_install_full_path:\s*["']?([^"'\r\n]+?)["']?\s*$/m.exec(yaml)
+  return m?.[1]?.trim().replace(/\//g, '\\') || null
+}
+
+/**
+ * Find where League is installed when it is not in one of the fixed folders: the running
+ * client's executable path, then the Riot Client's product settings. Windows only; throttled.
+ */
+export async function discoverLolInstallDirs(
+  env: NodeJS.ProcessEnv = process.env,
+  run: (cmd: string) => Promise<string> = async (cmd) => (await execAsync(cmd, { windowsHide: true, timeout: 5000 })).stdout,
+): Promise<string[]> {
+  if (process.platform !== 'win32') return []
+  if (Date.now() - lastLolDiscoveryAt < LOL_DISCOVERY_MIN_INTERVAL_MS) return discoveredLolInstallDirs
+  lastLolDiscoveryAt = Date.now()
+  const dirs: string[] = []
+  try {
+    dirs.push(...lolInstallDirsFromProcessPaths(await run(
+      'powershell.exe -NoProfile -NonInteractive -Command "Get-Process -Name LeagueClient,LeagueClientUx -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path"',
+    )))
+  } catch { /* client not running or PowerShell blocked */ }
+  const programData = env['ProgramData'] || 'C:\\ProgramData'
+  try {
+    const yaml = fs.readFileSync(
+      path.win32.join(programData, 'Riot Games', 'Metadata', 'league_of_legends.live', 'league_of_legends.live.product_settings.yaml'),
+      'utf8',
+    )
+    const dir = lolInstallDirFromProductSettings(yaml)
+    if (dir) dirs.push(dir)
+  } catch { /* no Riot metadata */ }
+  discoveredLolInstallDirs = dirs.filter((d, i) => dirs.indexOf(d) === i)
+  return discoveredLolInstallDirs
+}
+
 /** Exported for unit tests. */
 export function candidateLolLockfilePaths(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
+  extraInstallDirs: string[] = discoveredLolInstallDirs,
 ): string[] {
   const paths: string[] = []
   if (platform === 'win32') {
+    paths.push(...extraInstallDirs.map((dir) => path.win32.join(dir, 'lockfile')))
     const pf = env['ProgramFiles'] || 'C:\\Program Files'
     const pf86 = env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'
     paths.push(
@@ -293,7 +351,12 @@ export async function probeLolLcu(opts?: {
     ...partial,
   })
 
-  const lockfile = findLolLockfile()
+  let lockfile = findLolLockfile()
+  if (!lockfile && platform === 'win32') {
+    // League on another drive / custom folder: ask the running client where it lives.
+    await discoverLolInstallDirs()
+    lockfile = findLolLockfile()
+  }
   if (!lockfile) {
     return empty({
       error: platform === 'win32'

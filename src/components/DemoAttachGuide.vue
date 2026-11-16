@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import {
-  CS2_AUTOEXEC_LINE,
   demoAttachGuideSteps,
   demoAttachGuideTitle,
   isDemoAttachGame,
@@ -19,7 +18,6 @@ const props = withDefaults(defineProps<{
 })
 
 const expanded = ref(props.defaultOpen)
-const copied = ref(false)
 const folderError = ref<string | null>(null)
 
 const attachGame = (): DemoAttachGame | null =>
@@ -47,15 +45,6 @@ async function openDemoFolder() {
   }
 }
 
-async function copyAutoexec() {
-  try {
-    await navigator.clipboard.writeText(CS2_AUTOEXEC_LINE)
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 2000)
-  } catch {
-    folderError.value = 'Could not copy — select the command manually'
-  }
-}
 </script>
 
 <template>
@@ -81,7 +70,6 @@ async function copyAutoexec() {
       </ol>
       <div class="uf-guide-actions">
         <button type="button" class="uf-link" @click="openDemoFolder">Open {{ attachGame() === 'cs2' ? 'demo' : 'replays' }} folder →</button>
-        <button v-if="attachGame() === 'cs2'" type="button" class="uf-link" @click="copyAutoexec">{{ copied ? 'Copied' : 'Copy autoexec line' }}</button>
       </div>
       <p v-if="folderError" class="uf-dialog-warn">{{ folderError }}</p>
     </div>
@@ -143,15 +131,6 @@ async function copyAutoexec() {
           @click="openDemoFolder"
         >
           Open {{ attachGame() === 'cs2' ? 'demo' : 'replays' }} folder
-        </button>
-        <button
-          v-if="attachGame() === 'cs2'"
-          type="button"
-          class="rounded-lg border border-orange-500/20 bg-orange-500/10 font-semibold text-orange-300 hover:bg-orange-500/20 transition-colors"
-          :class="compact ? 'px-2 py-1 text-[12px]' : 'px-2.5 py-1 text-[12px]'"
-          @click="copyAutoexec"
-        >
-          {{ copied ? 'Copied!' : 'Copy autoexec line' }}
         </button>
       </div>
 

@@ -12,6 +12,7 @@ vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn() } }))
 
 vi.mock('./obs-installer', () => ({
   isObsInstalled: vi.fn(() => true),
+  discoverObsInstallPaths: vi.fn(async () => []),
 }))
 
 vi.mock('./obs-ensure', () => ({

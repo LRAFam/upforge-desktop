@@ -341,13 +341,13 @@
                 <p v-else-if="obsConnecting" class="uf-t4">This runs in the background. If Windows asks, approve the OBS installation.</p>
                 <div v-if="obsError" class="ob3-inline">
                   <button type="button" class="uf-btn-secondary" :disabled="obsConnecting || isPreview" @click="setupRecordingAutomatically">Check again</button>
+                  <button type="button" class="uf-link" @click="openObsDownload">Get OBS from the official website</button>
                 </div>
               </div>
 
               <details class="ob3-details">
                 <summary class="uf-t4">Already use OBS?</summary>
                 <p class="uf-t4">UpForge adds its own scene and records with its own OBS profile, then switches back to yours after each match. Your scenes, canvas and recording folder stay as they are. If a recording, stream or replay buffer is active, finish it and check again.</p>
-                <button v-if="obsError" type="button" class="uf-link" @click="openObsDownload">Get OBS from the official website</button>
               </details>
               <p v-if="isPreview" class="uf-t4">This preview does not change OBS.</p>
               <p v-if="bonusEligible" class="uf-t4">Your first Pro match review is included. Try it when you're ready to play; it isn't required to finish setup.</p>
@@ -363,6 +363,7 @@
                 <span v-if="missionStage === 'recording'" class="uf-d4 ob3-red">{{ missionRecordingDuration }}</span>
               </h2>
               <p class="uf-t2" :class="{ 'ob3-gold': !recordingSetupReady }">{{ missionCopy.body }}</p>
+              <p v-if="selectedGame === 'valorant'" class="uf-t4">{{ VALORANT_FOCUS_DESKTOP_ONLY }}</p>
               <!-- Roster flow: optional reminder; does not change the step's logic. -->
               <label class="ob3-coach uf-t4"><input v-model="coachInviteLater" type="checkbox"> I have a coach. Remind me to join them.</label>
               <!-- Starting report: the AI read of this player's last matches for the game they picked. -->
@@ -989,6 +990,7 @@
               <p class="text-sm mt-2 mb-6 leading-relaxed" :class="recordingSetupReady ? 'text-gray-500' : 'text-amber-200/80'">
                 {{ missionCopy.body }}
               </p>
+              <p v-if="selectedGame === 'valorant'" class="text-xs -mt-4 mb-6 text-gray-500 leading-relaxed">{{ VALORANT_FOCUS_DESKTOP_ONLY }}</p>
 
               <div v-if="missionActive" class="space-y-4 mb-5">
                 <p v-if="isAdmin && missionIsAdminTest" class="rounded-lg border border-amber-400/25 bg-amber-400/[0.06] px-3 py-2 text-[11px] font-bold text-amber-200">
@@ -1251,6 +1253,7 @@ import type { ProfileData } from '../env.d.ts'
 import { readJoinCoachLater, setJoinCoachLater } from '../components/v3/roster-flow/roster-flow'
 import { resolveOnboardingCompletionRoute } from '../lib/onboarding-gate'
 import { resolveOnboardingStep } from '../lib/onboarding-flow'
+import { VALORANT_FOCUS_DESKTOP_ONLY } from '../lib/focus'
 import { useRoute, useRouter } from 'vue-router'
 import { PRIMARY_GAME_ARTWORK, isPrimaryGame, type PrimaryGame } from '../lib/games'
 import { resolveMaxValorantAccounts } from '../lib/valorant-account-cap'

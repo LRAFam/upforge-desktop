@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { faceitAttachView } from './cs2-faceit-attach'
+import { FACEIT_SEPARATE_REVIEW, faceitAttachView } from './cs2-faceit-attach'
 
 describe('faceitAttachView', () => {
   it('offers the action only for a single confident match', () => {
@@ -20,5 +20,12 @@ describe('faceitAttachView', () => {
     const v = faceitAttachView({ status: 'matched', match: { match_id: '1-x', map: null } }, { jobId: 'j' })
     expect(v.canAttach).toBe(false)
     expect(v.line).toContain('queued')
+  })
+  it('says plainly that FACEIT coaching does not unlock the recording timeline', () => {
+    expect(FACEIT_SEPARATE_REVIEW).toMatch(/does not unlock this recording's timeline, clips or Analyse/)
+    const offer = faceitAttachView({ status: 'matched', match: { match_id: '1-x', map: 'de_mirage' } }, null)
+    expect(offer.line).toContain(FACEIT_SEPARATE_REVIEW)
+    const queued = faceitAttachView(null, { jobId: 'j' })
+    expect(queued.line).toContain(FACEIT_SEPARATE_REVIEW)
   })
 })
