@@ -188,7 +188,8 @@ export function resolveLolFilterMode(opts: {
   return opts.liveGameMode ?? opts.lcuGameMode ?? fromQueue.gameMode
 }
 
-function lcuGet<T>(lockfile: LolLcuLockfile, apiPath: string): Promise<T> {
+/** Authenticated GET against the League Client (LCU). Exported for the local match report reader. */
+export function lcuGet<T>(lockfile: LolLcuLockfile, apiPath: string): Promise<T> {
   const auth = Buffer.from(`riot:${lockfile.password}`).toString('base64')
   return new Promise((resolve, reject) => {
     const req = https.get(

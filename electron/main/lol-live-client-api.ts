@@ -29,6 +29,11 @@ export interface LolLivePlayer {
   team?: string
   scores: LolLiveScores
   level?: number
+  riotIdGameName?: string
+  riotIdTagLine?: string
+  position?: string
+  items?: { itemID?: number }[]
+  runes?: { keystone?: { id?: number } }
 }
 
 export interface LolLiveGameEvent {
@@ -66,6 +71,7 @@ export interface LolAllGameData {
     summonerName?: string
     riotId?: string
     level?: number
+    currentGold?: number
   }
   allPlayers?: LolLivePlayer[]
   events?: { Events?: LolLiveGameEvent[] }
@@ -471,6 +477,8 @@ export class LoLLiveClientApi {
   private _gameplayStartTime: number | null = null
   private _gameClockZeroEpoch: number | null = null
   onMatchEnded: (() => void) | null = null
+  /** Every live allgamedata poll while a match is tracked (local report collector). Kept across matches. */
+  onLiveSnapshot: ((data: LolAllGameData) => void) | null = null
 
   async fetchAllGameData(): Promise<LolAllGameData | null> {
     try {
@@ -618,7 +626,11 @@ export class LoLLiveClientApi {
     }
 
     const events = data.events?.Events ?? []
-    if (events.some((e) => e.EventName === 'GameEnd')) {
+    const ended = events.some((e) => e.EventName === 'GameEnd')
+    if (isLolLiveMatchActive(data) || ended) {
+      try { this.onLiveSnapshot?.(data) } catch { /* collector must never break match tracking */ }
+    }
+    if (ended) {
       this._lastSnapshot = data
       this._emitMatchEnd()
     }
