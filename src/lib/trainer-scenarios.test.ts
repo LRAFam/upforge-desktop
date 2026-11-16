@@ -57,4 +57,14 @@ describe('beta drills', () => {
     for (const key of valorantOnly) expect(cs2Keys).not.toContain(key)
     expect(trainerScenariosForGame('valorant').map(s => s.key)).toEqual(expect.arrayContaining(valorantOnly))
   })
+
+  it('hides Head Height and Strafe Aim for Deadlock (Valorant / CS2 only, as on the API)', async () => {
+    const { isScenarioForGame } = await import('./trainer-scenarios')
+    for (const key of ['head_height', 'strafe_aim']) {
+      expect(isScenarioForGame(key, 'valorant')).toBe(true)
+      expect(isScenarioForGame(key, 'cs2')).toBe(true)
+      expect(isScenarioForGame(key, 'deadlock')).toBe(false)
+    }
+    expect(isScenarioForGame('strafe_track', 'deadlock')).toBe(true)
+  })
 })

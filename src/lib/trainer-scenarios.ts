@@ -67,6 +67,8 @@ export const TRAINER_SCENARIOS: TrainerScenarioDef[] = [
     uiGroup: 'duel',
     radar: false,
     vodCategories: ['crosshair_placement'],
+    // Fitted to Valorant range footage; CS2 as a warm-up. Not for Deadlock (API config/trainer-scenarios.php).
+    games: ['valorant', 'cs2'],
   },
   {
     key: 'flick',
@@ -148,6 +150,8 @@ export const TRAINER_SCENARIOS: TrainerScenarioDef[] = [
     uiGroup: 'duel',
     radar: false,
     vodCategories: ['positioning', 'mechanics'],
+    // Counter-strafe model: not for Deadlock (API config/trainer-scenarios.php).
+    games: ['valorant', 'cs2'],
   },
   {
     key: 'duel',

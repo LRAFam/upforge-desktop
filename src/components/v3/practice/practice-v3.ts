@@ -222,6 +222,11 @@ export function coachingDrillExtras(
  */
 export interface PracticeGameScope {
   matchCoaching: boolean
+  /**
+   * The aim trainer serves this game (API config trainer-scenarios.games: Valorant, CS2, Deadlock).
+   * False for League: no guided session, daily challenge, quick play or drill library by default.
+   */
+  aimTrainer: boolean
   note: string | null
 }
 
@@ -230,16 +235,33 @@ export function practiceGameScope(game: string | null | undefined): PracticeGame
     case 'valorant':
     case null:
     case undefined:
-      return { matchCoaching: true, note: null }
+      return { matchCoaching: true, aimTrainer: true, note: null }
     case 'cs2':
-      return { matchCoaching: false, note: 'These are general aim drills. Set the trainer to CS2 sensitivity in Settings › Trainer so they feel like your game. Drills the coach adds from your match stats are Valorant-only for now.' }
+      return { matchCoaching: false, aimTrainer: true, note: 'These are general aim drills. Set the trainer to CS2 sensitivity in Settings › Trainer so they feel like your game. Drills the coach adds from your match stats are Valorant-only for now.' }
     case 'deadlock':
-      return { matchCoaching: false, note: 'These are general aim drills. Set the trainer to Deadlock sensitivity in Settings › Trainer so they feel like your game. Drills the coach adds from your match stats are Valorant-only for now.' }
+      return { matchCoaching: false, aimTrainer: true, note: 'These are general aim drills. Set the trainer to Deadlock sensitivity in Settings › Trainer so they feel like your game. Drills the coach adds from your match stats are Valorant-only for now.' }
     case 'lol':
-      return { matchCoaching: false, note: 'These are aim drills for shooters, so they won’t help much in League. League drills come with Riot stats coaching, on the match page of a recorded game.' }
+      return { matchCoaching: false, aimTrainer: false, note: 'The aim trainer is for shooters, so League has no practice session here. Work on your next-match focus instead. League drills come with Riot stats coaching, on the match page of a recorded game.' }
     default:
-      return { matchCoaching: false, note: 'These are general aim drills. Drills the coach adds from your match stats are Valorant-only for now.' }
+      return { matchCoaching: false, aimTrainer: true, note: 'These are general aim drills. Drills the coach adds from your match stats are Valorant-only for now.' }
   }
+}
+
+/**
+ * Coaching drills for the current game. Newer APIs filter by `?game=` and tag each row with its
+ * `game`; a row without one (older API) is kept, since the API gave no way to tell.
+ */
+export function drillsForGame<T extends { game?: string | null }>(drills: readonly T[], game: string | null | undefined): T[] {
+  if (!game) return [...drills]
+  return drills.filter(d => d.game == null || d.game === game)
+}
+
+/**
+ * The guided-session plan to show. A game without the aim trainer (League) has none, also when an
+ * older API (no `?game=` support) still sends a Valorant plan.
+ */
+export function planForGame<T>(plan: T | null | undefined, game: string | null | undefined): T | null {
+  return practiceGameScope(game).aimTrainer ? plan ?? null : null
 }
 
 /**
