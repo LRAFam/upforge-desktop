@@ -16,6 +16,9 @@ export { COACHING_UNSUPPORTED_MODES }
 /** Max wait for OBS mux / ffprobe before post-game upload proceeds. */
 export const VOD_FILE_READY_MAX_MS = 60_000
 
+/** One ffprobe attempt; a timeout is retried on the next readiness check, never cached. */
+export const VOD_PROBE_TIMEOUT_MS = 45_000
+
 export type VodFileReadiness = 'ready' | 'finalizing' | 'missing' | 'unreadable' | 'not_required'
 
 export type AnalysisReadinessState = AnalyseReadyState
@@ -219,12 +222,17 @@ export async function refreshVodProbe(
 
   const inFlight = vodProbesInFlight.get(filePath)
   if (inFlight?.mtimeMs === mtimeMs) return inFlight.promise
-  const promise = withTimeout(probe(filePath), 45_000, 'Recording check timed out — retry when the disk is available')
-    .catch((err: unknown) => ({ ok: false, reason: err instanceof Error ? err.message : String(err) }))
+  let transient = false
+  const promise = withTimeout(probe(filePath), VOD_PROBE_TIMEOUT_MS, 'Recording check timed out — retry when the disk is available')
+    .catch((err: unknown) => {
+      // A slow/busy disk is not a verdict on the file: leave it uncached so the next check retries.
+      transient = true
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) }
+    })
     .then((result) => {
       // Do not cache an older probe over a newer file revision.
       if (vodProbesInFlight.get(filePath)?.promise === promise) {
-        vodProbeCache.set(filePath, { mtimeMs, ...result })
+        if (!transient) vodProbeCache.set(filePath, { mtimeMs, ...result })
         vodProbesInFlight.delete(filePath)
       }
       return result
