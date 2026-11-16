@@ -1,4 +1,5 @@
-/** Canonical UpForge aim trainer scenario registry (mirrors upforge-api/config/trainer-scenarios.php) */
+/** UpForge aim trainer drills: the API manifest (trainer-scenarios.manifest.json) plus desktop copy. */
+import trainerManifest from './trainer-scenarios.manifest.json'
 
 export type TrainerScenarioKey =
   | 'flick'
@@ -40,213 +41,123 @@ export interface TrainerScenarioDef {
   games?: string[]
 }
 
-export const TRAINER_SCENARIOS: TrainerScenarioDef[] = [
-  {
-    key: 'angle_clearing',
-    label: 'Angle Clearing',
+/** One row of GET /api/training/scenarios (API resources/trainer-scenarios.json). */
+export interface TrainerManifestScenario {
+  key: string
+  label: string
+  ui_group: string
+  categories: string[]
+  radar: boolean
+  beta: boolean
+  games: string[] | null
+}
+
+/**
+ * Bundled copy of the API drill list. Keys, labels, groups, radar, beta and games come only from here;
+ * refresh it with `npm run drills:sync` (trainer-scenarios.test.ts fails when it and DRILL_COPY drift).
+ */
+export const TRAINER_MANIFEST = trainerManifest as { version: number; games: string[]; difficulties: string[]; scenarios: TrainerManifestScenario[] }
+
+/** Desktop-only words per drill. Everything else comes from the manifest. */
+export const DRILL_COPY: Record<TrainerScenarioKey, { description: string; tip: string }> = {
+  angle_clearing: {
     description: 'Clear cover before taking a headshot.',
     tip: 'Move sideways until the head clears cover, then click.',
-    uiGroup: 'duel',
-    radar: false,
-    vodCategories: ['crosshair_placement'],
   },
-  {
-    key: 'distance_switching',
-    label: 'Distance Switching',
+  distance_switching: {
     description: 'Alternate between close and distant standing targets.',
     tip: 'Keep your crosshair level while switching between near and far heads.',
-    uiGroup: 'duel',
-    radar: false,
-    vodCategories: ['crosshair_placement'],
   },
-  {
-    key: 'head_height',
-    label: 'Head Height Corridor',
+  head_height: {
     description: 'Clear corners against standing targets at 10m and 20m. Footage-based prototype.',
     tip: 'Use A/D to clear each bay with your crosshair at head height.',
-    uiGroup: 'duel',
-    radar: false,
-    vodCategories: ['crosshair_placement'],
-    // Fitted to Valorant range footage; CS2 as a warm-up. Not for Deadlock (API config/trainer-scenarios.php).
-    games: ['valorant', 'cs2'],
   },
-  {
-    key: 'flick',
-    label: 'Flick',
+  flick: {
     description: 'React and snap to stationary targets.',
     tip: 'Keep your arm loose — flicks are shoulder, not wrist.',
-    uiGroup: 'aim',
-    radar: true,
-    vodCategories: ['mechanics', 'crosshair_placement'],
   },
-  {
-    key: 'gridshot',
-    label: 'Gridshot',
+  gridshot: {
     description: 'Six targets on screen — click any to respawn. Pure clicking speed.',
     tip: 'Eyes lead — find the next target before your click lands.',
-    uiGroup: 'aim',
-    radar: false,
-    vodCategories: ['mechanics'],
   },
-  {
-    key: 'sixshot',
-    label: 'Sixshot',
+  sixshot: {
     description: 'Six clustered targets in a tight zone. Burst speed and rhythm.',
     tip: 'Stay relaxed between bursts — tension kills rhythm.',
-    uiGroup: 'aim',
-    radar: false,
-    vodCategories: ['mechanics'],
   },
-  {
-    key: 'microadjust',
-    label: 'Micro-Adj',
+  microadjust: {
     description: 'Fine corrections from near your cursor.',
     tip: 'Slow your mousepad movement — this is fingertip control.',
-    uiGroup: 'precision',
-    radar: true,
-    vodCategories: ['crosshair_placement', 'mechanics'],
   },
-  {
-    key: 'microflick',
-    label: 'Micro Flick',
+  microflick: {
     description: 'Tiny targets with a short window. Limits of flick precision.',
     tip: 'Micro-corrections only — no full arm flicks.',
-    uiGroup: 'precision',
-    radar: false,
-    vodCategories: ['crosshair_placement'],
   },
-  {
-    key: 'tracking',
-    label: 'Tracking',
+  tracking: {
     description: 'Keep crosshair on a moving target.',
     tip: "Match the target speed — don't overshoot then correct.",
-    uiGroup: 'reaction',
-    radar: true,
-    vodCategories: ['mechanics', 'positioning'],
   },
-  {
-    key: 'strafe_track',
-    label: 'Strafe Track',
+  strafe_track: {
     description: 'Target strafes back and forth — hold and track.',
     tip: 'Mirror their movement with smooth horizontal input.',
-    uiGroup: 'reaction',
-    radar: false,
-    vodCategories: ['mechanics'],
   },
-  {
-    key: 'switching',
-    label: 'Switch',
+  switching: {
     description: 'Click highlighted targets across the screen.',
     tip: 'Move your eyes before your mouse — predict, don\'t react.',
-    uiGroup: 'reaction',
-    radar: true,
-    vodCategories: ['game_sense', 'positioning'],
   },
-  {
-    key: 'strafe_aim',
-    label: 'Strafe Aim',
+  strafe_aim: {
     description: 'Counter-strafe before each shot. Stop-and-shoot muscle memory.',
     tip: 'Release A/D before clicking — full stop first.',
-    uiGroup: 'duel',
-    radar: false,
-    vodCategories: ['positioning', 'mechanics'],
-    // Counter-strafe model: not for Deadlock (API config/trainer-scenarios.php).
-    games: ['valorant', 'cs2'],
   },
-  {
-    key: 'duel',
-    label: '3D Duel',
+  duel: {
     description: 'FPS arena — peek angles, WASD movement.',
     tip: 'Pre-aim corners before committing — don\'t wide-peek.',
-    uiGroup: 'duel',
-    radar: true,
-    vodCategories: ['mechanics', 'crosshair_placement'],
   },
-  {
-    key: 'hold_angle',
-    label: 'Hold the Angle',
+  hold_angle: {
     description: 'Hold a doorway while an enemy swings at a random moment. Never shoot at nothing.',
     tip: 'Park your crosshair at head height on the edge and wait for the swing.',
-    uiGroup: 'duel',
-    radar: false,
-    vodCategories: ['crosshair_placement', 'positioning'],
-    beta: true,
   },
-  {
-    key: 'jiggle_peek',
-    label: 'Jiggle Peek',
+  jiggle_peek: {
     description: 'Peek just long enough to spot the enemy, then get back to cover.',
     tip: 'Tap out, see them, and leave before they can react.',
-    uiGroup: 'duel',
-    radar: false,
-    vodCategories: ['positioning'],
-    beta: true,
   },
-  {
-    key: 'trade_window',
-    label: 'Trade Window',
+  trade_window: {
     description: 'Your teammate dies on an angle. Swing and trade before the enemy resets.',
     tip: 'Stay a few metres behind and swing the moment they drop.',
-    uiGroup: 'duel',
-    radar: false,
-    vodCategories: ['positioning'],
-    beta: true,
   },
-  {
-    key: 'clear_site',
-    label: 'Clear the Site',
+  clear_site: {
     description: 'Glide through a site and pre-aim each corner before it opens.',
     tip: 'Crosshair on the next corner at head height before you reach it.',
-    uiGroup: 'duel',
-    radar: false,
-    vodCategories: ['crosshair_placement'],
-    beta: true,
   },
-  {
-    key: 'flash_swing',
-    label: 'Flash & Swing',
+  flash_swing: {
     description: 'An enemy flash comes over the wall. Turn away in time, then win the swing.',
     tip: 'Turn your back on the flash before it pops, then snap back to the angle.',
-    uiGroup: 'duel',
-    radar: false,
-    vodCategories: ['crosshair_placement', 'utility_usage'],
-    beta: true,
-    games: ['valorant'],
   },
-  {
-    key: 'operator_hold',
-    label: 'Operator Hold',
+  operator_hold: {
     description: 'Hold a long angle scoped while enemies wide-swing. Missing costs you the bolt.',
     tip: 'Stay scoped on the swing line and take the first clean shot.',
-    uiGroup: 'duel',
-    radar: false,
-    vodCategories: ['mechanics', 'positioning'],
-    beta: true,
-    games: ['valorant'],
   },
-  {
-    key: 'defuse_decision',
-    label: 'Defuse Decision',
+  defuse_decision: {
     description: 'The spike is down. Clear the hidden enemy or stick the defuse in time.',
     tip: 'Bait with a tap or check the angle first; past 3.5 s you keep half.',
-    uiGroup: 'duel',
-    radar: false,
-    vodCategories: ['game_sense'],
-    beta: true,
-    games: ['valorant'],
   },
-  {
-    key: 'retake_crossfire',
-    label: 'Retake Crossfire',
+  retake_crossfire: {
     description: 'Two defenders hold the site. Take the fights one at a time.',
     tip: 'Find the path where only one of them can see you.',
-    uiGroup: 'duel',
-    radar: false,
-    vodCategories: ['positioning', 'game_sense'],
-    beta: true,
-    games: ['valorant'],
   },
-]
+}
+
+export const TRAINER_SCENARIOS: TrainerScenarioDef[] = TRAINER_MANIFEST.scenarios
+  .filter(s => s.key in DRILL_COPY)
+  .map(s => ({
+    key: s.key as TrainerScenarioKey,
+    label: s.label,
+    ...DRILL_COPY[s.key as TrainerScenarioKey],
+    uiGroup: s.ui_group as TrainerUiGroup,
+    radar: s.radar,
+    vodCategories: s.categories,
+    ...(s.beta ? { beta: true } : {}),
+    ...(s.games ? { games: s.games } : {}),
+  }))
 
 export const TRAINER_SCENARIO_KEYS = TRAINER_SCENARIOS.map(s => s.key)
 

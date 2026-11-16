@@ -21,6 +21,8 @@
     "spatial:calibrate": "node scripts/spatial-calibrator.mjs",
     "spatial:plants": "node scripts/generate-plant-spots.mjs",
     "spatial:fetch-cs2-radars": "node scripts/fetch-cs2-radars.mjs",
+    "drills:sync": "node scripts/sync-trainer-manifest.mjs",
+    "drills:check": "node scripts/sync-trainer-manifest.mjs --check",
     "ranks:fetch": "node scripts/fetch-game-rank-assets.mjs",
     "assets:preview": "node scripts/open-asset-preview.mjs",
     "prepare": "husky",

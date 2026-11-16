@@ -1,0 +1,271 @@
+{
+    "version": 1,
+    "games": [
+        "valorant",
+        "cs2",
+        "deadlock"
+    ],
+    "difficulties": [
+        "easy",
+        "medium",
+        "hard",
+        "pro"
+    ],
+    "scenarios": [
+        {
+            "key": "angle_clearing",
+            "label": "Angle Clearing",
+            "ui_group": "duel",
+            "categories": [
+                "crosshair_placement"
+            ],
+            "radar": false,
+            "beta": false,
+            "games": null
+        },
+        {
+            "key": "distance_switching",
+            "label": "Distance Switching",
+            "ui_group": "duel",
+            "categories": [
+                "crosshair_placement"
+            ],
+            "radar": false,
+            "beta": false,
+            "games": null
+        },
+        {
+            "key": "head_height",
+            "label": "Head Height Corridor",
+            "ui_group": "duel",
+            "categories": [
+                "crosshair_placement"
+            ],
+            "radar": false,
+            "beta": false,
+            "games": [
+                "valorant",
+                "cs2"
+            ]
+        },
+        {
+            "key": "flick",
+            "label": "Flick",
+            "ui_group": "aim",
+            "categories": [
+                "mechanics",
+                "crosshair_placement"
+            ],
+            "radar": true,
+            "beta": false,
+            "games": null
+        },
+        {
+            "key": "gridshot",
+            "label": "Gridshot",
+            "ui_group": "aim",
+            "categories": [
+                "mechanics"
+            ],
+            "radar": false,
+            "beta": false,
+            "games": null
+        },
+        {
+            "key": "sixshot",
+            "label": "Sixshot",
+            "ui_group": "aim",
+            "categories": [
+                "mechanics"
+            ],
+            "radar": false,
+            "beta": false,
+            "games": null
+        },
+        {
+            "key": "microadjust",
+            "label": "Micro-Adjust",
+            "ui_group": "precision",
+            "categories": [
+                "crosshair_placement",
+                "mechanics"
+            ],
+            "radar": true,
+            "beta": false,
+            "games": null
+        },
+        {
+            "key": "microflick",
+            "label": "Micro Flick",
+            "ui_group": "precision",
+            "categories": [
+                "crosshair_placement"
+            ],
+            "radar": false,
+            "beta": false,
+            "games": null
+        },
+        {
+            "key": "tracking",
+            "label": "Tracking",
+            "ui_group": "reaction",
+            "categories": [
+                "mechanics",
+                "positioning"
+            ],
+            "radar": true,
+            "beta": false,
+            "games": null
+        },
+        {
+            "key": "strafe_track",
+            "label": "Strafe Track",
+            "ui_group": "reaction",
+            "categories": [
+                "mechanics"
+            ],
+            "radar": false,
+            "beta": false,
+            "games": null
+        },
+        {
+            "key": "switching",
+            "label": "Target Switch",
+            "ui_group": "reaction",
+            "categories": [
+                "game_sense",
+                "positioning"
+            ],
+            "radar": true,
+            "beta": false,
+            "games": null
+        },
+        {
+            "key": "strafe_aim",
+            "label": "Strafe Aim",
+            "ui_group": "duel",
+            "categories": [
+                "positioning",
+                "mechanics"
+            ],
+            "radar": false,
+            "beta": false,
+            "games": [
+                "valorant",
+                "cs2"
+            ]
+        },
+        {
+            "key": "duel",
+            "label": "3D Duel",
+            "ui_group": "duel",
+            "categories": [
+                "mechanics",
+                "crosshair_placement"
+            ],
+            "radar": true,
+            "beta": false,
+            "games": null
+        },
+        {
+            "key": "hold_angle",
+            "label": "Hold the Angle",
+            "ui_group": "duel",
+            "categories": [
+                "crosshair_placement",
+                "positioning"
+            ],
+            "radar": false,
+            "beta": true,
+            "games": null
+        },
+        {
+            "key": "jiggle_peek",
+            "label": "Jiggle Peek",
+            "ui_group": "duel",
+            "categories": [
+                "positioning"
+            ],
+            "radar": false,
+            "beta": true,
+            "games": null
+        },
+        {
+            "key": "trade_window",
+            "label": "Trade Window",
+            "ui_group": "duel",
+            "categories": [
+                "positioning"
+            ],
+            "radar": false,
+            "beta": true,
+            "games": null
+        },
+        {
+            "key": "clear_site",
+            "label": "Clear the Site",
+            "ui_group": "duel",
+            "categories": [
+                "crosshair_placement"
+            ],
+            "radar": false,
+            "beta": true,
+            "games": null
+        },
+        {
+            "key": "flash_swing",
+            "label": "Flash & Swing",
+            "ui_group": "duel",
+            "categories": [
+                "crosshair_placement",
+                "utility_usage"
+            ],
+            "radar": false,
+            "beta": true,
+            "games": [
+                "valorant"
+            ]
+        },
+        {
+            "key": "operator_hold",
+            "label": "Operator Hold",
+            "ui_group": "duel",
+            "categories": [
+                "mechanics",
+                "positioning"
+            ],
+            "radar": false,
+            "beta": true,
+            "games": [
+                "valorant"
+            ]
+        },
+        {
+            "key": "defuse_decision",
+            "label": "Defuse Decision",
+            "ui_group": "duel",
+            "categories": [
+                "game_sense"
+            ],
+            "radar": false,
+            "beta": true,
+            "games": [
+                "valorant"
+            ]
+        },
+        {
+            "key": "retake_crossfire",
+            "label": "Retake Crossfire",
+            "ui_group": "duel",
+            "categories": [
+                "positioning",
+                "game_sense"
+            ],
+            "radar": false,
+            "beta": true,
+            "games": [
+                "valorant"
+            ]
+        }
+    ]
+}
