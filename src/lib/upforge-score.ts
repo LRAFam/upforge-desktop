@@ -10,7 +10,7 @@
 
 export type ScoreTone = 'top' | 'good' | 'mid' | 'low'
 
-/** Tiers follow the API's mapping (500 = average for your rank, 650 ≈ top 16%, 850 ≈ top 1%). */
+/** Tiers follow the API's mapping (500 = average for the baseline group, 650 ≈ top 16%, 850 ≈ top 1%). */
 export function scoreTier(value1000: number): { label: string, tone: ScoreTone } {
   if (value1000 >= 850) return { label: 'Outstanding', tone: 'top' }
   if (value1000 >= 650) return { label: 'Strong', tone: 'good' }
@@ -28,7 +28,7 @@ export function scoreToneColor(tone: ScoreTone): string {
 
 /* ---- Stats-based UpForge score (API `upforge_score`, audit 2026-11-02) ----
  * The API now calculates the UpForge score from match stats against players at your rank
- * (docs/UPFORGE_SCORE.md in upforge-api): an int 0–1000, 500 = average for your rank.
+ * (docs/UPFORGE_SCORE.md in upforge-api): an int 0–1000, 500 = average for the baseline (your rank, else all ranks).
  * It is already out of 1000 — never multiply it. The AI's own rating (overall_score) is the
  * coach's opinion and is shown as "Coach rating 7/10", never under the UpForge name.
  */

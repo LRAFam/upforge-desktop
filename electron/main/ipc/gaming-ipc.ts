@@ -217,18 +217,6 @@ export function setupGamingHandlers(
     }
   })
 
-  ipcMain.handle('trainer:get-ai-coaching', async () => {
-    const token = auth.getToken()
-    if (!token) return null
-    try {
-      const res = await auth.getApi().get('/api/training/coaching')
-      return res.data ?? null
-    } catch (err: any) {
-      log.warn('[Trainer] Failed to fetch AI coaching:', err?.message)
-      return null
-    }
-  })
-
   ipcMain.handle('trainer:get-leaderboard', async (_e, scenario: string, period = 'week', difficulty = 'medium', durationSeconds = 60) => {
     const token = auth.getToken()
     if (!token) return []

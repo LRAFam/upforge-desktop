@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { baselineLine, breakdownRows, ordinal, sanitizeUpforgeScore, sanitizeUpforgeScoreBreakdown } from './upforge-score-breakdown'
+import { averageLine, baselineLine, breakdownRows, ordinal, sanitizeUpforgeScore, sanitizeUpforgeScoreBreakdown } from './upforge-score-breakdown'
 
 const api = {
   version: 1, score: 612, game: 'valorant', tier: 'platinum',
@@ -52,5 +54,24 @@ describe('breakdown wording', () => {
     expect(all[0].text).toBe('ACS · 72nd percentile across all ranks')
     const prior = breakdownRows(sanitizeUpforgeScoreBreakdown({ ...api, baseline: { source: 'prior', tier: 'gold', samples: 0 } })!)
     expect(prior[0].text).toBe('ACS · 72nd percentile')
+  })
+})
+
+describe('averageLine', () => {
+  it('names the rank only when the baseline is that rank', () => {
+    expect(averageLine({ source: 'tier', tier: 'gold', samples: 4120 })).toBe('500 is average for Gold')
+  })
+  it('says all ranks when the baseline pools every rank', () => {
+    expect(averageLine({ source: 'all', tier: null, samples: 900 })).toBe('500 is average across all ranks')
+    expect(averageLine({ source: 'all', tier: 'gold', samples: 900 })).not.toMatch(/Gold|your rank/)
+  })
+  it('claims no group for the early estimate or a missing breakdown', () => {
+    expect(averageLine({ source: 'prior', tier: 'gold', samples: null })).not.toMatch(/rank|Gold/)
+    expect(averageLine(null)).toBe('500 is an average game')
+  })
+  it('the match report uses it instead of a fixed "your rank" line', () => {
+    const vue = readFileSync(resolve(__dirname, '../views/v3/MatchReportV3.vue'), 'utf8')
+    expect(vue).not.toMatch(/500 is average for your rank/)
+    expect(vue).toMatch(/averageLine\(view\.value\?\.upforgeScoreBreakdown\?\.baseline\)/)
   })
 })

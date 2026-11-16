@@ -1782,13 +1782,6 @@ declare global {
         dismissCoachingDrill: (id: number) => Promise<{ ok: true } | { ok: false; error: string }>
         getCorrelation: () => Promise<string[]>
         getBenchmark: () => Promise<TrainingBenchmark | null>
-        getAiCoaching: () => Promise<{
-          focus_area: string
-          headline: string
-          message: string
-          tips: string[]
-          encouragement: string
-        } | null>
         getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all', difficulty?: string, durationSeconds?: number) => Promise<TrainerLeaderboardEntry[]>
       }
       deadlock: {

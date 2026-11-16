@@ -95,6 +95,18 @@ export function baselineLine(b: UpforgeScoreBaseline): string {
   return 'Early estimate: not enough players at your rank yet, so this uses typical averages'
 }
 
+/**
+ * What 500 means for this match, named after the baseline the API really used
+ * (rank, all ranks pooled, or the early estimate). No breakdown → no group is claimed.
+ */
+export function averageLine(b: UpforgeScoreBaseline | null | undefined): string {
+  if (!b) return '500 is an average game'
+  const tier = tierName(b.tier)
+  if (b.source === 'tier' && tier) return `500 is average for ${tier}`
+  if (b.source === 'all') return '500 is average across all ranks'
+  return '500 is an average game (early estimate)'
+}
+
 export interface BreakdownRow {
   key: string
   /** "ACS · 72nd percentile for Platinum" */

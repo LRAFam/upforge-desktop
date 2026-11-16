@@ -28,6 +28,7 @@ import { coachNoteLine } from '../../lib/coach-note-line'
 import UfRoundsLine from '../../components/v3/UfRoundsLine.vue'
 import ScoreWhyV3 from '../../components/v3/score/ScoreWhyV3.vue'
 import { matchScore, scoreToneColor } from '../../lib/upforge-score'
+import { averageLine } from '../../lib/upforge-score-breakdown'
 import { PRIMARY_GAME_ARTWORK } from '../../lib/games'
 import RoundStripV3 from '../../components/v3/coach-flow/RoundStripV3.vue'
 import DeadlockItemBuildV3 from '../../components/v3/games/DeadlockItemBuildV3.vue'
@@ -307,6 +308,8 @@ const ufScore = computed(() => {
   const s = matchScore({ upforge_score: view.value?.upforgeScore })
   return s?.kind === 'stats' ? s : null
 })
+/** "500 is average for Gold" / "… across all ranks": names the baseline the API actually used. */
+const ufAverageLine = computed(() => averageLine(view.value?.upforgeScoreBreakdown?.baseline))
 const resultWord = computed(() => (view.value?.result === 'win' ? 'Victory' : view.value?.result === 'loss' ? 'Defeat' : 'Match'))
 const meta = computed(() => view.value?.metaLine
   ?? [view.value?.map ? formatMapLabel(view.value.map) : null, view.value?.agent].filter(Boolean).join(' · '))
@@ -464,7 +467,7 @@ function back(): void { if (window.history.length > 1) router.back(); else route
           <section class="mr3-side">
             <div v-if="ufScore" class="mr3-focus">
               <span class="uf-label">UpForge score</span>
-              <p class="mr3-uf"><span class="uf-d3 uf-num" :style="{ color: scoreToneColor(ufScore.tone) }">{{ ufScore.text }}</span><span class="uf-t4">{{ ufScore.label }} · 500 is average for your rank</span></p>
+              <p class="mr3-uf"><span class="uf-d3 uf-num" :style="{ color: scoreToneColor(ufScore.tone) }">{{ ufScore.text }}</span><span class="uf-t4">{{ ufScore.label }} · {{ ufAverageLine }}</span></p>
               <ScoreWhyV3 v-if="view.upforgeScoreBreakdown" :score="ufScore.value" :breakdown="view.upforgeScoreBreakdown" />
             </div>
             <div v-if="view.focusChecks?.length" class="mr3-focus">
