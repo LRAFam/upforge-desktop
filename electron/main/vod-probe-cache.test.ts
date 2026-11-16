@@ -29,6 +29,26 @@ describe('VOD probe cache', () => {
     expect(await refreshVodProbe('next.mp4', async () => ({ ok: true }))).toEqual({ ok: true })
   })
 
+  it('does not cache a timed-out check as unreadable on a slow disk', async () => {
+    const rec = { game: 'valorant', path: 'slow.mp4', timeline: { recordingStartTime: 1000, endTime: 100_000 } } as PendingRecording
+    const slow = refreshVodProbe(rec.path, () => new Promise(() => {}))
+    await vi.advanceTimersByTimeAsync(45_000)
+    expect(await slow).toMatchObject({ ok: false, reason: expect.stringContaining('timed out') })
+    // Still waiting, not a terminal "unreadable" verdict.
+    expect(getVodFileReadiness(rec)).toBe('finalizing')
+    const retry = vi.fn(async () => ({ ok: true, durationMs: 99_000 }))
+    expect(await refreshVodProbe(rec.path, retry)).toEqual({ ok: true, durationMs: 99_000 })
+    expect(retry).toHaveBeenCalledTimes(1)
+    expect(getVodFileReadiness(rec)).toBe('ready')
+  })
+
+  it('still caches a completed probe that says the file is unreadable', async () => {
+    const bad = vi.fn(async () => ({ ok: false, reason: 'moov atom not found' }))
+    await refreshVodProbe('bad.mp4', bad)
+    await refreshVodProbe('bad.mp4', bad)
+    expect(bad).toHaveBeenCalledTimes(1)
+  })
+
   it('blocks the 93-minute file with a 47-minute recording clock', async () => {
     const rec = {
       game: 'valorant', path: 'long.mp4',
