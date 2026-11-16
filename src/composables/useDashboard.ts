@@ -54,7 +54,7 @@ import { POST_MATCH_COPY } from '../lib/post-match-copy'
 import { filterAnalysesForPrimaryGame } from '../lib/analysis-display'
 import { openAnalysisInApp } from '../lib/open-analysis-in-app'
 import { freeArchiveRetentionHint, readArchiveQuota } from '../lib/archive-retention-hint'
-import { asSessionEnded, DEFAULT_TRAINER_DURATION, launchTrainer, sessionEndedMessage, TRAINER_LAUNCH_FAILED_MESSAGE } from '../lib/trainer-launch'
+import { asSessionEnded, sessionEndedMessage } from '../lib/trainer-launch'
 import { appendActivityEntry } from '../lib/activity-log-append'
 
 export interface LolRecentMatch {
@@ -282,7 +282,6 @@ function createDashboard(opts: DashboardOptions = {}) {
   /** Saved account-wide; `lastInsight` is only the copy for the selected game (no Valorant note on CS2). */
   const savedLastInsight = ref<LastInsight | null>(null)
   const lastInsight = computed(() => insightForGame(savedLastInsight.value, primaryGame.value))
-  const lastInsightTraining = ref(false)
   const trainerLastSession = ref<{ score: number; scenario: string; date: string } | null>(null)
   const trainerSessionCount = ref(0)
 
@@ -1366,47 +1365,10 @@ function createDashboard(opts: DashboardOptions = {}) {
     }
   }
 
-  // Checked in order, so placement keywords win over the generic "aim".
-  // Spray/recoil, rotations and retakes have no trainer drill yet.
-  const WEAKNESS_TO_SCENARIO_DASH: Record<string, string> = {
-    crosshair: 'head_height', placement: 'head_height', 'head height': 'head_height',
-    switching: 'switching',
-    flick: 'flick', 'one tap': 'flick', reflex: 'flick', headshot: 'flick',
-    accuracy: 'flick', 'first shot': 'flick', aim: 'flick', click: 'flick',
-    track: 'strafe_track', moving: 'strafe_track', movement: 'strafe_track', smooth: 'strafe_track',
-  }
-
-  async function trainLastInsight() {
-    if (!lastInsight.value || lastInsightTraining.value) return
-    lastInsightTraining.value = true
-    try {
-      const text = lastInsight.value.text.toLowerCase()
-      const match = Object.entries(WEAKNESS_TO_SCENARIO_DASH).find(([keyword]) => text.includes(keyword))
-      if (!match) {
-        // Not an aim problem: let the player pick from the training hub instead of guessing Flick.
-        await router.push('/training')
-        return
-      }
-      await launchDashboardDrill(match[1])
-    } finally {
-      lastInsightTraining.value = false
-    }
-  }
-
   function showActivityToast(message: string) {
     activityToast.value = message
     if (activityToastTimer) clearTimeout(activityToastTimer)
     activityToastTimer = setTimeout(() => { activityToast.value = null }, 8000)
-  }
-
-  /** Every home/dashboard "run drill" button: medium, 60s, free play (no user drill). Shows why it failed. */
-  async function launchDashboardDrill(scenario: string): Promise<boolean> {
-    const res = await launchTrainer({ scenario, difficulty: 'medium', duration_seconds: DEFAULT_TRAINER_DURATION })
-    if (!res.ok) {
-      console.error('[Dashboard] Trainer launch failed:', res.error)
-      showActivityToast(res.error ?? TRAINER_LAUNCH_FAILED_MESSAGE)
-    }
-    return res.ok
   }
 
   function openBrowser() {
@@ -1926,13 +1888,11 @@ function createDashboard(opts: DashboardOptions = {}) {
     upgradeNeeded,
     activityLog,
     lastInsight,
-    lastInsightTraining,
     trainerLastSession,
     trainerSessionCount,
     analysisCompleteToast,
     analysisFailure,
     activityToast,
-    launchDashboardDrill,
     backgroundWorkBanner,
     archiveRetentionNudge,
     dismissArchiveRetentionNudge,
@@ -1998,7 +1958,6 @@ function createDashboard(opts: DashboardOptions = {}) {
     openClipsForSession,
     openTimeline,
     timelineLoadingId,
-    trainLastInsight,
     openBrowser,
     openPlaystyleProfile,
     openRecordingReview,

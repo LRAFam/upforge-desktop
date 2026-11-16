@@ -22,21 +22,17 @@ const CLIP_STILLS = import.meta.glob('../../../assets/training/clips/*.webp', {
 /** Width ÷ height of the clips (1920×1056). */
 export const CLIP_ASPECT = 1920 / 1056
 
-/** The clip shown when a drill has no picture of its own. */
-export const DEFAULT_CLIP = 'angle_route'
-/** Said under a clip that pictures the map drill rather than the drill named on the screen. */
-export const MAP_DRILL_PREVIEW = 'Preview: the new map drill'
+/** The clip shown when there is no drill to picture ("no drill yet", an unknown key). */
+export const DEFAULT_CLIP = 'head_height'
+/** Said under the default clip: the drill it shows, whatever the hero is about. */
+export const DEFAULT_CLIP_CAPTION = 'Head Height Corridor'
 
 /**
- * Drills pictured by a clip instead of a still. The map drill's guided lesson stands in for the
- * corner-clearing drills it replaces until it can be started from this app: the caption says so.
- * DO NOT SHIP a stand-in: either the map drill launches from here, or the entry goes.
+ * Drills pictured by a clip instead of a still: the drill itself, played through by a scripted hand.
+ * A clip never stands in for another drill, so every caption here is null. A clip of a drill this
+ * app cannot start does not belong here (drill-frames.test.ts fails on one).
  */
 export const DRILL_CLIP: Record<string, { clip: string; caption: string | null }> = {
-  angle_route: { clip: 'angle_route', caption: null },
-  angle_clearing: { clip: 'angle_route', caption: MAP_DRILL_PREVIEW },
-  clear_site: { clip: 'angle_route', caption: MAP_DRILL_PREVIEW },
-  // Each of these is the drill itself, played through by a scripted hand.
   head_height: { clip: 'head_height', caption: null },
   microflick: { clip: 'microflick', caption: null },
   gridshot: { clip: 'gridshot', caption: null },
@@ -44,7 +40,7 @@ export const DRILL_CLIP: Record<string, { clip: string; caption: string | null }
   flick: { clip: 'flick', caption: null },
 }
 
-/** A drill's own clip (never a stand-in), for places that show the drill itself: its tile. */
+/** A drill's own clip, for places that show the drill itself: its tile. */
 export function ownClip(scenario: string | null | undefined): DrillClip | null {
   const clip = drillClip(scenario)
   return clip && clip.caption === null ? clip : null
@@ -75,7 +71,7 @@ export function drillClip(
 
 /**
  * What to show behind the Practice hero: the drill's clip, else its frame, else the default clip
- * (flat drills and "no drill yet"). Always real footage of the trainer, never artwork.
+ * under its own name ("no drill yet"). Always real footage of the trainer, never artwork.
  */
 export function drillPicture(scenario: string | null | undefined): { clip: DrillClip | null; frame: DrillFrame | null } {
   const clip = drillClip(scenario)
@@ -84,7 +80,7 @@ export function drillPicture(scenario: string | null | undefined): { clip: Drill
   if (frame) return { clip: null, frame }
   const video = byName(CLIP_VIDEOS, DEFAULT_CLIP, 'mp4')
   const still = byName(CLIP_STILLS, DEFAULT_CLIP, 'webp')
-  return { clip: video && still ? { video, still, caption: MAP_DRILL_PREVIEW } : null, frame: null }
+  return { clip: video && still ? { video, still, caption: DEFAULT_CLIP_CAPTION } : null, frame: null }
 }
 
 /**

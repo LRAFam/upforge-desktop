@@ -71,3 +71,11 @@ export function correlationInsightsFrom(data: unknown): string[] {
     : []
   return list.filter((x): x is string => typeof x === 'string')
 }
+
+/** Games GET /api/drills and /api/training/plan accept as `?game=` (API validates the same list). */
+const DRILL_GAMES = ['valorant', 'cs2', 'deadlock', 'lol']
+
+/** Axios config for `?game=`: only a known game key is sent; anything else asks for every game (older behaviour). */
+export function drillGameParams(game: unknown): { params?: { game: string } } {
+  return typeof game === 'string' && DRILL_GAMES.includes(game) ? { params: { game } } : {}
+}

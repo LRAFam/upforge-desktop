@@ -125,6 +125,8 @@ export interface SharedTrainingPlan {
 
 export interface CoachingDrill {
   id: number
+  /** Game the drill is for (valorant / cs2 / deadlock / lol). Older APIs omit it. */
+  game?: string | null
   category: string
   title: string
   description?: string | null
@@ -149,6 +151,12 @@ export interface CoachingDrill {
   why?: string | null
   stat?: import('./lib/coaching-drill-stat').CoachingDrillStat | null
   beta?: boolean
+  /** Set only by match evidence on newer APIs (`verified_by`: match_stats | video_score; null = older record). */
+  verified_at?: string | null
+  verified_by?: string | null
+  /** Practice target hit in the trainer; the drill stays active until matches decide it. Newer APIs only. */
+  practice_passed_at?: string | null
+  practice_passed_score?: number | null
 }
 
 /** Settings › Advanced diagnostics capture (electron/main/game-data-capture.ts). */
@@ -1776,8 +1784,10 @@ declare global {
         /** Focus metric → allowed trainer drills (API rulebook); null when signed out or offline. */
         getDrillRulebook: (game?: string) => Promise<import('./lib/drill-rulebook').DrillRulebook | null>
         getHistory: (comparison?: import('./lib/training-result-metrics').TrainingComparisonRequest) => Promise<TrainingHistory | null>
-        getPlan: () => Promise<SharedTrainingPlan | null>
-        getCoachingDrills: () => Promise<CoachingDrill[]>
+        /** `game` asks for that game's plan (newer API); League gets null (no aim trainer). */
+        getPlan: (game?: string) => Promise<SharedTrainingPlan | null>
+        /** `game` lists only that game's drills (newer API); without it, every game. */
+        getCoachingDrills: (game?: string) => Promise<CoachingDrill[]>
         /** POST /api/drills/{id}/dismiss ("Not now"). */
         dismissCoachingDrill: (id: number) => Promise<{ ok: true } | { ok: false; error: string }>
         getCorrelation: () => Promise<string[]>

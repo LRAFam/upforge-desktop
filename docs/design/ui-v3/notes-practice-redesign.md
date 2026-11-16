@@ -50,13 +50,14 @@ run-through clips and real frames of each drill.
   in each. Drills that open on cover (Angle Clearing, Jiggle Peek, Hold the Angle, 3D Duel,
   Retake Crossfire) are photographed from a spot, or at a moment, where the enemy is in view.
 - `src/assets/training/clips/<name>.mp4` + `.webp`: run-through clips recorded in the trainer with
-  a scripted hand that waits a beat, eases onto the target and clicks (6 clips, about 3 MB in
-  total): the map drill's guided lesson, Head Height, Micro Flick, Gridshot, Strafe Track, Flick.
+  a scripted hand that waits a beat, eases onto the target and clicks (5 clips, about 2 MB in
+  total): Head Height, Micro Flick, Gridshot, Strafe Track, Flick.
 - `frameLayout()` places a picture so its aim point sits right of the copy at any window width.
-- **Do not ship a stand-in.** `DRILL_CLIP` uses the map drill's clip for Angle Clearing and Clear
-  the Site, captioned "Preview: the new map drill", because that drill cannot be started from this
-  app yet. Before release either the map drill launches from here or those two entries go. A test
-  lists the stand-ins so one cannot be added quietly.
+- **No stand-ins.** A clip only ever pictures its own drill, and only a drill this app can start
+  (`drill-frames.test.ts` fails otherwise). The map drill's clip was used for Angle Clearing and
+  Clear the Site while this was being built; it was taken out before release and comes back with
+  the map drill itself. With no drill to picture, the hero plays the Head Height clip under its
+  own name.
 - Re-capture a frame or clip when a drill's scene changes.
 
 ## Checks

@@ -77,6 +77,11 @@ export function drillStateFrom(response: unknown): TrainerDrillState | null {
           pass_score: Number(n.pass_score) || 70,
         }
       : null,
+    // Newer APIs only: practice target hit (trainer) is kept apart from verified (match evidence).
+    ...(typeof o.practice_passed === 'boolean' ? { practice_passed: o.practice_passed } : {}),
+    ...(typeof o.practice_passed_at === 'string' ? { practice_passed_at: o.practice_passed_at } : {}),
+    ...(typeof o.verified === 'boolean' ? { verified: o.verified } : {}),
+    ...(typeof o.verified_by === 'string' ? { verified_by: o.verified_by } : {}),
   }
 }
 

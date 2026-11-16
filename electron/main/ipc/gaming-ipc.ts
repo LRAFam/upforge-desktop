@@ -15,7 +15,7 @@ import { SettingsManager } from '../settings-manager'
 import { openExternalSafe, openPathSafe } from '../shell-open'
 import { PerformanceManager } from '../performance-manager'
 import { TrainerBridge } from '../trainer-bridge'
-import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest } from '../trainer-payload'
+import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest, drillGameParams } from '../trainer-payload'
 import { sendOverlayData } from '../overlay-window'
 import { apiPost } from './api-helpers'
 import { TrainerSessionQueue, trainerRunKey } from '../trainer-session-queue'
@@ -147,11 +147,12 @@ export function setupGamingHandlers(
     }
   })
 
-  ipcMain.handle('trainer:get-plan', async () => {
+  // `game` (valorant / cs2 / deadlock / lol) asks for that game's plan; League answers plan: null.
+  ipcMain.handle('trainer:get-plan', async (_e, game?: unknown) => {
     const token = auth.getToken()
     if (!token) return null
     try {
-      const res = await auth.getApi().get('/api/training/plan')
+      const res = await auth.getApi().get('/api/training/plan', drillGameParams(game))
       return res.data?.plan ?? null
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch shared training plan:', err?.message)
@@ -159,11 +160,11 @@ export function setupGamingHandlers(
     }
   })
 
-  ipcMain.handle('trainer:get-coaching-drills', async () => {
+  ipcMain.handle('trainer:get-coaching-drills', async (_e, game?: unknown) => {
     const token = auth.getToken()
     if (!token) return []
     try {
-      const res = await auth.getApi().get('/api/drills')
+      const res = await auth.getApi().get('/api/drills', drillGameParams(game))
       const data = res.data
       if (Array.isArray(data)) return data
       if (data && typeof data === 'object') return (data as Record<string, unknown>).active ?? []

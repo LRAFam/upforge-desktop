@@ -11,9 +11,11 @@
  */
 import UfTabs from '../../components/v3/UfTabs.vue'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import UfButton from '../../components/v3/UfButton.vue'
+import FocusesV3 from '../../components/v3/focus/FocusesV3.vue'
+import { hasFocusLoop } from '../../lib/focuses'
 import PracticeHeroV3 from '../../components/v3/practice/PracticeHeroV3.vue'
 import PracticeDrillTileV3 from '../../components/v3/practice/PracticeDrillTileV3.vue'
 import { drillFrame, frameLayout } from '../../components/v3/practice/drill-frames'
@@ -109,6 +111,12 @@ const { primaryGame } = usePrimaryGame()
 const scope = computed(() => practiceGameScope(primaryGame.value))
 const matchCoaching = computed(() => scope.value.matchCoaching)
 const showSensLink = computed(() => primaryGame.value === 'cs2' || primaryGame.value === 'deadlock')
+// League has no aim trainer: next-match focus instead of a session, and the drill library, daily
+// challenge and quick play stay hidden behind a link for players who want them anyway.
+const aimTrainer = computed(() => scope.value.aimTrainer)
+const libraryAnyway = ref(false)
+const showTrainerDrills = computed(() => aimTrainer.value || libraryAnyway.value)
+watch(primaryGame, () => { libraryAnyway.value = false })
 // One finding → drill mapping: the API rulebook (empty = no proven drill, said plainly).
 const rulebook = useDrillRulebook(typeof window === 'undefined' ? undefined : window.api?.trainer)
 const focusPlan = computed(() => focusDrillPlan(focus.value?.metric, props.drills.map(d => d.scenario), rulebook.value))
@@ -239,8 +247,20 @@ function thumb(scenario: string | null | undefined) {
 
     <!-- ── Today ─────────────────────────────────────────────────────────── -->
     <div v-if="activeTab === 'train'" class="uf-practice-body">
+      <!-- A game without the aim trainer (League): its next-match focus leads, and the aim drills stay behind a link. -->
+      <section v-if="!aimTrainer" class="uf-noplan uf-rise uf-d1s" aria-label="Next-match focus">
+        <FocusesV3 v-if="hasFocusLoop(primaryGame)" :game="primaryGame" heading="Your next-match focus">
+          <template #fallback>
+            <span class="uf-label">Your next-match focus</span>
+            <p class="uf-t4" style="margin: 0">Your coach sets one from your recent matches. It shows here and on Home.</p>
+          </template>
+        </FocusesV3>
+        <button type="button" class="uf-link uf-t4" :aria-expanded="libraryAnyway" @click="libraryAnyway = !libraryAnyway">
+          {{ libraryAnyway ? 'Hide the aim drill library' : 'Open the aim drill library anyway →' }}
+        </button>
+      </section>
       <!-- Hero: the routine and the one red action on this screen, over a real frame of the drill -->
-      <div v-if="heroPending" class="uf-hero-wait" aria-busy="true"><UfSkeleton :h="400" /></div>
+      <div v-else-if="heroPending" class="uf-hero-wait" aria-busy="true"><UfSkeleton :h="400" /></div>
       <PracticeHeroV3 v-else class="uf-reveal" :scenario="heroScenario" :caption="heroCaption">
         <template v-if="heroKind === 'report' && nextDrill">
           <span class="uf-label">Do this next · from your last match</span>
@@ -378,7 +398,7 @@ function thumb(scenario: string | null | undefined) {
           </ul>
         </section>
 
-        <section class="uf-rise uf-d3s">
+        <section v-if="showTrainerDrills" class="uf-rise uf-d3s">
           <div class="uf-section-head">
             <span class="uf-label">Play one on its own</span>
             <UfButton variant="link" @click="emit('update:activeTab', 'drills')">All drills</UfButton>
@@ -391,7 +411,7 @@ function thumb(scenario: string | null | undefined) {
           </ul>
         </section>
 
-        <p class="uf-t4 uf-practice-note">
+        <p v-if="showTrainerDrills" class="uf-t4 uf-practice-note">
           Drills use the crosshair and sensitivity from your setup.
           <button type="button" class="uf-link" @click="emit('update:activeTab', 'loadouts')">Setup</button>
           <RouterLink v-if="showCalibration && matchCoaching" to="/training/calibration" class="uf-link uf-t4" style="margin-left: 14px">Valorant calibration (admin) →</RouterLink>
@@ -406,18 +426,23 @@ function thumb(scenario: string | null | undefined) {
           {{ scope.note }}
           <RouterLink v-if="showSensLink" to="/settings?tab=trainer" class="uf-link">Trainer settings →</RouterLink>
         </p>
-        <p v-if="scoringNote" class="uf-t4 uf-practice-note">{{ scoringNote }}</p>
-        <section v-for="(g, gi) in groups" :key="g.id" class="uf-rise" :class="`uf-d${Math.min(gi + 1, 4)}s`">
-          <div class="uf-section-head uf-section-head--start">
-            <span class="uf-label">{{ GROUP_COPY[g.id].label }}</span>
-            <span class="uf-t4">{{ GROUP_COPY[g.id].what }}</span>
-          </div>
-          <ul v-if="g.drills.length" class="uf-tiles">
-            <PracticeDrillTileV3 v-for="d in g.drills" :key="d.scenario" :drill="d" :focus="g.id === 'yours'"
-              :running="runningScenario === d.scenario" :busy="busy" @play="emit('play-drill', $event)" />
-          </ul>
-          <p v-else class="uf-t4 uf-group-empty">No drill picked yet. {{ VALORANT_FOCUS_DESKTOP_ONLY }}</p>
-        </section>
+        <button v-if="!aimTrainer" type="button" class="uf-link uf-t4 uf-library-anyway" :aria-expanded="libraryAnyway" @click="libraryAnyway = !libraryAnyway">
+          {{ libraryAnyway ? 'Hide the aim drill library' : 'Open the aim drill library anyway →' }}
+        </button>
+        <template v-if="showTrainerDrills">
+          <p v-if="scoringNote" class="uf-t4 uf-practice-note">{{ scoringNote }}</p>
+          <section v-for="(g, gi) in groups" :key="g.id" class="uf-rise" :class="`uf-d${Math.min(gi + 1, 4)}s`">
+            <div class="uf-section-head uf-section-head--start">
+              <span class="uf-label">{{ GROUP_COPY[g.id].label }}</span>
+              <span class="uf-t4">{{ GROUP_COPY[g.id].what }}</span>
+            </div>
+            <ul v-if="g.drills.length" class="uf-tiles">
+              <PracticeDrillTileV3 v-for="d in g.drills" :key="d.scenario" :drill="d" :focus="g.id === 'yours'"
+                :running="runningScenario === d.scenario" :busy="busy" @play="emit('play-drill', $event)" />
+            </ul>
+            <p v-else class="uf-t4 uf-group-empty">No drill picked yet. {{ VALORANT_FOCUS_DESKTOP_ONLY }}</p>
+          </section>
+        </template>
       </div>
     </div>
   </div>
@@ -470,6 +495,9 @@ function thumb(scenario: string | null | undefined) {
 .uf-inmatch-bar { flex: 1 1 0; max-width: 56px; background: var(--uf-faint); transform-origin: bottom; }
 .uf-inmatch-bar.is-hit { background: var(--uf-win); }
 .uf-inmatch-base { position: absolute; left: 0; right: 0; height: 1px; background: var(--uf-bone); opacity: 0.55; }
+/* A game without the aim trainer: the next-match focus stands where the hero would */
+.uf-noplan { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; max-width: 840px; padding: 30px 40px 0; }
+.uf-library-anyway { align-self: flex-start; }
 
 /* Hairline rows */
 .uf-rows { list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--uf-line); }

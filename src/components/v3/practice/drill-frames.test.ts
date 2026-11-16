@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { CLIP_ASPECT, DEFAULT_CLIP, DRILL_CLIP, DRILL_FRAME_TARGET, FRAME_ASPECT, MAP_DRILL_PREVIEW, drillClip, drillFrame, drillPicture, frameLayout, ownClip } from './drill-frames'
-import { TRAINER_SCENARIOS } from '../../../lib/trainer-scenarios'
+import { CLIP_ASPECT, DEFAULT_CLIP, DEFAULT_CLIP_CAPTION, DRILL_CLIP, DRILL_FRAME_TARGET, FRAME_ASPECT, drillClip, drillFrame, drillPicture, frameLayout, ownClip } from './drill-frames'
+import { TRAINER_SCENARIOS, TRAINER_SCENARIO_KEYS } from '../../../lib/trainer-scenarios'
 
 describe('drill frames', () => {
   it('every drill with a marked target has a frame', () => {
@@ -90,40 +90,40 @@ describe('run-through clips', () => {
     expect(DRILL_CLIP[DEFAULT_CLIP]).toBeDefined()
   })
 
-  it('a clip of another drill says so under the picture; a drill\u2019s own clip does not', () => {
-    expect(drillClip('angle_route')!.caption).toBeNull()
-    expect(drillClip('angle_clearing')!.caption).toBe(MAP_DRILL_PREVIEW)
-    expect(drillClip('clear_site')!.caption).toBe(MAP_DRILL_PREVIEW)
+  it('a clip only ever pictures its own drill, and only a drill this app can start', () => {
+    for (const [key, entry] of Object.entries(DRILL_CLIP)) {
+      expect(entry.clip, key).toBe(key)
+      expect(entry.caption, key).toBeNull()
+      expect(TRAINER_SCENARIO_KEYS, key).toContain(key)
+    }
   })
 
   it('drills without a clip have none', () => {
     expect(drillClip('sixshot')).toBeNull()
     expect(drillClip('jiggle_peek')).toBeNull()
+    expect(drillClip('angle_clearing')).toBeNull()
+    expect(drillClip('clear_site')).toBeNull()
     expect(drillClip(null)).toBeNull()
-    expect(drillClip('angle_route', {}, {})).toBeNull()
+    expect(drillClip('head_height', {}, {})).toBeNull()
   })
 
-  it('a tile only plays the drill\u2019s own clip, never a stand-in', () => {
+  it('a tile plays the drill\u2019s own clip', () => {
     for (const key of ['head_height', 'microflick', 'gridshot', 'strafe_track', 'flick']) expect(ownClip(key), key).not.toBeNull()
     expect(ownClip('angle_clearing')).toBeNull()
-    expect(ownClip('clear_site')).toBeNull()
     expect(ownClip('sixshot')).toBeNull()
   })
 
-  it('stand-ins are listed here on purpose: wire the map drill or remove them before release', () => {
-    const standIns = Object.entries(DRILL_CLIP).filter(([, c]) => c.caption !== null).map(([key]) => key).sort()
-    expect(standIns).toEqual(['angle_clearing', 'clear_site'])
-  })
-
-  it('the hero always gets real footage: the clip, else the frame, else the default clip', () => {
-    expect(drillPicture('angle_clearing').clip).not.toBeNull()
+  it('the hero always gets real footage: the clip, else the frame, else the default clip under its own name', () => {
     expect(drillPicture('head_height').clip!.caption).toBeNull()
+    expect(drillPicture('angle_clearing')).toMatchObject({ clip: null })
+    expect(drillPicture('angle_clearing').frame).not.toBeNull()
     expect(drillPicture('sixshot')).toMatchObject({ clip: null })
     expect(drillPicture('sixshot').frame).not.toBeNull()
     for (const nothing of [null, undefined, '', 'not_a_drill']) {
       const p = drillPicture(nothing)
       expect(p.frame).toBeNull()
-      expect(p.clip!.caption).toBe(MAP_DRILL_PREVIEW)
+      expect(p.clip!.video).toBe(drillClip(DEFAULT_CLIP)!.video)
+      expect(p.clip!.caption).toBe(DEFAULT_CLIP_CAPTION)
     }
   })
 

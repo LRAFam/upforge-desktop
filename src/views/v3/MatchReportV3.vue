@@ -16,7 +16,7 @@ import { focusMetricScenario } from '../../components/v3/practice/focus-drills'
 import { useDrillRulebook } from '../../lib/drill-rulebook'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import { formatMapLabel, getAgentImage, getMapImage } from '../../lib/valorant'
-import { matchReportView, type MatchReportState } from '../../lib/match-report'
+import { matchReportView, reportPracticeMetric, type MatchReportState } from '../../lib/match-report'
 import {
   applyGameNotes, cs2NotesFacts, type GameNotesResult,
   cs2ReportView, deadlockReportView, lolReportView,
@@ -361,8 +361,7 @@ watch(matchId, () => { moments.value = []; flowState.value = null; void loadCoac
 const rulebook = useDrillRulebook(typeof window === 'undefined' ? undefined : window.api?.trainer)
 function practise(): void {
   const v = view.value
-  const metric = v?.nextSteps.find(s => s.drillMetric)?.drillMetric ?? null
-  router.push(practiceRouteFromReport(v?.drill ?? null, focusMetricScenario(metric, rulebook.value))).catch(() => {})
+  router.push(practiceRouteFromReport(v?.drill ?? null, focusMetricScenario(reportPracticeMetric(v), rulebook.value))).catch(() => {})
 }
 function back(): void { if (window.history.length > 1) router.back(); else router.push('/dashboard').catch(() => {}) }
 </script>

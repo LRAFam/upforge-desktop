@@ -475,8 +475,8 @@ const api = {
     /** Focus metric → allowed trainer drills, from the API rulebook (null when offline). */
     getDrillRulebook: (game?: string) => ipcRenderer.invoke('trainer:get-drill-rulebook', game),
     getHistory: (comparison?: import('../../src/lib/training-result-metrics').TrainingComparisonRequest) => ipcRenderer.invoke('trainer:get-history', comparison),
-    getPlan: () => ipcRenderer.invoke('trainer:get-plan'),
-    getCoachingDrills: () => ipcRenderer.invoke('trainer:get-coaching-drills'),
+    getPlan: (game?: string) => ipcRenderer.invoke('trainer:get-plan', game),
+    getCoachingDrills: (game?: string) => ipcRenderer.invoke('trainer:get-coaching-drills', game),
     dismissCoachingDrill: (id: number) => ipcRenderer.invoke('trainer:dismiss-coaching-drill', id),
     getCorrelation: () => ipcRenderer.invoke('trainer:get-correlation'),
     getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),

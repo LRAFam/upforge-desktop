@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   cleanDrillTitle,
+  drillsForGame,
+  planForGame,
   pickNextDrill,
   practiceRouteFromReport,
   durationLabel,
@@ -111,7 +113,7 @@ describe('drills from your matches', () => {
 
 describe('practiceGameScope', () => {
   it('shows focus, match drills and calibration only for Valorant', () => {
-    expect(practiceGameScope('valorant')).toEqual({ matchCoaching: true, note: null })
+    expect(practiceGameScope('valorant')).toEqual({ matchCoaching: true, aimTrainer: true, note: null })
     for (const game of ['cs2', 'deadlock', 'lol', 'apex']) {
       const scope = practiceGameScope(game)
       expect(scope.matchCoaching).toBe(false)
@@ -121,7 +123,34 @@ describe('practiceGameScope', () => {
   it('points shooters at their own sensitivity and is honest with League', () => {
     expect(practiceGameScope('cs2').note).toContain('CS2 sensitivity')
     expect(practiceGameScope('deadlock').note).toContain('Deadlock sensitivity')
-    expect(practiceGameScope('lol').note).toContain('won’t help much in League')
+    expect(practiceGameScope('lol').note).toContain('League has no practice session')
+  })
+  it('offers the aim trainer to shooters only (League: no session, library behind a link)', () => {
+    for (const game of ['valorant', 'cs2', 'deadlock', null, undefined]) expect(practiceGameScope(game).aimTrainer).toBe(true)
+    expect(practiceGameScope('lol').aimTrainer).toBe(false)
+  })
+})
+
+describe('drillsForGame', () => {
+  const rows = [{ id: 1, game: 'valorant' }, { id: 2, game: 'cs2' }, { id: 3 }, { id: 4, game: null }]
+  it('keeps only the current game, plus rows from older APIs without a game', () => {
+    expect(drillsForGame(rows, 'cs2').map(r => r.id)).toEqual([2, 3, 4])
+    expect(drillsForGame(rows, 'lol').map(r => r.id)).toEqual([3, 4])
+  })
+  it('keeps every row when the game is not known', () => {
+    expect(drillsForGame(rows, null).map(r => r.id)).toEqual([1, 2, 3, 4])
+  })
+})
+
+describe('planForGame', () => {
+  const plan = { focus: { reason: 'x' } }
+  it('drops any plan for League, also a Valorant plan from an older API', () => {
+    expect(planForGame(plan, 'lol')).toBeNull()
+    expect(planForGame(null, 'lol')).toBeNull()
+  })
+  it('keeps the plan for shooters', () => {
+    expect(planForGame(plan, 'cs2')).toBe(plan)
+    expect(planForGame(undefined, 'valorant')).toBeNull()
   })
 })
 
