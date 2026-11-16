@@ -72,6 +72,8 @@ export interface AppSettings {
   autoAnalyse: boolean // automatically upload & analyse after game ends
   /** Versioned proof that auto-analysis was chosen after the explicit-consent migration. */
   autoAnalyseConsentVersion: 1
+  /** The player answered the onboarding / first post-game "analyse automatically?" choice. */
+  autoAnalysePromptAnswered?: boolean
   firstRun: boolean
   /** Set after welcome / onboarding wizard — avoids re-prompting on every launch */
   onboardingComplete?: boolean

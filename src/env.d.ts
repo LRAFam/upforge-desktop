@@ -216,6 +216,7 @@ export interface AppSettings {
     deadlock: string[]
   }
   autoAnalyse: boolean
+  autoAnalysePromptAnswered?: boolean
   firstRun: boolean
   onboardingComplete?: boolean
   onboardingRecordingVerified?: boolean

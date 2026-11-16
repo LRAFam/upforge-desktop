@@ -85,3 +85,6 @@
 /* Roster flow: optional "I have a coach" reminder on the last step. */
 .ui-v3 .ob-v3 .ob3-coach { display: flex; gap: 10px; align-items: center; color: var(--uf-muted); cursor: pointer; }
 .ui-v3 .ob-v3 .ob3-coach input { width: 15px; height: 15px; margin: 0; accent-color: var(--uf-bone); }
+.ui-v3 .ob-v3 .ob3-choice { border: 0; margin: 0; padding: 0; }
+.ui-v3 .ob-v3 .ob3-choice .ob3-coach { align-items: flex-start; }
+.ui-v3 .ob-v3 .ob3-choice .ob3-coach input { margin-top: 2px; flex-shrink: 0; }

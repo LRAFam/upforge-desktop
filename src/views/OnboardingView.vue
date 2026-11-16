@@ -349,6 +349,17 @@
                 <summary class="uf-t4">Already use OBS?</summary>
                 <p class="uf-t4">UpForge adds its own scene and records with its own OBS profile, then switches back to yours after each match. Your scenes, canvas and recording folder stay as they are. If a recording, stream or replay buffer is active, finish it and check again.</p>
               </details>
+              <fieldset class="ob3-group ob3-choice">
+                <legend class="uf-label">After each match</legend>
+                <label class="ob3-coach uf-t4">
+                  <input type="radio" name="auto-analyse" :checked="autoAnalyseChosen" :disabled="isPreview" @change="chooseAutoAnalyse(true)">
+                  <span><span class="uf-t3">{{ AUTO_ANALYSE_CHOICE_LABEL }}</span> — {{ AUTO_ANALYSE_CHOICE_HINT }}</span>
+                </label>
+                <label class="ob3-coach uf-t4">
+                  <input type="radio" name="auto-analyse" :checked="!autoAnalyseChosen" :disabled="isPreview" @change="chooseAutoAnalyse(false)">
+                  <span>I'll choose which matches to analyse (recordings stay on this PC)</span>
+                </label>
+              </fieldset>
               <p v-if="isPreview" class="uf-t4">This preview does not change OBS.</p>
               <p v-if="bonusEligible" class="uf-t4">Your first Pro match review is included. Try it when you're ready to play; it isn't required to finish setup.</p>
               <p v-if="!recordingSetupReady" class="uf-t4">Recording is not verified yet. You can check it again in Settings → Recording.</p>
@@ -1253,6 +1264,7 @@ import type { ProfileData } from '../env.d.ts'
 import { readJoinCoachLater, setJoinCoachLater } from '../components/v3/roster-flow/roster-flow'
 import { resolveOnboardingCompletionRoute } from '../lib/onboarding-gate'
 import { syncPendingOnboardingCampaign } from '../lib/desktop-onboarding-campaign'
+import { AUTO_ANALYSE_CHOICE_HINT, AUTO_ANALYSE_CHOICE_LABEL, autoAnalyseChoicePatch } from '../lib/auto-analyse-choice'
 import { resolveOnboardingStep } from '../lib/onboarding-flow'
 import { VALORANT_FOCUS_DESKTOP_ONLY } from '../lib/focus'
 import { useRoute, useRouter } from 'vue-router'
@@ -1590,6 +1602,17 @@ const stepLabels = ['Sign in', 'Your game', 'Game account', 'Capture check', 'Yo
 
 // Roster flow (UI v3): "I have a coach" reminder shown on Home until they join a roster.
 const coachInviteLater = ref(readJoinCoachLater())
+/** Step 4 choice: off unless the player picks it (saved at once so the guided mission keeps it). */
+const autoAnalyseChosen = ref(false)
+async function chooseAutoAnalyse(enabled: boolean) {
+  autoAnalyseChosen.value = enabled
+  if (isPreview.value || !window.api) return
+  try {
+    await window.api.settings.save(autoAnalyseChoicePatch(enabled))
+  } catch (e) {
+    console.warn('[Onboarding] Could not save the auto-analyse choice:', e)
+  }
+}
 watch(coachInviteLater, (on) => setJoinCoachLater(on))
 
 
@@ -1770,6 +1793,10 @@ onMounted(async () => {
     }
     minimizeOnboardingOnceRecordingConfirmed(data.recording)
   }))
+  try {
+    const saved = await window.api.settings.get().catch(() => null)
+    autoAnalyseChosen.value = saved?.autoAnalyse === true
+  } catch { /* keep off */ }
   try {
     await refreshAuthState()
     await ensureAuthedOrStay()

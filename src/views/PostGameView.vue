@@ -39,6 +39,8 @@
       :report-match-id="gameInfo.game === 'valorant' && matchId && matchId !== 'preview-match-id' ? matchId : null"
       :cloud-line="state === 'ready' && result?.analysis_id ? postGameCloud : null"
       :game="gameInfo.game"
+      :auto-analyse-offer="state === 'pending' ? autoAnalyseOffer : null"
+      @auto-analyse-choice="answerAutoAnalyse"
       @keep-cloud="handoffToMain({ path: '/cloud-storage', query: { keep: '1' } })"
       @primary="handleCompactPrimary"
       @secondary="viewFullAnalysis"
@@ -74,6 +76,7 @@ import { filterSessionClips } from '../lib/session-clips'
 import type { ClipRecord } from '../env.d.ts'
 import type { CategoryPercentileEntry } from '../components/CategoryPercentilesStrip.vue'
 import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
+import { autoAnalyseChoicePatch, shouldOfferAutoAnalyse } from '../lib/auto-analyse-choice'
 import { type DemoDownloadProgress } from '../lib/demo-download-progress'
 import PostGameV3 from './v3/PostGameV3.vue'
 import { matchScore } from '../lib/upforge-score'
@@ -190,6 +193,24 @@ const errorTitle = computed(() => {
   return 'Upload failed'
 })
 const pendingRecordingId = ref<string | null>(null)
+/** 'ask' once for players with auto-analyse off who never answered; 'on' confirms a yes. */
+const autoAnalyseOffer = ref<'ask' | 'on' | null>(null)
+async function refreshAutoAnalyseOffer() {
+  try {
+    const settings = await window.api.settings.get()
+    autoAnalyseOffer.value = shouldOfferAutoAnalyse(settings) ? 'ask' : null
+  } catch {
+    autoAnalyseOffer.value = null
+  }
+}
+async function answerAutoAnalyse(enabled: boolean) {
+  try {
+    await window.api.settings.save(autoAnalyseChoicePatch(enabled))
+    autoAnalyseOffer.value = enabled ? 'on' : null
+  } catch {
+    autoAnalyseOffer.value = null
+  }
+}
 const submissionFocusText = ref('')
 watch(pendingRecordingId, () => { submissionFocusText.value = '' })
 const pendingAnalysisReady = ref(false)
@@ -889,6 +910,7 @@ onMounted(() => {
       void refreshPendingReadiness()
     }
     state.value = 'pending'
+    void refreshAutoAnalyseOffer()
     void refreshLocalSpatialSummary()
   }))
   ipcCleanup.push(window.api.on('post-game:analysis-readiness', (...args: unknown[]) => {
