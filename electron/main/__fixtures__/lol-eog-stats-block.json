@@ -1,0 +1,158 @@
+{
+  "basePoints": 0,
+  "causedEarlySurrender": false,
+  "currentLevel": 212,
+  "earlySurrenderAccomplice": false,
+  "experienceEarned": 0,
+  "gameEndedInEarlySurrender": false,
+  "gameId": 7381024556,
+  "gameLength": 1834,
+  "gameMode": "CLASSIC",
+  "gameMutators": [],
+  "gameType": "MATCHED_GAME",
+  "invalid": false,
+  "leveledUp": false,
+  "localPlayer": {
+    "botPlayer": false,
+    "championId": 222,
+    "championName": "Jinx",
+    "detectedTeamPosition": "BOTTOM",
+    "gameId": 7381024556,
+    "isLocalPlayer": true,
+    "items": [6672, 3006, 3031, 3094, 3036, 0, 3363],
+    "level": 212,
+    "profileIconId": 29,
+    "puuid": "fixture-local-puuid",
+    "selectedPosition": "BOTTOM",
+    "spell1Id": 4,
+    "spell2Id": 7,
+    "stats": { "WIN": 1, "CHAMPIONS_KILLED": 10, "NUM_DEATHS": 2, "ASSISTS": 6, "LEVEL": 15, "PERK0": 8008 },
+    "summonerId": 1003,
+    "summonerName": "Local Player",
+    "teamId": 100
+  },
+  "myTeamStatus": "",
+  "queueType": "RANKED_SOLO_5x5",
+  "ranked": true,
+  "reportGameId": 7381024556,
+  "teamEarlySurrendered": false,
+  "teams": [
+    {
+      "fullId": "",
+      "isBottomTeam": true,
+      "isPlayerTeam": true,
+      "isWinningTeam": true,
+      "memberStatusString": "",
+      "name": "",
+      "players": [
+        {
+          "botPlayer": false,
+          "championId": 103,
+          "championName": "Ahri",
+          "championSquarePortraitPath": "/lol-game-data/assets/v1/champion-icons/103.png",
+          "detectedTeamPosition": "MIDDLE",
+          "gameId": 7381024556,
+          "isLocalPlayer": false,
+          "items": [6655, 3020, 4645, 3089, 3157, 0, 3340],
+          "leaver": false,
+          "leaves": 0,
+          "level": 344,
+          "losses": 0,
+          "profileIconId": 4568,
+          "puuid": "other-player-puuid-must-not-be-sent",
+          "selectedPosition": "MIDDLE",
+          "skinEmblemPaths": [],
+          "spell1Id": 4,
+          "spell2Id": 14,
+          "stats": {
+            "ASSISTS": 9, "BARRACKS_KILLED": 1, "CHAMPIONS_KILLED": 7, "GOLD_EARNED": 12450, "LEVEL": 16,
+            "MINIONS_KILLED": 212, "NEUTRAL_MINIONS_KILLED": 8, "NUM_DEATHS": 3, "PERK0": 8112, "PERK0_VAR1": 1450,
+            "PERK_PRIMARY_STYLE": 8100, "PERK_SUB_STYLE": 8200, "TOTAL_DAMAGE_DEALT_TO_CHAMPIONS": 24100,
+            "TOTAL_DAMAGE_DEALT_TO_OBJECTIVES": 6000, "TOTAL_DAMAGE_TAKEN": 18000, "VISION_SCORE": 22,
+            "VISION_WARDS_BOUGHT_IN_GAME": 2, "WARD_KILLED": 3, "WARD_PLACED": 9, "WIN": 1
+          },
+          "summonerId": 1002,
+          "summonerName": "Kitsune Main",
+          "teamId": 100,
+          "wins": 0
+        },
+        {
+          "botPlayer": false,
+          "championId": 222,
+          "championName": "Jinx",
+          "detectedTeamPosition": "BOTTOM",
+          "gameId": 7381024556,
+          "isLocalPlayer": true,
+          "items": [6672, 3006, 3031, 3094, 3036, 0, 3363],
+          "level": 212,
+          "puuid": "fixture-local-puuid",
+          "selectedPosition": "BOTTOM",
+          "spell1Id": 4,
+          "spell2Id": 7,
+          "stats": {
+            "ASSISTS": 6, "CHAMPIONS_KILLED": 10, "GOLD_EARNED": 14320, "LEVEL": 15, "MINIONS_KILLED": 241,
+            "NEUTRAL_MINIONS_KILLED": 4, "NUM_DEATHS": 2, "PERK0": 8008, "TOTAL_DAMAGE_DEALT_TO_CHAMPIONS": 27600,
+            "TOTAL_DAMAGE_DEALT_TO_OBJECTIVES": 9800, "TOTAL_DAMAGE_TAKEN": 15100, "VISION_SCORE": 19,
+            "VISION_WARDS_BOUGHT_IN_GAME": 2, "WARD_KILLED": 4, "WARD_PLACED": 8, "WIN": 1
+          },
+          "summonerId": 1003,
+          "summonerName": "Local Player",
+          "teamId": 100
+        }
+      ],
+      "stats": { "CHAMPIONS_KILLED": 17, "NUM_DEATHS": 5, "ASSISTS": 15 },
+      "tag": "",
+      "teamId": 100
+    },
+    {
+      "isBottomTeam": false,
+      "isPlayerTeam": false,
+      "isWinningTeam": false,
+      "players": [
+        {
+          "botPlayer": false,
+          "championId": 134,
+          "championName": "Syndra",
+          "detectedTeamPosition": "",
+          "isLocalPlayer": false,
+          "items": [6655, 3020, 4645, 3135, 0, 0, 3364],
+          "puuid": "other-player-puuid-2",
+          "selectedPosition": "MIDDLE",
+          "spell1Id": 4,
+          "spell2Id": 14,
+          "stats": {
+            "ASSISTS": 4, "CHAMPIONS_KILLED": 6, "GOLD_EARNED": 11000, "LEVEL": 15, "MINIONS_KILLED": 198,
+            "NEUTRAL_MINIONS_KILLED": 6, "NUM_DEATHS": 5, "PERK0": 8112, "TOTAL_DAMAGE_DEALT_TO_CHAMPIONS": 21900,
+            "TOTAL_DAMAGE_DEALT_TO_OBJECTIVES": 3300, "TOTAL_DAMAGE_TAKEN": 16200,
+            "VISION_WARDS_BOUGHT_IN_GAME": 1, "LOSE": 1
+          },
+          "summonerId": 2002,
+          "summonerName": "Dark Orb",
+          "teamId": 200
+        },
+        {
+          "botPlayer": false,
+          "championId": 145,
+          "championName": "Kai'Sa",
+          "detectedTeamPosition": "BOTTOM",
+          "isLocalPlayer": false,
+          "items": [3124, 3006, 3115, 3089, 0, 0, 3363],
+          "puuid": "other-player-puuid-3",
+          "selectedPosition": "BOTTOM",
+          "spell1Id": 4,
+          "spell2Id": 7,
+          "stats": {
+            "ASSISTS": 4, "CHAMPIONS_KILLED": 3, "GOLD_EARNED": 10450, "LEVEL": 14, "MINIONS_KILLED": 203,
+            "NEUTRAL_MINIONS_KILLED": 2, "NUM_DEATHS": 6, "PERK0": 8008, "TOTAL_DAMAGE_DEALT_TO_CHAMPIONS": 16400,
+            "TOTAL_DAMAGE_DEALT_TO_OBJECTIVES": 4100, "TOTAL_DAMAGE_TAKEN": 17900,
+            "VISION_WARDS_BOUGHT_IN_GAME": 1, "LOSE": 1
+          },
+          "summonerId": 2003,
+          "summonerName": "Void Sweep",
+          "teamId": 200
+        }
+      ],
+      "teamId": 200
+    }
+  ]
+}

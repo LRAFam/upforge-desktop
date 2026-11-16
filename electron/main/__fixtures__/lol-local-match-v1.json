@@ -1,0 +1,614 @@
+{
+  "schema": "upforge.lol_local_match.v1",
+  "game_id": 7381024556,
+  "platform_id": "EUW1",
+  "queue_id": 420,
+  "queue_label": "Ranked Solo/Duo",
+  "game_mode": "CLASSIC",
+  "map_id": 11,
+  "game_length_s": 1834,
+  "ended_at": "2026-11-15T21:42:10Z",
+  "patch": "16.22",
+  "local_player": {
+    "puuid": "fixture-local-puuid-0000-0000-0000-000000000003",
+    "riot_id": "Local Player#UPF",
+    "team_id": 100,
+    "participant_index": 3
+  },
+  "winning_team_id": 100,
+  "participants": [
+    {
+      "participant_index": 0,
+      "team_id": 100,
+      "champion": "Ornn",
+      "champion_id": 516,
+      "position": "TOP",
+      "riot_id": "IronWall#EUW",
+      "is_local": false,
+      "level": 15,
+      "kills": 1,
+      "deaths": 3,
+      "assists": 11,
+      "cs": 188,
+      "neutral_cs": 0,
+      "gold_earned": 9870,
+      "damage_to_champions": 14200,
+      "damage_taken": 31200,
+      "damage_to_objectives": 4100,
+      "vision_score": 18,
+      "wards_placed": 8,
+      "wards_killed": 2,
+      "control_wards_bought": 2,
+      "items": [
+        3068,
+        3075,
+        3047,
+        3083,
+        1029
+      ],
+      "summoner_spells": [
+        4,
+        12
+      ],
+      "keystone_id": 8437
+    },
+    {
+      "participant_index": 1,
+      "team_id": 100,
+      "champion": "Viego",
+      "champion_id": 234,
+      "position": "JUNGLE",
+      "riot_id": "LeafJungle#EUW",
+      "is_local": false,
+      "level": 16,
+      "kills": 8,
+      "deaths": 4,
+      "assists": 10,
+      "cs": 42,
+      "neutral_cs": 148,
+      "gold_earned": 13100,
+      "damage_to_champions": 19800,
+      "damage_taken": 28900,
+      "damage_to_objectives": 21400,
+      "vision_score": 27,
+      "wards_placed": 6,
+      "wards_killed": 7,
+      "control_wards_bought": 3,
+      "items": [
+        6692,
+        3158,
+        3071,
+        6333,
+        3053
+      ],
+      "summoner_spells": [
+        4,
+        11
+      ],
+      "keystone_id": 8010
+    },
+    {
+      "participant_index": 2,
+      "team_id": 100,
+      "champion": "Ahri",
+      "champion_id": 103,
+      "position": "MIDDLE",
+      "riot_id": "Kitsune Main#EUW",
+      "is_local": false,
+      "level": 16,
+      "kills": 7,
+      "deaths": 3,
+      "assists": 9,
+      "cs": 212,
+      "neutral_cs": 8,
+      "gold_earned": 12450,
+      "damage_to_champions": 24100,
+      "damage_taken": 18000,
+      "damage_to_objectives": 6000,
+      "vision_score": 22,
+      "wards_placed": 9,
+      "wards_killed": 3,
+      "control_wards_bought": 2,
+      "items": [
+        6655,
+        3020,
+        4645,
+        3089,
+        3157
+      ],
+      "summoner_spells": [
+        4,
+        14
+      ],
+      "keystone_id": 8112
+    },
+    {
+      "participant_index": 3,
+      "team_id": 100,
+      "champion": "Jinx",
+      "champion_id": 222,
+      "position": "BOTTOM",
+      "riot_id": "Local Player#UPF",
+      "is_local": true,
+      "level": 15,
+      "kills": 10,
+      "deaths": 2,
+      "assists": 6,
+      "cs": 241,
+      "neutral_cs": 4,
+      "gold_earned": 14320,
+      "damage_to_champions": 27600,
+      "damage_taken": 15100,
+      "damage_to_objectives": 9800,
+      "vision_score": 19,
+      "wards_placed": 8,
+      "wards_killed": 4,
+      "control_wards_bought": 2,
+      "items": [
+        6672,
+        3006,
+        3031,
+        3094,
+        3036
+      ],
+      "summoner_spells": [
+        4,
+        7
+      ],
+      "keystone_id": 8008
+    },
+    {
+      "participant_index": 4,
+      "team_id": 100,
+      "champion": "Nautilus",
+      "champion_id": 111,
+      "position": "UTILITY",
+      "riot_id": null,
+      "is_local": false,
+      "level": 13,
+      "kills": 0,
+      "deaths": 5,
+      "assists": 18,
+      "cs": 31,
+      "neutral_cs": 0,
+      "gold_earned": 8150,
+      "damage_to_champions": 8900,
+      "damage_taken": 24300,
+      "damage_to_objectives": 1200,
+      "vision_score": 58,
+      "wards_placed": 21,
+      "wards_killed": 6,
+      "control_wards_bought": 8,
+      "items": [
+        3876,
+        3190,
+        3111,
+        3050,
+        3109
+      ],
+      "summoner_spells": [
+        4,
+        14
+      ],
+      "keystone_id": 8439
+    },
+    {
+      "participant_index": 5,
+      "team_id": 200,
+      "champion": "Garen",
+      "champion_id": 86,
+      "position": "TOP",
+      "riot_id": "Spin2Win#EUW",
+      "is_local": false,
+      "level": 15,
+      "kills": 3,
+      "deaths": 4,
+      "assists": 2,
+      "cs": 197,
+      "neutral_cs": 0,
+      "gold_earned": 10200,
+      "damage_to_champions": 17500,
+      "damage_taken": 25800,
+      "damage_to_objectives": 5200,
+      "vision_score": 11,
+      "wards_placed": 7,
+      "wards_killed": 1,
+      "control_wards_bought": 1,
+      "items": [
+        6631,
+        3047,
+        3053,
+        6333
+      ],
+      "summoner_spells": [
+        4,
+        6
+      ],
+      "keystone_id": 8010
+    },
+    {
+      "participant_index": 6,
+      "team_id": 200,
+      "champion": "Lee Sin",
+      "champion_id": 64,
+      "position": "JUNGLE",
+      "riot_id": null,
+      "is_local": false,
+      "level": 14,
+      "kills": 4,
+      "deaths": 6,
+      "assists": 6,
+      "cs": 31,
+      "neutral_cs": 121,
+      "gold_earned": 10040,
+      "damage_to_champions": 13300,
+      "damage_taken": 27100,
+      "damage_to_objectives": 14800,
+      "vision_score": 24,
+      "wards_placed": 7,
+      "wards_killed": 5,
+      "control_wards_bought": 3,
+      "items": [
+        6692,
+        3047,
+        3071,
+        6333
+      ],
+      "summoner_spells": [
+        4,
+        11
+      ],
+      "keystone_id": 8010
+    },
+    {
+      "participant_index": 7,
+      "team_id": 200,
+      "champion": "Syndra",
+      "champion_id": 134,
+      "position": "MIDDLE",
+      "riot_id": "Dark Orb#EUW",
+      "is_local": false,
+      "level": 15,
+      "kills": 6,
+      "deaths": 5,
+      "assists": 4,
+      "cs": 198,
+      "neutral_cs": 6,
+      "gold_earned": 11000,
+      "damage_to_champions": 21900,
+      "damage_taken": 16200,
+      "damage_to_objectives": 3300,
+      "vision_score": 17,
+      "wards_placed": 8,
+      "wards_killed": 2,
+      "control_wards_bought": 1,
+      "items": [
+        6655,
+        3020,
+        4645,
+        3135
+      ],
+      "summoner_spells": [
+        4,
+        14
+      ],
+      "keystone_id": 8112
+    },
+    {
+      "participant_index": 8,
+      "team_id": 200,
+      "champion": "Kai'Sa",
+      "champion_id": 145,
+      "position": "BOTTOM",
+      "riot_id": "Void Sweep#EUW",
+      "is_local": false,
+      "level": 14,
+      "kills": 3,
+      "deaths": 6,
+      "assists": 4,
+      "cs": 203,
+      "neutral_cs": 2,
+      "gold_earned": 10450,
+      "damage_to_champions": 16400,
+      "damage_taken": 17900,
+      "damage_to_objectives": 4100,
+      "vision_score": 14,
+      "wards_placed": 7,
+      "wards_killed": 2,
+      "control_wards_bought": 1,
+      "items": [
+        3124,
+        3006,
+        3115,
+        3089
+      ],
+      "summoner_spells": [
+        4,
+        7
+      ],
+      "keystone_id": 8008
+    },
+    {
+      "participant_index": 9,
+      "team_id": 200,
+      "champion": "Thresh",
+      "champion_id": 412,
+      "position": "UTILITY",
+      "riot_id": "LanternBoy#EUW",
+      "is_local": false,
+      "level": 12,
+      "kills": 1,
+      "deaths": 5,
+      "assists": 9,
+      "cs": 28,
+      "neutral_cs": 0,
+      "gold_earned": 7350,
+      "damage_to_champions": 7100,
+      "damage_taken": 20400,
+      "damage_to_objectives": 600,
+      "vision_score": 49,
+      "wards_placed": 19,
+      "wards_killed": 5,
+      "control_wards_bought": 6,
+      "items": [
+        3870,
+        3117,
+        3190,
+        3109
+      ],
+      "summoner_spells": [
+        4,
+        3
+      ],
+      "keystone_id": 8439
+    }
+  ],
+  "teams": [
+    {
+      "team_id": 100,
+      "kills": 26,
+      "towers": 9,
+      "dragons": 3,
+      "barons": 1,
+      "heralds": 1,
+      "inhibitors": 2,
+      "grubs": 3
+    },
+    {
+      "team_id": 200,
+      "kills": 17,
+      "towers": 3,
+      "dragons": 1,
+      "barons": 0,
+      "heralds": 0,
+      "inhibitors": 0,
+      "grubs": 3
+    }
+  ],
+  "events": [
+    {
+      "t": 214.6,
+      "type": "FirstBlood",
+      "killer": "Viego",
+      "victim": "Lee Sin",
+      "assisters": [],
+      "detail": null
+    },
+    {
+      "t": 214.6,
+      "type": "ChampionKill",
+      "killer": "Viego",
+      "victim": "Lee Sin",
+      "assisters": [],
+      "detail": null
+    },
+    {
+      "t": 312.4,
+      "type": "ChampionKill",
+      "killer": "Local Player#UPF",
+      "victim": "Void Sweep#EUW",
+      "assisters": [
+        "Nautilus"
+      ],
+      "detail": null
+    },
+    {
+      "t": 381.0,
+      "type": "HordeKill",
+      "killer": "Viego",
+      "victim": null,
+      "assisters": [],
+      "detail": {
+        "count": 3
+      }
+    },
+    {
+      "t": 402.9,
+      "type": "ChampionKill",
+      "killer": "Kai'Sa",
+      "victim": "Local Player#UPF",
+      "assisters": [
+        "LanternBoy#EUW",
+        "Lee Sin"
+      ],
+      "detail": null
+    },
+    {
+      "t": 548.2,
+      "type": "DragonKill",
+      "killer": "Viego",
+      "victim": null,
+      "assisters": [
+        "Local Player#UPF",
+        "Nautilus"
+      ],
+      "detail": {
+        "dragon_type": "Fire",
+        "stolen": false
+      }
+    },
+    {
+      "t": 822.7,
+      "type": "TurretKilled",
+      "killer": "Local Player#UPF",
+      "victim": "Turret_T2_L_03_A",
+      "assisters": [
+        "Nautilus"
+      ],
+      "detail": {
+        "lane": "bot",
+        "tier": "outer"
+      }
+    },
+    {
+      "t": 905.3,
+      "type": "HeraldKill",
+      "killer": "Viego",
+      "victim": null,
+      "assisters": [],
+      "detail": null
+    },
+    {
+      "t": 1102.5,
+      "type": "DragonKill",
+      "killer": "Lee Sin",
+      "victim": null,
+      "assisters": [
+        "Syndra"
+      ],
+      "detail": {
+        "dragon_type": "Water",
+        "stolen": false
+      }
+    },
+    {
+      "t": 1290.8,
+      "type": "Multikill",
+      "killer": "Local Player#UPF",
+      "victim": null,
+      "assisters": [],
+      "detail": {
+        "kill_streak": 3
+      }
+    },
+    {
+      "t": 1395.1,
+      "type": "BaronKill",
+      "killer": "Viego",
+      "victim": null,
+      "assisters": [
+        "Local Player#UPF",
+        "Kitsune Main#EUW",
+        "IronWall#EUW"
+      ],
+      "detail": {
+        "stolen": false
+      }
+    },
+    {
+      "t": 1688.0,
+      "type": "InhibKilled",
+      "killer": "Kitsune Main#EUW",
+      "victim": "Barracks_T2_C1",
+      "assisters": [
+        "Local Player#UPF"
+      ],
+      "detail": null
+    },
+    {
+      "t": 1801.4,
+      "type": "Ace",
+      "killer": "Local Player#UPF",
+      "victim": null,
+      "assisters": [],
+      "detail": {
+        "acing_team": 100
+      }
+    }
+  ],
+  "local_snapshots": [
+    {
+      "t": 60,
+      "level": 1,
+      "cs": 0,
+      "gold_current": 1,
+      "kda": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": 300,
+      "level": 5,
+      "cs": 38,
+      "gold_current": 312,
+      "kda": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": 600,
+      "level": 9,
+      "cs": 78,
+      "gold_current": 450,
+      "kda": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "t": 900,
+      "level": 11,
+      "cs": 121,
+      "gold_current": 890,
+      "kda": [
+        3,
+        1,
+        2
+      ]
+    },
+    {
+      "t": 1200,
+      "level": 13,
+      "cs": 172,
+      "gold_current": 620,
+      "kda": [
+        5,
+        2,
+        4
+      ]
+    },
+    {
+      "t": 1500,
+      "level": 14,
+      "cs": 211,
+      "gold_current": 1310,
+      "kda": [
+        8,
+        2,
+        5
+      ]
+    },
+    {
+      "t": 1800,
+      "level": 15,
+      "cs": 239,
+      "gold_current": 2040,
+      "kda": [
+        10,
+        2,
+        6
+      ]
+    }
+  ],
+  "sources": {
+    "eog": true,
+    "live_events": true,
+    "live_snapshots": true
+  },
+  "recording_id": null
+}

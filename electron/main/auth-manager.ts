@@ -208,6 +208,8 @@ export interface AuthUser {
   cs2_tier?: string | null
   onboarding?: { connect_steam?: boolean; connected_riot_account?: boolean } | null
   stripe_subscription_status?: string | null
+  /** Server-side feature flags for this account (e.g. lol_local_reports). Absent = all off. */
+  features?: { lol_local_reports?: boolean } | null
 }
 
 export interface ValorantStats {

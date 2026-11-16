@@ -163,7 +163,7 @@ import { withTimeout } from './promise-timeout'
 import { LoLLiveClientApi } from './lol-live-client-api'
 import type { LolCaptureContext } from './lol-account-identity'
 import { createSupportActivityStore } from './support-activity-history'
-import { probeLolLcu, resolveLolFilterMode, lolLinkedPuuidFromAuth } from './lol-lcu-api'
+import { probeLolLcu, resolveLolFilterMode, lolLinkedPuuidFromAuth, findLolLockfile, lcuGet } from './lol-lcu-api'
 import {
   gameLabel,
   idleTooltip,
@@ -309,6 +309,8 @@ import { extractAndUploadDuelClips, countMomentsWithClipKeys, selectRecordedDuel
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
 import { enrichLolTimelineForCoaching } from './lol-match-v5-enrich'
+import { LolLocalMatchCollector, lolLocalReportsEnabled, type LolLocalMatchCapture } from './lol-local-match'
+import { LolLocalMatchQueue, LOL_LOCAL_MATCH_ENDPOINT, readLolEndOfGame, submitLolLocalMatch } from './lol-local-match-service'
 import {
   formatNetworkProbeSummary,
   formatSupportBundle,
@@ -829,6 +831,38 @@ const riotLocalApi = new RiotLocalApi()
 let valorantRankService: ValorantRankService | null = null
 const lolLiveClientApi = new LoLLiveClientApi()
 const authManager = new AuthManager()
+/** League local report: Live Client events + 60 s snapshots for the match being tracked. */
+const lolLocalCollector = new LolLocalMatchCollector()
+lolLiveClientApi.onLiveSnapshot = (data) => lolLocalCollector.ingest(data)
+let lolLocalQueue: LolLocalMatchQueue | null = null
+function getLolLocalQueue(): LolLocalMatchQueue {
+  lolLocalQueue ??= new LolLocalMatchQueue({
+    file: join(app.getPath('userData'), 'lol-local-match-pending.json'),
+    post: async (payload) => {
+      try {
+        return await authManager.getApi().post(LOL_LOCAL_MATCH_ENDPOINT, payload)
+      } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status
+        throw Object.assign(new Error(`League local match upload failed${status ? ` (HTTP ${status})` : ''}`), { status })
+      }
+    },
+    currentUserId: () => (authManager.isAuthenticated() ? authManager.getUser()?.id ?? null : null),
+    log,
+  })
+  return lolLocalQueue
+}
+/** After a League match: read the end-of-game stats and send the local report (API flag only). */
+function sendLolLocalReport(capture: LolLocalMatchCapture, resolveRecordingId: () => string | null): void {
+  void submitLolLocalMatch({
+    enabled: () => lolLocalReportsEnabled(authManager.getUser()),
+    currentUserId: () => (authManager.isAuthenticated() ? authManager.getUser()?.id ?? null : null),
+    readEndOfGame: () => readLolEndOfGame({ findLockfile: () => findLolLockfile(), get: lcuGet }),
+    queue: getLolLocalQueue(),
+    log,
+  }, capture, resolveRecordingId)
+    .then(result => log.info('[LolLocalMatch] Report:', result))
+    .catch(err => log.warn('[LolLocalMatch] Report failed:', err))
+}
 // Any sign-out (button or expiry) also ends the embedded website's session and revokes its token.
 authManager.onSessionEnded = () => {
   closeWebShell()
@@ -3912,6 +3946,8 @@ function setupGameDetection(): void {
     localMediaWork++
     const ownerId = captureOwnerId()
     const captureStore = recordingsStore.forUser(ownerId)
+    const lolLocalCapture = game === 'lol' ? lolLocalCollector.snapshot() : null
+    let lolSessionStart: number | null = null
     const captureClips = clipStore.forUser(ownerId)
     const canUploadCapture = () => ownerId !== null
       && authManager.isAuthenticated() && getActiveUserId() === ownerId
@@ -3939,6 +3975,7 @@ function setupGameDetection(): void {
       ? Math.floor((Date.now() - matchSessionStart) / 1000)
       : recordingDuration
     const effectiveDuration = Math.max(recordingDuration, matchWallDurationSec)
+    lolSessionStart = matchSessionStart
 
     let timeline: MatchData | null = null
     let pendingReplayPath: string | null = null
@@ -4841,6 +4878,11 @@ function setupGameDetection(): void {
     })
     } finally {
       handleMatchEndRunning = false
+      if (lolLocalCapture) {
+        // Link this match's saved recording (row recordedAt = session start) once the post-game wait is over.
+        sendLolLocalReport(lolLocalCapture, () => (lolSessionStart === null ? null
+          : captureStore.getAll().find(r => r.game === 'lol' && r.recordedAt === lolSessionStart)?.id ?? null))
+      }
       localMediaWork--
       activeCapture = null
       resumeSavedLocalMedia()
@@ -5697,6 +5739,7 @@ function setupGameDetection(): void {
       }
       riotLocalApi.start(game, matchStartTime ?? undefined)
     } else if (game === 'lol') {
+      lolLocalCollector.reset(lolCaptureContext)
       lolLiveClientApi.start(matchStartTime ?? undefined, lolCaptureContext)
       lolLiveClientApi.onMatchEnded = () => {
         if (!isStale()) return finishActiveMatch(game, 'live-client')

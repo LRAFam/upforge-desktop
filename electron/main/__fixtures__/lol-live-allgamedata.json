@@ -1,0 +1,61 @@
+{
+  "activePlayer": {
+    "currentGold": 450.4,
+    "level": 9,
+    "riotId": "Local Player#UPF",
+    "riotIdGameName": "Local Player",
+    "riotIdTagLine": "UPF",
+    "summonerName": "Local Player#UPF"
+  },
+  "allPlayers": [
+    {
+      "championName": "Ahri", "isBot": false, "isDead": false,
+      "items": [{ "itemID": 6655, "slot": 0 }, { "itemID": 3020, "slot": 1 }],
+      "level": 9, "position": "MIDDLE", "rawChampionName": "game_character_displayname_Ahri",
+      "riotId": "Kitsune Main#EUW", "riotIdGameName": "Kitsune Main", "riotIdTagLine": "EUW",
+      "runes": { "keystone": { "displayName": "Electrocute", "id": 8112 } },
+      "scores": { "assists": 1, "creepScore": 80, "deaths": 1, "kills": 1, "wardScore": 6.5 },
+      "summonerName": "Kitsune Main#EUW", "team": "ORDER"
+    },
+    {
+      "championName": "Jinx", "isBot": false, "isDead": false,
+      "items": [{ "itemID": 6672, "slot": 0 }, { "itemID": 3006, "slot": 1 }, { "itemID": 3340, "slot": 6 }],
+      "level": 9, "position": "BOTTOM", "rawChampionName": "game_character_displayname_Jinx",
+      "riotId": "Local Player#UPF", "riotIdGameName": "Local Player", "riotIdTagLine": "UPF",
+      "runes": { "keystone": { "displayName": "Press the Attack", "id": 8008 } },
+      "scores": { "assists": 1, "creepScore": 78, "deaths": 1, "kills": 1, "wardScore": 5.1 },
+      "summonerName": "Local Player#UPF", "team": "ORDER"
+    },
+    {
+      "championName": "Syndra", "level": 8, "position": "MIDDLE",
+      "riotId": "Dark Orb#EUW", "riotIdGameName": "Dark Orb", "riotIdTagLine": "EUW",
+      "runes": { "keystone": { "id": 8112 } },
+      "scores": { "assists": 0, "creepScore": 70, "deaths": 1, "kills": 1, "wardScore": 4 },
+      "summonerName": "Dark Orb#EUW", "team": "CHAOS"
+    },
+    {
+      "championName": "Kai'Sa", "level": 8, "position": "BOTTOM",
+      "riotId": "Void Sweep#EUW", "riotIdGameName": "Void Sweep", "riotIdTagLine": "EUW",
+      "runes": { "keystone": { "id": 8008 } },
+      "scores": { "assists": 0, "creepScore": 75, "deaths": 1, "kills": 0, "wardScore": 3 },
+      "summonerName": "Void Sweep#EUW", "team": "CHAOS"
+    }
+  ],
+  "events": {
+    "Events": [
+      { "EventID": 0, "EventName": "GameStart", "EventTime": 0.03 },
+      { "EventID": 1, "EventName": "MinionsSpawning", "EventTime": 65.0 },
+      { "EventID": 2, "EventName": "FirstBlood", "EventTime": 214.6, "Recipient": "Kitsune Main#EUW" },
+      { "EventID": 3, "EventName": "ChampionKill", "EventTime": 214.6, "KillerName": "Kitsune Main#EUW", "VictimName": "Dark Orb#EUW", "Assisters": [] },
+      { "EventID": 4, "EventName": "ChampionKill", "EventTime": 312.4, "KillerName": "Local Player#UPF", "VictimName": "Void Sweep#EUW", "Assisters": ["Kitsune Main#EUW"] },
+      { "EventID": 5, "EventName": "HordeKill", "EventTime": 381.0, "KillerName": "Kitsune Main#EUW", "Assisters": [], "Stolen": "False" },
+      { "EventID": 6, "EventName": "DragonKill", "EventTime": 548.2, "DragonType": "Fire", "KillerName": "Local Player#UPF", "Assisters": ["Kitsune Main#EUW"], "Stolen": "False" },
+      { "EventID": 7, "EventName": "ChampionKill", "EventTime": 560.0, "KillerName": "Dark Orb#EUW", "VictimName": "Local Player#UPF", "Assisters": ["Void Sweep#EUW"] },
+      { "EventID": 8, "EventName": "TurretKilled", "EventTime": 580.7, "TurretKilled": "Turret_T2_R_03_A", "KillerName": "Minion_T100L1S28N0179", "Assisters": [] },
+      { "EventID": 9, "EventName": "FirstBrick", "EventTime": 580.7, "KillerName": "Local Player#UPF" },
+      { "EventID": 10, "EventName": "ChampionKill", "EventTime": 590.1, "KillerName": "Void Sweep#EUW", "VictimName": "Kitsune Main#EUW", "Assisters": [] },
+      { "EventID": 11, "EventName": "Multikill", "EventTime": 595.0, "KillerName": "Local Player#UPF", "KillStreak": 2 }
+    ]
+  },
+  "gameData": { "gameMode": "CLASSIC", "gameTime": 600.4, "mapName": "Map11", "mapNumber": 11, "mapTerrain": "Default" }
+}
