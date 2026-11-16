@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * v3 detail pane for Coaching reviews. Same states and actions as CoachingHistoryDetail:
+ * v3 detail pane for Coaching reviews. Same states and actions as the retired classic detail pane:
  * a match waiting for coaching, the archive overview, and a coached session
  * (hero, Review match / Coach notes, report, moments to revisit).
  */

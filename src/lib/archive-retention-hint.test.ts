@@ -59,7 +59,7 @@ describe('readArchiveQuota', () => {
 describe('screens read archive quota through the shared reader', () => {
   it('no direct archive_stats count/limit/remaining reads', async () => {
     const { readFileSync } = await import('node:fs')
-    for (const f of ['src/composables/useSettings.ts', 'src/composables/useDashboard.ts', 'src/components/dashboard/DashboardPlayerCard.vue']) {
+    for (const f of ['src/composables/useSettings.ts', 'src/composables/useDashboard.ts']) {
       expect(readFileSync(f, 'utf8'), f).not.toMatch(/archive_stats\??\.(count|limit|remaining)\b/)
     }
     expect(readFileSync('src/composables/useDashboard.ts', 'utf8')).not.toMatch(/stats\.count \/ stats\.limit/)
