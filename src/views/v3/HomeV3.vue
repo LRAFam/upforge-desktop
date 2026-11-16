@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { plural } from '../../lib/plural'
-import { analysisCountsTowardProgress } from '../../lib/game-queue'
+import { recentFormMatches, recentFormStats } from '../../components/v3/home/recent-form'
 /**
  * UI v3 Home (Coach) — board 4. Reading order: last match score → the coach's sentence →
  * one red action → recent form → focus → evidence. Real data only; honest empty states.
@@ -41,7 +41,6 @@ import {
   PRIMARY_LABEL, agentFullPortrait, coachLine, dedupeByMatch, formSquareLabel, heroMetaParts, heroScore, homeMapLabel, homeStateNote,
   matchTime, pickPrimaryAction, relativeDay, resultTone, resultWord,
 } from '../../components/v3/home/home-v3'
-import { averageMatchScore, matchScore } from '../../lib/upforge-score'
 import upforgeIcon from '../../assets/upforge-icon.webp'
 import cs2Art from '../../assets/games/cs2-card-bg.webp'
 import deadlockArt from '../../assets/games/deadlock-card-bg.webp'
@@ -157,50 +156,17 @@ const decided = computed(() => decidedStats(rounds.value))
 const devToolsShown = computed(() => import.meta.env.DEV && d.isAdmin.value)
 const needsAction = computed(() => d.pendingRecordings.value.filter(recordingNeedsUserAction).length)
 
-// Recent form: the last 5 real matches (deduped, this game only), newest first.
+// Recent form: the last 5 real matches (deduped, this game only), newest played first.
 // Recent form + its averages: ranked/main modes only (Wingman, Deathmatch, Swiftplay… left out — game-queue.ts).
-const formMatches = computed(() => matches.value.filter(a => analysisCountsTowardProgress(d.primaryGame.value, a)).slice(0, 5))
+const formMatches = computed(() => recentFormMatches(matches.value, d.primaryGame.value))
 const formSquares = computed(() => formMatches.value.map(a => ({
   key: a.id,
   cls: a.won === true ? 'is-w' : a.won === false ? 'is-l' : '',
   label: formSquareLabel(a, m => mapLabel(m)),
 })))
-const formStats = computed(() => {
-  const list = formMatches.value
-  if (!list.length) return []
-  const avg = (vals: Array<number | null | undefined>) => {
-    const v = vals.filter((x): x is number => x != null && Number.isFinite(x))
-    return v.length ? Math.round(v.reduce((s, x) => s + x, 0) / v.length) : null
-  }
-  const wins = list.filter(a => a.won === true).length
-  const losses = list.filter(a => a.won === false).length
-  // No result known for any of them (e.g. CS2 VOD-only analyses): never show a made-up "0–0".
-  const items: Array<{ value: string; caption: string; sub?: string; tone?: 'win' | 'loss' }> = wins + losses > 0
-    ? [{ value: `${wins}–${losses}`, caption: 'Won–lost', sub: `Last ${plural(list.length, 'analysed match', 'analysed matches')}` }]
-    : [{ value: String(list.length), caption: 'Analysed', sub: 'No win or loss recorded for these' }]
-  const acs = avg(list.map(a => d.displayAcs(a)))
-  if (acs != null) items.push({ value: String(acs), caption: 'Average ACS', sub: 'Combat score per round' })
-  // CS2 has no ACS: the demo's K/D is its headline number.
-  if (d.primaryGame.value === 'cs2') {
-    const kds = list.map(a => a.kda).filter((k): k is number => k != null && Number.isFinite(k))
-    if (kds.length) items.push({ value: (kds.reduce((s, k) => s + k, 0) / kds.length).toFixed(2), caption: 'Average K/D', sub: `Over ${plural(kds.length, 'match', 'matches')} with stats` })
-    const adr = avg(list.map(a => a.cs2_stats?.adr))
-    if (adr != null) items.push({ value: String(adr), caption: 'Average ADR', sub: 'Damage per round, measured matches only' })
-  }
-  const hs = avg(list.map(a => a.hs_pct))
-  if (hs != null) items.push({ value: `${hs}%`, caption: 'Headshots', sub: 'Average across those matches' })
-  // Stats-based UpForge score, averaged over scored matches only (coach ratings are never mixed in).
-  const uf = averageMatchScore(list)
-  if (uf) {
-    items.push({ value: String(uf.value), caption: 'UpForge score', sub: `Average of your last ${plural(uf.count, 'scored match', 'scored matches')}` })
-  } else if (verdictGame.value) {
-    // None scored yet: the coach's average rating under its own name (stored 0–100 for Valorant/League).
-    const rated = list.map(a => a.overall_score).filter((s): s is number => s != null && Number.isFinite(s))
-    const coach = rated.length ? matchScore({ overall_score: rated.reduce((s, x) => s + x, 0) / rated.length }) : null
-    if (coach) items.push({ value: coach.text, caption: 'Coach rating', sub: `Average of your last ${plural(rated.length, 'rated match', 'rated matches')}` })
-  }
-  return items
-})
+const formStats = computed(() => recentFormStats(formMatches.value, {
+  game: d.primaryGame.value, acs: d.displayAcs, coachRatingFallback: verdictGame.value,
+}))
 
 // Game switch keeps this view mounted: start the new game's Home at the top (the hero), not
 // wherever the last game was scrolled to (League showed a hero cut off at the top).

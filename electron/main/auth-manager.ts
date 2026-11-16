@@ -11,6 +11,7 @@ import { resolveMaxValorantAccounts } from './valorant-account-cap'
 import { DiscordLinkFlow } from './discord-link'
 import { normalizeLolRecent, type LolRecentResult } from '../../src/lib/lol-recent'
 import { normalizeArchiveStats, type NormalizedArchiveStats } from '../../src/lib/archive-retention-hint'
+import { toMatchWon } from '../../src/lib/match-stats'
 import {
   clearCachedUser, clearTokenMeta, desktopDeviceName, loadCachedUser, markTokenIssued, queueSignOutEvent,
   readInstallId, saveCachedUser, takeSignOutEvents, tokenAgeDays, type SignOutEvent, type SignOutReason,
@@ -713,6 +714,8 @@ export class AuthManager {
         const rounds = (a.rounds_won ?? 0) + (a.rounds_lost ?? 0)
         return {
           ...a,
+          // Riot-linked rows send matches.won as 1/0; the renderer counts only true/false.
+          won: toMatchWon(a.won),
           combat_score: normalizeToAcs(a.combat_score, rounds > 0 ? rounds : null),
         }
       })

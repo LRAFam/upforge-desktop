@@ -27,13 +27,13 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useLifetime } from '../composables/useLifetime'
 import ProgressV3 from './v3/ProgressV3.vue'
 import { averageMatchScore, matchScore } from '../lib/upforge-score'
-import { analysisCountsTowardProgress } from '../lib/game-queue'
 import { halfDelta } from '../components/v3/progress/progress-chart'
 import { readCache, writeCache } from '../lib/stale-cache'
 import type { AnalysisItem } from '../env.d.ts'
 import { useGameTheme } from '../composables/useGameTheme'
 import { invalidateGameAnalysesCache, loadGameAnalyses } from '../lib/game-modules'
-import { normalizeMapAssetKey, NON_MAP_NAMES } from '../lib/valorant'
+import { breakdownRows, progressHs, progressKd, progressMatches, progressWinRate } from '../components/v3/progress/progress-stats'
+import { toMatchWon } from '../lib/match-stats'
 
 type RangeValue = '7d' | '30d' | '90d' | 'all'
 
@@ -51,25 +51,16 @@ const ranges: { label: string; value: RangeValue }[] = [
   { label: 'All', value: 'all' },
 ]
 
-const analysesInRange = computed(() => {
-  if (range.value === 'all') return allAnalyses.value
-  const days = range.value === '7d' ? 7 : range.value === '30d' ? 30 : 90
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
-  return allAnalyses.value.filter(a => new Date(a.created_at).getTime() >= cutoff)
-})
-
-// Fun modes (Wingman, Deathmatch, Swiftplay, Unrated…) play differently: keep them out of win rate,
-// score and the tables, and say how many were left out (game-queue.ts).
-const filteredAnalyses = computed(() => analysesInRange.value.filter(a => analysisCountsTowardProgress(primaryGame.value, a)))
-const excludedFunModeCount = computed(() => analysesInRange.value.length - filteredAnalyses.value.length)
+// One row per real match, newest played first, in range by when it was played. Fun modes (Wingman,
+// Deathmatch, Swiftplay, Unrated…) play differently: kept out of win rate, score and the tables, and
+// the view says how many were left out (game-queue.ts, progress-stats.ts).
+const progress = computed(() => progressMatches(allAnalyses.value, primaryGame.value, range.value))
+const filteredAnalyses = computed(() => progress.value.counted)
+const excludedFunModeCount = computed(() => progress.value.excluded)
 
 // ── Stat cards ────────────────────────────────────────────────────────────────
 
-const winRate = computed(() => {
-  const withResult = filteredAnalyses.value.filter(a => a.won != null)
-  if (!withResult.length) return 0
-  return Math.round((withResult.filter(a => a.won ? 1 : 0).length / withResult.length) * 100)
-})
+const winRate = computed(() => progressWinRate(filteredAnalyses.value))
 
 const avgScore = computed((): number | null => {
   const scored = filteredAnalyses.value.filter(a => a.overall_score != null)
@@ -97,18 +88,9 @@ const v3ScoreStat = computed(() => {
 // The newest analysis of any date.
 const lastAnalysedAt = computed(() => allAnalyses.value.reduce<string | null>((best, a) => (a.created_at && (!best || a.created_at > best) ? a.created_at : best), null))
 
-const avgKda = computed((): string => {
-  const withKd = filteredAnalyses.value.filter(a => a.kills != null && a.deaths != null)
-  if (!withKd.length) return '-'
-  const total = withKd.reduce((s, a) => s + a.kills! / Math.max(1, a.deaths!), 0)
-  return (total / withKd.length).toFixed(2)
-})
-
-const avgHs = computed((): number | null => {
-  const withHs = filteredAnalyses.value.filter(a => a.hs_pct != null)
-  if (!withHs.length) return null
-  return Math.round(withHs.reduce((s, a) => s + a.hs_pct!, 0) / withHs.length)
-})
+// K/D = total kills / total deaths; HS% = mean of the per-match values the API sends.
+const avgKda = computed((): string => progressKd(filteredAnalyses.value))
+const avgHs = computed((): number | null => progressHs(filteredAnalyses.value))
 
 // Same minimum sample as Progress: ≥3 matches per half, else no delta ("Early read").
 function buildDelta(values: Array<number | null | undefined>): number | null {
@@ -117,7 +99,7 @@ function buildDelta(values: Array<number | null | undefined>): number | null {
 }
 
 const statDeltas = computed(() => ({
-  winRate: buildDelta([...filteredAnalyses.value].reverse().map(a => a.won == null ? null : (a.won ? 100 : 0))),
+  winRate: buildDelta([...filteredAnalyses.value].reverse().map(a => { const w = toMatchWon(a.won); return w == null ? null : (w ? 100 : 0) })),
   score: buildDelta([...filteredAnalyses.value].reverse().map(a => a.overall_score ?? null)),
   kda: buildDelta([...filteredAnalyses.value].reverse().map(a => a.kills != null && a.deaths != null ? a.kills / Math.max(1, a.deaths) : null)),
   hs: buildDelta([...filteredAnalyses.value].reverse().map(a => a.hs_pct ?? null)),
@@ -127,57 +109,15 @@ const statDeltas = computed(() => ({
 
 const recentForm = computed(() =>
   filteredAnalyses.value.slice(0, 15).map(a =>
-    a.won != null ? (a.won ? 'W' : 'L') : '-'
+    toMatchWon(a.won) == null ? '-' : (toMatchWon(a.won) ? 'W' : 'L')
   )
 )
 
 
 // ── By Agent & By Map ─────────────────────────────────────────────────────────
 
-type BreakdownRow = { name: string; games: number; wins: number; wr: number; kda: string; roundWr: string }
-
-function buildBreakdown(key: 'agent' | 'map'): BreakdownRow[] {
-  const acc = new Map<string, { games: number; wins: number; kdSum: number; kdCount: number; roundsWon: number; roundsLost: number }>()
-  for (const a of filteredAnalyses.value) {
-    const raw = a[key]
-    if (!raw) continue
-    let name: string
-    if (key === 'map') {
-      const normalized = normalizeMapAssetKey(raw)
-      if (!normalized || NON_MAP_NAMES.has(normalized)) continue
-      name = normalized
-    } else {
-      name = raw
-    }
-    const e = acc.get(name) ?? { games: 0, wins: 0, kdSum: 0, kdCount: 0, roundsWon: 0, roundsLost: 0 }
-    e.games++
-    if (a.won) e.wins++
-    if (a.kills != null && a.deaths != null) {
-      e.kdSum += a.kills / Math.max(1, a.deaths)
-      e.kdCount++
-    }
-    if (a.rounds_won != null) e.roundsWon += a.rounds_won
-    if (a.rounds_lost != null) e.roundsLost += a.rounds_lost
-    acc.set(name, e)
-  }
-  return Array.from(acc.entries())
-    .map(([name, e]) => {
-      const totalRounds = e.roundsWon + e.roundsLost
-      return {
-        name,
-        games: e.games,
-        wins: e.wins,
-        wr: Math.round((e.wins / e.games) * 100),
-        kda: e.kdCount > 0 ? (e.kdSum / e.kdCount).toFixed(1) : '-',
-        roundWr: totalRounds > 0 ? `${Math.round((e.roundsWon / totalRounds) * 100)}%` : '-',
-      }
-    })
-    .sort((a, b) => b.games - a.games)
-    .slice(0, 6)
-}
-
-const agentRows = computed(() => buildBreakdown('agent'))
-const mapRows = computed(() => buildBreakdown('map'))
+const agentRows = computed(() => breakdownRows(filteredAnalyses.value, 'agent'))
+const mapRows = computed(() => breakdownRows(filteredAnalyses.value, 'map'))
 
 // ── Data load ─────────────────────────────────────────────────────────────────
 
