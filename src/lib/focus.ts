@@ -32,6 +32,8 @@ export interface FocusResponse {
   latest?: FocusUpdate | null
   /** Most recent achieved / missed focus (API ≥ 2026-11-07). */
   last_completed?: Focus | null
+  /** Ranked matches in a row on target, across consecutive focuses (newer API). */
+  focus_streak?: number
 }
 
 export interface NoteClaim { finding_id: string; text: string; rounds?: number[] }

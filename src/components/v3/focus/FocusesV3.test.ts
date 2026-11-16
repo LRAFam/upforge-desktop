@@ -31,6 +31,8 @@ interface Setup {
   drop?: (id: number) => FocusesResult
   props?: Record<string, unknown>
   fallback?: string
+  settings?: { get: () => Promise<unknown>; save: (s: { achievements: Record<string, string> }) => Promise<void> }
+  onUnlocked?: (ids: string[]) => void
 }
 async function mountFocuses(setup: Setup) {
   const game = freshGame()
@@ -39,7 +41,8 @@ async function mountFocuses(setup: Setup) {
   const listFocuses = vi.fn(async () => setup.list)
   const changed = vi.fn()
   vi.stubGlobal('document', { activeElement: null })
-  vi.stubGlobal('window', { api: { app: { listFocuses, addFocus, dropFocus, onFocusUpdated: () => () => {} } } })
+  vi.stubGlobal('window', { api: { app: { listFocuses, addFocus, dropFocus, onFocusUpdated: () => () => {} }, settings: setup.settings },
+    __ufAchievementUnlocked: setup.onUnlocked })
   const screen = await mountSfc(new URL('./FocusesV3.vue', import.meta.url), {
     props: { game, onChanged: changed, ...setup.props },
     slots: setup.fallback ? { fallback: () => vue.h('p', setup.fallback) } : undefined,
@@ -68,6 +71,36 @@ describe('FocusesV3', () => {
     expect(text).toContain('Deaths per game At most 5.1')
     expect(text).toContain('Your pick')
     expect(screen.listFocuses).toHaveBeenCalledWith(screen.game)
+  })
+
+  it('shows a focus practice step when it has one', async () => {
+    const screen = await mountFocuses({
+      list: { ok: true, ...stateOf({ focuses: [focus({ label: 'CS at 10:00', practice: 'Warm up with 10 minutes of last-hitting in the Practice Tool.' })] }) },
+    })
+    expect(screen.text()).toContain('Practice: Warm up with 10 minutes of last-hitting in the Practice Tool.')
+  })
+
+  it('unlocks the 3- and 5-in-a-row badges from the server streak outside Valorant', async () => {
+    const saved: Array<{ achievements: Record<string, string> }> = []
+    const unlocked = vi.fn()
+    nextGame = 1 // League: Valorant's badges come from the Home focus panel
+    const screen = await mountFocuses({
+      list: { ok: true, ...stateOf({ game: 'lol', streak: 5 }) },
+      settings: { get: async () => ({ achievements: {} }), save: async (s: { achievements: Record<string, string> }) => { saved.push(s) } },
+      onUnlocked: unlocked,
+    })
+    await settle()
+    expect(screen.game).toBe('lol')
+    expect(unlocked).toHaveBeenCalledWith(['focus-streak-3', 'focus-streak-5'])
+    expect(Object.keys(saved.at(-1)?.achievements ?? {})).toEqual(['focus-streak-3', 'focus-streak-5'])
+  })
+
+  it('never unlocks a badge from this list for Valorant', async () => {
+    const unlocked = vi.fn()
+    nextGame = 0
+    await mountFocuses({ list: { ok: true, ...stateOf({ streak: 5 }) }, settings: { get: async () => ({}), save: async () => {} }, onUnlocked: unlocked })
+    await settle()
+    expect(unlocked).not.toHaveBeenCalled()
   })
 
   it('leaves out the newest focus when the screen already shows it in detail', async () => {

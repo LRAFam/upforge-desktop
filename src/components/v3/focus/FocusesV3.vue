@@ -15,6 +15,8 @@ import {
   parseTargetInput, refusalText, targetInputValue,
   type FocusItem, type FocusOption, type FocusesResult, type FocusesState,
 } from '../../../lib/focuses'
+import { focusStreakAchievements } from '../../../lib/ideas/focus-streak'
+import { useAchievements } from '../../../composables/useAchievements'
 
 const props = withDefaults(defineProps<{
   game: string
@@ -59,6 +61,18 @@ const shown = computed<FocusItem[]>(() => (state.value?.focuses ?? []).filter(f 
 const canAdd = computed(() => canAddFocus(state.value))
 const blocked = computed(() => addBlockedLine(state.value))
 const recent = computed<FocusItem[]>(() => (props.showRecent ? (state.value?.recent ?? []).slice(0, 3) : []))
+
+// Streak badges for League and Deadlock (Valorant's come from the Home focus panel, so they are never unlocked twice).
+const achievements = useAchievements()
+watch(() => state.value?.streak, async (n) => {
+  if (props.game === 'valorant' || typeof n !== 'number') return
+  const ids = focusStreakAchievements(n)
+  if (!ids.length) return
+  await achievements.load()
+  const fresh: string[] = []
+  for (const id of ids) if (await achievements.unlock(id)) fresh.push(id)
+  if (fresh.length) window.__ufAchievementUnlocked?.(fresh)
+})
 
 function closePicker(): void {
   picking.value = false
@@ -133,6 +147,7 @@ watch(() => props.game, () => {
             :aria-label="`Game ${i + 1}: ${s === 'pending' ? 'not played yet' : s === 'hit' ? 'on target' : 'missed'}`" />
         </ol>
         <p class="uf-t4 fz-sub">{{ focusProgressLine(f) }}</p>
+        <p v-if="f.practice" class="uf-t4 fz-sub">Practice: {{ f.practice }}</p>
         <p class="uf-t4 fz-foot">
           <span>{{ focusOriginLabel(f) }}</span>
           <template v-if="confirmDropId === f.id">

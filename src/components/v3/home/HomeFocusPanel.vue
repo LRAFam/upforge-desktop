@@ -7,7 +7,7 @@ import { createFocusCardState } from '../../../composables/useFocusCard'
 import type { FocusResponse, FocusUpdate } from '../../../lib/focus'
 import { readCache, writeCache } from '../../../lib/stale-cache'
 import UfSkeleton from '../UfSkeleton.vue'
-import { focusShareLine, focusStreak, focusStreakAchievements, focusStreakLine } from '../../../lib/ideas/focus-streak'
+import { focusShareLine, focusStreakAchievements, focusStreakFrom, focusStreakLine } from '../../../lib/ideas/focus-streak'
 import { useAchievements } from '../../../composables/useAchievements'
 
 const emit = defineEmits<{ latest: [FocusUpdate | null] }>()
@@ -41,8 +41,8 @@ const kicker = computed(() => {
   return `Focus${retry} · game ${gameIndex.value} of ${f.progress.games_required}`
 })
 
-// Focus streaks (P6): "3 games in a row on target", plus a badge through the existing achievements.
-const streak = computed(() => focusStreak(focus.value))
+// Focus streaks (P6): "3 games in a row on target" across consecutive focuses, plus a badge through the existing achievements.
+const streak = computed(() => focusStreakFrom(data.value?.focus_streak, focus.value))
 const streakLine = computed(() => focusStreakLine(streak.value))
 const achievements = useAchievements()
 watch(streak, async (n) => {
