@@ -25,6 +25,7 @@ import {
 } from './multipart-upload-state'
 import { getApiBaseUrl } from './api-base'
 import { submissionFocusAreas } from '../../src/lib/submission-focus'
+import { UploadRequestError, annotateTlsFailure, apiRequestStage, apiRequestTimeout, isAmbiguousApiPostError } from './upload-request-errors'
 
 export interface UploadOptions {
   videoPath: string
@@ -252,6 +253,7 @@ export class UploadManager {
         activationPipelineMessage('upload_aborted_by_user', 'Upload cancelled'),
       )
     }
+    if (err instanceof UploadRequestError) return err
     const msg = err instanceof Error ? err.message : String(err)
     const lower = msg.toLowerCase()
     if (/upload_stalled|upload stalled/i.test(lower)) {
@@ -717,8 +719,63 @@ export class UploadManager {
   }
 
   /** POST JSON to an API endpoint with Bearer auth. Returns parsed response body. */
-  private _apiPost(url: string, body: string, token: string): Promise<Record<string, unknown>> {
-    return this._withUploadRetry('API upload step', () => this._apiPostOnce(url, body, token))
+  private async _apiPost(url: string, body: string, token: string): Promise<Record<string, unknown>> {
+    if (new URL(url).pathname === '/api/desktop-submissions/complete') {
+      return this._completeApiPost(url, body, token)
+    }
+    // Presign and archive analyse can create jobs before a response is lost. The
+    // API has no atomic idempotency contract for these POSTs, so never replay them.
+    try {
+      return await this._apiPostOnce(url, body, token)
+    } catch (error) {
+      if (!isAmbiguousApiPostError(error)) throw error
+      const detail = error instanceof UploadRequestError ? error.diagnostics.detail
+        : error instanceof Error ? error.message : String(error)
+      const code = (error as NodeJS.ErrnoException | null)?.code || 'API_OUTCOME_UNCONFIRMED'
+      const stage = apiRequestStage(url)
+      throw new UploadRequestError(
+        `upload_request_unconfirmed: The ${stage} request outcome could not be confirmed. Your recording is still saved. ${detail}`,
+        url, stage, code, detail,
+      )
+    }
+  }
+
+  /** Completion is not replay-idempotent: a lost success must be resolved with a read. */
+  private async _completeApiPost(url: string, body: string, token: string): Promise<Record<string, unknown>> {
+    const generation = this._abortGeneration
+    const jobId = JSON.parse(body).job_id as unknown
+    const accepted = (result: unknown): result is Record<string, unknown> => {
+      if (!result || typeof result !== 'object' || typeof jobId !== 'string') return false
+      const value = result as Record<string, unknown>
+      return value.job_id === jobId && typeof value.status === 'string'
+        && ['queued', 'processing', 'completed'].includes(value.status)
+    }
+    try {
+      const result = await this._apiPostOnce(url, body, token)
+      this._checkCancelled(generation)
+      if (!accepted(result)) {
+        throw new UploadRequestError('Unexpected completion response shape', url, 'complete', 'INVALID_COMPLETION_RESPONSE', 'Response did not identify the requested job in an accepted state')
+      }
+      return result
+    } catch (error) {
+      if (!isAmbiguousApiPostError(error)) throw error
+      this._checkCancelled(generation)
+      if (typeof jobId === 'string' && this.auth.getToken() === token) {
+        try {
+          const status = await this.pollStatus(jobId)
+          this._checkCancelled(generation)
+          if (this.auth.getToken() === token && accepted(status)) {
+            return { job_id: jobId, status: status.status }
+          }
+        } catch { /* Keep the original failure when the read cannot confirm acceptance. */ }
+      }
+      this._checkCancelled(generation)
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new UploadRequestError(
+        `upload_completion_unconfirmed: Upload completion could not be confirmed. Your recording is still saved. ${detail}`,
+        url, 'complete', 'COMPLETION_UNCONFIRMED', detail,
+      )
+    }
   }
 
   private _apiPostOnce(url: string, body: string, token: string): Promise<Record<string, unknown>> {
@@ -745,7 +802,7 @@ export class UploadManager {
       }, (res) => {
         let data = ''
         res.on('data', (c) => data += c)
-        res.on('error', reject)
+        res.on('error', (err) => reject(annotateTlsFailure(err, url, apiRequestStage(url))))
         res.on('end', () => {
           const status = res.statusCode ?? 0
           if (status === 401) this.auth.handleSessionRejection(token, status, undefined, url)
@@ -773,7 +830,7 @@ export class UploadManager {
               if (status === 409 && code === 'upload_session_expired') {
                 reject(new Error('upload_session_expired: multipart upload no longer valid on S3'))
               } else {
-                reject(new Error(apiMessage || `Request failed (${status})`))
+                reject(Object.assign(new Error(apiMessage || `Request failed (${status})`), { statusCode: status }))
               }
             }
             else resolve(json)
@@ -785,14 +842,15 @@ export class UploadManager {
           }
         })
       })
-      req.on('error', reject)
-      req.setTimeout(30_000, () => req.destroy(new Error('API request timed out')))
+      req.on('error', (err) => reject(annotateTlsFailure(err, url, apiRequestStage(url))))
+      req.setTimeout(30_000, () => req.destroy(apiRequestTimeout(url)))
       req.write(body)
       req.end()
     })
   }
 
   private _isRetryableUploadError(err: unknown): boolean {
+    if (err instanceof UploadRequestError) return false
     const msg = err instanceof Error ? err.message : String(err)
     return /upload_stalled|upload stalled|socket hang up|ECONNRESET|ECONNABORTED|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|network/i.test(msg)
       || /S3 upload failed \(HTTP 5\d\d\)|S3 part upload failed \(HTTP 5\d\d\)|Request failed \(5\d\d\)/i.test(msg)
@@ -801,6 +859,7 @@ export class UploadManager {
 
   /** S3 multipart session or presigned URL is no longer valid — need a fresh presign, not part-level retry. */
   private _isExpiredUploadSessionError(err: unknown): boolean {
+    if (err instanceof UploadRequestError) return false
     const msg = err instanceof Error ? err.message : String(err)
     return /NoSuchUpload|upload session expired|upload_session_expired|Request has expired|ExpiredToken|Signature has expired|AuthorizationQueryParametersError/i.test(msg)
   }
@@ -885,7 +944,7 @@ export class UploadManager {
         res.on('data', (c) => body += c)
         res.on('error', (err) => {
           req.destroy(err)
-          reject(err)
+          reject(annotateTlsFailure(err, uploadUrl, 's3_upload'))
         })
         res.on('end', () => {
           clearInterval(stallCheck)
@@ -896,7 +955,7 @@ export class UploadManager {
         })
       })
 
-      req.on('error', reject)
+      req.on('error', (err) => reject(annotateTlsFailure(err, uploadUrl, 's3_upload')))
       // 60-minute cap — ~2.5 GB files at the fixed 720p preset
       req.setTimeout(60 * 60 * 1000, () => req.destroy(new Error('S3 upload timed out after 60 minutes')))
 
@@ -998,7 +1057,7 @@ export class UploadManager {
         res.on('data', (c) => { responseBody += c })
         res.on('error', (err) => {
           req.destroy(err)
-          reject(err)
+          reject(annotateTlsFailure(err, uploadUrl, 's3_part'))
         })
         res.on('end', () => {
           this._s3PartRequests.delete(req)
@@ -1014,7 +1073,7 @@ export class UploadManager {
 
       req.on('error', (err) => {
         this._s3PartRequests.delete(req)
-        reject(err)
+        reject(annotateTlsFailure(err, uploadUrl, 's3_part'))
       })
       req.setTimeout(30 * 60 * 1000, () => {
         req.destroy(new Error('S3 part upload timed out after 30 minutes'))
@@ -1180,7 +1239,7 @@ export class UploadManager {
     return new Promise((resolve, reject) => {
       const url = new URL(`${apiUrl}/api/desktop-submissions/${jobId}/status`)
       const proto = url.protocol === 'https:' ? https : http
-      proto.get({
+      const req = proto.get({
         hostname: url.hostname,
         port: url.port || (url.protocol === 'https:' ? 443 : 80),
         path: url.pathname,
@@ -1223,6 +1282,8 @@ export class UploadManager {
           }
         })
       }).on('error', reject)
+      const timeout = setTimeout(() => req.destroy(new Error('Upload status request timed out')), 30_000)
+      req.on('close', () => clearTimeout(timeout))
     })
   }
 }

@@ -35,7 +35,7 @@ function setup(opts: { heartbeatFails?: boolean; uploadMinutes?: number } = {}) 
 
   internals._apiPostOnce = vi.fn(async (url: string, body: string) => {
     if (url.endsWith('/presign')) return { job_id: 'job-1', upload_url: 'https://s3.test/put' }
-    if (url.endsWith('/complete')) return { ok: true }
+    if (url.endsWith('/complete')) return { job_id: 'job-1', status: 'queued' }
     if (url.endsWith('/heartbeat')) {
       heartbeats.push({ url, body: JSON.parse(body) })
       if (opts.heartbeatFails) throw new Error('heartbeat 500')

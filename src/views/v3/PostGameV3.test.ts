@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import * as helpers from '../../components/v3/postgame/post-game-v3'
 import * as coachAllowances from '../../lib/coach-allowances'
 import * as helpLinks from '../../lib/help-links'
+import * as autoAnalyseChoice from '../../lib/auto-analyse-choice'
 
 const Stub = { name: 'Stub' }
 
@@ -22,6 +23,7 @@ function render(props: Record<string, unknown>): string {
       if (id.endsWith('/post-game-v3')) return helpers
       if (id.endsWith('/coach-allowances')) return coachAllowances
       if (id.endsWith('/help-links')) return helpLinks
+      if (id.endsWith('/auto-analyse-choice')) return autoAnalyseChoice
       if (id.endsWith('.vue')) return Stub
       throw new Error(`Unexpected import: ${id}`)
     },
@@ -86,5 +88,13 @@ describe('PostGameV3', () => {
 
   it('in progress: no help link', () => {
     expect(render({})).not.toContain('Troubleshooting help')
+  })
+
+  it('saved match: asks once whether to analyse automatically, and confirms a yes', () => {
+    const saved = { tone: 'neutral', title: 'Match saved', progress: null, showExpectations: false }
+    expect(render({ ...saved, autoAnalyseOffer: 'ask' })).toContain('Analyse my matches automatically from now on?')
+    expect(render({ ...saved, autoAnalyseOffer: 'ask' })).toContain('uploads each recording')
+    expect(render({ ...saved, autoAnalyseOffer: 'on' })).toContain('Automatic analysis is on from your next match')
+    expect(render({ ...saved, autoAnalyseOffer: null })).not.toContain('Analyse my matches automatically')
   })
 })

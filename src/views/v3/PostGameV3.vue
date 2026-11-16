@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { AUTO_ANALYSE_CHOICE_HINT, AUTO_ANALYSE_CHOICE_LABEL } from '../../lib/auto-analyse-choice'
 /**
  * UI v3 post-game pop-up (board 2). Presentation only: PostGameView owns all state and behaviour
  * and passes the same values it gives the compact status, plus real match summary/art.
@@ -53,6 +54,8 @@ const props = defineProps<{
   cloudLine?: string | null
   /** Game this match was played in. The saved focus is Valorant's, so other games hide its strip. */
   game?: string | null
+  /** First saved-but-not-analysed match: ask once whether to analyse automatically from now on. */
+  autoAnalyseOffer?: 'ask' | 'on' | null
 }>()
 
 defineEmits<{
@@ -68,6 +71,7 @@ defineEmits<{
   reviewRound: []
   openReport: []
   keepCloud: []
+  autoAnalyseChoice: [enabled: boolean]
 }>()
 
 const portrait = computed(() => agentPortraitUrl(props.agentArt))
@@ -176,6 +180,14 @@ const clipsLine = computed(() => {
             <span class="uf-num">{{ progress }}%<template v-if="timing"> · {{ timing }}</template></span>
           </div>
         </div>
+        <div v-if="autoAnalyseOffer === 'ask'" class="pg3-auto">
+          <p class="uf-t4">{{ AUTO_ANALYSE_CHOICE_LABEL }} from now on? {{ AUTO_ANALYSE_CHOICE_HINT }}</p>
+          <div class="pg3-feedback-btns">
+            <button type="button" class="uf-link" @click="$emit('autoAnalyseChoice', true)">Turn on</button>
+            <button type="button" class="uf-link" @click="$emit('autoAnalyseChoice', false)">Not now</button>
+          </div>
+        </div>
+        <p v-else-if="autoAnalyseOffer === 'on'" class="uf-t4 pg3-auto">Automatic analysis is on from your next match. Change it in Settings.</p>
         <p v-if="showExpectations" class="uf-t4 pg3-expect">
           Analysis usually takes 20–30 minutes; we’ll email you when it’s ready. Uploads pause during matches to protect your FPS.
         </p>
@@ -250,6 +262,7 @@ const clipsLine = computed(() => {
 .pg3-feedback-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pg3-feedback-btns { display: flex; gap: 16px; }
 .pg3-feedback-btns .is-on { color: var(--uf-bone); text-decoration: underline; text-underline-offset: 4px; }
+.pg3-auto { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .pg3-feedback-form { display: flex; flex-direction: column; gap: 8px; }
 .pg3-textarea { width: 100%; box-sizing: border-box; resize: none; background: var(--uf-raised); border: 1px solid var(--uf-line-2); color: var(--uf-bone); font: 400 13px/1.45 var(--uf-body); padding: 8px 10px; outline: none; }
 .pg3-textarea:focus { border-color: var(--uf-muted); }

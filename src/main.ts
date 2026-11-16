@@ -22,6 +22,7 @@ import SettingsView from './views/SettingsView.vue'
 import OnboardingView from './views/OnboardingView.vue'
 import SplashView from './views/SplashView.vue'
 import { resolveUnauthenticatedRoute, needsDesktopOnboarding } from './lib/onboarding-gate'
+import { syncPendingOnboardingCampaign } from './lib/desktop-onboarding-campaign'
 import ClipsView from './views/ClipsView.vue'
 import OverlayView from './views/OverlayView.vue'
 import SquadView from './views/SquadView.vue'
@@ -83,6 +84,9 @@ const router = createRouter({
   ]
 })
 
+/** One background campaign-complete retry at a time (see syncPendingOnboardingCampaign). */
+let campaignSyncInFlight = false
+
 router.beforeEach(async (to) => {
   if (!hasDesktopApi()) {
     if (!PUBLIC_ROUTES.includes(to.path)) return '/login'
@@ -104,7 +108,19 @@ router.beforeEach(async (to) => {
       return '/onboarding'
     }
     if (to.path === '/dashboard') {
-      const redirect = await onboardingCampaignRedirect((status as { user?: { id?: number } }).user?.id ?? null)
+      const userId = (status as { user?: { id?: number } }).user?.id ?? null
+      if (s.onboardingCampaignSyncPending) {
+        // Onboarding finished on this PC while the API was unreachable: do not send the player back.
+        if (!campaignSyncInFlight) {
+          campaignSyncInFlight = true
+          void syncPendingOnboardingCampaign({
+            complete: () => window.api.auth.completeOnboardingCampaign(),
+            saveSettings: (patch) => window.api.settings.save(patch),
+          }).finally(() => { campaignSyncInFlight = false })
+        }
+        return true
+      }
+      const redirect = await onboardingCampaignRedirect(userId)
       if (redirect) return redirect
     }
   } catch (err) {

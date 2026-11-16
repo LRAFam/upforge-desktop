@@ -4,6 +4,7 @@ import https from 'https'
 import path from 'path'
 import { AuthManager } from './auth-manager'
 import { getApiBaseUrl } from './api-base'
+import { replayApiError } from './errors'
 
 export interface CS2DemoUploadOptions {
   demoPath: string
@@ -112,10 +113,10 @@ export class CS2DemoUploader {
           const status = res.statusCode ?? 0
           try {
             const json = JSON.parse(data)
-            if (status >= 400) reject(new Error(json.message || `Request failed (${status})`))
+            if (status >= 400) reject(replayApiError(status, json))
             else resolve(json)
           } catch {
-            reject(new Error(`Unexpected server response (HTTP ${status})`))
+            reject(status === 402 ? replayApiError(402, null) : new Error(`Unexpected server response (HTTP ${status})`))
           }
         })
       })

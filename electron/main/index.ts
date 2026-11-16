@@ -16,7 +16,7 @@ import { ValorantReplayUploader } from './valorant-replay-uploader'
 import { fetchViewerReplay } from './valorant-replay-viewer'
 import { resolveValorantGameMode } from './riot-queue-id'
 import { hasValorantReturnedToMenus, isValorantStillInLiveMatch } from './valorant-match-end'
-import { startRecordingWhenReady } from './recording-start'
+import { startRecordingWhenReady, startRecordingWithRetry } from './recording-start'
 import { resolveMatchEndCapture, shouldFinalizeMatchMedia } from './match-end-capture'
 import { setupCloudStorageHandlers } from './ipc/cloud-storage-ipc'
 import { APP_VERSION } from './app-version'
@@ -103,6 +103,7 @@ import {
 } from './recording-limits'
 import { formatRecordingLabel } from './recording-preset'
 import {
+  RecordingPreparationError,
   resolveUploadVideoPath,
   deleteCompressedSibling,
   deleteLocalRecordingFiles,
@@ -181,6 +182,7 @@ import { refreshMatchPopulationBenchmarks } from './spatial/enrich-population'
 import { applyDemoSpatialEnrichment } from './spatial/demo-enrich'
 import { UploadManager, savePendingJob, clearPendingJob } from './upload-manager'
 import { readAiTraining, saveAiTraining } from './ai-training'
+import { UploadRequestError } from './upload-request-errors'
 import { resolveUploadPlayerIdentity } from './upload-player-identity'
 import {
   activateUserSession,
@@ -1605,6 +1607,13 @@ function notifyDashboardToast(message: string): void {
 }
 
 /** Dashboard banner + optional OS notification for recording outcomes. */
+/** Keep why a match was not recorded until the player dismisses it on Home — the toast is easy to miss in-game. */
+function rememberSkippedMatch(game: string, message: string): void {
+  const lastSkippedMatch = { game, message, at: Date.now() }
+  try { settingsManager?.save({ lastSkippedMatch }) } catch (err) { log.warn('[Recorder] could not save skipped-match notice:', err) }
+  mainWindow?.webContents.send('recording:match-skipped', lastSkippedMatch)
+}
+
 function notifyRecordingUx(message: string, notificationTitle = 'UpForge — Recording'): void {
   mainWindow?.webContents.send('app:warning', { message })
   showAppNotification({
@@ -2291,6 +2300,7 @@ function dispatchAnalysisFailure(
     ppaUrl?: string
     clipsOnly?: boolean
     failureDiagnostics?: DuelFailureDiagnostics | null
+    preparationDiagnostics?: RecordingPreparationError['diagnostics']
   } = {},
 ): AnalysisErrorPayload {
   const classified = classifyActivationError(rawError)
@@ -2306,7 +2316,7 @@ function dispatchAnalysisFailure(
     recoveryAction: classified.definition.recoveryAction,
     ...(classified.code !== 'unknown'
       ? {
-          message: classified.definition.userMessage,
+          message: opts.preparationDiagnostics ? rawError : classified.definition.userMessage,
           title: presentation.title === 'Analysis could not complete'
             ? titleForActivationCode(classified.code, presentation.title)
             : presentation.title,
@@ -2367,6 +2377,7 @@ function dispatchAnalysisFailure(
       integrityReason: opts.failureDiagnostics?.integrity_reason ?? null,
       clipsUploaded: opts.failureDiagnostics?.clips_uploaded ?? null,
       clipsRequested: opts.failureDiagnostics?.clips_requested ?? null,
+      preparation: opts.preparationDiagnostics,
     })
   }
 
@@ -2409,6 +2420,7 @@ function sendUploadFailure(
     clipsOnly?: boolean
     notify?: boolean
     game?: string
+    preparationDiagnostics?: RecordingPreparationError['diagnostics']
   } = {},
 ): AnalysisErrorPayload {
   if (opts.game === 'valorant') {
@@ -5698,6 +5710,7 @@ function setupGameDetection(): void {
     if (recordedModes.length === 0) {
       logActivity('No game modes selected — recording disabled')
       notifyRecordingUx('Select at least one game mode in Settings → Recording to record matches.')
+      rememberSkippedMatch(game, 'This match was not recorded because no game modes are selected. Choose modes in Settings → Recording.')
       tray?.setToolTip(idleTooltip(game))
       await rearmGameDetection(game, true)
       return
@@ -5709,6 +5722,7 @@ function setupGameDetection(): void {
       notifyRecordingUx(
         'Could not detect this queue type — recording skipped. Enable more modes in Settings or wait until the queue is identified.',
       )
+      rememberSkippedMatch(game, 'This match was not recorded because UpForge could not tell which queue it was. Record all modes in Settings → Recording to capture every match.')
       tray?.setToolTip(idleTooltip(game))
       await rearmGameDetection(game, true)
       return
@@ -5718,6 +5732,7 @@ function setupGameDetection(): void {
       log.info(`[GameDetector] Skipping recording — mode is ${gameMode} (recordedModes=${recordedModes.join(',')})`)
       logActivity(`Mode ${gameMode} not in recorded modes (${recordedModes.join(', ')}) — skipped`)
       notifyRecordingUx(modeSkippedMessage(game, gameMode ?? ''))
+      rememberSkippedMatch(game, modeSkippedMessage(game, gameMode ?? ''))
       tray?.setToolTip(idleTooltip(game))
       await rearmGameDetection(game, true)
       return
@@ -5901,15 +5916,27 @@ function setupGameDetection(): void {
       // Create the overlay window just before recording starts — deferred from startup
       // so it doesn't break Valorant's exclusive fullscreen before we actually need it.
       if (isInGameOverlayEnabled()) createOverlayWindow()
-      await startRecordingWhenReady({
-        ensureReady: ensureObsReadyOrThrow,
-        start: async (signal) => {
-          if (!reclaimedExistingCapture) {
-            await obsRecorder.start(game, recorderConfig, { signal, isCancelled: () => isStale() || matchHandled })
-          }
-        },
-        timeoutMs: OBS_RECORD_START_TIMEOUT_MS,
+      await startRecordingWithRetry({
+        attempt: () => startRecordingWhenReady({
+          ensureReady: ensureObsReadyOrThrow,
+          start: async (signal) => {
+            if (!reclaimedExistingCapture) {
+              await obsRecorder.start(game, recorderConfig, { signal, isCancelled: () => isStale() || matchHandled })
+            }
+          },
+          timeoutMs: OBS_RECORD_START_TIMEOUT_MS,
+          signal: recordingStart.controller.signal,
+        }),
+        // Retry while the match is live; never for problems the player must fix in OBS.
+        isRetryable: (msg) => !reclaimedExistingCapture
+          && !/already recording|Advanced|cancelled/i.test(msg)
+          && !isObsUnavailableError(msg),
+        isCancelled: () => isStale() || matchHandled,
         signal: recordingStart.controller.signal,
+        onRetry: (attemptNumber, delayMs, msg) => {
+          log.warn(`[Recorder] ${game} recording start failed (${msg}) — attempt ${attemptNumber} in ${Math.round(delayMs / 1000)}s`)
+          logActivity(`Recording did not start — trying again in ${Math.round(delayMs / 1000)}s while the match is live`)
+        },
       })
       if (recordingStart.controller.signal.aborted || isStale() || matchHandled) return
       telemetry.endSector('detect_to_record_start')
@@ -6010,6 +6037,7 @@ function setupGameDetection(): void {
         userFacingStartMsg ?? `Could not start recording: ${msg}`,
         'UpForge — Recording Failed',
       )
+      rememberSkippedMatch(game, `This match was not recorded because recording did not start. ${userFacingStartMsg ?? msg}`)
       tray?.setToolTip('UpForge — Recording failed!')
       setTimeout(() => tray?.setToolTip(idleTooltip(game)), 10_000)
       await rearmGameDetection(game, true)
@@ -6542,7 +6570,8 @@ async function uploadArchiveOnlyImpl(
   } catch (prepErr) {
     const lastError = sendUploadFailure(
       prepErr instanceof Error ? prepErr.message : 'Could not prepare recording for upload',
-      { targetWindow, recordingId, notify: false, game },
+      { targetWindow, recordingId, notify: false, game,
+        preparationDiagnostics: prepErr instanceof RecordingPreparationError ? prepErr.diagnostics : undefined },
     )
     return { archiveId: null, lastError }
   }
@@ -6797,7 +6826,8 @@ async function performUploadAndAnalyse(
       return null
     }
     log.error('[Upload] Failed to prepare video path:', prepErr)
-    sendUploadFailure(prepMsg, { targetWindow, recordingId, notify: false, game })
+    sendUploadFailure(prepMsg, { targetWindow, recordingId, notify: false, game,
+      preparationDiagnostics: prepErr instanceof RecordingPreparationError ? prepErr.diagnostics : undefined })
     return null
   }
 
@@ -7244,6 +7274,7 @@ async function performUploadAndAnalyse(
       map,
       agent,
       stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
+      transport: err instanceof UploadRequestError ? err.diagnostics : undefined,
     })
 
     // Try to ensure the recording is saved to the pending store so the user can retry.

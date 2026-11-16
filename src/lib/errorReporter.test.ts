@@ -28,3 +28,21 @@ it('still reports errors when activity is unavailable, with an explicit null', a
   const body = JSON.parse(fetchMock.mock.calls[0]![1].body)
   expect(body.extra.recent_activity).toBeNull()
 })
+
+it('groups the same renderer warning across installation paths and VOD IDs without hiding other errors', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+  vi.stubGlobal('fetch', fetchMock)
+  vi.stubGlobal('window', { location: { hash: '#/vod-review?id=private-recording-id' } })
+  const message = 'ResizeObserver loop completed with undelivered notifications.'
+  await reportError({ message, component: 'file:///C:/Users/Alice/AppData/Local/Programs/upforge/resources/app.asar/out/renderer/index.html#/vod-review?id=first:0:0' })
+  await reportError({ message, component: 'file:///C:/Users/Bob/AppData/Local/Programs/upforge/resources/app.asar/out/renderer/index.html#/vod-review?id=second:0:0' })
+  expect(fetchMock).toHaveBeenCalledOnce()
+  const body = JSON.parse(fetchMock.mock.calls[0]![1].body)
+  expect(body.component).toBe('renderer:index.html#/vod-review:0:0')
+  expect(body.url).toBe('#/vod-review')
+  expect(JSON.stringify(body)).not.toMatch(/Alice|Bob|private-recording-id|first|second/)
+
+  await reportError({ message: 'A different renderer failure', component: 'VodReview' })
+  await reportError({ message, component: 'file:///C:/Users/Alice/upforge/resources/app.asar/out/renderer/index.html#/settings:0:0' })
+  expect(fetchMock).toHaveBeenCalledTimes(3)
+})

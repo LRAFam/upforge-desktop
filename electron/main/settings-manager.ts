@@ -72,11 +72,17 @@ export interface AppSettings {
   autoAnalyse: boolean // automatically upload & analyse after game ends
   /** Versioned proof that auto-analysis was chosen after the explicit-consent migration. */
   autoAnalyseConsentVersion: 1
+  /** The player answered the onboarding / first post-game "analyse automatically?" choice. */
+  autoAnalysePromptAnswered?: boolean
   firstRun: boolean
   /** Set after welcome / onboarding wizard — avoids re-prompting on every launch */
   onboardingComplete?: boolean
   /** Recording verification in this wizard session at completion; absent for older clients. */
   onboardingRecordingVerified?: boolean
+  /** Onboarding finished locally but the API campaign-complete call has not succeeded yet. */
+  onboardingCampaignSyncPending?: boolean
+  /** Why the latest match was not recorded; shown on Home until dismissed (a toast is missed in-game). */
+  lastSkippedMatch?: { game: string; message: string; at: number } | null
   /** Resumable guided match that grants one server-authorised bonus analysis. */
   onboardingMatchMission?: {
     active: boolean

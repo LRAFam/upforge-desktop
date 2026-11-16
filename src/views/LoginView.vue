@@ -143,7 +143,7 @@ async function handleLogin() {
         // The campaign is a rollout gate; an API outage must not lock users out of the paid app.
         console.warn('[Onboarding] Campaign gate unavailable after login:', campaign.error)
       }
-      router.push(resolvePostAuthRoute(s, campaign.ok && campaign.requires_onboarding))
+      router.push(resolvePostAuthRoute(s, campaign.ok && campaign.requires_onboarding && !s.onboardingCampaignSyncPending))
     } else {
       error.value = (result as { error?: string }).error || 'Invalid email or password.'
     }

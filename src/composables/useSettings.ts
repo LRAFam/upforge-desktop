@@ -913,7 +913,7 @@ function createSettings() {
   
   function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence' | 'autoSwitchGameTab'>): void {
     settings[key] = !settings[key]
-    if (key === 'autoAnalyse') settings.autoAnalyseConsentVersion = 1
+    if (key === 'autoAnalyse') { settings.autoAnalyseConsentVersion = 1; settings.autoAnalysePromptAnswered = true }
     debouncedSave()
   }
 

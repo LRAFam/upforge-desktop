@@ -249,6 +249,12 @@ function createDashboard(opts: DashboardOptions = {}) {
   const showRankHistory = ref(false)
   const warning = ref<string | null>(null)
   const warningAction = ref<{ label: string; route: string } | null>(null)
+  /** Why the latest match was not recorded — stays until dismissed (saved in settings). */
+  const skippedMatchNotice = ref<{ game: string; message: string; at: number } | null>(null)
+  function dismissSkippedMatchNotice() {
+    skippedMatchNotice.value = null
+    void window.api.settings.save({ lastSkippedMatch: null }).catch(() => {})
+  }
   const bulkUploading = ref(false)
   const rrHistory = ref<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>([])
 
@@ -1633,8 +1639,10 @@ function createDashboard(opts: DashboardOptions = {}) {
       lastInsight?: LastInsight | null
       skillProfile?: SkillProfileSnapshot | null
       skillProfilePrevious?: SkillProfileSnapshot | null
+      lastSkippedMatch?: { game: string; message: string; at: number } | null
     } | null)
     if (savedSettings?.lastInsight) savedLastInsight.value = savedSettings.lastInsight
+    skippedMatchNotice.value = savedSettings?.lastSkippedMatch ?? null
     skillProfile.value = savedSettings?.skillProfile ?? null
     skillProfilePrevious.value = savedSettings?.skillProfilePrevious ?? null
     void maybeShowDiskMigrationHint()
@@ -1753,8 +1761,14 @@ function createDashboard(opts: DashboardOptions = {}) {
       )
     }))
     life.own(window.api.on('post-game:demo-status', (...args: unknown[]) => {
-      const payload = args[0] as { status?: string }
+      const payload = args[0] as { status?: string; error?: string; needsUpgrade?: boolean }
       if (payload?.status === 'complete' && isDeadlock.value) void loadAnalyses()
+      // Quota wall on an automatic replay upload: show the plan message and the upgrade options.
+      if (payload?.status === 'error' && payload.needsUpgrade && payload.error) {
+        warning.value = payload.error
+        warningAction.value = null
+        upgradeNeeded.value = true
+      }
     }))
     life.own(window.api.on('post-game:demo-download-progress', (...args: unknown[]) => {
       demoDownloadProgress.value = (args[0] as DemoDownloadProgress | null) ?? null
@@ -1791,6 +1805,12 @@ function createDashboard(opts: DashboardOptions = {}) {
       if (!data.recording && data.error) {
         warning.value = `Recording stopped: ${data.error}`
         setTimeout(() => { warning.value = null }, 15000)
+      }
+    }))
+    life.own(window.api.on('recording:match-skipped', (...args: unknown[]) => {
+      const data = args[0] as { game?: string; message?: string; at?: number } | null
+      if (data?.message && data.game && typeof data.at === 'number') {
+        skippedMatchNotice.value = { game: data.game, message: data.message, at: data.at }
       }
     }))
     life.own(window.api.on('recording:starting', (...args: unknown[]) => {
@@ -1898,6 +1918,8 @@ function createDashboard(opts: DashboardOptions = {}) {
     showRankHistory,
     warning,
     warningAction,
+    skippedMatchNotice,
+    dismissSkippedMatchNotice,
     bulkUploading,
     rrHistory,
     rrSparkline,

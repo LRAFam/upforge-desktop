@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { startRecordingWhenReady } from './recording-start'
+import { startRecordingWhenReady, startRecordingWithRetry } from './recording-start'
 
 afterEach(() => vi.useRealTimers())
 
@@ -61,5 +61,46 @@ describe('recording startup deadline', () => {
     controller.abort()
     await result
     expect(startSignal?.aborted).toBe(true)
+  })
+})
+
+describe('recording start retry during the match', () => {
+  const noSleep = async () => {}
+  const retryable = (msg: string) => !/already recording/i.test(msg)
+
+  it('a first-attempt failure is retried and the second attempt records the rest of the match', async () => {
+    const attempt = vi.fn()
+      .mockRejectedValueOnce(new Error('OBS recording failed to start: OBS StartRecord did not become active within 5s'))
+      .mockResolvedValueOnce(undefined)
+    const onRetry = vi.fn()
+    await startRecordingWithRetry({ attempt, isRetryable: retryable, isCancelled: () => false, sleep: noSleep, onRetry })
+    expect(attempt).toHaveBeenCalledTimes(2)
+    expect(onRetry).toHaveBeenCalledWith(2, 10_000, expect.stringMatching(/did not become active/))
+  })
+
+  it('gives up after the last delay and throws the last error', async () => {
+    const attempt = vi.fn().mockRejectedValue(new Error('OBS start timed out'))
+    await expect(startRecordingWithRetry({ attempt, isRetryable: retryable, isCancelled: () => false, sleep: noSleep }))
+      .rejects.toThrow('OBS start timed out')
+    expect(attempt).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not retry errors the player has to fix (OBS already recording)', async () => {
+    const attempt = vi.fn().mockRejectedValue(new Error('OBS is already recording'))
+    await expect(startRecordingWithRetry({ attempt, isRetryable: retryable, isCancelled: () => false, sleep: noSleep }))
+      .rejects.toThrow('already recording')
+    expect(attempt).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops retrying when the match ends during the wait', async () => {
+    vi.useFakeTimers()
+    const controller = new AbortController()
+    const attempt = vi.fn().mockRejectedValue(new Error('OBS start timed out'))
+    const run = startRecordingWithRetry({ attempt, isRetryable: retryable, isCancelled: () => false, signal: controller.signal })
+    const result = expect(run).rejects.toThrow('OBS start timed out')
+    await vi.advanceTimersByTimeAsync(2_000)
+    controller.abort()
+    await result
+    expect(attempt).toHaveBeenCalledTimes(1)
   })
 })

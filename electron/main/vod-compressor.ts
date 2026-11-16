@@ -12,6 +12,7 @@ import log from 'electron-log'
 import { UPLOAD_COMPRESSION_PRESET } from './recording-preset'
 import { registerVodCompressionProc } from './match-priority-guard'
 import { FfmpegProgressParser } from './ffmpeg-progress'
+import { redactSensitiveString } from './error-redaction'
 
 const IS_WIN = process.platform === 'win32'
 
@@ -71,6 +72,46 @@ export interface CompressVodResult {
   outputPath: string
   outputSizeBytes: number
   error?: string
+}
+
+export class RecordingPreparationError extends Error {
+  readonly diagnostics: { stage: 'prepare'; reason: string; detail: string }
+
+  constructor(detail: string, recordingPaths: readonly string[]) {
+    const [reason, recovery] = /ENOENT|ffmpeg.*not found/i.test(detail)
+      ? ['missing_tool', 'The video tool is missing. Please reinstall UpForge, then try again.']
+      : /ENOSPC|no space left/i.test(detail)
+        ? ['disk_full', 'Free up disk space on the recording drive, then try again.']
+        : /EACCES|EPERM|permission denied/i.test(detail)
+          ? ['permission', 'Check write permission for your recording folder, then try again.']
+          : /timed out|timeout/i.test(detail)
+            ? ['timeout', 'Video preparation timed out. Close other video apps, then try again.']
+            : ['encoder', 'Close other video apps, then try again.']
+    // Recordings may live on external disks or NAS shares, outside standard user
+    // directories. Remove known input/output paths before attaching FFmpeg output.
+    let safeDetail = detail
+    const paths = new Set<string>()
+    for (const recordingPath of recordingPaths) {
+      const normalized = recordingPath.replace(/\\/g, '/')
+      const folder = normalized.slice(0, normalized.lastIndexOf('/'))
+      paths.add(recordingPath)
+      paths.add(normalized)
+      paths.add(normalized.replace(/\//g, '\\'))
+      if (folder.length > 3) {
+        paths.add(folder)
+        paths.add(folder.replace(/\//g, '\\'))
+      }
+    }
+    for (const knownPath of [...paths].sort((a, b) => b.length - a.length)) {
+      if (!knownPath) continue
+      const escaped = knownPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      safeDetail = safeDetail.replace(new RegExp(escaped, /^[A-Za-z]:|^[/\\]{2}/.test(knownPath) ? 'gi' : 'g'), '[redacted-path]')
+    }
+    safeDetail = redactSensitiveString(safeDetail).slice(-1000)
+    super(`Could not prepare recording for upload. ${recovery} Your original recording is still saved.`, { cause: new Error(safeDetail) })
+    this.name = 'RecordingPreparationError'
+    this.diagnostics = { stage: 'prepare', reason, detail: safeDetail }
+  }
 }
 
 export interface ResolveUploadVideoPathOptions {
@@ -136,7 +177,7 @@ export async function resolveUploadVideoPath(
     if (/moov atom|invalid data/i.test(detail)) {
       throw new Error('Recording file is incomplete — OBS may have stopped before the file finished saving.')
     }
-    throw new Error('Could not prepare recording for upload')
+    throw new RecordingPreparationError(detail, [sourcePath, result.outputPath])
   }
 
   return { path: sourcePath, sizeBytes, compressed: false }

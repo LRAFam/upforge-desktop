@@ -579,6 +579,7 @@ const api = {
       'recording:status-changed',
       'recording:waiting-for-match',
       'recording:starting',
+      'recording:match-skipped',
       'game:status-changed',
       'game:client-changed',
       'app:warning',

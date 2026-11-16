@@ -35,6 +35,7 @@ describe('upload preparation cleanup', () => {
       wasBackgroundWorkInterrupted: () => paused, sendUploadFailure() {},
       sendPostGameEventForRecording() {}, getActiveUserId: () => 1,
       POST_MATCH_COPY: { compressPaused: 'Paused' },
+      RecordingPreparationError: class RecordingPreparationError extends Error {},
     })
     vm.runInContext(compiled, context)
     await context.doUploadAndAnalyse('rec', 'vod.mp4', 'P', 'T', 'valorant', null, null, null, {})
