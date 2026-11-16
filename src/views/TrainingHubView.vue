@@ -40,7 +40,7 @@ import UfButton from '../components/v3/UfButton.vue'
 import UfDialog from '../components/v3/UfDialog.vue'
 import PracticeAnalyticsV3 from '../components/v3/practice/PracticeAnalyticsV3.vue'
 import { deltaTone, pct, signed, toneColor } from '../components/v3/practice/practice-session-v3'
-import { coachingDrillExtras, matchDrillRows, oldScoringBests, oldScoringNote } from '../components/v3/practice/practice-v3'
+import { coachingDrillExtras, matchDrillRows, oldScoringBests, oldScoringNote, practiceOwnsTab, type PracticeTab } from '../components/v3/practice/practice-v3'
 
 const ICON_LOCK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
 const ICON_TROPHY_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/><path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>`
@@ -102,7 +102,7 @@ const correlationInsights = ref<string[]>([])
 const benchmarkData = ref<TrainingBenchmark | null>(null)
 const loadingHistory = ref(false)
 const heatmapCanvas = ref<HTMLCanvasElement | null>(null)
-const activeTab = ref<'train' | 'analytics' | 'leaderboards' | 'loadouts'>('train')
+const activeTab = ref<PracticeTab>('train')
 const activeDrillCategory = ref<ScenarioCategory>('all')
 
 // Mouse + crosshair settings are added by the main process from saved settings (source of truth).
@@ -1911,8 +1911,8 @@ const CATEGORY_ICON: Record<string, string> = {
 
     </template>
 
-    <!-- Scrollable content (in UI v3 the Train tab renders inside PracticeV3) -->
-    <div v-if="!uiV3 || activeTab !== 'train'" class="flex-1 scroll-col">
+    <!-- Scrollable content (in UI v3 the Today and Drills tabs render inside PracticeV3) -->
+    <div v-if="!uiV3 || !practiceOwnsTab(activeTab)" class="flex-1 scroll-col">
 
       <!-- ── TRAIN TAB ──────────────────────────────────────────────── -->
       <template v-if="activeTab === 'train' && !uiV3">

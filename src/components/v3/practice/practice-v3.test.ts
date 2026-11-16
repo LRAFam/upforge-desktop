@@ -147,3 +147,113 @@ describe('pickNextDrill', () => {
     expect(practiceRouteFromReport(null, null)).toEqual({ path: '/training', query: {} })
   })
 })
+
+// ── Redesign (Nov 2026): tabs, the routine line, drills grouped by job, bars of focus checks ──
+import { PRACTICE_TABS, focusBars, groupDrills, practiceOwnsTab, routineFromDrills, routineFromSession, WARM_UP_SCENARIOS } from './practice-v3'
+
+describe('practice tabs', () => {
+  it('keeps the ids other code switches on and names them for the player', () => {
+    expect(PRACTICE_TABS.map(t => t.id)).toEqual(['train', 'drills', 'analytics', 'leaderboards', 'loadouts'])
+    expect(PRACTICE_TABS.map(t => t.label)).toEqual(['Today', 'Drills', 'Results', 'Leaderboards', 'Setup'])
+  })
+
+  it('the screen draws Today and Drills itself; the view draws the rest', () => {
+    expect(PRACTICE_TABS.filter(t => practiceOwnsTab(t.id)).map(t => t.id)).toEqual(['train', 'drills'])
+  })
+})
+
+describe('the routine line', () => {
+  const label = (k: string) => ({ microflick: 'Micro Flick', head_height: 'Head Height Corridor' }[k] ?? k)
+
+  it('uses the plan\u2019s own phase names and marks the focus step', () => {
+    const steps = routineFromSession([
+      { phase: 'warmup', phaseLabel: 'Warm-up', scenario: 'microflick', duration_seconds: 60 },
+      { phase: 'focus', phaseLabel: 'Focus', scenario: 'head_height', duration_seconds: 120 },
+      { phase: 'cooldown', phaseLabel: 'Cool-down', scenario: 'strafe_track', duration_seconds: 45 },
+    ], label)
+    expect(steps).toEqual([
+      { scenario: 'microflick', caption: 'Warm-up · 1 min', label: 'Micro Flick', focus: false },
+      { scenario: 'head_height', caption: 'Focus · 2 min', label: 'Head Height Corridor', focus: true },
+      { scenario: 'strafe_track', caption: 'Cool-down · 45 s', label: 'strafe_track', focus: false },
+    ])
+  })
+
+  it('a step without a phase is never the focus', () => {
+    expect(routineFromSession([{ phaseLabel: 'Warm-up', scenario: 'microflick', duration_seconds: 60 }], label)[0].focus).toBe(false)
+  })
+
+  it('for a focus with no plan, its first drill is the point', () => {
+    const steps = routineFromDrills([
+      { scenario: 'head_height', label: 'Head Height Corridor', durationSeconds: 60 },
+      { scenario: 'flick', label: 'Flick', durationSeconds: 30 },
+    ])
+    expect(steps.map(s => [s.label, s.caption, s.focus])).toEqual([['Head Height Corridor', '1 min', true], ['Flick', '30 s', false]])
+    expect(routineFromDrills([])).toEqual([])
+  })
+})
+
+describe('drills grouped by what they are for', () => {
+  const d = (scenario: string, beta = false) => ({ scenario, beta })
+  const all = [d('flick'), d('gridshot'), d('microflick'), d('head_height'), d('strafe_track'), d('jiggle_peek', true), d('hold_angle', true), d('switching')]
+
+  it('puts every drill in exactly one group, in reading order', () => {
+    const groups = groupDrills(all, ['head_height'])
+    expect(groups.map(g => g.id)).toEqual(['yours', 'warmup', 'beta', 'more'])
+    expect(groups.map(g => g.drills.map(x => x.scenario))).toEqual([
+      ['head_height'],
+      ['microflick', 'strafe_track', 'gridshot'],
+      ['jiggle_peek', 'hold_angle'],
+      ['flick', 'switching'],
+    ])
+    expect(groups.flatMap(g => g.drills).length).toBe(all.length)
+  })
+
+  it('a warm-up or beta drill picked for the player shows under Your drill only, in the order picked', () => {
+    const groups = groupDrills(all, ['jiggle_peek', 'microflick'])
+    expect(groups[0].drills.map(x => x.scenario)).toEqual(['jiggle_peek', 'microflick'])
+    expect(groups.find(g => g.id === 'warmup')!.drills.map(x => x.scenario)).toEqual(['strafe_track', 'gridshot'])
+    expect(groups.find(g => g.id === 'beta')!.drills.map(x => x.scenario)).toEqual(['hold_angle'])
+  })
+
+  it('keeps an empty Your drill group (the screen says why) and drops other empty groups', () => {
+    const groups = groupDrills([d('flick')], [])
+    expect(groups.map(g => [g.id, g.drills.length])).toEqual([['yours', 0], ['more', 1]])
+  })
+
+  it('ignores picked drills that are not in the catalogue', () => {
+    expect(groupDrills(all, ['not_a_drill'])[0].drills).toEqual([])
+    expect(WARM_UP_SCENARIOS).toEqual(['microflick', 'strafe_track', 'gridshot'])
+  })
+})
+
+describe('bars of matches checked against the focus', () => {
+  const focus = (checks: Array<[number, boolean]>, baseline = 0.4, target = 0.3) => ({ baseline, target, checks: checks.map(([value, hit]) => ({ value, hit })) })
+
+  it('draws one bar per checked match on one scale with the starting point and the target', () => {
+    const c = focusBars(focus([[0.5, false], [0.25, true], [0.3, true]]))!
+    expect(c.bars.map(b => b.hit)).toEqual([false, true, true])
+    expect(c.bars.map(b => +b.height.toFixed(3))).toEqual([1, 0.5, 0.6])
+    expect([+c.baseline.toFixed(3), +c.target.toFixed(3)]).toEqual([0.8, 0.6])
+  })
+
+  it('scales to the starting point when every match is under it', () => {
+    const c = focusBars(focus([[0.2, true]], 0.4, 0.3))!
+    expect(c.baseline).toBe(1)
+    expect(c.bars[0].height).toBe(0.5)
+  })
+
+  it('keeps the newest matches when there are more than fit', () => {
+    const many = Array.from({ length: 20 }, (_, i) => [0.1 + i * 0.01, false] as [number, boolean])
+    const c = focusBars(focus(many))!
+    expect(c.bars.length).toBe(12)
+    expect(c.bars[c.bars.length - 1].value).toBeCloseTo(0.29)
+  })
+
+  it('shows nothing rather than a guess', () => {
+    expect(focusBars(null)).toBeNull()
+    expect(focusBars(focus([]))).toBeNull()
+    expect(focusBars(focus([[Number.NaN, false]]))).toBeNull()
+    expect(focusBars({ baseline: Number.NaN, target: 0.3, checks: [{ value: 0.2, hit: true }] })).toBeNull()
+    expect(focusBars(focus([[0, true]], 0, 0))).toBeNull()
+  })
+})

@@ -4,6 +4,7 @@
  * finding yet, and the app says so instead of offering an unrelated aim drill.
  */
 import { ref, type Ref } from 'vue'
+import { readCache, writeCache } from './stale-cache'
 
 export interface DrillRulebookEntry {
   trigger: string
@@ -30,14 +31,32 @@ export function parseDrillRulebook(raw: unknown): DrillRulebook | null {
   return out
 }
 
+const RULEBOOK_CACHE_KEY = 'practice:drill-rulebook'
 const cache: Ref<DrillRulebook | null> = ref(null)
 let inflight: Promise<void> | null = null
+let hydrated = false
+let fresh = false
 
-/** Shared, loaded once per app run (retried on the next call when it failed). Valorant only for now. */
+/**
+ * Shared, refreshed once per app run (retried on the next call when it failed). Valorant only for now.
+ * The last rulebook is remembered between runs (stale cache), so a screen knows at once which drills a
+ * finding has instead of redrawing when the request lands a few seconds later.
+ */
 export function useDrillRulebook(api?: { getDrillRulebook?: (game?: string) => Promise<unknown> }): Ref<DrillRulebook | null> {
-  if (!cache.value && !inflight && api?.getDrillRulebook) {
+  if (!hydrated) {
+    hydrated = true
+    const saved = parseDrillRulebook(readCache<unknown>(RULEBOOK_CACHE_KEY)?.value)
+    if (saved && !cache.value) cache.value = saved
+  }
+  if (!fresh && !inflight && api?.getDrillRulebook) {
     inflight = api.getDrillRulebook('valorant')
-      .then(raw => { cache.value = parseDrillRulebook(raw) })
+      .then(raw => {
+        const parsed = parseDrillRulebook(raw)
+        if (!parsed) return
+        cache.value = parsed
+        fresh = true
+        writeCache(RULEBOOK_CACHE_KEY, parsed)
+      })
       .catch(() => {})
       .finally(() => { inflight = null })
   }
