@@ -3,6 +3,7 @@
  * Match-V5 summaries. Real data only — a metric with too few games returns nothing.
  */
 import type { LolMatchSummary } from '../env.d.ts'
+import { lolIsDecided } from './lol-result'
 
 /** Recent-match summary with the trend fields the API adds (older APIs omit them). */
 export type LolTrendMatch = LolMatchSummary & {
@@ -54,7 +55,8 @@ const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length
 
 /** Trends over the last games (input newest first, as the API returns them). */
 export function lolTrends(matches: LolTrendMatch[], limit = 20): LolTrend[] {
-  const games = [...matches].slice(0, limit).reverse()
+  // Remakes and unknown results are not real games: out of every trend.
+  const games = matches.filter(lolIsDecided).slice(0, limit).reverse()
   const out: LolTrend[] = []
   for (const m of METRICS) {
     const values = games.map(m.pick).filter((v): v is number => typeof v === 'number' && Number.isFinite(v))

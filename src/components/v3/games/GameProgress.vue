@@ -36,6 +36,8 @@ import LolRecentNotice from './LolRecentNotice.vue'
 import PlayerAvatar from '../identity/PlayerAvatar.vue'
 import { playerIdentity } from '../../../lib/player-identity'
 import { lolProfileIconId } from '../../../lib/lol-recent'
+import { lolResult, lolResultWord } from '../../../lib/lol-result'
+import { lolWon } from '../../../lib/lol-result'
 import { deadlockRowHeroArt } from '../../../lib/deadlock-item-build'
 import { useStaleLoad } from '../../../lib/stale-cache'
 import {
@@ -127,7 +129,7 @@ const lolEarly = computed(() => (props.game === 'lol' ? lolEarlyDeaths(gd.lol.an
 
 const faceit = computed(() => (props.game === 'cs2' && gd.cs2.faceit?.connected ? gd.cs2.faceit : null))
 const form = computed(() => {
-  if (props.game === 'lol') return [...gd.lol.matches].slice(0, 20).reverse().map(m => ({ won: m.win }))
+  if (props.game === 'lol') return [...gd.lol.matches].slice(0, 20).reverse().map(m => lolWon(m)).filter((w): w is boolean => w !== null).map(won => ({ won }))
   if (props.game === 'deadlock') {
     return [...dlQueueMatches.value].slice(0, 20).reverse().map(m => deadlockMatchWon(m)).filter((w): w is boolean => w !== null).map(won => ({ won }))
   }
@@ -351,10 +353,10 @@ function openWeb() {
               <span class="uf-label" style="margin-top: 14px">Recent games</span>
               <LolRecentNotice :state="gd.lol.matchesError" :has-matches="true" :busy="gd.loading.value" @retry="gd.load(true)" />
               <button v-for="m in gd.lol.matches.slice(0, 5)" :key="m.match_id" type="button" class="gprog-lol gprog-btn"
-                :disabled="!matchReportPath('lol', m.match_id)" :aria-label="`${m.champion}, ${m.win ? 'won' : 'lost'}: open the match report`" @click="openLolReport(m.match_id)">
+                :disabled="!matchReportPath('lol', m.match_id)" :aria-label="`${m.champion}, ${lolResultWord(m).toLowerCase()}: open the match report`" @click="openLolReport(m.match_id)">
                 <img v-if="championIconUrl(m.champion)" :src="championIconUrl(m.champion)" alt="" width="32" height="32">
                 <span class="gprog-lol-t">
-                  <span class="uf-t3"><span :style="{ color: m.win ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ m.win ? 'Won' : 'Lost' }}</span> · {{ m.champion }} · <span class="uf-num">{{ fmtLolKda(m.kills, m.deaths, m.assists) }}</span></span>
+                  <span class="uf-t3"><span :style="{ color: lolResult(m) === 'win' ? 'var(--uf-win)' : lolResult(m) === 'loss' ? 'var(--uf-loss)' : 'var(--uf-bone)' }">{{ lolResultWord(m) }}</span> · {{ m.champion }} · <span class="uf-num">{{ fmtLolKda(m.kills, m.deaths, m.assists) }}</span></span>
                   <span class="uf-t4">{{ lolMatchMeta(m) }}</span>
                   <LolLoadoutStrip :match="m" />
                 </span>

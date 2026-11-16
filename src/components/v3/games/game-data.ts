@@ -4,6 +4,7 @@
  * DeadlockDemoPanel and LolStatsPanel. Real data only — nothing here invents a value.
  */
 import type { DeadlockProfileStats, LolMatchSummary } from '../../../env.d.ts'
+import { lolIsDecided, lolResult } from '../../../lib/lol-result'
 import { mapDisplayName } from './display-names'
 import { DEADLOCK_TIERS } from '../../../lib/deadlock'
 
@@ -263,16 +264,18 @@ export function deadlockHeroRows(stats: DeadlockProfileStats | null, limit = 6):
 export interface LolSummary { games: number; wins: number; losses: number; winRate: number; kda: string }
 
 export function lolSummary(matches: LolMatchSummary[]): LolSummary | null {
-  if (!matches.length) return null
-  const wins = matches.filter(m => m.win).length
-  const k = matches.reduce((s, m) => s + m.kills, 0)
-  const d = matches.reduce((s, m) => s + m.deaths, 0)
-  const a = matches.reduce((s, m) => s + m.assists, 0)
+  // Remakes and unknown results are not games played: out of W/L, win rate and KDA.
+  const rows = matches.filter(lolIsDecided)
+  if (!rows.length) return null
+  const wins = rows.filter(m => lolResult(m) === 'win').length
+  const k = rows.reduce((s, m) => s + m.kills, 0)
+  const d = rows.reduce((s, m) => s + m.deaths, 0)
+  const a = rows.reduce((s, m) => s + m.assists, 0)
   return {
-    games: matches.length,
+    games: rows.length,
     wins,
-    losses: matches.length - wins,
-    winRate: Math.round((wins / matches.length) * 100),
+    losses: rows.length - wins,
+    winRate: Math.round((wins / rows.length) * 100),
     kda: d > 0 ? ((k + a) / d).toFixed(2) : (k + a).toFixed(1),
   }
 }
@@ -280,7 +283,7 @@ export function lolSummary(matches: LolMatchSummary[]): LolSummary | null {
 export function lolChampionRows(matches: LolMatchSummary[], limit = 6): BarRow[] {
   const by = new Map<string, LolMatchSummary[]>()
   for (const m of matches) {
-    if (!m.champion) continue
+    if (!m.champion || !lolIsDecided(m)) continue
     by.set(m.champion, [...(by.get(m.champion) ?? []), m])
   }
   return [...by.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, limit).map(([name, rows]) => {
