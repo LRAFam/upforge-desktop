@@ -107,15 +107,6 @@ const activeDrillCategory = ref<ScenarioCategory>('all')
 
 // Mouse + crosshair settings are added by the main process from saved settings (source of truth).
 
-interface AiCoaching {
-  focus_area: string
-  headline: string
-  message: string
-  tips: string[]
-  encouragement: string
-}
-const aiCoaching = ref<AiCoaching | null>(null)
-const loadingAiCoaching = ref(false)
 
 // ── Achievements ──────────────────────────────────────────────────────────────
 const achievements = useAchievements()
@@ -682,14 +673,14 @@ function launchVodDrill(drill: VodDrill) {
   })
 }
 
-// ── Trainer data (history, plan, drills, insights, benchmark, AI coaching) ───
+// ── Trainer data (history, plan, drills, insights, benchmark) ───
+// No AI coaching request here: nothing on Practice shows it, so it was a paid call thrown away.
 type TrainerData = [
   Awaited<ReturnType<typeof window.api.trainer.getHistory>>,
   Awaited<ReturnType<typeof window.api.trainer.getPlan>>,
   Awaited<ReturnType<typeof window.api.trainer.getCoachingDrills>>,
   Awaited<ReturnType<typeof window.api.trainer.getCorrelation>>,
   Awaited<ReturnType<typeof window.api.trainer.getBenchmark>>,
-  Awaited<ReturnType<typeof window.api.trainer.getAiCoaching>>,
 ]
 const TRAINER_CACHE_KEY = 'practice:trainer'
 
@@ -700,18 +691,16 @@ function fetchTrainerData(): Promise<TrainerData> {
     window.api.trainer.getCoachingDrills(),
     window.api.trainer.getCorrelation(),
     window.api.trainer.getBenchmark(),
-    window.api.trainer.getAiCoaching(),
   ])
 }
 
-function applyTrainerData([history, plan, drills, insights, benchmark, coaching]: TrainerData) {
+function applyTrainerData([history, plan, drills, insights, benchmark]: TrainerData) {
   apiHistory.value = history
   sharedTrainingPlan.value = plan
   const drillList = Array.isArray(drills) ? drills : []
   coachingDrills.value = drillList
   correlationInsights.value = Array.isArray(insights) ? insights : []
   benchmarkData.value = benchmark
-  aiCoaching.value = coaching
   // If API returned coaching drills that map to scenarios, populate Today's Drills
   if (drillList.length > 0) {
     const sessions = history?.sessions ?? []
@@ -806,7 +795,6 @@ onMounted(async () => {
   // Fetch training history + coaching drills from API
   // (v3 with cached data refreshes quietly: no "Loading history…" over data already shown)
   loadingHistory.value = !cachedTrainer
-  loadingAiCoaching.value = !cachedTrainer
   if (cachedTrainer) startPBCarousel()
   try {
     const data = await (earlyTrainerFetch ?? fetchTrainerData())
@@ -815,7 +803,6 @@ onMounted(async () => {
     if (!cachedTrainer) startPBCarousel()
   } finally {
     loadingHistory.value = false
-    loadingAiCoaching.value = false
   }
 })
 
