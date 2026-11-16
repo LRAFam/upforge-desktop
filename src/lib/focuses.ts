@@ -13,6 +13,8 @@ export interface FocusItem extends Focus {
   status?: 'active' | 'achieved' | 'missed' | 'replaced' | string
   /** Who chose it: the coach (from a report) or the player. */
   origin?: 'coach' | 'player'
+  /** What to practise for it (League); absent where the practice step is a trainer drill. */
+  practice?: string | null
 }
 
 export interface FocusOption {
@@ -32,6 +34,8 @@ export interface FocusesState {
   focuses: FocusItem[]
   options: FocusOption[]
   recent: FocusItem[]
+  /** Ranked matches in a row on target in this game, across consecutive focuses (newer API). */
+  streak?: number
 }
 
 export type FocusesResult = ({ ok: true } & FocusesState) | { ok: false; error: string; state?: FocusesState }

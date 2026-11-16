@@ -955,7 +955,7 @@ declare global {
         getStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: true; report: import('./lib/starting-report').StartingReportResponse } | { ok: false; error: string }>
         generateStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: true; report: import('./lib/starting-report').StartingReportResponse } | { ok: false; error: string }>
         dismissStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: boolean }>
-        startStartingFocus: (game: 'valorant' | 'lol') => Promise<{ ok: boolean; focus?: unknown }>
+        startStartingFocus: (game: 'valorant' | 'lol' | 'deadlock') => Promise<{ ok: boolean; focus?: unknown }>
         /** Stored match reports, newest first. Ranked only unless `everyQueue` (adds Unrated, Swiftplay…). */
         listMatchReports: (limit?: number, opts?: { everyQueue?: boolean }) => Promise<{ ok: true; reports: Array<{ match_id: string; played_at: string | null; map: string | null; agent: string | null; won: boolean | null; score: { ally: number; enemy: number } | null; headline: string | null; notes_source: string | null; game_mode?: string | null; queue?: string | null; upforge_score?: number | null }> } | { ok: false; error: string }>
         syncFocus: () => Promise<import('./lib/focus').FocusSyncResult | null>

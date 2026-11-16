@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Starting report (v3): how a new player plays right now, from their last matches.
- * One per game, generated once by the API. Can start the suggested focus (Valorant, League).
+ * One per game, generated once by the API. Can start the suggested focus (Valorant, League, Deadlock).
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -25,9 +25,10 @@ onMounted(() => { void load({ generate: true }) })
 watch(game, () => { void load({ generate: true }) })
 
 async function startFocus() {
-  if (game.value !== 'valorant' && game.value !== 'lol') return
+  const g = game.value
+  if (g !== 'valorant' && g !== 'lol' && g !== 'deadlock') return
   focusState.value = 'starting'
-  const res = await window.api?.app?.startStartingFocus?.(game.value).catch(() => null)
+  const res = await window.api?.app?.startStartingFocus?.(g).catch(() => null)
   focusState.value = res?.ok ? 'started' : 'failed'
 }
 function back() { if (window.history.length > 1) router.back(); else void router.push('/dashboard') }
@@ -71,7 +72,7 @@ function back() { if (window.history.length > 1) router.back(); else void router
           </section>
 
           <section v-if="view.focus" class="sr3-focus">
-            <span class="uf-label">Your first focus</span>
+            <span class="uf-label">{{ view.focus.heading }}</span>
             <p class="uf-t3">{{ view.focus.label }}</p>
             <p v-if="view.focus.reason" class="uf-t2">{{ view.focus.reason }}</p>
             <p v-if="view.focus.target" class="uf-t4">{{ view.focus.target }}</p>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Focus } from '../focus'
-import { focusShareLine, focusStreak, focusStreakAchievements, focusStreakLine } from './focus-streak'
+import { focusShareLine, focusStreak, focusStreakAchievements, focusStreakFrom, focusStreakLine } from './focus-streak'
 
 const focus = (hits: boolean[], status = 'active'): Focus => ({
   id: 1, metric: 'first_deaths', label: 'First deaths', better: 'lower', baseline: 0.3, target: 0.2,
@@ -21,6 +21,20 @@ describe('focus streak', () => {
     expect(focusStreakLine(3)).toBe('3 games in a row on target.')
     expect(focusStreakAchievements(2)).toEqual([])
     expect(focusStreakAchievements(5)).toEqual(['focus-streak-3', 'focus-streak-5'])
+  })
+  it('earns 3 and 5 in a row from the server streak across consecutive focuses', () => {
+    // Each focus ends after 2 hits, so one focus alone never gets past 2.
+    const current = focus([true])
+    expect(focusStreak(current)).toBe(1)
+    expect(focusStreakAchievements(focusStreakFrom(3, current))).toEqual(['focus-streak-3'])
+    expect(focusStreakAchievements(focusStreakFrom(5, current))).toEqual(['focus-streak-3', 'focus-streak-5'])
+    expect(focusStreakLine(focusStreakFrom(5, current))).toBe('5 games in a row on target.')
+    expect(focusStreakFrom(0, focus([true, true]))).toBe(0)
+  })
+  it('falls back to the current focus on an older server', () => {
+    expect(focusStreakFrom(undefined, focus([false, true, true]))).toBe(2)
+    expect(focusStreakFrom(-1, focus([true]))).toBe(1)
+    expect(focusStreakFrom('4', focus([true]))).toBe(1)
   })
   it('shares only an active focus', () => {
     expect(focusShareLine(focus([]))).toBe('Working on: first deaths under 20% in Valorant (with UpForge).')

@@ -1,13 +1,24 @@
-/** Focus streaks (board P6): consecutive on-target games in the current focus, and a copyable one-liner. */
+/** Focus streaks (board P6): consecutive on-target games across the player's focuses, and a copyable one-liner. */
 import type { Focus } from '../focus'
 import { pct } from '../focus'
 
-/** Games on target in a row, counting back from the most recent check. */
+/**
+ * Games on target in a row inside one focus, counting back from the most recent check. A focus ends
+ * after 2 hits in 3 games, so on its own this tops out at 2: prefer the server's streak (focusStreakFrom).
+ */
 export function focusStreak(focus: Focus | null | undefined): number {
   const checks = focus?.checks ?? []
   let n = 0
   for (let i = checks.length - 1; i >= 0 && checks[i].hit; i--) n++
   return n
+}
+
+/**
+ * The streak to show and to earn badges with: the server's count across consecutive focuses in this
+ * game (API focus_streak / streak), else the current focus's own trailing hits (older servers).
+ */
+export function focusStreakFrom(serverStreak: unknown, focus: Focus | null | undefined): number {
+  return typeof serverStreak === 'number' && Number.isInteger(serverStreak) && serverStreak >= 0 ? serverStreak : focusStreak(focus)
 }
 
 /** Streak line under the focus slots; only from two games up. */
