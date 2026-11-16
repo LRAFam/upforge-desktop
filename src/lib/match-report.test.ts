@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchReportFactRows, matchReportPath, matchReportSupported, matchReportView, recurrenceLine, type MatchReportResponse } from './match-report'
+import { matchReportFactRows, matchReportPath, matchReportSupported, matchReportView, recurrenceLine, reportPracticeMetric, type MatchReportResponse } from './match-report'
 
 const base: MatchReportResponse = {
   match_id: 'm-1',
@@ -69,6 +69,19 @@ describe('matchReportView', () => {
 
   it('marks alt-account matches', () => {
     expect(matchReportView({ ...base, account: { is_main: false } }).isAlt).toBe(true)
+  })
+})
+
+describe('reportPracticeMetric', () => {
+  const focusStep = { text: 'Keep working on your focus: Opening deaths.', drillMetric: 'opening_death_rate', fromFocus: true }
+  it('never pairs the coach drill with the focus metric when its finding has none', () => {
+    const drill = { text: 'Buy a full util kit', why: 'Util first' }
+    expect(reportPracticeMetric({ drill, nextSteps: [{ text: 'Save util', drillMetric: null }, focusStep] })).toBeNull()
+    expect(reportPracticeMetric({ drill, nextSteps: [{ text: 'Clear angles', drillMetric: 'early_opening_death_rate' }, focusStep] })).toBe('early_opening_death_rate')
+  })
+  it('opens the focus drills when there is no coach drill', () => {
+    expect(reportPracticeMetric({ drill: null, nextSteps: [{ text: 'Save util', drillMetric: null }, focusStep] })).toBe('opening_death_rate')
+    expect(reportPracticeMetric(null)).toBeNull()
   })
 })
 

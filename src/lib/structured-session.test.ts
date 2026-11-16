@@ -13,11 +13,12 @@ describe('coachingDrillToSessionDrill', () => {
     expect(coachingDrillToSessionDrill(drill({ category: 'communication', godot_config: { scenario: 'flick' } }))).toBeNull()
   })
   it('builds a session drill for aim categories and explicit scenarios', () => {
-    expect(coachingDrillToSessionDrill(drill({ category: 'crosshair_placement' }))).toMatchObject({ scenario: 'head_height', user_drill_id: 1 })
+    expect(coachingDrillToSessionDrill(drill({ category: 'crosshair_placement' }))).toBeNull()
+    expect(coachingDrillToSessionDrill(drill({ category: 'crosshair_placement', godot_config: { scenario: 'head_height' } }))).toMatchObject({ scenario: 'head_height', user_drill_id: 1 })
     expect(coachingDrillToSessionDrill(drill({ category: 'utility_usage', trainer_scenario: 'tracking' }))?.scenario).toBe('tracking')
   })
   it('guided session from coaching drills contains only trainable ones', () => {
-    const drills = [drill({ id: 1, category: 'utility_usage' }), drill({ id: 2, category: 'positioning' })]
+    const drills = [drill({ id: 1, category: 'utility_usage' }), drill({ id: 2, category: 'positioning', godot_config: { scenario: 'duel' } })]
     const focus = drills.map(coachingDrillToSessionDrill).find(d => d !== null) ?? null
     const plan = buildStructuredSessionPlan({ focusDrill: focus })
     expect(plan.find(s => s.phase === 'focus')).toMatchObject({ scenario: 'duel', user_drill_id: 2 })
@@ -26,14 +27,11 @@ describe('coachingDrillToSessionDrill', () => {
 })
 
 describe('weekly focus', () => {
-  it('offers no trainer drill for a utility, economy, agent pool or team comp focus', () => {
-    for (const category of ['utility', 'economy', 'agent_pool', 'team_comp']) {
-      const plan = buildWeeklyFocusPlan({ playstyleFocus: [{ category, text: 'Use utility before you peek', severity: 'high' }] })
-      expect(plan?.drill).toEqual({ label: 'Practise in game', scenario: null })
+  it('never guesses a trainer drill from the goal text', () => {
+    for (const [category, text] of [['utility', 'Use utility before you peek'], ['positioning', 'Stop wide peeking'], ['economy', 'Work on economy']]) {
+      const plan = buildWeeklyFocusPlan({ playstyleFocus: [{ category, text, severity: 'high' }] })
+      expect(plan?.goal).toBe(text)
+      expect(plan).not.toHaveProperty('drill')
     }
-  })
-  it('keeps a trainer drill for an aim focus', () => {
-    const plan = buildWeeklyFocusPlan({ playstyleFocus: [{ category: 'positioning', text: 'Stop wide peeking', severity: 'high' }] })
-    expect(plan?.drill.scenario).toBe('duel')
   })
 })

@@ -2,7 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { MAX_ATTEMPTS, TrainerSessionQueue, isRetryableUploadError, retryDelayMs, trainerRunKey } from './trainer-session-queue'
+import { MAX_ATTEMPTS, TrainerSessionQueue, drillStateFrom, isRetryableUploadError, retryDelayMs, trainerRunKey } from './trainer-session-queue'
 
 const run = (over: Record<string, unknown> = {}) => ({ scenario: 'flick', score: 70, completed_at: '2026-11-15T10:00:00Z', metadata: { user_drill_id: 4 }, ...over })
 const httpError = (status: number) => Object.assign(new Error(`HTTP ${status}`), { status })
@@ -109,5 +109,19 @@ describe('upload retry rules', () => {
   })
   it('backs off and caps the delay', () => {
     expect([1, 2, 3, 4, 5, 9].map(retryDelayMs)).toEqual([5_000, 30_000, 120_000, 600_000, 1_800_000, 1_800_000])
+  })
+})
+
+describe('drillStateFrom', () => {
+  const base = { id: 4, title: 'Head Height', status: 'active', completed: false, attempt_count: 2, attempts_allowed: 3, pass_score: 70, next: null }
+  it('keeps the practice-pass and verified fields from newer APIs', () => {
+    const d = drillStateFrom({ drill: { ...base, practice_passed: true, practice_passed_at: '2026-11-16T10:00:00Z', verified: false, verified_by: null } })
+    expect(d).toMatchObject({ practice_passed: true, practice_passed_at: '2026-11-16T10:00:00Z', verified: false })
+    expect(d).not.toHaveProperty('verified_by')
+  })
+  it('leaves them out for older APIs', () => {
+    const d = drillStateFrom({ drill: base })
+    expect(d).not.toHaveProperty('practice_passed')
+    expect(d).not.toHaveProperty('verified')
   })
 })

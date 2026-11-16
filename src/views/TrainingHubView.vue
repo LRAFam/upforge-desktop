@@ -124,33 +124,8 @@ declare global {
   }
 }
 
-// Assigned drills from API — falls back to defaults if API unavailable
-const assignedDrills = ref<AssignedDrill[]>([
-  {
-    scenario: 'flick',
-    difficulty: 'medium',
-    duration_seconds: 60,
-    weakness: 'crosshair_placement',
-    weakness_score: 34,
-    reason: 'Your last 3 VODs show crosshair below head-level on 68% of peeks',
-  },
-  {
-    scenario: 'tracking',
-    difficulty: 'medium',
-    duration_seconds: 60,
-    weakness: 'tracking',
-    weakness_score: 41,
-    reason: 'Duels against strafing enemies lost 72% of the time',
-  },
-  {
-    scenario: 'microadjust',
-    difficulty: 'medium',
-    duration_seconds: 45,
-    weakness: 'micro_corrections',
-    weakness_score: 52,
-    reason: 'Close-range duels — small misses under 100ms',
-  },
-])
+// Assigned drills from the API only. No placeholder drills or reasons when it has none (or is offline).
+const assignedDrills = ref<AssignedDrill[]>([])
 
 // ── Scenario metadata ─────────────────────────────────────────────────────────
 const SCENARIO_META: Record<string, {
@@ -701,19 +676,16 @@ function applyTrainerData([history, plan, drills, insights, benchmark]: TrainerD
   coachingDrills.value = drillList
   correlationInsights.value = Array.isArray(insights) ? insights : []
   benchmarkData.value = benchmark
-  // If API returned coaching drills that map to scenarios, populate Today's Drills
-  if (drillList.length > 0) {
-    const sessions = history?.sessions ?? []
-    const mapped: AssignedDrill[] = drillList
-      .map((d: CoachingDrill) => drillToAssigned(d))
-      .filter((d): d is AssignedDrill => d !== null)
-      .slice(0, 4)
-      .map((assigned) => {
-        const progressed = applyProgressionToDrill(assignedToSessionDrill(assigned), sessions)
-        return { ...assigned, difficulty: progressed.difficulty }
-      })
-    if (mapped.length > 0) assignedDrills.value = mapped
-  }
+  // Today's Drills: only the API's coaching drills that map to a trainer scenario (none → none shown).
+  const sessions = history?.sessions ?? []
+  assignedDrills.value = drillList
+    .map((d: CoachingDrill) => drillToAssigned(d))
+    .filter((d): d is AssignedDrill => d !== null)
+    .slice(0, 4)
+    .map((assigned) => {
+      const progressed = applyProgressionToDrill(assignedToSessionDrill(assigned), sessions)
+      return { ...assigned, difficulty: progressed.difficulty }
+    })
 }
 
 // UI v3: draw the last trainer data at once and start the refresh now, not after the awaits in onMounted.

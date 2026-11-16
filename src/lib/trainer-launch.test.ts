@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { launchConfigFromInfo, launchTrainer, sessionEndedMessage, trainerLaunchConfig } from './trainer-launch'
+import { asTrainerResult, launchConfigFromInfo, launchTrainer, sessionEndedMessage, shellOpensTrainerResult, trainerLaunchConfig } from './trainer-launch'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
@@ -32,5 +32,22 @@ describe('trainer launch helper', () => {
     expect(sessionEndedMessage({ reason: 'unknown_scenario' })).toMatch(/Update UpForge/)
     expect(sessionEndedMessage({ reason: 'invalid_config' })).toBeTruthy()
     expect(sessionEndedMessage({ reason: 'error' })).toBeTruthy()
+  })
+})
+
+describe('trainer results outside Practice', () => {
+  it('the app shell opens the results screen for a drill started from Home (or any other screen)', () => {
+    expect(shellOpensTrainerResult('/dashboard')).toBe(true)
+    expect(shellOpensTrainerResult('/report/abc')).toBe(true)
+  })
+  it('leaves Practice, calibration and the results screen to handle their own results', () => {
+    for (const path of ['/training', '/training/calibration', '/trainer-results', '/login', '/post-game']) {
+      expect(shellOpensTrainerResult(path)).toBe(false)
+    }
+  })
+  it('accepts only a well-formed result', () => {
+    expect(asTrainerResult({ scenario: 'flick', score: 70, completed_at: '2026-11-16T10:00:00Z' })).not.toBeNull()
+    expect(asTrainerResult({ scenario: 'flick' })).toBeNull()
+    expect(asTrainerResult(null)).toBeNull()
   })
 })
