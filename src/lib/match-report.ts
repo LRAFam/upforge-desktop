@@ -3,6 +3,7 @@
  * (GET /api/match-report/{id}) into what the v3 screen shows. Pure: no network, real data only.
  */
 import type { Focus, NoteClaim } from './focus'
+import { sanitizeMatchChecks, type MatchFocusCheck } from './focuses'
 import { sanitizeUpforgeScore, sanitizeUpforgeScoreBreakdown, type UpforgeScoreBreakdown } from './upforge-score-breakdown'
 
 export interface MatchReportFacts {
@@ -48,6 +49,8 @@ export interface MatchReportResponse {
   recurrence?: { finding_id: string; seen: number; of: number; streak: number } | null
   focus?: Focus | null
   focus_check?: { match_id: string; value: number; hit: boolean } | null
+  /** Every focus this match counted for (API with several focuses at once); older APIs send none. */
+  focus_checks?: unknown
   notes_usage?: { used: number; limit: number } | null
   /** Stats-based UpForge score 0–1000; null/absent until the API scores the match. */
   upforge_score?: number | null
@@ -84,6 +87,8 @@ export interface MatchReportView {
   hasCoachNote?: boolean
   facts: FactRow[]
   focusCheck: { label: string; hit: boolean } | null
+  /** Every focus this match counted for, when the API lists them; replaces focusCheck on screen. */
+  focusChecks?: MatchFocusCheck[]
   nextSteps: NextStep[]
   isAlt: boolean
   /** Coach evidence lines (Valorant notes, and AI notes on League, CS2 and Deadlock reports). */
@@ -184,6 +189,7 @@ export function matchReportView(res: MatchReportResponse): MatchReportView {
     hasCoachNote: !!notes?.headline?.text,
     facts: matchReportFactRows(facts),
     focusCheck: res.focus_check && focus ? { label: focus.label, hit: res.focus_check.hit } : null,
+    focusChecks: sanitizeMatchChecks(res.focus_checks),
     nextSteps: nextSteps.slice(0, 3),
     isAlt: res.account?.is_main === false,
     upforgeScore: sanitizeUpforgeScore(res.upforge_score),

@@ -2,15 +2,18 @@
 /**
  * UI v3 · Matches (board 17). Every recording on this PC and in the cloud as hairline rows,
  * grouped by match date (This week / Last week / month), filtered by game and status.
+ * Valorant matches that were not recorded are listed too (they open their free match report).
  * The Coaching reviews tab renders CoachingHistoryView embedded under the same header.
  */
-import { computed, provide, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import type { AnalysisItem } from '../../env.d.ts'
 import { loadGameAnalyses } from '../../lib/game-modules'
 import type { PrimaryGame } from '../../lib/games'
 import { useRoute, useRouter } from 'vue-router'
 import MatchesTabsV3 from '../../components/v3/matches/MatchesTabsV3.vue'
 import MatchRowV3 from '../../components/v3/matches/MatchRowV3.vue'
+import ReportRowV3 from '../../components/v3/matches/ReportRowV3.vue'
+import { matchListGroups, reportOnlyRows, showReportRows, type MatchReportRow } from '../../components/v3/matches/report-rows'
 import { statusFilters, useFootageLibrary } from '../../components/v3/matches/useFootageLibrary'
 import UfButton from '../../components/v3/UfButton.vue'
 import EmptyArt from '../../components/v3/empty/EmptyArt.vue'
@@ -23,7 +26,7 @@ import { formatRecordingBytes } from '../../lib/recording-library'
 import { cloudBytes } from '../../lib/cloud-storage'
 import { useAccountUsage } from '../../composables/useAccountUsage'
 import { useCloudRetention } from '../../composables/useCloudRetention'
-import { groupByMatchDate, matchDateMs } from '../../components/v3/matches/match-meta'
+import { matchDateMs } from '../../components/v3/matches/match-meta'
 import { storageSummary } from '../../components/v3/matches/match-row'
 import { ARCHIVE_DATES_KEY } from '../../components/v3/reviews/reviews-v3'
 import type { LibraryRecording } from '../../lib/footage-library'
@@ -76,7 +79,25 @@ function playedAt(rec: LibraryRecording): number {
   if (analysis?.played_at && Number.isFinite(Date.parse(analysis.played_at))) return Date.parse(analysis.played_at)
   return matchDateMs(rec.recordedAt, analysis?.created_at)
 }
-const dateGroups = computed(() => groupByMatchDate(chipFiltered.value, playedAt))
+
+// Every synced Valorant match has a free report, recorded or not: list the unrecorded ones as plain rows.
+const reports = ref<MatchReportRow[]>([])
+async function loadReports(): Promise<void> {
+  const res = await window.api?.app?.listMatchReports?.(50, { everyQueue: true }).catch(() => null)
+  if (res?.ok) reports.value = res.reports
+}
+let stopReports: (() => void) | null = null
+onMounted(() => {
+  void loadReports()
+  // A new report arrives a couple of minutes after each match.
+  stopReports = window.api?.app?.onFocusUpdated?.(() => { void loadReports() }) ?? null
+})
+onBeforeUnmount(() => { stopReports?.() })
+const reportRows = computed(() => showReportRows({ game: gameFilter.value, status: statusChip.value, account: accountFilter.value, selecting: selecting.value })
+  ? reportOnlyRows(reports.value, recordings.value)
+  : [])
+const hasRows = computed(() => chipFiltered.value.length > 0 || reportRows.value.length > 0)
+const dateGroups = computed(() => matchListGroups(chipFiltered.value, reportRows.value, playedAt))
 
 // Coaching reviews (same header) dates each review by its match too: analysis id → archive upload time.
 provide(ARCHIVE_DATES_KEY, computed(() => {
@@ -156,19 +177,19 @@ const countLine = computed(() => {
           <p class="uf-t3">{{ libraryError }}</p>
           <UfButton variant="secondary" @click="lib.load()">Retry loading footage</UfButton>
         </div>
-        <EmptyArt v-else-if="!filtered.length && recordings.length" :game="gameFilter === 'all' ? undefined : gameFilter"
+        <EmptyArt v-else-if="!hasRows && !filtered.length && recordings.length" :game="gameFilter === 'all' ? undefined : gameFilter"
           :title="`No ${gameName} matches yet`"
           :text="`Play a ${gameName} match with UpForge open to record it here. Your other games' recordings are under All games.`">
           <UfButton variant="secondary" @click="gameFilter = 'all'">Show all games</UfButton>
         </EmptyArt>
-        <EmptyArt v-else-if="!filtered.length" :game="gameFilter === 'all' ? undefined : gameFilter" title="No matches yet"
+        <EmptyArt v-else-if="!hasRows && !filtered.length" :game="gameFilter === 'all' ? undefined : gameFilter" title="No matches yet"
           :text="obsConnected === false
             ? 'Connect OBS to record new matches on this device. Cloud recordings appear here too.'
             : 'Play a match to record footage on this device, or browse your cloud recordings.'">
           <UfButton variant="primary" icon="matches" @click="router.push('/cloud-storage?kind=recording')">Browse cloud footage</UfButton>
           <UfButton v-if="obsConnected === false" variant="secondary" icon="settings" @click="router.push('/settings?tab=recording')">Open recording settings</UfButton>
         </EmptyArt>
-        <div v-else-if="!chipFiltered.length" class="uf-state">
+        <div v-else-if="!hasRows" class="uf-state">
           <p class="uf-t3">No footage matches this filter</p>
           <p class="uf-t4">Try another status or clear the game filter.</p>
         </div>
@@ -180,23 +201,25 @@ const countLine = computed(() => {
               <span class="uf-t4">{{ group.items.length }}</span>
             </button>
             <template v-if="lib.isGroupExpanded(group.label)">
-              <MatchRowV3
-                v-for="rec in lib.groupVisibility(group).shown"
-                :key="rec.id"
-                :rec="rec"
-                :busy="busyId === rec.id"
-                :selecting="selecting"
-                :selected="selectedIds.has(rec.id)"
-                :hint="lib.attentionHint(rec)"
-                :analysis="rec.analysisId != null ? analysisById.get(rec.analysisId) ?? (analysesSettled ? null : undefined) : null"
-                :played-at="playedAt(rec)"
-                @open="lib.openBest(rec)"
-                @prefetch="lib.prefetchRow(rec)"
-                @watch="lib.watchRecording(rec)"
-                @continue="lib.continueInMatches(rec)"
-                @delete="lib.deleteRecording(rec)"
-                @toggle="lib.toggleSelected(rec.id)"
-              />
+              <template v-for="item in lib.groupVisibility(group).shown" :key="item.key">
+                <ReportRowV3 v-if="item.kind === 'report'" :report="item.report" @open="router.push(`/report/${item.report.match_id}`)" />
+                <MatchRowV3
+                  v-else
+                  :rec="item.rec"
+                  :busy="busyId === item.rec.id"
+                  :selecting="selecting"
+                  :selected="selectedIds.has(item.rec.id)"
+                  :hint="lib.attentionHint(item.rec)"
+                  :analysis="item.rec.analysisId != null ? analysisById.get(item.rec.analysisId) ?? (analysesSettled ? null : undefined) : null"
+                  :played-at="playedAt(item.rec)"
+                  @open="lib.openBest(item.rec)"
+                  @prefetch="lib.prefetchRow(item.rec)"
+                  @watch="lib.watchRecording(item.rec)"
+                  @continue="lib.continueInMatches(item.rec)"
+                  @delete="lib.deleteRecording(item.rec)"
+                  @toggle="lib.toggleSelected(item.rec.id)"
+                />
+              </template>
               <button v-if="lib.groupVisibility(group).hiddenCount > 0" type="button" class="uf-link uf-more" @click="lib.showMoreInGroup(group.label)">
                 Show {{ lib.groupVisibility(group).hiddenCount }} more
               </button>

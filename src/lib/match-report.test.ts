@@ -127,3 +127,14 @@ describe('recurrenceLine', () => {
     expect(recurrenceLine(null)).toBeNull()
   })
 })
+
+describe('matchReportView focus checks', () => {
+  const check = { focus_id: 1, metric: 'opening_death_rate', label: 'Opening deaths', better: 'lower', unit: 'share_of_rounds', target: 0.24, value: 0.1, hit: true, status: 'active' }
+  it('lists every focus the match counted for', () => {
+    expect(matchReportView({ ...base, focus_checks: [check, { label: 'broken' }] }).focusChecks).toEqual([check])
+  })
+  it('is empty for an API that does not send them, so the single focus still shows', () => {
+    expect(matchReportView(base).focusChecks).toEqual([])
+  })
+})
+

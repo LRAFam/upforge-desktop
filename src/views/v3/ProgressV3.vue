@@ -17,6 +17,8 @@ import { rankHistoryInRange, formatMetric, habitTone, halfDelta, inRange, metric
 import { progressCountLine, analysedEmptyLine } from '../../components/v3/progress/progress-counts'
 import type { FocusResponse } from '../../lib/focus'
 import GameProgress from '../../components/v3/games/GameProgress.vue'
+import FocusesV3 from '../../components/v3/focus/FocusesV3.vue'
+import { hasFocusLoop } from '../../lib/focuses'
 import type { DemoGame } from '../../components/v3/games/game-data'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
 import { RouterLink } from 'vue-router'
@@ -181,6 +183,7 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
     <template v-else>
       <div :class="{ 'uf-reveal': fromSkeleton }" class="pv3-loaded">
       <GameProgress v-if="demoGame" :key="demoGame" :game="demoGame" />
+      <div v-if="demoGame && hasFocusLoop(demoGame)" class="pv3-focuses"><FocusesV3 :game="demoGame" show-recent /></div>
       <template v-else-if="isValorant && hasRank">
         <RankJourney :history="rankForChart" :focus-started-at="focus?.started_at" :focus-label="focus?.label" />
         <p v-if="forecast" class="uf-t4 pv3-forecast" :title="'Based on the trend of your last ' + forecastPoints + ' rank updates. A range, not a promise.'">{{ forecast.sentence }}</p>
@@ -206,15 +209,20 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
           <p v-else class="uf-t2">{{ (focusData?.history?.length ?? 0) > 1 ? 'Not enough checked games in this range to show a trend. Pick a longer range.' : 'Habit trends appear after a few matches are checked by your coach.' }}</p>
         </section>
         <section class="pv3-col pv3-col--side">
-          <span class="uf-label">Your focus</span>
-          <template v-if="focus">
-            <span class="uf-d2">{{ focus.label }}</span>
-            <div class="pv3-slots" aria-label="Focus games">
-              <span v-for="(s, i) in focusSlots" :key="i" class="pv3-slot" :class="`is-${s}`"><span class="uf-fill" /></span>
-            </div>
-            <span class="uf-t4" style="color: var(--uf-muted)">{{ focusStatus }}</span>
-          </template>
-          <p v-else class="uf-t2">No focus yet. Your coach sets one from your recent matches.</p>
+          <!-- Every focus, with add / drop. The single-focus block below shows until the list is there. -->
+          <FocusesV3 game="valorant" show-recent @changed="loadFocus">
+            <template #fallback>
+              <span class="uf-label">Your focus</span>
+              <template v-if="focus">
+                <span class="uf-d2">{{ focus.label }}</span>
+                <div class="pv3-slots" aria-label="Focus games">
+                  <span v-for="(s, i) in focusSlots" :key="i" class="pv3-slot" :class="`is-${s}`"><span class="uf-fill" /></span>
+                </div>
+                <span class="uf-t4" style="color: var(--uf-muted)">{{ focusStatus }}</span>
+              </template>
+              <p v-else class="uf-t2">No focus yet. Your coach sets one from your recent matches.</p>
+            </template>
+          </FocusesV3>
         </section>
       </div>
 
@@ -261,6 +269,7 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
 </template>
 
 <style scoped>
+.pv3-focuses { max-width: 560px; }
 .pv3 { container-type: inline-size; height: 100%; overflow-y: auto; box-sizing: border-box; padding: 28px 40px 40px; display: flex; flex-direction: column; gap: 26px; }
 .pv3-loaded { display: flex; flex-direction: column; gap: 26px; }
 .pv3-stale { margin: -12px 0 0; display: flex; gap: 10px; align-items: baseline; }

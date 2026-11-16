@@ -945,6 +945,10 @@ declare global {
           source: string,
         ) => Promise<{ ok: boolean; opened: 'stripe' | 'pricing' | 'billing'; reason?: string }>
         getFocus: () => Promise<import('./lib/focus').FocusResponse | null>
+        /** Several focuses per game (API /api/focuses). `unavailable` when the server does not have them yet. */
+        listFocuses: (game: string) => Promise<import('./lib/focuses').FocusesResult>
+        addFocus: (game: string, metric: string, target?: number | null) => Promise<import('./lib/focuses').FocusesResult>
+        dropFocus: (id: number) => Promise<import('./lib/focuses').FocusesResult>
         getMatchReport: (matchId: string) => Promise<{ ok: true; report: import('./lib/match-report').MatchReportResponse } | { ok: false; error: string }>
         getGameMatchReport: (game: 'lol' | 'deadlock', matchId: string) => Promise<{ ok: true; report: unknown } | { ok: false; error: string }>
         getGameMatchNotes: (game: 'lol' | 'deadlock' | 'cs2', matchId: string, facts?: unknown) => Promise<{ ok: true; notes: unknown; notes_source: string | null; capped: boolean; notes_status?: 'ready' | 'pending' | 'capped' | 'none' | null } | { ok: false; error: string }>
@@ -952,7 +956,8 @@ declare global {
         generateStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: true; report: import('./lib/starting-report').StartingReportResponse } | { ok: false; error: string }>
         dismissStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: boolean }>
         startStartingFocus: (game: 'valorant' | 'lol') => Promise<{ ok: boolean; focus?: unknown }>
-        listMatchReports: (limit?: number) => Promise<{ ok: true; reports: Array<{ match_id: string; played_at: string | null; map: string | null; agent: string | null; won: boolean | null; score: { ally: number; enemy: number } | null; headline: string | null; notes_source: string | null; upforge_score?: number | null }> } | { ok: false; error: string }>
+        /** Stored match reports, newest first. Ranked only unless `everyQueue` (adds Unrated, Swiftplay…). */
+        listMatchReports: (limit?: number, opts?: { everyQueue?: boolean }) => Promise<{ ok: true; reports: Array<{ match_id: string; played_at: string | null; map: string | null; agent: string | null; won: boolean | null; score: { ally: number; enemy: number } | null; headline: string | null; notes_source: string | null; game_mode?: string | null; queue?: string | null; upforge_score?: number | null }> } | { ok: false; error: string }>
         syncFocus: () => Promise<import('./lib/focus').FocusSyncResult | null>
         onFocusUpdated: (cb: (payload: import('./lib/focus').FocusUpdate) => void) => () => void
         refreshDashboard: () => Promise<{ ok: boolean }>
@@ -1006,6 +1011,7 @@ declare global {
       }
       funnel: {
         trackReportOpened: (props?: Record<string, unknown>) => Promise<{ ok: boolean }>
+        trackMatchReport: (kind: 'opened' | 'video_clicked', props: { game: string; video: string }) => Promise<{ ok: boolean }>
       }
       archives: {
         review: (id: string, analyse?: boolean) => Promise<{ ok: true; timeline: import('./composables/useVodReview').RecordingTimeline } | { ok: false; error: string }>

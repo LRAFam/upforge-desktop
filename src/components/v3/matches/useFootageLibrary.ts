@@ -172,8 +172,11 @@ export function useFootageLibrary(options: FootageLibraryOptions = {}) {
   function showMoreInGroup(label: string) {
     showAllByGroup.value = new Set(showAllByGroup.value).add(label)
   }
-  function groupVisibility(group: RecordingDateGroup | { label: string; items: readonly PendingRecording[] }) {
-    return visibleGroupItems(group.items as LibraryRecording[], showAllByGroup.value.has(group.label))
+  /** First 12 rows of a date group, then "Show more". Recording groups, or any other dated list (v3 mixes in report rows). */
+  function groupVisibility(group: RecordingDateGroup | { label: string; items: readonly PendingRecording[] }): { shown: LibraryRecording[]; hiddenCount: number }
+  function groupVisibility<T>(group: { label: string; items: readonly T[] }): { shown: T[]; hiddenCount: number }
+  function groupVisibility(group: { label: string; items: readonly unknown[] }) {
+    return visibleGroupItems(group.items as unknown[], showAllByGroup.value.has(group.label))
   }
 
   function openFolder() { void window.api.storage.openFolder() }

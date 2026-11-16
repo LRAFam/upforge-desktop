@@ -29,6 +29,9 @@ export type RiotAccountRow = {
   is_active: boolean
 }
 
+/** Valorant modes recorded on a new install (kept in step with DEFAULT_RECORDED_MODES_BY_GAME in the main process). */
+const DEFAULT_VALORANT_RECORDED_MODES = ['COMPETITIVE', 'PREMIER', 'CLASSIC', 'SWIFTPLAY']
+
 type UserWithUsage = {
   name: string
   email: string
@@ -480,9 +483,9 @@ function createSettings() {
     savePath: '',
     launchOnStartup: false,
     autoDelete: true,
-    recordedModes: ['COMPETITIVE', 'PREMIER'],
+    recordedModes: [...DEFAULT_VALORANT_RECORDED_MODES],
     recordedModesByGame: {
-      valorant: ['COMPETITIVE', 'PREMIER'],
+      valorant: [...DEFAULT_VALORANT_RECORDED_MODES],
       lol: ['CLASSIC'],
       cs2: ['COMPETITIVE', 'PREMIER'],
       deadlock: ['COMPETITIVE'],
@@ -1278,7 +1281,7 @@ function createSettings() {
       Object.assign(settings, savedSettings)
       if (!settings.recordedModesByGame) {
         settings.recordedModesByGame = {
-          valorant: [...(settings.recordedModes ?? ['COMPETITIVE', 'PREMIER'])],
+          valorant: [...(settings.recordedModes ?? DEFAULT_VALORANT_RECORDED_MODES)],
           lol: ['CLASSIC'],
           cs2: ['COMPETITIVE', 'PREMIER'],
           deadlock: ['COMPETITIVE'],

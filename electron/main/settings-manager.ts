@@ -14,6 +14,7 @@ import {
   type RecordingPresetId,
 } from './recording-preset'
 import {
+  DEFAULT_RECORDED_MODES_BY_GAME,
   defaultRecordedModesByGame,
   migrateRecordedModesByGame,
   type RecordedModesByGame,
@@ -238,7 +239,7 @@ const DEFAULTS: AppSettings = {
   savePath: '',
   launchOnStartup: false,
   autoDelete: true,
-  recordedModes: ['COMPETITIVE', 'PREMIER'],
+  recordedModes: [...DEFAULT_RECORDED_MODES_BY_GAME.valorant],
   recordedModesByGame: defaultRecordedModesByGame(),
   autoAnalyse: false,
   autoAnalyseConsentVersion: AUTO_ANALYSE_CONSENT_VERSION,

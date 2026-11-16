@@ -5,6 +5,7 @@ import {
   isModeFilteredOut,
   isValorantModeFilteredOut,
   migrateRecordedModesByGame,
+  modeSkippedMessage,
   normalizeCs2GameMode,
   VALORANT_RECORDABLE_MODES,
   LOL_RECORDABLE_MODES,
@@ -78,5 +79,48 @@ describe('CS2 GSI map.mode aliases', () => {
     expect(normalizeCs2GameMode('gungameprogressive')).toBe('ARMS_RACE')
     expect(normalizeCs2GameMode('casual')).toBe('CASUAL')
     expect(normalizeCs2GameMode('custom')).toBe('CUSTOM')
+  })
+})
+
+describe('default recorded modes (new installs)', () => {
+  it('records Unrated and Swiftplay as well as ranked for Valorant', () => {
+    expect(defaultRecordedModesByGame().valorant).toEqual(['COMPETITIVE', 'PREMIER', 'CLASSIC', 'SWIFTPLAY'])
+  })
+
+  it('captures a first Unrated or Swiftplay match, and still skips Deathmatch and The Range', () => {
+    const modes = defaultRecordedModesByGame().valorant
+    expect(isValorantModeFilteredOut(modes, 'CLASSIC')).toBe(false)
+    expect(isValorantModeFilteredOut(modes, 'SWIFTPLAY')).toBe(false)
+    expect(isValorantModeFilteredOut(modes, 'COMPETITIVE')).toBe(false)
+    expect(isValorantModeFilteredOut(modes, 'DEATHMATCH')).toBe(true)
+    expect(isValorantModeFilteredOut(modes, 'TEAMDEATHMATCH')).toBe(true)
+    expect(isValorantModeFilteredOut(modes, 'SHOOTING_RANGE')).toBe(true)
+  })
+
+  it('leaves the other games as they were', () => {
+    const d = defaultRecordedModesByGame()
+    expect(d.lol).toEqual(['CLASSIC'])
+    expect(d.cs2).toEqual(['COMPETITIVE', 'PREMIER'])
+    expect(d.deadlock).toEqual(['COMPETITIVE'])
+  })
+
+  it('never widens a choice the player already saved', () => {
+    expect(migrateRecordedModesByGame(undefined, { valorant: ['COMPETITIVE', 'PREMIER'] }).valorant).toEqual(['COMPETITIVE', 'PREMIER'])
+    expect(migrateRecordedModesByGame(['COMPETITIVE', 'PREMIER'], undefined).valorant).toEqual(['COMPETITIVE', 'PREMIER'])
+    expect(migrateRecordedModesByGame(['COMPETITIVE'], { valorant: [] }).valorant).toEqual([])
+  })
+})
+
+describe('modeSkippedMessage', () => {
+  it('names the mode the way the game does', () => {
+    expect(modeSkippedMessage('valorant', 'CLASSIC')).toBe(
+      'Unrated is not in your recorded modes, so this match was not captured. Change modes in Settings → Recording.',
+    )
+    expect(modeSkippedMessage('valorant', 'TEAMDEATHMATCH')).toMatch(/^Team Deathmatch is not in your recorded modes/)
+    expect(modeSkippedMessage('cs2', 'WINGMAN')).toMatch(/^Wingman is not in your recorded modes/)
+  })
+
+  it('shows an id it has no name for as it is', () => {
+    expect(modeSkippedMessage('lol', 'ARAM')).toMatch(/^ARAM is not in your recorded modes/)
   })
 })

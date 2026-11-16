@@ -45,3 +45,27 @@ describe('SettingsManager persistence', () => {
     expect(fs.readdirSync(runtime.root).some((f) => f.startsWith('settings.corrupt-'))).toBe(true)
   })
 })
+
+describe('SettingsManager recorded modes', () => {
+  it('a new install records ranked, Unrated and Swiftplay for Valorant', () => {
+    const settings = new SettingsManager().get()
+    expect(settings.recordedModesByGame.valorant).toEqual(['COMPETITIVE', 'PREMIER', 'CLASSIC', 'SWIFTPLAY'])
+    expect(settings.recordedModes).toEqual(['COMPETITIVE', 'PREMIER', 'CLASSIC', 'SWIFTPLAY'])
+    expect(settings.recordedModesByGame.cs2).toEqual(['COMPETITIVE', 'PREMIER'])
+  })
+
+  it('an existing install keeps the modes it saved', () => {
+    fs.writeFileSync(settingsFile(), JSON.stringify({
+      recordedModes: ['COMPETITIVE', 'PREMIER'],
+      recordedModesByGame: { valorant: ['COMPETITIVE', 'PREMIER'], lol: ['CLASSIC'], cs2: ['COMPETITIVE', 'PREMIER'], deadlock: ['COMPETITIVE'] },
+    }))
+    const settings = new SettingsManager().get()
+    expect(settings.recordedModesByGame.valorant).toEqual(['COMPETITIVE', 'PREMIER'])
+    expect(settings.recordedModes).toEqual(['COMPETITIVE', 'PREMIER'])
+  })
+
+  it('an older install with only the flat list keeps it too', () => {
+    fs.writeFileSync(settingsFile(), JSON.stringify({ recordedModes: ['COMPETITIVE'] }))
+    expect(new SettingsManager().get().recordedModesByGame.valorant).toEqual(['COMPETITIVE'])
+  })
+})

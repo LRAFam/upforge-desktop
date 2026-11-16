@@ -112,8 +112,12 @@ const api = {
       source: string,
     ) => ipcRenderer.invoke('billing:start-checkout', { intent, source }),
     getFocus: () => ipcRenderer.invoke('focus:get'),
+    /** Several focuses per game: list, add one of the measured habits (optional own target), drop one. */
+    listFocuses: (game: string) => ipcRenderer.invoke('focuses:list', game),
+    addFocus: (game: string, metric: string, target?: number | null) => ipcRenderer.invoke('focuses:add', { game, metric, target: target ?? null }),
+    dropFocus: (id: number) => ipcRenderer.invoke('focuses:drop', id),
     getMatchReport: (matchId: string) => ipcRenderer.invoke('match-report:get', matchId),
-    listMatchReports: (limit?: number) => ipcRenderer.invoke('match-report:list', limit),
+    listMatchReports: (limit?: number, opts?: { everyQueue?: boolean }) => ipcRenderer.invoke('match-report:list', limit, opts),
     getGameMatchReport: (game: 'lol' | 'deadlock', matchId: string) => ipcRenderer.invoke('match-report:get-game', game, matchId),
     getGameMatchNotes: (game: 'lol' | 'deadlock' | 'cs2', matchId: string, facts?: unknown) => ipcRenderer.invoke('match-report:game-notes', game, matchId, facts),
     getStartingReport: (game: 'valorant' | 'lol' | 'deadlock' | 'cs2') => ipcRenderer.invoke('starting-report:get', game),
@@ -175,6 +179,9 @@ const api = {
   funnel: {
     trackReportOpened: (props?: Record<string, unknown>) =>
       ipcRenderer.invoke('funnel:track-report-opened', props) as Promise<{ ok: boolean }>,
+    /** Free match report: shown ('opened') or a video action pressed in it ('video_clicked'). */
+    trackMatchReport: (kind: 'opened' | 'video_clicked', props: { game: string; video: string }) =>
+      ipcRenderer.invoke('funnel:track-match-report', kind, props) as Promise<{ ok: boolean }>,
   },
   archives: {
     review: (id: string, analyse = false) => ipcRenderer.invoke('archives:review', id, analyse),

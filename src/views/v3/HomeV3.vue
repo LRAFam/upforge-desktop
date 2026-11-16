@@ -20,6 +20,8 @@ import UfIcon from '../../components/v3/UfIcon.vue'
 import UfRoundsLine from '../../components/v3/UfRoundsLine.vue'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import HomeFocusPanel from '../../components/v3/home/HomeFocusPanel.vue'
+import FocusesV3 from '../../components/v3/focus/FocusesV3.vue'
+import { hasFocusLoop } from '../../lib/focuses'
 import HomeLiveStatus from '../../components/v3/home/HomeLiveStatus.vue'
 import { useReadyAnalyses } from '../../composables/useReadyAnalyses'
 import { openAnalysisInApp } from '../../lib/open-analysis-in-app'
@@ -155,6 +157,8 @@ async function runWeeklyDrill() {
 // Round shape of the last synced match (derived on the PC from the Riot match; Valorant focus loop).
 const rounds = computed(() => focusLatest.value?.rounds ?? null)
 const reportMatchId = computed(() => (d.isValorant.value ? focusLatest.value?.match_id ?? null : null))
+// Adding or dropping a focus changes which one is newest: redraw the detailed panel from the server.
+const focusPanelKey = ref(0)
 function openReport(): void { if (reportMatchId.value) router.push(`/report/${reportMatchId.value}`).catch(() => {}) }
 const roundsTitle = computed(() => {
   const r = rounds.value
@@ -353,8 +357,11 @@ async function runPrimary() {
       </div>
 
       <aside class="home3-side" aria-label="Focus, practice and recent matches">
-        <HomeFocusPanel v-if="d.isValorant.value" @latest="onFocusLatest" />
-        <div v-if="d.isValorant.value" class="uf-hair" />
+        <HomeFocusPanel v-if="d.isValorant.value" :key="focusPanelKey" @latest="onFocusLatest" />
+        <!-- Every focus the player is working on in this game, with add / drop (Valorant, League, Deadlock). -->
+        <FocusesV3 v-if="hasFocusLoop(d.primaryGame.value)" :game="d.primaryGame.value" :skip-newest="d.isValorant.value"
+          :heading="d.isValorant.value ? 'More focuses' : 'Your focuses'" @changed="focusPanelKey++" />
+        <div v-if="hasFocusLoop(d.primaryGame.value)" class="uf-hair" />
 
         <template v-if="demoGame === 'cs2' || demoGame === 'deadlock'">
           <GameFiles :game="demoGame" :data="gd" />

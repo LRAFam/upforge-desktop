@@ -23,7 +23,7 @@ import { getActiveUserId } from '../user-session'
 import { resolveRecordingSavePath, recordingSavePathProblem } from '../user-data-paths'
 import { prepareRecordingDirectory } from '../recording-save-safety'
 import { openPathSafe } from '../shell-open'
-import { trackOnboardingComplete, trackReportOpened, trackUpgradeClicked } from '../funnel-events'
+import { trackMatchReportOpened, trackMatchReportVideoClicked, trackOnboardingComplete, trackReportOpened, trackUpgradeClicked } from '../funnel-events'
 import { startCheckout, type CheckoutIntent } from '../billing-checkout'
 import { createCheckoutFocusRefresh } from '../checkout-focus-refresh'
 import { getFrontendBaseUrl } from '../api-base'
@@ -100,6 +100,17 @@ export function setupAppHandlers(
     if (!isTrustedRendererUrl(_e.senderFrame?.url ?? '')) return { ok: false }
     trackUsageAction(_e.sender.id, 'report')
     trackReportOpened(props)
+    return { ok: true as const }
+  })
+
+  // Free match report (data): its own events, so `report_opened` keeps meaning the video coaching report.
+  ipcMain.handle('funnel:track-match-report', (_e, kind: unknown, props?: Record<string, unknown>) => {
+    if (!isTrustedRendererUrl(_e.senderFrame?.url ?? '')) return { ok: false }
+    if (kind === 'opened') {
+      trackUsageAction(_e.sender.id, 'report')
+      trackMatchReportOpened(props)
+    } else if (kind === 'video_clicked') trackMatchReportVideoClicked(props)
+    else return { ok: false }
     return { ok: true as const }
   })
 

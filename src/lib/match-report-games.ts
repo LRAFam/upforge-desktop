@@ -7,6 +7,7 @@ import type { FactRow, MatchReportView, NextStep } from './match-report'
 import { buildCs2MatchView, type Cs2StatsV1 } from '../components/v3/matchpage/cs2/cs2-match-view'
 import { deadlockBandArt, deadlockItemBuild, type DeadlockHeroArt } from './deadlock-item-build'
 import { sanitizeUpforgeScore, sanitizeUpforgeScoreBreakdown } from './upforge-score-breakdown'
+import { sanitizeMatchChecks } from './focuses'
 
 export type ReportGame = 'valorant' | 'lol' | 'deadlock' | 'cs2'
 
@@ -51,6 +52,8 @@ export interface LolReportResponse {
   facts?: LolReportFacts | null
   focus?: { label: string; progress?: { status?: string } } | null
   focus_check?: { hit: boolean } | null
+  /** Every focus this match counted for (API with several focuses at once). */
+  focus_checks?: unknown
   /** API 2 Nov 2026+: champion, items, summoner spells, profile icon. */
   loadout?: { champion_id?: number | null; items?: number[]; summoner_spells?: number[]; profile_icon_id?: number | null } | null
 }
@@ -107,6 +110,7 @@ export function lolReportView(res: LolReportResponse): MatchReportView {
   if (n(c.solo_kills) && c.solo_kills >= 1) v.positive = `You won ${plural(c.solo_kills, 'solo kill')}.`
   else if (n(c.max_cs_lead) && c.max_cs_lead >= 10 && opp) v.positive = `You led ${opp} by up to ${c.max_cs_lead} CS.`
   if (res.focus && res.focus_check) v.focusCheck = { label: res.focus.label, hit: res.focus_check.hit }
+  v.focusChecks = sanitizeMatchChecks(res.focus_checks)
   return v
 }
 
@@ -137,6 +141,8 @@ export interface DeadlockReportResponse {
   /** API 3 Nov 2026+: stats-based UpForge score vs same-rank, same-hero ranked players (deadlock-api.com data). */
   upforge_score?: number | null
   upforge_score_breakdown?: unknown
+  /** Every focus this match counted for (API with several focuses at once). */
+  focus_checks?: unknown
 }
 
 export function deadlockReportView(res: DeadlockReportResponse): MatchReportView {
@@ -145,6 +151,7 @@ export function deadlockReportView(res: DeadlockReportResponse): MatchReportView
   v.upforgeScore = sanitizeUpforgeScore(res.upforge_score)
   v.upforgeScoreBreakdown = v.upforgeScore == null ? null : sanitizeUpforgeScoreBreakdown(res.upforge_score_breakdown)
   v.bandArt = deadlockBandArt(res.hero_art)
+  v.focusChecks = sanitizeMatchChecks(res.focus_checks)
   // Older API builds don't send `item_build` at all: leave it undefined so no item section shows.
   if ('item_build' in res) v.itemBuild = deadlockItemBuild(res.item_build)
   const size = n(f.lobby_size) ? f.lobby_size : null

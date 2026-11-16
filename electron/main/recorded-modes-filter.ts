@@ -4,6 +4,8 @@
  * Otherwise only modes present in the allowlist are captured.
  */
 
+import { modeQueueLabel } from '../../src/lib/game-queue'
+
 export type RecordableGame = 'valorant' | 'lol' | 'cs2' | 'deadlock'
 
 export const VALORANT_RECORDABLE_MODES = [
@@ -47,7 +49,9 @@ export const RECORDABLE_MODES_BY_GAME: Record<RecordableGame, readonly string[]>
 }
 
 export const DEFAULT_RECORDED_MODES_BY_GAME: Record<RecordableGame, string[]> = {
-  valorant: ['COMPETITIVE', 'PREMIER'],
+  // New installs also record Unrated (CLASSIC) and Swiftplay: a new player's first match is often one
+  // of those, and skipping it left them with nothing to review. Saved choices are never changed.
+  valorant: ['COMPETITIVE', 'PREMIER', 'CLASSIC', 'SWIFTPLAY'],
   // Summoner's Rift on; ARAM/Arena/custom off until Live Client can split ranked vs normals.
   lol: ['CLASSIC'],
   cs2: ['COMPETITIVE', 'PREMIER'],
@@ -122,6 +126,15 @@ export function isValorantModeFilteredOut(
   allModes: readonly string[] = VALORANT_RECORDABLE_MODES,
 ): boolean {
   return isModeFilteredOut(recordedModes, gameMode, allModes)
+}
+
+/**
+ * Shown when a match is skipped because its mode isn't recorded. Names the mode the way the game
+ * does ("Unrated", not the internal "CLASSIC"); unknown ids are shown as they are.
+ */
+export function modeSkippedMessage(game: string, gameMode: string): string {
+  const name = modeQueueLabel(game, gameMode).split(' · ')[0] || gameMode
+  return `${name} is not in your recorded modes, so this match was not captured. Change modes in Settings → Recording.`
 }
 
 /** Normalize CS2 GSI map.mode into a recordable mode id. */
