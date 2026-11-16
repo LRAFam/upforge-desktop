@@ -1,18 +1,18 @@
-import { describe, expect, it } from 'vitest'
-import { readUiV3 } from './ui-v3'
+import { describe, expect, it, vi } from 'vitest'
+import { LEGACY_UI_V3_STORAGE_KEY, clearLegacyUiPreference, uiV3 } from './ui-v3'
 
-const store = (v: string | null) => ({ getItem: () => v })
-
-describe('readUiV3', () => {
-  it('is on by default for everyone', () => {
-    expect(readUiV3(store(null))).toBe(true)
-    expect(readUiV3(null)).toBe(true)
+describe('ui v3 (classic design retired)', () => {
+  it('is always on', () => {
+    expect(uiV3.value).toBe(true)
   })
-  it('respects a player who switched back to the classic design', () => {
-    expect(readUiV3(store('0'))).toBe(false)
-    expect(readUiV3(store('1'))).toBe(true)
+  it('clears a saved classic-design choice', () => {
+    const removeItem = vi.fn()
+    clearLegacyUiPreference({ removeItem })
+    expect(removeItem).toHaveBeenCalledWith(LEGACY_UI_V3_STORAGE_KEY)
+    expect(LEGACY_UI_V3_STORAGE_KEY).toBe('uf.uiV3')
   })
-  it('stays on when storage throws', () => {
-    expect(readUiV3({ getItem: () => { throw new Error('blocked') } })).toBe(true)
+  it('ignores missing or blocked storage', () => {
+    expect(() => clearLegacyUiPreference(null)).not.toThrow()
+    expect(() => clearLegacyUiPreference({ removeItem: () => { throw new Error('blocked') } })).not.toThrow()
   })
 })

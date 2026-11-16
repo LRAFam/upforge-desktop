@@ -34,7 +34,7 @@ import { initProductActivity, trackProductActivity } from './product-activity'
 import { backgroundWork } from './background-work'
 import { BackgroundMatchState } from './background-match-state'
 import { matchPollPause } from './poll-pause'
-import { REARM_PROCESS_MAX_AGE_MS } from './process-poll-plan'
+import { REARM_PROCESS_MAX_AGE_MS, VALORANT_IN_MATCH_PROCESS_CHECK_MS } from './process-poll-plan'
 import {
   RECORDING_MAX_DURATION_CHECK_MS,
   checkRecordingMaxDuration,
@@ -390,6 +390,7 @@ import {
   getDeadlockDetectionStatus,
 } from './deadlock-match-watcher'
 import { recordingHeroLabel, resolveDeadlockRecordingMatch } from './deadlock-recording-hero'
+import { DeadlockQueueLookups, deadlockAllowsAutoAnalyse, deadlockApiQueue, deadlockAutoAnalyseDecision, deadlockManualOnlyActivity } from './deadlock-auto-analyse'
 import { linkDeadlockAutoReview } from './deadlock-auto-review-link'
 import { FaceitLinkStore, registerCs2FaceitMatchIpc } from './cs2-faceit-match'
 import { setupCoachFlowDemoHandlers } from './ipc/coach-flow-demo-ipc'
@@ -982,10 +983,9 @@ let rearmWatchInFlight: string | null = null
 let matchFinalizeInFlight: Promise<boolean> | null = null
 // Overlay polling timer — cleared when match ends or game stops
 let overlayPollTimer: ReturnType<typeof setInterval> | null = null
-/** Cached Shipping.exe status — tasklist is expensive; check every 5s not every overlay tick. */
+/** Cached Shipping.exe status — tasklist is expensive; see VALORANT_IN_MATCH_PROCESS_CHECK_MS. */
 let cachedShippingProcessUp = true
 let lastShippingProcessCheckAt = 0
-const SHIPPING_PROCESS_CHECK_MS = 10_000
 let gsiPollTimer: ReturnType<typeof setInterval> | null = null
 
 let lastReplayRetryContext: ReplayRetryContext | null = null
@@ -1145,6 +1145,56 @@ function enqueuePostMatchAnalyse(args: {
   logActivity(POST_MATCH_COPY.queuedUntilNotInMatch)
 }
 
+/**
+ * Deadlock queue per lobby match (owner decision 16 Nov: only Ranked is analysed automatically).
+ * The hero/queue lookup after a match is shared with the automatic upload paths below.
+ */
+const deadlockQueueLookups = new DeadlockQueueLookups()
+const deadlockManualOnlyLogged = new Set<string>()
+
+function lookupDeadlockQueue(matchId: number): Promise<string | null> {
+  return deadlockQueueLookups.queueFor(matchId, () =>
+    resolveDeadlockRecordingMatch(matchId, { fetchMatch: (id) => authManager.fetchDeadlockMatch(id) })
+      .then((resolved) => resolved?.mode ?? null))
+}
+
+/** Waits for the match queue; false (and one activity line) for Standard / Street Brawl and other non-ranked queues. */
+async function deadlockAutoUploadGate(matchId: number | null): Promise<{ allowed: boolean; queue: string | null }> {
+  if (!matchId) return { allowed: true, queue: null }
+  const mode = await lookupDeadlockQueue(matchId)
+  if (deadlockAllowsAutoAnalyse(mode)) return { allowed: true, queue: deadlockApiQueue(mode) }
+  if (!deadlockManualOnlyLogged.has(String(matchId))) {
+    deadlockManualOnlyLogged.add(String(matchId))
+    logActivity(deadlockManualOnlyActivity(mode), 'deadlock')
+  }
+  return { allowed: false, queue: deadlockApiQueue(mode) }
+}
+
+/** A non-ranked Deadlock match keeps its recording for a manual Analyse; its automatic job is dropped. */
+function dropAutomaticDeadlockJobs(matchId: string, mode: string | null): void {
+  if (!postMatchJobStore) return
+  let dropped = 0
+  for (const job of postMatchJobStore.list()) {
+    if (job.requestKind === 'manual' || job.game !== 'deadlock') continue
+    const rec = recordingsStore.getById(job.recordingId)
+    if (rec?.matchId !== matchId) continue
+    postMatchJobStore.remove(job.id)
+    dropped++
+  }
+  if (dropped && !deadlockManualOnlyLogged.has(matchId)) {
+    deadlockManualOnlyLogged.add(matchId)
+    logActivity(deadlockManualOnlyActivity(mode), 'deadlock')
+  }
+  if (dropped) notifyRecordingsUpdated()
+}
+
+/** An automatic Deadlock job waits while its match queue is still being looked up. */
+function deadlockQueuePending(rec: { game?: string | null; gameMode?: string | null; matchId?: string | null }): boolean {
+  return rec.game === 'deadlock'
+    && deadlockAutoAnalyseDecision(rec.gameMode) === 'unknown'
+    && deadlockQueueLookups.isPending(rec.matchId)
+}
+
 /** When auto-analyse is on and Riot stats flip to ready, start the upload job (unless in a match). */
 function maybeAutoEnqueueWhenReady(recordingId: string): void {
   if (settingsManager?.get().autoAnalyse === false) return
@@ -1218,7 +1268,7 @@ function initPostMatchWorker(userId: number): void {
       const rec = recordingsStore.getById(job.recordingId)
       if (!rec) return false
       if (job.requestKind === 'manual') return rec.manualAnalyseRequested === true
-      return settingsManager?.get().autoAnalyse === true && canAutoEnqueueRecording(rec)
+      return settingsManager?.get().autoAnalyse === true && canAutoEnqueueRecording(rec) && !deadlockQueuePending(rec)
     },
     log: (msg) => log.info('[PostMatchWorker]', msg),
     runJob: async (job) => {
@@ -4125,6 +4175,9 @@ function setupGameDetection(): void {
     async function maybeUploadDemoOnly(reason: string): Promise<void> {
       if (!autoAnalyse || !usesDemoReplay(game)) return
       if (!canUploadCapture()) return
+      const lobbyMatchId = game === 'deadlock' ? getDeadlockLobbyMatchId() : null
+      const deadlockGate = game === 'deadlock' ? await deadlockAutoUploadGate(lobbyMatchId) : null
+      if (deadlockGate && !deadlockGate.allowed) return
       const notifyWin = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
       const uploading = await tryAutoUploadSourceReplay({
         game: game as 'cs2' | 'deadlock',
@@ -4133,8 +4186,11 @@ function setupGameDetection(): void {
         auth: authManager,
         notifyWindow: notifyWin,
         customReplayDir: game === 'cs2' ? config?.cs2DemoDir : undefined,
+        meta: deadlockGate
+          ? { matchId: lobbyMatchId, matchStartedAt: Math.floor(matchSessionStart / 1000), trigger: 'auto', queue: deadlockGate.queue }
+          : undefined,
         onJobId: game === 'deadlock'
-          ? (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: getDeadlockLobbyMatchId(), sessionStart: matchSessionStart })
+          ? (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: lobbyMatchId, sessionStart: matchSessionStart })
           : undefined,
         // Only announce an upload once a replay file was actually found.
         onUploadStarting: () => {
@@ -4405,13 +4461,20 @@ function setupGameDetection(): void {
     if (game === 'deadlock') {
       const lobbyMatchId = getDeadlockLobbyMatchId()
       if (lobbyMatchId) {
-        void resolveDeadlockRecordingMatch(lobbyMatchId, {
+        const resolving = resolveDeadlockRecordingMatch(lobbyMatchId, {
           fetchMatch: async (id) => {
             const res = await authManager.fetchDeadlockMatch(id)
             getGameDataCapture()?.saveDeadlockMetadata(id, res)
             return res
           },
         })
+        // The automatic upload paths wait for this queue; queued Deadlock jobs re-check once it lands.
+        void deadlockQueueLookups.remember(lobbyMatchId, resolving.then((resolved) => resolved?.mode ?? null))
+          .then((mode) => {
+            if (!deadlockAllowsAutoAnalyse(mode)) dropAutomaticDeadlockJobs(String(lobbyMatchId), mode)
+            postMatchWorker?.kick()
+          })
+        void resolving
           .then((resolved) => {
             const label = recordingHeroLabel(resolved?.player ?? null, null)
             let changed = label ? captureStore.setDeadlockHero(String(lobbyMatchId), label) : 0
@@ -4428,22 +4491,31 @@ function setupGameDetection(): void {
     // CS2 / Deadlock replay upload — runs asynchronously and never blocks VOD upload
     if (uploadsSourceReplay(game)) {
       if (pendingReplayPath) {
-        const replayMeta = game === 'deadlock'
-          ? {
-              matchId: getDeadlockLobbyMatchId(),
-              matchStartedAt: Math.floor(matchSessionStart / 1000),
-            }
-          : undefined
-        void uploadReplayInBackground(
-          game as 'cs2' | 'deadlock',
-          pendingReplayPath,
-          authManager,
-          postGameNotifyWindow,
-          replayMeta,
-          game === 'deadlock'
-            ? (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: replayMeta?.matchId ?? null, sessionStart: matchSessionStart })
-            : undefined,
-        ).catch(() => { /* logged inside */ })
+        const replayPath = pendingReplayPath
+        const replayMatchId = game === 'deadlock' ? getDeadlockLobbyMatchId() : null
+        void (async () => {
+          // Deadlock: Standard / Street Brawl are not analysed automatically (owner decision 16 Nov).
+          const gate = game === 'deadlock' ? await deadlockAutoUploadGate(replayMatchId) : null
+          if (gate && !gate.allowed) return
+          const replayMeta = gate
+            ? {
+                matchId: replayMatchId,
+                matchStartedAt: Math.floor(matchSessionStart / 1000),
+                trigger: 'auto' as const,
+                queue: gate.queue,
+              }
+            : undefined
+          await uploadReplayInBackground(
+            game as 'cs2' | 'deadlock',
+            replayPath,
+            authManager,
+            postGameNotifyWindow,
+            replayMeta,
+            game === 'deadlock'
+              ? (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: replayMatchId, sessionStart: matchSessionStart })
+              : undefined,
+          )
+        })().catch(() => { /* logged inside */ })
       } else if (postGameNotifyWindow && !postGameNotifyWindow.isDestroyed()) {
         try {
           postGameNotifyWindow.webContents.send('post-game:demo-status', { status: 'not-found' })
@@ -5981,7 +6053,7 @@ function setupGameDetection(): void {
         const state = await riotLocalApi.getSharedSessionState()
         if (obsRecorder.isRecording() && !matchHandled) {
           const now = Date.now()
-          if (now - lastShippingProcessCheckAt >= SHIPPING_PROCESS_CHECK_MS) {
+          if (now - lastShippingProcessCheckAt >= VALORANT_IN_MATCH_PROCESS_CHECK_MS) {
             lastShippingProcessCheckAt = now
             cachedShippingProcessUp = await gameDetector.isMatchProcessRunningRecent()
           }
@@ -6231,19 +6303,25 @@ function setupGameDetection(): void {
         const sessionStart = currentMatchStartTime ?? deadlockSessionStartAt
         const autoAnalyse = settingsManager?.get().autoAnalyse !== false
         if (!matchHandled && sessionStart != null && autoAnalyse && authManager.isAuthenticated()) {
-          void tryAutoUploadSourceReplay({
-            game: 'deadlock',
-            demoPath: null,
-            matchSessionStart: sessionStart,
-            auth: authManager,
-            notifyWindow: mainWindow && !mainWindow.isDestroyed() ? mainWindow : null,
-            meta: {
-              matchId: getDeadlockLobbyMatchId(),
-              matchStartedAt: Math.floor(sessionStart / 1000),
-            },
-            onJobId: (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: getDeadlockLobbyMatchId(), sessionStart }),
-          }).then(() => {
-            mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
+          const exitMatchId = getDeadlockLobbyMatchId()
+          void deadlockAutoUploadGate(exitMatchId).then((gate) => {
+            if (!gate.allowed) return
+            return tryAutoUploadSourceReplay({
+              game: 'deadlock',
+              demoPath: null,
+              matchSessionStart: sessionStart,
+              auth: authManager,
+              notifyWindow: mainWindow && !mainWindow.isDestroyed() ? mainWindow : null,
+              meta: {
+                matchId: exitMatchId,
+                matchStartedAt: Math.floor(sessionStart / 1000),
+                trigger: 'auto',
+                queue: gate.queue,
+              },
+              onJobId: (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: exitMatchId, sessionStart }),
+            }).then(() => {
+              mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
+            })
           })
         }
         deadlockSessionStartAt = null

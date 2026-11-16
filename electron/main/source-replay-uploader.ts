@@ -13,6 +13,9 @@ export interface SourceReplayUploadOptions {
   matchId?: number | null
   matchStartedAt?: number | null
   heroId?: number | null
+  /** Deadlock: 'auto' for uploads nobody tapped Analyse for (the API keeps those Ranked-only). */
+  trigger?: 'auto' | 'manual'
+  queue?: string | null
   onProgress: (pct: number) => void
 }
 
@@ -51,6 +54,8 @@ export class SourceReplayUploader {
       if (opts.matchId) presignBody.match_id = opts.matchId
       if (opts.matchStartedAt) presignBody.match_started_at = opts.matchStartedAt
       if (opts.heroId) presignBody.hero_id = opts.heroId
+      if (opts.trigger) presignBody.trigger = opts.trigger
+      if (opts.queue) presignBody.queue = opts.queue
     } else if (opts.steamId) {
       presignBody.player_steam_id = opts.steamId
     }

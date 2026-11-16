@@ -6,6 +6,12 @@ export const POLL_IDLE_MS = 5_000
 export const POLL_ACTIVE_MS = 10_000
 /** Poll interval once a game API (presence / GSI / live client) confirms a live match. */
 export const POLL_CONFIRMED_MS = 30_000
+/**
+ * While Valorant is recording, the overlay tick re-checks the match process (Shipping.exe)
+ * at most this often. Owner call: 35 s keeps the game smoother; a crash/close is noticed
+ * up to 35 s later.
+ */
+export const VALORANT_IN_MATCH_PROCESS_CHECK_MS = 35_000
 /** Process checks reuse a full `tasklist` snapshot at most this old instead of spawning. */
 export const PROCESS_SNAPSHOT_MAX_AGE_MS = 10_000
 /**

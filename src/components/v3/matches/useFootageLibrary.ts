@@ -1,7 +1,5 @@
 /**
- * Footage library state + actions: the ONE source of logic for both the old Footage screen
- * (src/views/RecordingsView.vue) and the UI v3 Matches screen (src/views/v3/MatchesV3.vue).
- * Same IPC calls, same confirm texts, same filters for both.
+ * Footage library state + actions for the Matches screen (src/views/v3/MatchesV3.vue).
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { uiV3 } from '../../../lib/ui-v3'
