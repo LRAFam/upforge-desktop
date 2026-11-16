@@ -8,6 +8,7 @@ import SettingsSection from './SettingsSection.vue'
 import SettingsRow from './SettingsRow.vue'
 import AccountUsagePanel from './AccountUsagePanel.vue'
 import SettingsToggle from './SettingsToggle.vue'
+import SettingsDeleteAccount from './SettingsDeleteAccount.vue'
 import { uiV3 } from '../../lib/ui-v3'
 import { computed, onMounted, ref } from 'vue'
 import { playerIdentity } from '../../lib/player-identity'
@@ -241,5 +242,7 @@ const identity = computed(() => {
     <SettingsAccountLinks :focus="accountLinkFocus" />
     <!-- Discord DMs for pre-game briefs and debriefs (the briefs skip message links here). -->
     <SettingsDiscordLink v-if="uiV3 && user" />
+    <!-- Download my data + self-serve deletion (grace period on the server; see account-deletion.ts). -->
+    <SettingsDeleteAccount v-if="user" :email="user.email" />
   </div>
 </template>

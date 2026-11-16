@@ -183,6 +183,10 @@ import { applyDemoSpatialEnrichment } from './spatial/demo-enrich'
 import { UploadManager, savePendingJob, clearPendingJob } from './upload-manager'
 import { readAiTraining, saveAiTraining } from './ai-training'
 import { UploadRequestError } from './upload-request-errors'
+import {
+  readAccountDeletion, requestAccountDeletion, cancelAccountDeletion,
+  readAccountExport, requestAccountExport, isSafeDownloadUrl,
+} from './account-deletion'
 import { resolveUploadPlayerIdentity } from './upload-player-identity'
 import {
   activateUserSession,
@@ -7685,6 +7689,35 @@ async function startApp(): Promise<void> {
   })
   ipcMain.handle('ai-training:set', async (_event, optOut: unknown) => {
     return saveAiTraining(authManager.getApi(), optOut === true)
+  })
+  // Self-serve account deletion + data download (server-side grace period; see account-deletion.ts).
+  const signedOut = { ok: false as const, error: 'Sign in to manage your account.' }
+  ipcMain.handle('account:deletion-get', async () => {
+    if (!authManager.isAuthenticated()) return { pending: null, summary: null }
+    return readAccountDeletion(authManager.getApi())
+  })
+  ipcMain.handle('account:deletion-request', async (_event, password: unknown, confirmEmail: unknown) => {
+    if (!authManager.isAuthenticated()) return signedOut
+    return requestAccountDeletion(authManager.getApi(), password, confirmEmail)
+  })
+  ipcMain.handle('account:deletion-cancel', async () => {
+    if (!authManager.isAuthenticated()) return signedOut
+    return cancelAccountDeletion(authManager.getApi())
+  })
+  ipcMain.handle('account:export-get', async () => {
+    if (!authManager.isAuthenticated()) return null
+    return readAccountExport(authManager.getApi())
+  })
+  ipcMain.handle('account:export-request', async () => {
+    if (!authManager.isAuthenticated()) return signedOut
+    return requestAccountExport(authManager.getApi())
+  })
+  // The link is re-read from the API here, never taken from the renderer.
+  ipcMain.handle('account:export-open', async () => {
+    if (!authManager.isAuthenticated()) return signedOut
+    const current = await readAccountExport(authManager.getApi())
+    if (!isSafeDownloadUrl(current?.download_url)) return { ok: false, error: 'The download link has expired. Request a new one.' }
+    return openExternalSafe(current.download_url)
   })
   ipcMain.handle('coaching:preferences', async () => {
     return (await authManager.getApi().get('/api/user/coaching-preferences')).data
