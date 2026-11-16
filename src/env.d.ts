@@ -855,6 +855,14 @@ declare global {
         get: () => Promise<{ optOut: boolean | null }>
         set: (optOut: boolean) => Promise<{ optOut: boolean | null }>
       }
+      account: {
+        deletion: () => Promise<import('../electron/main/account-deletion').AccountDeletionState>
+        requestDeletion: (password: string, confirmEmail: string) => Promise<import('../electron/main/account-deletion').AccountResult<{ pending: import('../electron/main/account-deletion').AccountDeletionPending | null }>>
+        cancelDeletion: () => Promise<import('../electron/main/account-deletion').AccountResult<object>>
+        dataExport: () => Promise<import('../electron/main/account-deletion').AccountExportState | null>
+        requestDataExport: () => Promise<import('../electron/main/account-deletion').AccountResult<{ export: import('../electron/main/account-deletion').AccountExportState | null }>>
+        openDataExport: () => Promise<{ ok: boolean; error?: string }>
+      }
       coaching: {
         preferences: () => Promise<import('./lib/coaching-preferences').CoachingPreferences>
         savePreferences: (value: import('./lib/coaching-preferences').CoachingPreferences) => Promise<import('./lib/coaching-preferences').CoachingPreferences>
