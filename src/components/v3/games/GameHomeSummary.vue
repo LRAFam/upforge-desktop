@@ -16,6 +16,7 @@ import { lolFocusHeadline, lolFocusSubline } from '../../../lib/lol-focus'
 import { championIconUrl, lolRankEmblemUrl } from '../../../lib/lol'
 import { lolAnalysisStatus, lolIdentityNote, lolNoMatchesText } from '../../../lib/lol-display'
 import { lolProfileIconId } from '../../../lib/lol-recent'
+import { lolWon } from '../../../lib/lol-result'
 import { playerIdentity } from '../../../lib/player-identity'
 import PlayerAvatar from '../identity/PlayerAvatar.vue'
 import LolRecentNotice from './LolRecentNotice.vue'
@@ -64,7 +65,7 @@ const topLine = computed(() => {
   return `Most played maps: ${rows.map(r => `${r.name} (${r.games})`).join(' · ')}`
 })
 const form = computed(() => {
-  if (props.game === 'lol') return [...props.data.lol.matches].slice(0, 10).reverse().map(m => ({ won: m.win }))
+  if (props.game === 'lol') return [...props.data.lol.matches].slice(0, 10).reverse().map(m => lolWon(m)).filter((w): w is boolean => w !== null).map(won => ({ won }))
   if (props.game === 'deadlock') return [...(props.data.deadlock.stats?.recent_matches ?? [])].slice(0, 10).reverse().map(m => deadlockMatchWon(m)).filter((w): w is boolean => w !== null).map(won => ({ won }))
   return []
 })

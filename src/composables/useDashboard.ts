@@ -56,6 +56,7 @@ import { openAnalysisInApp } from '../lib/open-analysis-in-app'
 import { freeArchiveRetentionHint, readArchiveQuota } from '../lib/archive-retention-hint'
 import { asSessionEnded, sessionEndedMessage } from '../lib/trainer-launch'
 import { appendActivityEntry } from '../lib/activity-log-append'
+import { lolResultLetter } from '../lib/lol-result'
 
 export interface LolRecentMatch {
   match_id: string
@@ -64,6 +65,8 @@ export interface LolRecentMatch {
   role: string
   lane: string
   win: boolean
+  result?: 'win' | 'loss' | 'remake' | null
+  remake?: boolean
   kills: number
   deaths: number
   assists: number
@@ -227,7 +230,7 @@ function createDashboard(opts: DashboardOptions = {}) {
     if (isDeadlock.value) return theme.value.rankFallback
     if (isLol.value) {
       const last = lolRecentMatches.value[0]
-      if (last) return `${last.champion} · ${last.win ? 'W' : 'L'} ${last.kills}/${last.deaths}/${last.assists}`
+      if (last) return `${last.champion} · ${lolResultLetter(last)} ${last.kills}/${last.deaths}/${last.assists}`
       return theme.value.rankFallback
     }
     return profile.value?.latest_stats?.current_rank || theme.value.rankFallback

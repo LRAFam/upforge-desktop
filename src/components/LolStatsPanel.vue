@@ -101,9 +101,9 @@
           >
             <span
               class="w-5 text-center text-[9px] font-bold rounded py-0.5 flex-shrink-0"
-              :class="match.win ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'"
+              :class="lolResult(match) === 'win' ? 'bg-emerald-500/20 text-emerald-400' : lolResult(match) === 'loss' ? 'bg-red-500/20 text-red-400' : 'bg-gray-500/20 text-gray-400'"
             >
-              {{ match.win ? 'W' : 'L' }}
+              {{ lolResultLetter(match) }}
             </span>
             <img
               v-if="match.champion"
@@ -170,6 +170,7 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 import type { LolAnalysisItem, LolMatchSummary } from '../env.d.ts'
 import { championIconUrl, lolRankEmblemUrl } from '../lib/lol'
+import { lolIsDecided, lolResult, lolResultLetter } from '../lib/lol-result'
 import { fmtLolDuration, fmtLolKda } from '../lib/lol-analyses'
 
 const loading = ref(true)
@@ -180,9 +181,9 @@ const recentMatches = ref<LolMatchSummary[]>([])
 const analyses = ref<LolAnalysisItem[]>([])
 
 const recentSummary = computed(() => {
-  const rows = recentMatches.value
+  const rows = recentMatches.value.filter(lolIsDecided)
   if (!rows.length) return null
-  const wins = rows.filter((m) => m.win).length
+  const wins = rows.filter((m) => lolResult(m) === 'win').length
   const losses = rows.length - wins
   const kills = rows.reduce((s, m) => s + m.kills, 0)
   const deaths = rows.reduce((s, m) => s + m.deaths, 0)

@@ -721,6 +721,9 @@ export interface LolMatchSummary {
   role: string
   lane: string
   win: boolean
+  /** API 16 Nov 2026+: 'remake' when the game ended early; null when Riot sent no result. Absent on older builds. */
+  result?: 'win' | 'loss' | 'remake' | null
+  remake?: boolean
   kills: number
   deaths: number
   assists: number
