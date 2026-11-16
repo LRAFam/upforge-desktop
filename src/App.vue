@@ -313,9 +313,12 @@ import { resolveUnauthenticatedRoute } from './lib/onboarding-gate'
 import { isPostGameWindowRoute, shouldInitializeFullAppShell } from './lib/window-work-policy'
 import type { ClipRecord, ProfileData, ValorantStats } from './env.d.ts'
 import { playerIdentity } from './lib/player-identity'
+import { asTrainerResult, launchConfigFromInfo, shellOpensTrainerResult } from './lib/trainer-launch'
+import { useTrainerResultStore } from './stores/trainerResult'
 
 const route = useRoute()
 const router = useRouter()
+const trainerResultStore = useTrainerResultStore()
 const { primaryGame, isValorant, loadFromSettings, applyFromSettings } = usePrimaryGame()
 const { theme, cssVars } = useGameTheme()
 
@@ -823,6 +826,15 @@ onMounted(async () => {
   })
   ;(window as Window & { _appNavCleanup?: () => void })._appNavCleanup = navCleanup
 
+  // A drill that ends outside Practice (e.g. started from Home) still opens its result screen.
+  const trainerResultCleanup = api.on('trainer:session-result', (...args: unknown[]) => {
+    const result = asTrainerResult(args[0])
+    if (!result || !shellOpensTrainerResult(route.path)) return
+    trainerResultStore.setResult(result, launchConfigFromInfo(args[1]), null)
+    router.push('/trainer-results').catch(() => {})
+  })
+  ;(window as Window & { _trainerResultCleanup?: () => void })._trainerResultCleanup = trainerResultCleanup
+
   const riotLinkCleanup = api.on('riot:prompt-link', (...args: unknown[]) => {
     const payload = args[0] as { name?: string; tag?: string; atCap?: boolean } | undefined
     if (!payload?.name || !payload?.tag) return
@@ -844,6 +856,8 @@ onUnmounted(() => {
   if (versionCopiedTimer) clearTimeout(versionCopiedTimer)
   const navCleanup = (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
   navCleanup?.()
+  ;(window as Window & { _trainerResultCleanup?: () => void })._trainerResultCleanup?.()
+  delete (window as Window & { _trainerResultCleanup?: () => void })._trainerResultCleanup
   delete (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
   const riotLinkCleanup = (window as Window & { _riotLinkCleanup?: () => void })._riotLinkCleanup
   riotLinkCleanup?.()

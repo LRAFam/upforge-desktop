@@ -19,6 +19,10 @@ describe('trainerSyncLine', () => {
     expect(trainerSyncLine(saved(drill({ attempt_count: 2 })), true).text).toBe('Recorded towards your drill: attempt 2 of 3. Pass at 70 (1 try left).')
     expect(trainerSyncLine(saved(drill({ attempt_count: 3, status: 'needs_reassignment' })), true).text).toMatch(/^Recorded\. 3 runs below 70, so this drill is closed/)
   })
+  it('a trainer pass is "practice target hit", not a finished drill (newer API)', () => {
+    const line = trainerSyncLine(saved(drill({ attempt_count: 2, practice_passed: true, practice_passed_at: '2026-11-16T10:00:00Z', verified: false })), true)
+    expect(line).toEqual({ text: 'Recorded. Practice target hit: your next matches decide this drill.', tone: 'win' })
+  })
   it('free play is only saved to history', () => {
     expect(trainerSyncLine(saved(null), false).text).toBe('Saved to your training history.')
   })

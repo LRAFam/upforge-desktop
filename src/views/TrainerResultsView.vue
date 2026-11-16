@@ -8,7 +8,8 @@ import upforgeLogo from '../assets/upforge-logo.webp'
 import TrainingIcon from '../components/training/TrainingIcon.vue'
 import { useRouter } from 'vue-router'
 import { useTrainerResultStore } from '../stores/trainerResult'
-import type { TrainingHistory } from '../env'
+import type { CoachingDrill, TrainingHistory } from '../env'
+import { drillLoop } from '../lib/drill-loop'
 import { trainerSyncLine, type TrainerSyncOutcome } from '../lib/trainer-sync'
 import { uiV3 } from '../lib/ui-v3'
 import { scenarioIconUrl } from '../lib/training-icons'
@@ -44,12 +45,6 @@ const SCENARIO_META: Record<string, { label: string; color: string; accent: stri
   TRAINER_SCENARIOS.map(s => [s.key, { label: s.label, ...GROUP_STYLE[s.uiGroup] }]),
 )
 
-/** "Continue your rotation": every drill, alternating groups so the next one trains something different. */
-const SCENARIO_ROTATION = [
-  'flick', 'tracking', 'microadjust', 'switching', 'gridshot', 'strafe_track', 'microflick',
-  'strafe_aim', 'sixshot', 'head_height', 'angle_clearing', 'distance_switching', 'duel',
-]
-
 // ── Computed ─────────────────────────────────────────────────────────────────
 const result = computed(() => store.result!)
 const isPB = computed(() => !!trainingComparisonRequest(result.value) && store.isPB)
@@ -64,6 +59,20 @@ async function loadSyncStatus() {
   const outcome = await window.api.trainer.getSyncStatus?.(r.scenario, r.completed_at).catch(() => null)
   if (store.result === r && outcome) syncOutcome.value = outcome
 }
+
+// Assigned drill only: why it was assigned, its state and what the next matches check (API fields only).
+const assignedDrill = ref<CoachingDrill | null>(null)
+async function loadAssignedDrill() {
+  const id = store.launchConfig?.user_drill_id
+  assignedDrill.value = null
+  if (!id) return
+  const list = await window.api.trainer.getCoachingDrills().catch(() => [] as CoachingDrill[])
+  if (store.launchConfig?.user_drill_id !== id) return
+  assignedDrill.value = (Array.isArray(list) ? list : []).find(d => d.id === id) ?? null
+}
+const loop = computed(() => (store.launchConfig?.user_drill_id
+  ? drillLoop(assignedDrill.value, syncOutcome.value?.drill ?? null, 10)
+  : null))
 
 const scenarioMeta = computed(() =>
   SCENARIO_META[result.value?.scenario ?? ''] ?? { label: result.value?.scenario ?? '', color: 'text-gray-400', accent: '#9ca3af' }
@@ -237,32 +246,6 @@ const coachingInsight = computed(() => {
   return lines
 })
 
-// ── Recommended next drill ────────────────────────────────────────────────────
-const recommended = computed(() => {
-  const r = result.value
-  const scenario = r.scenario
-  const acc  = r.accuracy_pct
-  const rxn  = r.avg_reaction_ms
-  const cons = r.consistency_score
-
-  if (scenario === 'tracking' && acc < 50) {
-    return { scenario: 'microadjust', reason: 'Reinforce fine targeting control after low tracking accuracy' }
-  }
-  if (scenario === 'flick' && rxn > 400) {
-    return { scenario: 'switching', reason: 'Train rapid target acquisition to reduce reaction time' }
-  }
-  if (hasConsistency.value && cons < 50) {
-    return { scenario, reason: 'Repeat for consistency — variance is still high' }
-  }
-  const idx = SCENARIO_ROTATION.indexOf(scenario)
-  const next = SCENARIO_ROTATION[(idx + 1) % SCENARIO_ROTATION.length]
-  return { scenario: next, reason: 'Continue your rotation to build well-rounded aim' }
-})
-
-const recommendedMeta = computed(() =>
-  SCENARIO_META[recommended.value.scenario] ?? scenarioMeta.value
-)
-
 // ── Heatmap ──────────────────────────────────────────────────────────────────
 function drawHeatmap() {
   nextTick(() => {
@@ -295,20 +278,6 @@ function drawHeatmap() {
 async function playAgain() {
   if (launching.value || !store.launchConfig) return
   await launchFromResults(store.launchConfig)
-}
-
-async function tryRecommended() {
-  if (launching.value) return
-  const rec = recommended.value
-  await launchFromResults({
-    scenario: rec.scenario,
-    duration_seconds: store.launchConfig?.duration_seconds ?? 60,
-    difficulty: store.launchConfig?.difficulty ?? 'medium',
-    context: { weakness: rec.scenario, score: 0 },
-    // A different drill is free play: it does not count towards the original assigned drill.
-    ...(rec.scenario === store.launchConfig?.scenario && store.launchConfig?.user_drill_id
-      ? { user_drill_id: store.launchConfig.user_drill_id } : {}),
-  })
 }
 
 /** Every launch from this screen updates launchConfig, so the next result and "Play again" match it. */
@@ -364,6 +333,7 @@ onMounted(async () => {
     if (o && r && o.key === `${r.scenario}|${r.completed_at}`) syncOutcome.value = o
   }))
   void loadSyncStatus()
+  void loadAssignedDrill()
 
   await loadComparison()
   drawHeatmap()
@@ -374,6 +344,7 @@ onMounted(async () => {
     if (!r) return
     store.setResult(r, launchConfigFromInfo(launch) ?? store.launchConfig, null)
     void loadSyncStatus()
+    void loadAssignedDrill()
     launched.value = false
     trainerNotice.value = null
     await loadComparison()
@@ -503,13 +474,17 @@ onMounted(async () => {
         </div>
 
         <aside class="uf-tr-aside uf-rise uf-d4s">
-          <section class="uf-tr-block">
-            <span class="uf-label">Your next drill</span>
-            <span class="uf-t3">{{ recommendedMeta.label }}</span>
-            <span class="uf-t4">{{ recommended.reason }}</span>
-            <UfButton variant="secondary" icon="play" :disabled="launching" @click="tryRecommended">{{ launching ? 'Launching…' : 'Start drill' }}</UfButton>
-          </section>
-          <div class="uf-hair" />
+          <template v-if="loop">
+            <section class="uf-tr-block" aria-label="Your drill">
+              <span class="uf-label">Your drill</span>
+              <span class="uf-t3" role="status">{{ loop.state.label }}</span>
+              <span class="uf-t4">{{ loop.state.text }}</span>
+              <span v-if="loop.why" class="uf-t4"><span class="uf-label">Why this drill</span> {{ loop.why }}</span>
+              <span v-if="loop.stat" class="uf-t4 uf-num">{{ loop.stat }}</span>
+              <span v-if="loop.next" class="uf-t4"><span class="uf-label">Next match</span> {{ loop.next }}</span>
+            </section>
+            <div class="uf-hair" />
+          </template>
           <section class="uf-tr-block">
             <span class="uf-label">Top runs · this drill</span>
             <p v-if="leaderboard.length === 0" class="uf-t4" style="margin: 0">No runs on record yet.</p>
@@ -789,19 +764,15 @@ onMounted(async () => {
         <!-- Divider -->
         <div class="border-t border-white/[0.09]" />
 
-        <!-- Recommended next -->
-        <div>
-          <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-3">Your next drill</div>
+        <!-- Assigned drill: why, state, what the next match checks -->
+        <div v-if="loop">
+          <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-3">Your drill</div>
           <div class="results-next-drill">
-            <div class="text-base font-semibold text-white mb-1">{{ recommendedMeta.label }}</div>
-            <div class="text-[10px] text-white/40 leading-relaxed mb-3">{{ recommended.reason }}</div>
-            <button
-              class="w-full text-xs font-semibold text-white/70 bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 hover:border-white/20 rounded-md py-1.5 transition-colors"
-              :disabled="launching"
-              @click="tryRecommended"
-            >
-              {{ launching ? 'Launching…' : 'Start drill' }}
-            </button>
+            <div class="text-base font-semibold text-white mb-1" role="status">{{ loop.state.label }}</div>
+            <div class="text-[11px] text-white/60 leading-relaxed">{{ loop.state.text }}</div>
+            <div v-if="loop.why" class="text-[11px] text-white/60 leading-relaxed mt-2"><span class="text-white/40">Why this drill:</span> {{ loop.why }}</div>
+            <div v-if="loop.stat" class="text-[11px] text-white/60 tabular-nums mt-1">{{ loop.stat }}</div>
+            <div v-if="loop.next" class="text-[11px] text-white/60 leading-relaxed mt-2"><span class="text-white/40">Next match:</span> {{ loop.next }}</div>
           </div>
         </div>
 

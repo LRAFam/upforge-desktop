@@ -149,6 +149,12 @@ export interface CoachingDrill {
   why?: string | null
   stat?: import('./lib/coaching-drill-stat').CoachingDrillStat | null
   beta?: boolean
+  /** Set only by match evidence on newer APIs (`verified_by`: match_stats | video_score; null = older record). */
+  verified_at?: string | null
+  verified_by?: string | null
+  /** Practice target hit in the trainer; the drill stays active until matches decide it. Newer APIs only. */
+  practice_passed_at?: string | null
+  practice_passed_score?: number | null
 }
 
 /** Settings › Advanced diagnostics capture (electron/main/game-data-capture.ts). */

@@ -68,6 +68,24 @@ export function launchConfigFromInfo(info: unknown): LaunchConfig | null {
   })
 }
 
+/**
+ * Practice (/training, guided sessions, calibration) and the results screen handle their own trainer
+ * results. On any other screen (e.g. a drill started from Home) the app shell opens the results screen.
+ */
+export function shellOpensTrainerResult(path: string): boolean {
+  if (path === '/training' || path.startsWith('/training/') || path === '/trainer-results') return false
+  return !['/login', '/splash', '/overlay', '/onboarding'].includes(path) && !path.startsWith('/post-game')
+}
+
+/** A trainer result payload with the fields the results screen needs, or null. */
+export function asTrainerResult(raw: unknown): import('../stores/trainerResult').SessionResult | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  return typeof r.scenario === 'string' && typeof r.score === 'number' && typeof r.completed_at === 'string'
+    ? (raw as import('../stores/trainerResult').SessionResult)
+    : null
+}
+
 export function asSessionEnded(raw: unknown): TrainerSessionEnded | null {
   if (!raw || typeof raw !== 'object') return null
   const e = raw as Partial<TrainerSessionEnded>

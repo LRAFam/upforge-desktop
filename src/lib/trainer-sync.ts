@@ -14,6 +14,15 @@ export interface TrainerDrillState {
   attempts_allowed: number
   pass_score: number
   next: { id: number; title: string | null; trainer_difficulty: string | null; pass_score: number } | null
+  /**
+   * Practice target hit in the trainer. The drill stays active until match evidence decides it.
+   * Undefined on older APIs (there a trainer pass completed the drill instead).
+   */
+  practice_passed?: boolean
+  practice_passed_at?: string | null
+  /** Verified by match evidence (`verified_by`: match_stats | video_score; null = older record). */
+  verified?: boolean
+  verified_by?: string | null
 }
 
 export interface TrainerSyncOutcome {
@@ -53,6 +62,9 @@ export function trainerSyncLine(outcome: TrainerSyncOutcome | null, hasAssignedD
       return { text: `Drill passed and recorded. Next: ${tier}, pass at ${pass(d.next.pass_score)}.`, tone: 'win' }
     }
     return { text: 'Drill passed and recorded. That was the last tier.', tone: 'win' }
+  }
+  if (d.practice_passed && d.status === 'active') {
+    return { text: 'Recorded. Practice target hit: your next matches decide this drill.', tone: 'win' }
   }
   if (d.status === 'needs_reassignment') {
     return { text: `Recorded. ${d.attempt_count} runs below ${pass(d.pass_score)}, so this drill is closed; your next matches can assign a new one.`, tone: 'muted' }
