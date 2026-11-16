@@ -27,7 +27,7 @@ import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import EmptyArt from '../../components/v3/empty/EmptyArt.vue'
 
 type RangeValue = '7d' | '30d' | '90d' | 'all'
-interface Row { name: string; games: number; wins: number; wr: number; kda: string; roundWr: string }
+interface Row { name: string; games: number; wins: number; wr: number | null; kda: string; roundWr: string }
 
 const props = defineProps<{
   loading: boolean
@@ -42,7 +42,8 @@ const props = defineProps<{
   lastAnalysedAt?: string | null
   isValorant: boolean
   rankHistory: RankSnapshot[]
-  winRate: number
+  /** Over matches with a known result; null when none has one. */
+  winRate: number | null
   /** UpForge score average (stats), else the coach rating average out of 10; null when nothing is scored. */
   scoreStat: { value: string; caption: string; delta: number | null } | null
   avgKda: string
@@ -130,7 +131,7 @@ const focusSlots = computed(() => {
 
 const delta = (v: number | null, suffix = '') => (v == null ? 'Early read' : Math.abs(v) < 0.05 ? 'Steady' : `${v > 0 ? 'Up' : 'Down'} ${Math.abs(Math.abs(v) >= 10 ? Math.round(v) : Number(v.toFixed(1)))}${suffix}`)
 const stats = computed(() => [
-  { value: props.gameCount ? `${props.winRate}%` : '—', caption: 'Win rate', sub: delta(props.deltas.winRate, '%') },
+  { value: props.gameCount && props.winRate != null ? `${props.winRate}%` : '—', caption: 'Win rate', sub: delta(props.deltas.winRate, '%') },
   // Stats-based UpForge score (0–1000) when any match is scored; else the coach rating /10 under its own name.
   { value: props.scoreStat?.value ?? '—', caption: props.scoreStat?.caption ?? 'UpForge score', sub: delta(props.scoreStat?.delta ?? null) },
   { value: props.avgKda, caption: 'K/D', sub: delta(props.deltas.kda) },
@@ -255,7 +256,7 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
             <div v-for="r in t.rows" :key="r.name" class="pv3-row">
               <span class="uf-t3">{{ r.name }}</span>
               <span class="uf-t4 uf-num">{{ r.games }}</span>
-              <span class="pv3-bar"><span class="uf-fill" :style="{ width: `${r.wr}%`, background: r.wr >= 50 ? 'var(--uf-win)' : 'var(--uf-loss)' }" /><b class="uf-d4">{{ r.wr }}%</b></span>
+              <span class="pv3-bar"><span v-if="r.wr != null" class="uf-fill" :style="{ width: `${r.wr}%`, background: r.wr >= 50 ? 'var(--uf-win)' : 'var(--uf-loss)' }" /><b class="uf-d4">{{ r.wr != null ? `${r.wr}%` : '—' }}</b></span>
               <span class="uf-t4 uf-num">{{ r.kda }}</span>
             </div>
             <span v-if="t.rows.every(r => r.games < 5)" class="uf-t4">Fewer than 5 games each is an early read.</span>
