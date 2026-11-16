@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { CATEGORY_TO_TRAINER_SCENARIO, isNonTrainerCategory, resolveTrainerScenario } from './trainer-scenarios'
-import { pickTrainingScenario } from './training-drills'
+import { isNonTrainerCategory, resolveTrainerScenario } from './trainer-scenarios'
 
 describe('resolveTrainerScenario', () => {
-  it('mirrors the API category defaults', () => {
-    expect(CATEGORY_TO_TRAINER_SCENARIO).toEqual({
-      mechanics: 'flick', crosshair_placement: 'head_height', game_sense: 'switching', positioning: 'duel',
-    })
-    expect(resolveTrainerScenario({ category: 'crosshair_placement' })).toBe('head_height')
-    expect(resolveTrainerScenario({ category: 'positioning' })).toBe('duel')
+  it('never guesses a drill from the category: only the API launch config counts', () => {
+    for (const category of ['mechanics', 'crosshair_placement', 'game_sense', 'positioning']) {
+      expect(resolveTrainerScenario({ category })).toBeNull()
+    }
+    expect(resolveTrainerScenario({ category: 'crosshair_placement', godot_config: { scenario: 'head_height' } })).toBe('head_height')
   })
   it('has no trainer drill for utility, economy or comms', () => {
     for (const category of ['utility_usage', 'economy', 'communication']) {
@@ -28,18 +26,6 @@ describe('resolveTrainerScenario', () => {
   })
 })
 
-describe('pickTrainingScenario', () => {
-  it('does not map utility / economy / comms text to Flick via the category defaults', () => {
-    expect(Object.keys(CATEGORY_TO_TRAINER_SCENARIO)).not.toContain('utility_usage')
-    expect(pickTrainingScenario('game sense')).toBe('switching')
-  })
-  it('gives trading findings no aim drill (the API rulebook has no proven drill for them)', () => {
-    expect(pickTrainingScenario('Cut down on untraded deaths')).toBeNull()
-    expect(pickTrainingScenario('Die where a teammate can trade you')).toBeNull()
-    expect(pickTrainingScenario('flick timing')).toBe('flick')
-  })
-})
-
 describe('beta drills', () => {
   it('are registered, launchable and never auto-picked', async () => {
     const { BETA_SCENARIO_KEYS, RADAR_SCENARIO_KEYS, TRAINER_SCENARIO_KEYS, isBetaScenario, trainerScenarioDef } = await import('./trainer-scenarios')
@@ -50,11 +36,10 @@ describe('beta drills', () => {
       expect(isBetaScenario(key)).toBe(true)
       expect(trainerScenarioDef(key)).toMatchObject({ uiGroup: 'duel', radar: false, beta: true })
       expect(RADAR_SCENARIO_KEYS).not.toContain(key)
-      expect(Object.values(CATEGORY_TO_TRAINER_SCENARIO)).not.toContain(key)
     }
     expect(isBetaScenario('flick')).toBe(false)
     // A coach-picked beta drill is still honoured if sent explicitly; categories never resolve to one.
-    expect(resolveTrainerScenario({ category: 'positioning' })).toBe('duel')
+    expect(resolveTrainerScenario({ category: 'positioning' })).toBeNull()
     expect(resolveTrainerScenario({ trainer_scenario: 'clear_site' })).toBe('clear_site')
   })
   it('hides Valorant-only drills from other games’ pickers but still resolves them by key', async () => {

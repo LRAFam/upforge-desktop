@@ -141,19 +141,6 @@ function openReadyCoaching() {
 }
 const weekCount = computed(() => analysedThisWeek(d.dashboardAnalyses.value))
 
-// Weekly drill from the existing weekly plan (Valorant only; old dashboard right rail).
-const drillBusy = ref(false)
-async function runWeeklyDrill() {
-  const plan = d.weeklyFocus.value
-  if (!plan?.drill.scenario || drillBusy.value) return
-  drillBusy.value = true
-  try {
-    await d.launchDashboardDrill(plan.drill.scenario)
-  } finally {
-    drillBusy.value = false
-  }
-}
-
 // Round shape of the last synced match (derived on the PC from the Riot match; Valorant focus loop).
 const rounds = computed(() => focusLatest.value?.rounds ?? null)
 const reportMatchId = computed(() => (d.isValorant.value ? focusLatest.value?.match_id ?? null : null))
@@ -292,7 +279,6 @@ async function runPrimary() {
           <UfButton :variant="gameSetupShown && primary !== 'open_last_match' ? 'secondary' : 'primary'" :icon="primary === 'open_last_match' ? 'play' : primary === 'setup_recording' ? 'settings' : 'analyse'"
             @click="runPrimary">{{ PRIMARY_LABEL[primary] }}</UfButton>
           <UfButton variant="secondary" icon="matches" @click="d.router.push('/recordings')">All matches</UfButton>
-          <UfButton v-if="d.lastInsight.value" variant="link" @click="d.trainLastInsight()">Train this</UfButton>
         </div>
 
         <button v-if="needsAction" type="button" class="home3-attention" @click="d.router.push('/recordings')">
@@ -371,13 +357,11 @@ async function runPrimary() {
         <section v-if="d.isValorant.value" class="home3-block" aria-label="Practice">
           <div class="home3-row-head"><p class="uf-label">Warm-up</p><span v-if="d.trainerSessionCount.value" class="uf-t4">{{ plural(d.trainerSessionCount.value, 'drill') }} done</span></div>
           <template v-if="d.weeklyFocus.value">
-            <p class="uf-t3">This week: {{ d.weeklyFocus.value.drill.label }}</p>
-            <p class="uf-t4">{{ d.weeklyFocus.value.goal }}</p>
+            <p class="uf-t3">This week: {{ d.weeklyFocus.value.goal }}</p>
           </template>
           <p v-if="d.trainerLastSession.value" class="uf-t4">Last drill: {{ d.trainerLastSession.value.scenario }} · {{ d.trainerLastSession.value.score }}</p>
           <p v-else-if="!d.weeklyFocus.value" class="uf-t4" style="color: var(--uf-muted)">A few minutes of aim drills before you queue.</p>
           <span class="home3-links">
-            <button v-if="d.weeklyFocus.value?.drill.scenario" type="button" class="uf-link" :disabled="drillBusy" @click="runWeeklyDrill">Run it →</button>
             <button type="button" class="uf-link" @click="d.router.push('/training')">Open practice →</button>
           </span>
         </section>

@@ -64,7 +64,12 @@ export type MatchReportState =
   | { kind: 'error' }
 
 export interface FactRow { label: string; value: string }
-export interface NextStep { text: string; drillMetric: string | null }
+export interface NextStep {
+  text: string
+  drillMetric: string | null
+  /** The "keep working on your focus" step (its metric is the focus's, not this match's finding). */
+  fromFocus?: boolean
+}
 
 export interface MatchReportView {
   matchId: string
@@ -163,6 +168,17 @@ export function matchReportFactRows(f: MatchReportFacts | undefined | null): Fac
   return rows
 }
 
+/**
+ * Focus metric whose drills "Practise this" opens. The coach's drill only ever pairs with its own finding's
+ * metric: a finding with no mapped metric never borrows the focus's drill. Without a coach drill, the
+ * first step with a metric (the finding, else the focus) is used.
+ */
+export function reportPracticeMetric(view: Pick<MatchReportView, 'drill' | 'nextSteps'> | null | undefined): string | null {
+  if (!view) return null
+  const steps = view.drill ? view.nextSteps.filter(s => !s.fromFocus) : view.nextSteps
+  return steps.find(s => s.drillMetric)?.drillMetric ?? null
+}
+
 export function matchReportView(res: MatchReportResponse): MatchReportView {
   const facts = res.report?.facts ?? null
   const notes = res.report?.notes ?? null
@@ -171,7 +187,7 @@ export function matchReportView(res: MatchReportResponse): MatchReportView {
   if (notes?.next_action?.text) nextSteps.push({ text: notes.next_action.text, drillMetric: FINDING_METRIC[notes.next_action.finding_id] ?? null })
   const focus = res.focus ?? null
   if (focus && focus.progress?.status === 'active' && nextSteps.length < 3) {
-    nextSteps.push({ text: `Keep working on your focus: ${focus.label}.`, drillMetric: (focus as unknown as { metric?: string }).metric ?? null })
+    nextSteps.push({ text: `Keep working on your focus: ${focus.label}.`, drillMetric: (focus as unknown as { metric?: string }).metric ?? null, fromFocus: true })
   }
   return {
     matchId: res.match_id,

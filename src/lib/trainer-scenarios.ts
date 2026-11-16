@@ -270,17 +270,6 @@ const scenarioByKey = Object.fromEntries(TRAINER_SCENARIOS.map(s => [s.key, s]))
   TrainerScenarioDef
 >
 
-/**
- * VOD coaching category → default trainer scenario (mirrors upforge-api category_defaults).
- * Utility, economy and communication have no aim-trainer drill: those drills are practised in game.
- */
-export const CATEGORY_TO_TRAINER_SCENARIO: Record<string, TrainerScenarioKey> = {
-  mechanics: 'flick',
-  crosshair_placement: 'head_height',
-  game_sense: 'switching',
-  positioning: 'duel',
-}
-
 /** Coaching categories the aim trainer cannot train (no trainer launch, no guided-session step). */
 export const NON_TRAINER_CATEGORIES: readonly string[] = ['utility_usage', 'economy', 'communication']
 
@@ -298,8 +287,8 @@ function validScenario(key: string | null | undefined): TrainerScenarioKey | nul
 
 /**
  * Trainer scenario for a coaching drill, or null when the drill is not an aim-trainer drill.
- * Order: the coach's `trainer_scenario` → (not for utility/economy/comms) `godot_config.scenario`
- * → category default → null. Never falls back to Flick.
+ * Order: the coach's `trainer_scenario` → (not for utility/economy/comms) the API's `godot_config.scenario`
+ * → null. The client never guesses a drill from the category: the API's assignment gate decides.
  */
 export function resolveTrainerScenario(input: {
   trainer_scenario?: string | null
@@ -310,9 +299,7 @@ export function resolveTrainerScenario(input: {
   if (explicit) return explicit
   // Older API responses filled godot_config.scenario from the category (utility → flick): a guess, not a drill.
   if (isNonTrainerCategory(input.category)) return null
-  const fromConfig = validScenario(input.godot_config?.scenario)
-  if (fromConfig) return fromConfig
-  return (input.category && CATEGORY_TO_TRAINER_SCENARIO[input.category]) || null
+  return validScenario(input.godot_config?.scenario)
 }
 
 export function resolveTrainerDifficulty(
