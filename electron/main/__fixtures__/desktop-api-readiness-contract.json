@@ -1,0 +1,30 @@
+{
+  "about": "Shared desktop <-> API match-data readiness contract. The API copy (upforge-api tests/fixtures/desktop-api-readiness-contract.json) is the source; upforge-desktop keeps a byte-identical copy at electron/main/__fixtures__/desktop-api-readiness-contract.json and API CI fails if they differ. Change the rule in one repo and this file must change, which fails the other repo's test until it follows.",
+  "rule": {
+    "cs2": "API isReadyForCs2Desktop / desktop hasDemoKillRows: at least one kill row (killEvents OR playerKills); K/D/A totals alone stay locked",
+    "deadlock": "Same as cs2. Desktop is stricter: kill rows from the live console log (killRowsSource live_log) never unlock a demo review",
+    "valorant": "API isReadyForValorantDesktop (with duel moments present) / desktop hasRichMatchData: kill rows OR K/D/A total above zero",
+    "lol": "API isReadyForLolDesktop / desktop lol module: a valid local League snapshot (lolLocalReview), OR Match-V5 enrich fetched AND rich match data"
+  },
+  "cases": [
+    {"name": "cs2 empty timeline", "game": "cs2", "matchData": {"game": "cs2", "killEvents": [], "playerKills": [], "finalStats": null}, "expect": {"api": false, "desktop": false}},
+    {"name": "cs2 K/D/A totals without kill rows", "game": "cs2", "matchData": {"game": "cs2", "killEvents": [], "playerKills": [], "finalStats": {"kills": 5, "deaths": 3, "assists": 1}}, "expect": {"api": false, "desktop": false}},
+    {"name": "cs2 empty killEvents do not hide playerKills", "game": "cs2", "matchData": {"game": "cs2", "killEvents": [], "playerKills": [{"EventID": 1}]}, "expect": {"api": true, "desktop": true}},
+    {"name": "cs2 demo kill rows", "game": "cs2", "matchData": {"game": "cs2", "killEvents": [{"EventID": 1}], "playerKills": [{"EventID": 1}], "finalStats": {"kills": 5, "deaths": 3, "assists": 1}}, "expect": {"api": true, "desktop": true}},
+    {"name": "deadlock empty timeline", "game": "deadlock", "matchData": {"game": "deadlock", "killEvents": [], "playerKills": [], "finalStats": null}, "expect": {"api": false, "desktop": false}},
+    {"name": "deadlock K/D/A totals without kill rows", "game": "deadlock", "matchData": {"game": "deadlock", "killEvents": [], "playerKills": [], "finalStats": {"kills": 5, "deaths": 3, "assists": 1}}, "expect": {"api": false, "desktop": false}},
+    {"name": "deadlock demo kill rows", "game": "deadlock", "matchData": {"game": "deadlock", "killEvents": [{"EventID": 1}], "playerKills": [{"EventID": 1}], "finalStats": {"kills": 5, "deaths": 3, "assists": 1}}, "expect": {"api": true, "desktop": true}},
+    {"name": "deadlock live console-log kill rows only", "game": "deadlock", "matchData": {"game": "deadlock", "killEvents": [{"EventID": 1}], "playerKills": [{"EventID": 1}], "killRowsSource": "live_log"}, "expect": {"api": true, "desktop": false}, "known_drift": "Desktop never unlocks Analyse on live-log rows, so the API never receives this case from a current build; the API still accepts it from older builds."},
+    {"name": "valorant empty timeline", "game": "valorant", "matchData": {"game": "valorant", "killEvents": [], "playerKills": [], "finalStats": null}, "expect": {"api": false, "desktop": false}},
+    {"name": "valorant all-zero K/D/A", "game": "valorant", "matchData": {"game": "valorant", "killEvents": [], "playerKills": [], "finalStats": {"kills": 0, "deaths": 0, "assists": 0}}, "expect": {"api": false, "desktop": false}},
+    {"name": "valorant K/D/A from Riot match details", "game": "valorant", "matchData": {"game": "valorant", "killEvents": [], "playerKills": [], "finalStats": {"kills": 14, "deaths": 10, "assists": 3}}, "expect": {"api": true, "desktop": true}},
+    {"name": "valorant kill rows", "game": "valorant", "matchData": {"game": "valorant", "killEvents": [{"round": 1}], "playerKills": [], "finalStats": null}, "expect": {"api": true, "desktop": true}},
+    {"name": "lol Live Client stats only, enrich pending", "game": "lol", "matchData": {"game": "lol", "matchId": "EUW1_1", "killEvents": [], "playerKills": [], "finalStats": {"kills": 5, "deaths": 3, "assists": 1}}, "expect": {"api": false, "desktop": false}},
+    {"name": "lol enrich failed", "game": "lol", "matchData": {"game": "lol", "matchId": "EUW1_1", "lolEnrichStatus": "fetch_failed", "finalStats": {"kills": 5, "deaths": 3, "assists": 1}}, "expect": {"api": false, "desktop": false}},
+    {"name": "lol enrich fetched with stats", "game": "lol", "matchData": {"game": "lol", "matchId": "EUW1_1", "lolEnrichStatus": "fetched", "killEvents": [], "playerKills": [], "finalStats": {"kills": 5, "deaths": 3, "assists": 1}}, "expect": {"api": true, "desktop": true}},
+    {"name": "lol enrich fetched but no stats", "game": "lol", "matchData": {"game": "lol", "matchId": "EUW1_1", "lolEnrichStatus": "fetched", "killEvents": [], "playerKills": [], "finalStats": {"kills": 0, "deaths": 0, "assists": 0}}, "expect": {"api": false, "desktop": false}},
+    {"name": "lol valid local snapshot", "game": "lol", "matchData": {"game": "lol", "lolLocalReview": {"source": "live_client", "version": 1, "champion": "Ahri", "map": "Summoner's Rift", "duration_seconds": 1500, "kills": 4, "deaths": 2, "assists": 7, "cs": 180}}, "expect": {"api": true, "desktop": true}},
+    {"name": "lol local snapshot too short", "game": "lol", "matchData": {"game": "lol", "lolLocalReview": {"source": "live_client", "version": 1, "champion": "Ahri", "map": "Summoner's Rift", "duration_seconds": 30, "kills": 0, "deaths": 0, "assists": 0, "cs": null}}, "expect": {"api": false, "desktop": false}},
+    {"name": "lol local snapshot on an unsupported map", "game": "lol", "matchData": {"game": "lol", "lolLocalReview": {"source": "live_client", "version": 1, "champion": "Ahri", "map": "Arena", "duration_seconds": 1500, "kills": 4, "deaths": 2, "assists": 7, "cs": 180}}, "expect": {"api": false, "desktop": false}}
+  ]
+}
