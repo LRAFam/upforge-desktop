@@ -29,9 +29,20 @@ describe('startingReportView', () => {
     expect(v.focus?.canStart).toBe(true)
   })
 
-  it('cannot start a focus for games without a focus loop', () => {
+  it('lets Deadlock players start the focus the API supports', () => {
     const v = startingReportView({ ...ready, game: 'deadlock' })
-    expect(v.kind === 'ready' && v.focus?.canStart).toBe(false)
+    expect(v.kind === 'ready' && v.focus?.canStart).toBe(true)
+    expect(v.kind === 'ready' && v.focus?.heading).toBe('Your first focus')
+  })
+
+  it('never promises a CS2 focus check: CS2 has no focus loop', () => {
+    const v = startingReportView({ ...ready, game: 'cs2' })
+    if (v.kind !== 'ready') throw new Error('ready expected')
+    expect(v.focus?.canStart).toBe(false)
+    expect(v.focus?.heading).toBe('What to work on first')
+    expect(v.focus?.target).toBe('Aim for at most 11%')
+    expect(v.next).not.toMatch(/checked|next 3 games/)
+    expect(JSON.stringify(v)).not.toMatch(/checked over|over your next/)
   })
 
   it('reports how many matches are still needed', () => {

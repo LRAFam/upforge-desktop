@@ -30,7 +30,7 @@ export interface StartingReportResponse {
 
 export type StartingReportView =
   | { kind: 'ready'; title: string; record: string; summary: string[]; strengths: string[]; habits: string[];
-    pool: string[]; stats: StartingStat[]; focus: { label: string; reason: string; target: string | null; canStart: boolean } | null;
+    pool: string[]; stats: StartingStat[]; focus: { heading: string; label: string; reason: string; target: string | null; canStart: boolean } | null;
     next: string }
   | { kind: 'insufficient'; available: number; needed: number }
   | { kind: 'none' }
@@ -49,6 +49,14 @@ export interface StartingStat {
 
 const MIN = 3
 const NEXT = 'Your next matches get coached automatically: a match report after every game, and your focus is checked over the next 3 games.'
+/** CS2 has no focus loop yet: nothing checks a CS2 focus, so the report never promises a check. */
+const NEXT_CS2 = 'Each CS2 match you record gets a report once its demo is read. Use this focus as your goal for your next games.'
+
+/** Games whose focus the API can start and check over the next matches (POST /api/starting-report/{game}/focus). */
+export const STARTABLE_FOCUS_GAMES: readonly StartingGame[] = ['valorant', 'lol', 'deadlock']
+export function canStartFocus(game: string | null | undefined): game is StartingGame {
+  return (STARTABLE_FOCUS_GAMES as readonly string[]).includes(game ?? '')
+}
 
 function texts(list: Claim[] | undefined): string[] {
   return (list ?? []).map(c => (typeof c?.text === 'string' ? c.text.trim() : '')).filter(Boolean)
@@ -123,6 +131,8 @@ export function startingReportView(res: StartingReportResponse | null | undefine
   const focusKey = res.report.first_focus?.metric ?? res.focus_suggestion?.metric
   const focusMetric = focusKey ? metrics[focusKey] : undefined
   const sugg = res.focus_suggestion
+  // Only games with a focus loop check a focus; anything else (CS2) shows it as a goal, never a check.
+  const checked = canStartFocus(res.game)
   const shares = shareValues(metrics, [sugg?.current, sugg?.target])
   const said = (list: Claim[] | undefined) => texts(list).map(t => sharesAsPercents(t, shares))
   return {
@@ -135,14 +145,15 @@ export function startingReportView(res: StartingReportResponse | null | undefine
     pool: (f.pool ?? []).map(p => `${p.name} · ${plural(p.matches, 'match', 'matches')}`),
     stats: Object.values(metrics).slice(0, 6).map(startingStat).filter(s => s.label),
     focus: focusKey ? {
+      heading: checked ? 'Your first focus' : 'What to work on first',
       label: focusMetric?.label ?? sugg?.label ?? focusKey,
       reason: sharesAsPercents(res.report.first_focus?.reason?.text ?? '', shares),
       target: sugg && sugg.metric === focusKey && typeof sugg.target === 'number'
-        ? `Aim for ${sugg.better === 'lower' ? 'at most' : 'at least'} ${formatMetric(focusMetric, sugg.target)} over your next ${sugg.games ?? 3} games`
+        ? `Aim for ${sugg.better === 'lower' ? 'at most' : 'at least'} ${formatMetric(focusMetric, sugg.target)}${checked ? ` over your next ${sugg.games ?? 3} games` : ''}`
         : null,
-      canStart: (res.game === 'valorant' || res.game === 'lol') && !!sugg && sugg.metric === focusKey,
+      canStart: checked && !!sugg && sugg.metric === focusKey,
     } : null,
-    next: NEXT,
+    next: checked || res.game !== 'cs2' ? NEXT : NEXT_CS2,
   }
 }
 
