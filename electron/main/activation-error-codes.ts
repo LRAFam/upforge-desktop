@@ -272,6 +272,24 @@ export const ACTIVATION_ERRORS: Record<string, ActivationErrorDefinition> = {
     userMessage: 'The uploaded file could not be verified. Tap Retry Upload.',
     recoveryAction: 'retry_upload',
   },
+  upload_request_unconfirmed: {
+    code: 'upload_request_unconfirmed',
+    category: 'upload',
+    stage: 'uploading',
+    retryable: false,
+    userActionRequired: true,
+    userMessage: 'UpForge could not confirm whether your request was accepted. Your recording is safe — check its status on the dashboard before trying again.',
+    recoveryAction: 'open_dashboard',
+  },
+  upload_completion_unconfirmed: {
+    code: 'upload_completion_unconfirmed',
+    category: 'upload',
+    stage: 'uploading',
+    retryable: false,
+    userActionRequired: true,
+    userMessage: 'UpForge could not confirm whether this upload was accepted. Your recording is safe — check its status on the dashboard before starting another upload.',
+    recoveryAction: 'open_dashboard',
+  },
   upload_api_timeout: {
     code: 'upload_api_timeout',
     category: 'upload',
@@ -526,6 +544,12 @@ function matchActivationErrorCode(lower: string, raw: string): ActivationErrorCo
   }
   if (/only failed jobs can be retried/i.test(lower)) {
     return 'upload_retry_invalid_state'
+  }
+  if (/^upload_completion_unconfirmed:/i.test(lower)) {
+    return 'upload_completion_unconfirmed'
+  }
+  if (/^upload_request_unconfirmed:/i.test(lower)) {
+    return 'upload_request_unconfirmed'
   }
   if (/api request timed out|operation timed|curl error 28|etimedout/i.test(lower) && /upload|presign|complete|api/.test(lower)) {
     return 'upload_api_timeout'

@@ -92,7 +92,7 @@ export function hostnameFromUrl(url: string): string | null {
 }
 
 export function isLikelyNetworkFailure(message: string): boolean {
-  return /upload_stalled|upload stalled|ENOTFOUND|EAI_AGAIN|getaddrinfo|ECONNRESET|ECONNABORTED|ETIMEDOUT|EPIPE|socket hang up|network/i.test(
+  return /upload_stalled|upload stalled|API request timed out|secure connection failed|EPROTO|ERR_SSL|ERR_TLS|CERT_|ENOTFOUND|EAI_AGAIN|getaddrinfo|ECONNRESET|ECONNABORTED|ETIMEDOUT|EPIPE|socket hang up|network/i.test(
     message,
   )
 }

@@ -103,6 +103,7 @@ import {
 } from './recording-limits'
 import { formatRecordingLabel } from './recording-preset'
 import {
+  RecordingPreparationError,
   resolveUploadVideoPath,
   deleteCompressedSibling,
   deleteLocalRecordingFiles,
@@ -181,6 +182,7 @@ import { refreshMatchPopulationBenchmarks } from './spatial/enrich-population'
 import { applyDemoSpatialEnrichment } from './spatial/demo-enrich'
 import { UploadManager, savePendingJob, clearPendingJob } from './upload-manager'
 import { readAiTraining, saveAiTraining } from './ai-training'
+import { UploadRequestError } from './upload-request-errors'
 import { resolveUploadPlayerIdentity } from './upload-player-identity'
 import {
   activateUserSession,
@@ -2291,6 +2293,7 @@ function dispatchAnalysisFailure(
     ppaUrl?: string
     clipsOnly?: boolean
     failureDiagnostics?: DuelFailureDiagnostics | null
+    preparationDiagnostics?: RecordingPreparationError['diagnostics']
   } = {},
 ): AnalysisErrorPayload {
   const classified = classifyActivationError(rawError)
@@ -2306,7 +2309,7 @@ function dispatchAnalysisFailure(
     recoveryAction: classified.definition.recoveryAction,
     ...(classified.code !== 'unknown'
       ? {
-          message: classified.definition.userMessage,
+          message: opts.preparationDiagnostics ? rawError : classified.definition.userMessage,
           title: presentation.title === 'Analysis could not complete'
             ? titleForActivationCode(classified.code, presentation.title)
             : presentation.title,
@@ -2367,6 +2370,7 @@ function dispatchAnalysisFailure(
       integrityReason: opts.failureDiagnostics?.integrity_reason ?? null,
       clipsUploaded: opts.failureDiagnostics?.clips_uploaded ?? null,
       clipsRequested: opts.failureDiagnostics?.clips_requested ?? null,
+      preparation: opts.preparationDiagnostics,
     })
   }
 
@@ -2409,6 +2413,7 @@ function sendUploadFailure(
     clipsOnly?: boolean
     notify?: boolean
     game?: string
+    preparationDiagnostics?: RecordingPreparationError['diagnostics']
   } = {},
 ): AnalysisErrorPayload {
   if (opts.game === 'valorant') {
@@ -6542,7 +6547,8 @@ async function uploadArchiveOnlyImpl(
   } catch (prepErr) {
     const lastError = sendUploadFailure(
       prepErr instanceof Error ? prepErr.message : 'Could not prepare recording for upload',
-      { targetWindow, recordingId, notify: false, game },
+      { targetWindow, recordingId, notify: false, game,
+        preparationDiagnostics: prepErr instanceof RecordingPreparationError ? prepErr.diagnostics : undefined },
     )
     return { archiveId: null, lastError }
   }
@@ -6797,7 +6803,8 @@ async function performUploadAndAnalyse(
       return null
     }
     log.error('[Upload] Failed to prepare video path:', prepErr)
-    sendUploadFailure(prepMsg, { targetWindow, recordingId, notify: false, game })
+    sendUploadFailure(prepMsg, { targetWindow, recordingId, notify: false, game,
+      preparationDiagnostics: prepErr instanceof RecordingPreparationError ? prepErr.diagnostics : undefined })
     return null
   }
 
@@ -7244,6 +7251,7 @@ async function performUploadAndAnalyse(
       map,
       agent,
       stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
+      transport: err instanceof UploadRequestError ? err.diagnostics : undefined,
     })
 
     // Try to ensure the recording is saved to the pending store so the user can retry.

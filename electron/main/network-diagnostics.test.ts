@@ -71,6 +71,9 @@ describe('isLikelyNetworkFailure', () => {
     expect(isLikelyNetworkFailure('getaddrinfo ENOTFOUND pd.na.a.pvp.net')).toBe(true)
     expect(isLikelyNetworkFailure('socket hang up')).toBe(true)
     expect(isLikelyNetworkFailure('HTTP 404')).toBe(false)
+    expect(isLikelyNetworkFailure('write EPROTO SSL_HANDSHAKE_FAILURE')).toBe(true)
+    expect(isLikelyNetworkFailure('API request timed out during presign')).toBe(true)
+    expect(isLikelyNetworkFailure('Secure connection failed during s3_part')).toBe(true)
   })
 })
 

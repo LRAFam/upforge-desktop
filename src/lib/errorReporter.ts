@@ -17,13 +17,31 @@ const ERROR_KEY = import.meta.env['VITE_ERROR_REPORTING_KEY'] || ''
 
 const reportedThisSession = new Set<string>()
 
+function routeWithoutQuery(route: string): string {
+  return route.split('?')[0] ?? ''
+}
+
+/** Local installation paths and per-recording query strings are not error identities. */
+function normalizeComponent(component: string | undefined): string | undefined {
+  if (!component?.startsWith('file://')) return component
+  const position = component.match(/:\d+:\d+$/)?.[0] ?? ''
+  try {
+    const url = new URL(position ? component.slice(0, -position.length) : component)
+    const resource = url.pathname.split('/').pop() || 'index.html'
+    return `renderer:${resource}${routeWithoutQuery(url.hash)}${position}`
+  } catch {
+    return `renderer:unknown${position}`
+  }
+}
+
 export async function reportError(payload: {
   message: string
   stack?: string
   component?: string
   extra?: Record<string, unknown>
 }): Promise<void> {
-  const dedupeKey = `${payload.message}|${payload.component ?? ''}`
+  const component = normalizeComponent(payload.component)
+  const dedupeKey = `${payload.message}|${component ?? ''}`
   if (reportedThisSession.has(dedupeKey)) return
   reportedThisSession.add(dedupeKey)
 
@@ -45,8 +63,8 @@ export async function reportError(payload: {
     platform: hasDesktopApi() ? 'desktop' : 'renderer',
     message: redactSensitiveString(payload.message).slice(0, 1000),
     stack: payload.stack ? redactSensitiveString(payload.stack).slice(0, 5000) : undefined,
-    component: payload.component,
-    url: window.location.hash || window.location.pathname,
+    component,
+    url: routeWithoutQuery(window.location.hash || window.location.pathname || ''),
     app_version: __APP_VERSION__,
     user_id: user?.id,
     user_email: user?.email,

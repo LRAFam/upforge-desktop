@@ -98,6 +98,17 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
     }
   }
 
+  if (/^upload_(completion|request)_unconfirmed:/i.test(lower)) {
+    return {
+      kind: 'upload',
+      title: 'Checking upload outcome',
+      message: 'UpForge could not confirm whether your request was accepted. Your recording is still saved.',
+      hint: 'Check this recording on the dashboard before starting another upload.',
+      creditRefunded: false,
+      canRetry: false,
+    }
+  }
+
   if (/preparing (did not complete|is taking longer)|preparation_/i.test(lower)) {
     return {
       kind: 'preparation',

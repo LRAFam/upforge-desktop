@@ -22,12 +22,14 @@ describe('upload rate limits', () => {
 
   it('blocks shared-bucket retries until expiry, but isolates accounts and unrelated routes', async () => {
     let requests = 0
-    const server = http.createServer((_req, res) => {
+    const server = http.createServer((req, res) => {
       requests++
       if (requests === 1) {
         res.writeHead(429, { 'Retry-After': '60' })
         res.end('non-JSON rate limit')
-      } else { res.end('{}') }
+      } else {
+        res.end(JSON.stringify(req.url?.endsWith('/complete') ? { job_id: 'job', status: 'queued' } : {}))
+      }
     })
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
@@ -38,7 +40,7 @@ describe('upload rate limits', () => {
       const manager = new UploadManager({} as AuthManager) as unknown as {
         _apiPost: (url: string, body: string, token: string) => Promise<unknown>
       }
-      const post = (route: string, token = 'account-a') => manager._apiPost(origin + route, '{}', token)
+      const post = (route: string, token = 'account-a') => manager._apiPost(origin + route, JSON.stringify({ job_id: 'job' }), token)
       const now = Date.now()
       vi.spyOn(Date, 'now').mockReturnValue(now)
       await expect(post('/api/desktop-submissions/presign')).rejects.toMatchObject({ status: 429, retryAt: now + 60_000 })
