@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest } from './trainer-payload'
+import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest, drillGameParams } from './trainer-payload'
 import { DEFAULT_CROSSHAIR_SETTINGS, DEFAULT_TRAINER_MOUSE } from './trainer-settings'
 
 const result = {
@@ -54,5 +54,15 @@ describe('correlationInsightsFrom', () => {
     expect(correlationInsightsFrom(['c'])).toEqual(['c'])
     expect(correlationInsightsFrom(null)).toEqual([])
     expect(correlationInsightsFrom({ insights: 'x' })).toEqual([])
+  })
+})
+
+describe('drillGameParams', () => {
+  it('sends ?game= for a known game only', () => {
+    expect(drillGameParams('cs2')).toEqual({ params: { game: 'cs2' } })
+    expect(drillGameParams('lol')).toEqual({ params: { game: 'lol' } })
+    expect(drillGameParams(undefined)).toEqual({})
+    expect(drillGameParams('apex')).toEqual({})
+    expect(drillGameParams(3)).toEqual({})
   })
 })

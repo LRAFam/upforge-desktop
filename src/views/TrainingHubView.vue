@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { priorTrainingSessions, comparableTrainingRuns, trainingComparisonRequest, resultHitsCell, isTrackingScenario } from '../lib/training-result-metrics'
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useLifetime } from '../composables/useLifetime'
 import { useRouter } from 'vue-router'
 import type { TrainingHistory, CoachingDrill, TrainingBenchmark, SharedTrainingPlan } from '../env'
@@ -40,7 +40,7 @@ import UfButton from '../components/v3/UfButton.vue'
 import UfDialog from '../components/v3/UfDialog.vue'
 import PracticeAnalyticsV3 from '../components/v3/practice/PracticeAnalyticsV3.vue'
 import { deltaTone, pct, signed, toneColor } from '../components/v3/practice/practice-session-v3'
-import { coachingDrillExtras, matchDrillRows, oldScoringBests, oldScoringNote } from '../components/v3/practice/practice-v3'
+import { coachingDrillExtras, drillsForGame, matchDrillRows, oldScoringBests, oldScoringNote, planForGame } from '../components/v3/practice/practice-v3'
 
 const ICON_LOCK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
 const ICON_TROPHY_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/><path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>`
@@ -657,22 +657,25 @@ type TrainerData = [
   Awaited<ReturnType<typeof window.api.trainer.getCorrelation>>,
   Awaited<ReturnType<typeof window.api.trainer.getBenchmark>>,
 ]
-const TRAINER_CACHE_KEY = 'practice:trainer'
+// Plan and drills follow the primary game (`?game=`), so each game keeps its own cache.
+const trainerCacheKey = (game: string) => `practice:trainer:${game}`
 
-function fetchTrainerData(): Promise<TrainerData> {
+function fetchTrainerData(game: string = primaryGame.value): Promise<TrainerData> {
   return Promise.all([
     window.api.trainer.getHistory(),
-    window.api.trainer.getPlan(),
-    window.api.trainer.getCoachingDrills(),
+    window.api.trainer.getPlan(game),
+    window.api.trainer.getCoachingDrills(game),
     window.api.trainer.getCorrelation(),
     window.api.trainer.getBenchmark(),
   ])
 }
 
-function applyTrainerData([history, plan, drills, insights, benchmark]: TrainerData) {
+function applyTrainerData([history, plan, drills, insights, benchmark]: TrainerData, game: string = primaryGame.value) {
   apiHistory.value = history
-  sharedTrainingPlan.value = plan
-  const drillList = Array.isArray(drills) ? drills : []
+  // League has no plan (API: plan null + unsupported_game); an older API's Valorant plan is dropped too.
+  sharedTrainingPlan.value = planForGame(plan, game)
+  // Older APIs ignore ?game= and omit `game` on rows: those rows are kept (nothing to filter on).
+  const drillList = drillsForGame(Array.isArray(drills) ? drills : [], game)
   coachingDrills.value = drillList
   correlationInsights.value = Array.isArray(insights) ? insights : []
   benchmarkData.value = benchmark
@@ -689,10 +692,26 @@ function applyTrainerData([history, plan, drills, insights, benchmark]: TrainerD
 }
 
 // UI v3: draw the last trainer data at once and start the refresh now, not after the awaits in onMounted.
-const cachedTrainer = uiV3.value ? readCache<TrainerData>(TRAINER_CACHE_KEY) : null
-if (cachedTrainer) applyTrainerData(cachedTrainer.value)
-const earlyTrainerFetch = uiV3.value ? fetchTrainerData() : null
+const earlyTrainerGame = primaryGame.value
+const cachedTrainer = uiV3.value ? readCache<TrainerData>(trainerCacheKey(earlyTrainerGame)) : null
+if (cachedTrainer) applyTrainerData(cachedTrainer.value, earlyTrainerGame)
+const earlyTrainerFetch = uiV3.value ? fetchTrainerData(earlyTrainerGame) : null
 earlyTrainerFetch?.catch(() => { /* surfaced where it is awaited */ })
+
+// Game switch (or settings loading after this view): show that game's cached data, then refresh.
+watch(primaryGame, async (game) => {
+  const cached = readCache<TrainerData>(trainerCacheKey(game))
+  if (cached) applyTrainerData(cached.value, game)
+  else {
+    sharedTrainingPlan.value = null
+    coachingDrills.value = []
+    assignedDrills.value = []
+  }
+  const data = await fetchTrainerData(game).catch(() => null)
+  if (!data || game !== primaryGame.value) return
+  applyTrainerData(data, game)
+  writeCache(trainerCacheKey(game), data)
+})
 
 // ── IPC listener ──────────────────────────────────────────────────────────────
 const life = useLifetime() // listeners registered after an await stop with this view
@@ -769,9 +788,12 @@ onMounted(async () => {
   loadingHistory.value = !cachedTrainer
   if (cachedTrainer) startPBCarousel()
   try {
-    const data = await (earlyTrainerFetch ?? fetchTrainerData())
-    applyTrainerData(data)
-    if (uiV3.value) writeCache(TRAINER_CACHE_KEY, data)
+    const data = await (earlyTrainerFetch ?? fetchTrainerData(earlyTrainerGame))
+    // The game changed while this was loading: the watcher above loads the new game's data.
+    if (earlyTrainerGame === primaryGame.value) {
+      applyTrainerData(data, earlyTrainerGame)
+      if (uiV3.value) writeCache(trainerCacheKey(earlyTrainerGame), data)
+    }
     if (!cachedTrainer) startPBCarousel()
   } finally {
     loadingHistory.value = false

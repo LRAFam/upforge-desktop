@@ -6,9 +6,11 @@ import { plural } from '../../lib/plural'
  * Renders the header + tabs for every tab, and the Train body; other tab bodies stay in the view.
  */
 import UfTabs from '../../components/v3/UfTabs.vue'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import UfButton from '../../components/v3/UfButton.vue'
+import FocusesV3 from '../../components/v3/focus/FocusesV3.vue'
+import { hasFocusLoop } from '../../lib/focuses'
 import { scenarioIconUrl, TRAINING_ARTWORK } from '../../lib/training-icons'
 import {
   PRACTICE_TABS,
@@ -98,6 +100,12 @@ const { primaryGame } = usePrimaryGame()
 const scope = computed(() => practiceGameScope(primaryGame.value))
 const matchCoaching = computed(() => scope.value.matchCoaching)
 const showSensLink = computed(() => primaryGame.value === 'cs2' || primaryGame.value === 'deadlock')
+// League has no aim trainer: next-match focus instead of a session, and the drill library, daily
+// challenge and quick play stay hidden behind a link for players who want them anyway.
+const aimTrainer = computed(() => scope.value.aimTrainer)
+const libraryAnyway = ref(false)
+const showTrainerDrills = computed(() => aimTrainer.value || libraryAnyway.value)
+watch(primaryGame, () => { libraryAnyway.value = false })
 // One finding → drill mapping: the API rulebook (empty = no proven drill, said plainly).
 const rulebook = useDrillRulebook(typeof window === 'undefined' ? undefined : window.api?.trainer)
 const focusPlan = computed(() => focusDrillPlan(focus.value?.metric, props.drills.map(d => d.scenario), rulebook.value))
@@ -141,7 +149,18 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
         <RouterLink v-if="showSensLink" to="/settings?tab=trainer" class="uf-link">Trainer settings →</RouterLink>
       </p>
       <!-- Hero: today's guided session (the one red action on this screen) -->
-      <section class="uf-session uf-rise uf-d1s">
+      <section v-if="!aimTrainer" class="uf-noplan uf-rise uf-d1s" aria-label="Next-match focus">
+        <FocusesV3 v-if="hasFocusLoop(primaryGame)" :game="primaryGame" heading="Your next-match focus">
+          <template #fallback>
+            <span class="uf-label">Your next-match focus</span>
+            <p class="uf-t4" style="margin: 0">Your coach sets one from your recent matches. It shows here and on Home.</p>
+          </template>
+        </FocusesV3>
+        <button type="button" class="uf-link uf-t4" :aria-expanded="libraryAnyway" @click="libraryAnyway = !libraryAnyway">
+          {{ libraryAnyway ? 'Hide the aim drill library' : 'Open the aim drill library anyway →' }}
+        </button>
+      </section>
+      <section v-else class="uf-session uf-rise uf-d1s">
         <img :src="TRAINING_ARTWORK.guidedSessionHero" alt="" class="uf-session-art">
         <div class="uf-session-scrim" />
         <div v-if="nextDrill?.source === 'match_report'" class="uf-session-body">
@@ -214,7 +233,7 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
         </div>
       </section>
 
-      <div class="uf-practice-grid">
+      <div class="uf-practice-grid" :class="{ 'is-solo': !showTrainerDrills }">
         <div class="uf-practice-main">
           <!-- Coach-assigned drills always show: the coach assigned them for the player's game. -->
           <section v-if="matchDrills.length" class="uf-rise uf-d2s">
@@ -246,7 +265,7 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
             </ul>
           </section>
 
-          <section class="uf-rise uf-d3s">
+          <section v-if="showTrainerDrills" class="uf-rise uf-d3s">
             <div class="uf-library-head">
               <span class="uf-label">Drill library</span>
               <UfTabs :items="categoryItems" :model-value="activeCategory" size="filter" label="Drill categories"
@@ -291,7 +310,7 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
           </section>
         </div>
 
-        <aside class="uf-practice-aside uf-rise uf-d4s">
+        <aside v-if="showTrainerDrills" class="uf-practice-aside uf-rise uf-d4s">
           <section class="uf-aside-block">
             <span class="uf-label" :style="daily.completed ? 'color: var(--uf-win)' : undefined">Daily challenge</span>
             <div class="uf-daily">
@@ -353,6 +372,8 @@ const focusDrills = computed(() => (focusPlan.value?.scenarios ?? [])
 .uf-session-actions { display: flex; align-items: center; gap: 22px; }
 
 .uf-practice-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 36px; align-items: start; }
+.uf-practice-grid.is-solo { grid-template-columns: minmax(0, 1fr); }
+.uf-noplan { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; max-width: 760px; }
 .uf-practice-main { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
 .uf-reco { list-style: none; margin: 10px 0 0; padding: 0; }
 .uf-reco li { padding: 10px 0; border-top: 1px solid var(--uf-line); }
