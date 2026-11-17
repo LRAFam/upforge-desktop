@@ -123,6 +123,34 @@ export interface ReplayClipSavedMeta {
   victimName?: string
 }
 
+type RecordingDiagnostics = {
+  game: string | null; stage: string | null; output_active: boolean | null;
+  output_bytes: number | null; verify_ms: number | null;
+  output_paused: boolean | null; no_progress_ms: number | null;
+  /** Age of the last successful GetRecordStatus sample when the latest one failed. */
+  output_sample_age_ms: number | null; output_sample_failed: boolean | null;
+  /** WebSocket close details from the last OBS disconnect (code 1006 = socket lost, 1001 = OBS closing). */
+  obs_close_code: number | null; obs_close_reason: string | null;
+}
+
+function emptyRecordingDiagnostics(game: string | null): RecordingDiagnostics {
+  return {
+    game, stage: game === null ? null : 'preflight', output_active: null, output_bytes: null, verify_ms: null,
+    output_paused: null, no_progress_ms: null, output_sample_age_ms: null, output_sample_failed: null,
+    obs_close_code: null, obs_close_reason: null,
+  }
+}
+
+const MAX_CLOSE_REASON_CHARS = 120
+
+/** obs-websocket-js passes an OBSWebSocketError ({ code, message }) to ConnectionClosed. */
+function describeObsClose(err: unknown): { code: number | null; reason: string | null } {
+  if (!err || typeof err !== 'object') return { code: null, reason: null }
+  const { code, message } = err as { code?: unknown; message?: unknown }
+  const reason = typeof message === 'string' && message.trim() ? message.trim().slice(0, MAX_CLOSE_REASON_CHARS) : null
+  return { code: typeof code === 'number' && Number.isFinite(code) ? code : null, reason }
+}
+
 export class OBSRecorder {
   private _obs = boundObsRequests(new OBSWebSocket())
   private _capturePreviewInFlight: Promise<CapturePreviewResult> | null = null
@@ -291,9 +319,12 @@ export class OBSRecorder {
       this._replayBufferActive = outputActive
     })
 
-    this._obs.on('ConnectionClosed', () => {
+    this._obs.on('ConnectionClosed', (closeError?: unknown) => {
       if (this._suppressConnectionEvents) return
-      log.warn('[OBSRecorder] OBS disconnected')
+      const close = describeObsClose(closeError)
+      // Close code tells socket loss (1006) from OBS shutting down (1001) in the error report.
+      Object.assign(this._startDiagnostics, { obs_close_code: close.code, obs_close_reason: close.reason })
+      log.warn('[OBSRecorder] OBS disconnected', close.code ?? '', close.reason ?? '')
       const wasConnected = this._connected
       this._connected = false
       if (this._matchOwnedRecording && (this._recording || this._startedAt)) {
@@ -448,14 +479,10 @@ export class OBSRecorder {
   }
 
   isConnected(): boolean { return this._connected }
-  private _startDiagnostics: {
-    game: string | null; stage: string | null; output_active: boolean | null;
-    output_bytes: number | null; verify_ms: number | null;
-    output_paused: boolean | null; no_progress_ms: number | null;
-  } = { game: null, stage: null, output_active: null, output_bytes: null, verify_ms: null, output_paused: null, no_progress_ms: null }
+  private _startDiagnostics: RecordingDiagnostics = emptyRecordingDiagnostics(null)
 
   resetRecordingDiagnostics(game: string): void {
-    this._startDiagnostics = { game, stage: 'preflight', output_active: null, output_bytes: null, verify_ms: null, output_paused: null, no_progress_ms: null }
+    this._startDiagnostics = emptyRecordingDiagnostics(game)
   }
 
   /** Whitelisted diagnostics only: no OBS password, output path, or arbitrary settings. */
@@ -1439,6 +1466,7 @@ export class OBSRecorder {
     const generation = this._progressGeneration
     let lastBytes: number | undefined
     let lastProgressAt = Date.now()
+    let lastSampleAt: number | null = null
     const check = async () => {
       if (generation !== this._progressGeneration || !this._matchOwnedRecording || this._stopInFlight || this._recordingFailure) return
       try {
@@ -1451,12 +1479,15 @@ export class OBSRecorder {
         // A missing sample must not reset the last known counter: seeing that
         // same counter again is not evidence that the file grew.
         if (Number.isFinite(status.outputBytes)) lastBytes = status.outputBytes
+        lastSampleAt = Date.now()
         Object.assign(this._startDiagnostics, {
           stage: 'recording',
           output_active: typeof status.outputActive === 'boolean' ? status.outputActive : null,
           output_bytes: Number.isFinite(status.outputBytes) ? status.outputBytes : null,
           output_paused: typeof status.outputPaused === 'boolean' ? status.outputPaused : null,
           no_progress_ms: Date.now() - lastProgressAt,
+          output_sample_age_ms: 0,
+          output_sample_failed: false,
         })
         if (!status.outputActive || Date.now() - lastProgressAt >= 60_000) {
           this._markRecordingFailure('OBS stopped producing recording data. Restart OBS before recording another match.')
@@ -1465,9 +1496,13 @@ export class OBSRecorder {
         }
       } catch {
         if (generation !== this._progressGeneration) return
+        // Keep the last good sample: a status call failing as the socket drops must not
+        // erase the evidence of whether OBS was still writing.
         Object.assign(this._startDiagnostics, {
-          stage: 'recording', output_active: null, output_bytes: null, output_paused: null,
+          stage: 'recording',
           no_progress_ms: Date.now() - lastProgressAt,
+          output_sample_age_ms: lastSampleAt === null ? null : Date.now() - lastSampleAt,
+          output_sample_failed: true,
         })
         // Connection recovery owns disconnects. A connected but unresponsive OBS is unhealthy.
         if (this._connected && Date.now() - lastProgressAt >= 60_000) {
