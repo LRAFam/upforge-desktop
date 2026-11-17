@@ -1,4 +1,4 @@
-import { insightForGame, type LastInsight } from '../lib/last-insight'
+import { insightForGame, insightText, normalizeLastInsight, type LastInsight } from '../lib/last-insight'
 import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import { singleFlight } from '../lib/single-flight'
 import { ref, computed, inject, provide, watch, onMounted, onUnmounted, type InjectionKey } from 'vue'
@@ -335,7 +335,7 @@ function createDashboard(opts: DashboardOptions = {}) {
    * profile + analyses + playstyle + recordings + the auth refresh together.
    */
   async function mountCacheFirst(saved: { lastInsight?: LastInsight | null } | null): Promise<void> {
-    if (saved?.lastInsight) savedLastInsight.value = saved.lastInsight
+    if (saved?.lastInsight) savedLastInsight.value = normalizeLastInsight(saved.lastInsight)
     if (hydratedGame && hydratedGame !== primaryGame.value) {
       // Drawn from another game's cache before settings loaded: redraw for the right game.
       analyses.value = []
@@ -825,8 +825,8 @@ function createDashboard(opts: DashboardOptions = {}) {
     try {
       await Promise.all(toFetch.map(async (a) => {
         const detail = await window.api.analyses.getDetail(a.id).catch(() => null)
-        const snippet = detail?.top_issue
-          ?? detail?.priority_improvements?.[0]
+        const snippet = insightText(detail?.top_issue)
+          ?? insightText(detail?.priority_improvements)
           ?? detail?.match_highlights?.[0]?.reason
           ?? detail?.heatmap_insight
           ?? detail?.verdict
@@ -1606,7 +1606,7 @@ function createDashboard(opts: DashboardOptions = {}) {
       skillProfilePrevious?: SkillProfileSnapshot | null
       lastSkippedMatch?: { game: string; message: string; at: number } | null
     } | null)
-    if (savedSettings?.lastInsight) savedLastInsight.value = savedSettings.lastInsight
+    if (savedSettings?.lastInsight) savedLastInsight.value = normalizeLastInsight(savedSettings.lastInsight)
     skippedMatchNotice.value = savedSettings?.lastSkippedMatch ?? null
     skillProfile.value = savedSettings?.skillProfile ?? null
     skillProfilePrevious.value = savedSettings?.skillProfilePrevious ?? null
@@ -1669,7 +1669,7 @@ function createDashboard(opts: DashboardOptions = {}) {
       await loadAnalyses()
     }))
     life.own(window.api.on('dashboard:last-insight', (...args: unknown[]) => {
-      savedLastInsight.value = args[0] as LastInsight | null
+      savedLastInsight.value = normalizeLastInsight(args[0])
     }))
     // Single-flight: a burst of updates after a match must not stack parallel full-list fetches.
     life.own(window.api.on('recordings:updated', singleFlight(loadPendingRecordings)))

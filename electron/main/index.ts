@@ -8,6 +8,7 @@ import { canUseDeveloperTools, devOnly } from './dev-access'
 import { createCoalescedNotifier, createVodProbeSweep } from './vod-probe-sweep'
 import { createRecordingFileFinalizer } from './recording-file-finalizer'
 import { submissionFocusAreas } from '../../src/lib/submission-focus'
+import { insightText as insightTextFrom } from '../../src/lib/last-insight'
 import { parseDiscordLinkCallback } from './discord-link'
 import { createCallRateLogger, startMainLoopLagMonitor } from './main-loop-lag'
 import { saveReplay } from './valorant-replay-download'
@@ -7071,9 +7072,8 @@ async function performUploadAndAnalyse(
           }
           notifyRecordingsUpdated()
         }
-        const improvements = completedResult.priority_improvements as string[] | undefined
-        const topIssue = completedResult.top_issue as string | undefined
-        const insightText = (improvements && improvements.length > 0) ? improvements[0] : (topIssue ?? null)
+        // League sends priority_improvements as { theme, issue, fix } objects: save text only.
+        const insightText = insightTextFrom(completedResult.priority_improvements) ?? insightTextFrom(completedResult.top_issue)
         const scoreText = analysisScoreText(completedResult)
         logActivity(`Analysis ready${scoreText ? ` — ${scoreText}` : ''}`)
         if (insightText) {
