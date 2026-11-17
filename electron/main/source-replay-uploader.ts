@@ -5,7 +5,8 @@ import path from 'path'
 import { AuthManager } from './auth-manager'
 import type { SourceGame } from './source-replay-finder'
 import { getApiBaseUrl } from './api-base'
-import { replayApiError } from './errors'
+import { clientVersionHeaders, noteAnalysisJob } from './analysis-trace'
+import { ReplayTooLargeError, replayApiError, replayTooLargeMessage } from './errors'
 
 export interface SourceReplayUploadOptions {
   game: SourceGame
@@ -25,6 +26,9 @@ export interface SourceReplayUploadResult {
   /** The match was already analysed: no upload happened and no credit was spent; jobId is the first analysis. */
   alreadyAnalysed?: boolean
 }
+
+/** Same cap as the API's AI_DEMO_UPLOAD_MAX_MB default (the AI service refuses bigger uploads). */
+export const DEADLOCK_REPLAY_MAX_MB = 400
 
 const API_PREFIX: Record<SourceGame, string> = {
   cs2: '/api/cs2/demo',
@@ -48,9 +52,16 @@ export class SourceReplayUploader {
     const totalBytes = fs.statSync(opts.demoPath).size
     const filename = path.basename(opts.demoPath)
 
+    // Tell the player before uploading anything: an oversized replay can only fail later.
+    if (opts.game === 'deadlock' && totalBytes > DEADLOCK_REPLAY_MAX_MB * 1024 * 1024) {
+      throw new ReplayTooLargeError(replayTooLargeMessage(DEADLOCK_REPLAY_MAX_MB, Math.ceil(totalBytes / (1024 * 1024))))
+    }
+
     opts.onProgress(0)
     const presignBody: Record<string, unknown> = { filename }
     if (opts.game === 'deadlock') {
+      // The API refuses sizes over its own cap at presign (413) before any upload or charge.
+      presignBody.file_size_bytes = totalBytes
       if (opts.steamId) presignBody.steam_id = opts.steamId
       if (opts.matchId) presignBody.match_id = opts.matchId
       if (opts.matchStartedAt) presignBody.match_started_at = opts.matchStartedAt
@@ -63,6 +74,7 @@ export class SourceReplayUploader {
     const presignResult = await this._apiPost(`${apiUrl}${prefix}/presign`, JSON.stringify(presignBody), token)
     const jobId = presignResult['job_id'] as string
     const uploadUrl = presignResult['upload_url'] as string
+    if (typeof jobId === 'string') noteAnalysisJob({ jobId, game: opts.game })
 
     // The API returns the first analysis for a match that was already analysed (no charge): treat it as done.
     if (presignResult['already_analysed'] === true && typeof jobId === 'string' && jobId) {
@@ -131,6 +143,7 @@ export class SourceReplayUploader {
           'Content-Length': Buffer.byteLength(body),
           Authorization: `Bearer ${token}`,
           Accept: 'application/json',
+          ...clientVersionHeaders(),
         },
       }, (res) => {
         let data = ''

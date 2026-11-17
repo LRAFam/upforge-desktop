@@ -8,9 +8,26 @@
  * kept polling and re-loaded recordings/analyses on every 'recordings:updated' /
  * 'dashboard:refresh' — the "app keeps refreshing" report.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRenderer, defineComponent, h, type Component } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
+
+/**
+ * Home's init runs in an async onMounted hook; Vue drops the promise. Keep it so tests can await
+ * the real end of init instead of guessing how many microtask turns it needs (that guess made
+ * these tests fail under load).
+ */
+const mountedTasks = vi.hoisted(() => [] as Promise<unknown>[])
+vi.mock('vue', async (importOriginal) => {
+  const vue = await importOriginal<typeof import('vue')>()
+  return {
+    ...vue,
+    onMounted: (hook: () => unknown, target?: Parameters<typeof vue.onMounted>[1]) => vue.onMounted(() => {
+      const result = hook()
+      if (result instanceof Promise) mountedTasks.push(result)
+    }, target),
+  }
+})
 
 vi.mock('../components/CS2StatsPanel.vue', () => ({ default: {} }))
 vi.mock('../components/Cs2ValveStatsPanel.vue', () => ({ default: {} }))
@@ -121,19 +138,26 @@ async function mountHome() {
   app.use(router)
   const root: Node = { children: [], parent: null }
   app.mount(root)
+  expect(mountedTasks.length).toBeGreaterThan(0) // the onMounted capture above still sees Home's init
   return Object.assign(() => app.unmount(), { get ctx() { return ctx } })
 }
 
+/** Wait for every started Home init to finish, then let its fire-and-forget follow-ups run. */
 async function settle() {
-  for (let i = 0; i < 50; i++) await Promise.resolve()
+  while (mountedTasks.length) await Promise.allSettled(mountedTasks.splice(0))
   await vi.advanceTimersByTimeAsync(0)
   for (let i = 0; i < 50; i++) await Promise.resolve()
 }
 
 describe('Home lifetime (useDashboard)', () => {
+  // The first import transforms the whole Home module graph (seconds on a busy machine). Do it
+  // here, outside any test's timeout; each test still gets fresh module state via resetModules.
+  beforeAll(async () => { await import('./useDashboard') }, 60_000)
+
   beforeEach(() => {
     vi.resetModules()
     vi.useFakeTimers()
+    mountedTasks.length = 0
   })
   afterEach(() => {
     vi.useRealTimers()

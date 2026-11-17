@@ -40,6 +40,21 @@ export class UpgradeRequiredError extends Error {
   }
 }
 
+/** The replay is bigger than the analysis upload cap: permanent, so never retry it. */
+export class ReplayTooLargeError extends Error {
+  readonly failureCode = 'replay_too_large'
+  constructor(message: string) {
+    super(message)
+    this.name = 'ReplayTooLargeError'
+  }
+}
+
+/** Player message for a replay over the cap (no upload happened, no credit used). */
+export function replayTooLargeMessage(maxMb: number, sizeMb?: number): string {
+  const size = sizeMb != null ? ` (${sizeMb} MB)` : ''
+  return `This replay${size} is too large to analyse: the limit is ${maxMb} MB. No credit was used and the replay is still saved.`
+}
+
 /** Plan message for a replay-analysis quota wall (the API copy for these routes is not player-ready). */
 export const REPLAY_QUOTA_MESSAGE =
   "You've used all your match reviews for now. Upgrade your plan to keep reviewing — your replay is still saved."
@@ -54,6 +69,11 @@ export function replayApiError(status: number, json: Record<string, unknown> | n
       ? json.upgrade_url
       : undefined
     return new UpgradeRequiredError(REPLAY_QUOTA_MESSAGE, 'analysis_limit_reached', upgradeUrl)
+  }
+  if (status === 413) {
+    const serverMessage = typeof json?.error === 'string' && json.error ? json.error : null
+    const maxMb = typeof json?.max_upload_mb === 'number' ? json.max_upload_mb : null
+    return new ReplayTooLargeError(serverMessage ?? (maxMb ? replayTooLargeMessage(maxMb) : 'This replay is too large to analyse.'))
   }
   const message = typeof json?.message === 'string' && json.message
     ? json.message

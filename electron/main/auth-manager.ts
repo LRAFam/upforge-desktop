@@ -1,3 +1,4 @@
+import { clientVersionHeaders } from './analysis-trace'
 import axios, { AxiosInstance } from 'axios'
 import { redactAxiosError } from './redact-axios-error'
 import { app, safeStorage } from 'electron'
@@ -322,7 +323,7 @@ export class AuthManager {
     this._api = axios.create({
       baseURL: API_BASE,
       timeout: 15000,
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', ...clientVersionHeaders() }
     })
 
     this._api.interceptors.response.use(

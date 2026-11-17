@@ -77,3 +77,24 @@ it('carries the exact focus through completion, archive analysis and retry witho
   await manager.analyseArchive('other-archive', 'cs2')
   expect(calls.at(-1)?.body).not.toHaveProperty('focus_areas')
 })
+
+it('sends X-Client-Version on desktop submission API calls', async () => {
+  const http = await import('node:http')
+  const { APP_VERSION } = await import('./app-version')
+  const seen: Array<string | undefined> = []
+  const server = http.createServer((req, res) => {
+    seen.push(req.headers['x-client-version'] as string | undefined)
+    req.resume()
+    req.on('end', () => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"job_id":"job-v"}') })
+  })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()))
+  try {
+    const port = (server.address() as { port: number }).port
+    const manager = new UploadManager({ getToken: () => 'test' } as AuthManager)
+    const internal = manager as unknown as { _apiPostOnce: (url: string, body: string, token: string) => Promise<unknown> }
+    await internal._apiPostOnce(`http://127.0.0.1:${port}/api/desktop-submissions/presign`, '{}', 'test')
+    expect(seen).toEqual([APP_VERSION])
+  } finally {
+    server.close()
+  }
+})
