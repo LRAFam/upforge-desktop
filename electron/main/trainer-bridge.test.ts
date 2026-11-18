@@ -1,11 +1,13 @@
 import { EventEmitter } from 'events'
+import { readFileSync } from 'fs'
 import net from 'net'
+import path from 'path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: { isPackaged: false, getAppPath: () => '/tmp' }, BrowserWindow: class {} }))
 vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 
-import { getFreePort, parseTrainerLine, TrainerBridge, type DrillConfig, type TrainerSessionEnded } from './trainer-bridge'
+import { getFreePort, parseTrainerLine, resolveTrainerSpawn, TrainerBridge, TrainerLaunchError, trainerLaunchErrorMessage, type DrillConfig, type TrainerSessionEnded } from './trainer-bridge'
 
 class FakeProc extends EventEmitter {
   stderr = new EventEmitter()
@@ -153,5 +155,73 @@ describe('TrainerBridge', () => {
     await expect(bridge.launch(config)).rejects.toThrow(/port/)
     expect(Date.now() - t).toBeLessThan(1000)
     expect(ended()[0]).toMatchObject({ reason: 'launch_failed' })
+  })
+
+  it('its own launch failures are already plain player messages', async () => {
+    const { bridge } = setup({ connectTimeoutMs: 150 })
+    const err = await bridge.launch(config).catch(e => e)
+    expect(err).toBeInstanceOf(TrainerLaunchError)
+    expect(trainerLaunchErrorMessage(err, true)).toBe(err.message)
+  })
+
+  it('closing the trainer for a game or a match ends the drill with that reason, not a silent user_exit', async () => {
+    const { bridge, ended } = setup({ godot: p => { fakeGodot(p) } })
+    await bridge.launch(config)
+    bridge.kill('match_started')
+    await bridge.launch(config)
+    bridge.kill('game_started')
+    expect(ended().map(e => e.reason)).toEqual(['match_started', 'game_started'])
+  })
+})
+
+describe('resolveTrainerSpawn', () => {
+  const trainerPath = '/app/resources/trainer/upforge-trainer'
+  const base = { trainerPath, appPath: '/app/resources/app.asar', exists: (_p: string) => false }
+
+  it('uses the bundled trainer when it is there', () => {
+    expect(resolveTrainerSpawn({ ...base, packaged: true, platform: 'win32', exists: p => p === trainerPath })).toEqual({ cmd: trainerPath, args: [] })
+  })
+
+  it('a packaged app with the trainer missing says so plainly and never falls back to the Godot editor', () => {
+    for (const platform of ['win32', 'darwin', 'linux'] as const) {
+      // Godot installed on the machine (a developer's Mac) must not matter for a packaged build.
+      const run = () => resolveTrainerSpawn({ ...base, packaged: true, platform, exists: p => /godot/i.test(p) })
+      expect(run, platform).toThrow(TrainerLaunchError)
+      expect(run, platform).toThrow('The aim trainer is missing from your UpForge install. Reinstall UpForge to restore it.')
+    }
+  })
+
+  it('development builds keep the developer fallbacks', () => {
+    const godot = '/Applications/Godot.app/Contents/MacOS/Godot'
+    expect(resolveTrainerSpawn({ ...base, packaged: false, platform: 'darwin', exists: p => p === godot }))
+      .toEqual({ cmd: godot, args: ['--path', path.resolve('/app/resources/app.asar', '..', 'upforge-trainer')] })
+    expect(() => resolveTrainerSpawn({ ...base, packaged: false, platform: 'win32' })).toThrow(/export the Godot project/)
+  })
+})
+
+describe('trainerLaunchErrorMessage', () => {
+  const sysErr = (code: string) => Object.assign(new Error(`spawn ${code}`), { code })
+
+  it('maps each launch failure to plain text with one action', () => {
+    expect(trainerLaunchErrorMessage(sysErr('ENOENT'), true)).toBe('The aim trainer is missing from your UpForge install. Reinstall UpForge to restore it.')
+    for (const code of ['EACCES', 'EPERM', 'UNKNOWN']) {
+      expect(trainerLaunchErrorMessage(sysErr(code), true), code).toBe('Your antivirus or security settings blocked the aim trainer. Allow UpForge in your antivirus, then try again.')
+    }
+    expect(trainerLaunchErrorMessage(new Error('Could not pick a free port'), true)).toBe('The aim trainer did not start. Try again, or restart UpForge.')
+  })
+
+  it('never shows file paths or developer steps in a packaged app; development builds keep the detail', () => {
+    const dev = new Error('Godot engine not found. Install from godotengine.org or: brew install godot')
+    expect(trainerLaunchErrorMessage(dev, true)).not.toMatch(/Godot|brew|\//)
+    expect(trainerLaunchErrorMessage(dev, false)).toBe(dev.message)
+  })
+})
+
+describe('the app closes the trainer for a game with a reason the player is told', () => {
+  it('index.ts never kills the trainer with the silent default reason', () => {
+    const src = readFileSync(path.join(__dirname, 'index.ts'), 'utf8')
+    expect(src).not.toMatch(/trainerBridge\.kill\(\)/)
+    expect(src).toMatch(/trainerBridge\.kill\('game_started'\)/)
+    expect(src).toMatch(/trainerBridge\.kill\('match_started'\)/)
   })
 })

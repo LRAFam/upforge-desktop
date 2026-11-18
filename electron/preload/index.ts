@@ -472,6 +472,8 @@ const api = {
     getLastLaunch: () => ipcRenderer.invoke('trainer:get-last-launch'),
     /** Upload state of a finished run (saved / pending retry / failed) and what it did to the assigned drill. */
     getSyncStatus: (scenario: string, completedAt: string) => ipcRenderer.invoke('trainer:get-sync-status', scenario, completedAt),
+    /** Signed-in account's runs waiting to upload / not saved this week. Changes arrive on `trainer:upload-status`. */
+    getUploadStatus: () => ipcRenderer.invoke('trainer:get-upload-status'),
     /** Focus metric → allowed trainer drills, from the API rulebook (null when offline). */
     getDrillRulebook: (game?: string) => ipcRenderer.invoke('trainer:get-drill-rulebook', game),
     getHistory: (comparison?: import('../../src/lib/training-result-metrics').TrainingComparisonRequest) => ipcRenderer.invoke('trainer:get-history', comparison),
@@ -628,6 +630,7 @@ const api = {
       'trainer:session-result',
       'trainer:session-ended',
       'trainer:session-synced',
+      'trainer:upload-status',
       'post-game:demo-status',
       'post-game:demo-progress',
       'post-game:demo-download-progress',

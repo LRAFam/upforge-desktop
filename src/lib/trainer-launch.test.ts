@@ -33,6 +33,10 @@ describe('trainer launch helper', () => {
     expect(sessionEndedMessage({ reason: 'invalid_config' })).toBeTruthy()
     expect(sessionEndedMessage({ reason: 'error' })).toBeTruthy()
   })
+  it('says when UpForge closed the trainer because a game or a match started', () => {
+    expect(sessionEndedMessage({ reason: 'game_started' })).toBe('Closed the trainer because your game opened. This drill was not saved.')
+    expect(sessionEndedMessage({ reason: 'match_started' })).toBe('Closed the trainer because your match started. This drill was not saved.')
+  })
 })
 
 describe('trainer results outside Practice', () => {

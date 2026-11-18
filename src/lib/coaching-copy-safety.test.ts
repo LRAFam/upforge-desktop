@@ -16,7 +16,11 @@ describe('coaching copy safety', () => {
 // #595: the desktop shows what was measured, not what it caused. These phrases claim a cause
 // (or a carry-over) the data cannot support and must not come back in user-facing copy.
 describe('no causal improvement copy in the app', () => {
-  const BLOCKED = [/costing you (most |the most )?(rounds|games)/i, /keeps costing/i, /still costing/i, /did it carry over/i, /carried over/i, /fastest path to climbing/i, /improved because of/i]
+  const BLOCKED = [
+    /costing you (most |the most )?(rounds|games)/i, /keeps costing/i, /still costing/i, /did it carry over/i, /carried over/i, /fastest path to climbing/i, /improved because of/i,
+    // Trainer result screen: trainer scores do not show match impact, and no data shows causes like these.
+    /translating\b.{0,60}\binto\b/i, /match impact/i, /cold muscles/i, /amplif(y|ies) inconsistency/i, /lock this in/i,
+  ]
   it('src/ and electron/ contain none of the blocked phrases', async () => {
     const { readdirSync, readFileSync, statSync } = await import('node:fs')
     const { join, relative } = await import('node:path')
@@ -30,6 +34,25 @@ describe('no causal improvement copy in the app', () => {
       readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
         if (/^\s*(\/\/|\/?\*)/.test(line)) return
         if (BLOCKED.some(re => re.test(line))) hits.push(`${relative(root, file)}:${i + 1}`)
+      })
+    }
+    expect(hits).toEqual([])
+  })
+})
+
+// The trainer result screen used canned if/else coaching: it could praise a C run ("Strong performance
+// across all metrics") and gave advice the app cannot act on. It now shows measured facts only.
+describe('trainer result screen copy', () => {
+  const ADVICE = [/strong performance/i, /excellent accuracy/i, /consider increasing/i, /warm up for/i, /suggests? (rushed|mechanical)/i, /deliberate repetition/i, /stay on a daily cadence/i, /push your ceiling/i, /dial back/i]
+  it('the result screen and its summary contain no canned advice or praise', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const root = join(__dirname, '..', '..')
+    const hits: string[] = []
+    for (const file of ['src/views/TrainerResultsView.vue', 'src/lib/trainer-run-summary.ts']) {
+      readFileSync(join(root, file), 'utf8').split('\n').forEach((line, i) => {
+        if (/^\s*(\/\/|\/?\*)/.test(line)) return
+        if (ADVICE.some(re => re.test(line))) hits.push(`${file}:${i + 1}`)
       })
     }
     expect(hits).toEqual([])

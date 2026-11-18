@@ -110,6 +110,11 @@ export function sessionEndedMessage(ended: Pick<TrainerSessionEnded, 'reason' | 
       return 'The trainer couldn’t read this drill’s settings. Try again, or pick another drill.'
     case 'crashed':
       return 'The aim trainer closed before the drill finished. Nothing was saved — try again.'
+    // The app closes the trainer when a game opens or a match starts (CS2 / Deadlock: the game client).
+    case 'game_started':
+      return 'Closed the trainer because your game opened. This drill was not saved.'
+    case 'match_started':
+      return 'Closed the trainer because your match started. This drill was not saved.'
     case 'error':
     default:
       return 'Something went wrong in the aim trainer. Nothing was saved — try again.'

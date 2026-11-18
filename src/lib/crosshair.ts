@@ -7,7 +7,7 @@
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface CrosshairSettings {
-  colorIndex: number    // 0=white 1=green 2=yellow 3=cyan 4=pink 5=red 6=custom
+  colorIndex: number    // 0=white 1=green 2=yellow 3=cyan 4=pink 5=red 6=custom (UpForge swatches, not Valorant's slots)
   customColor: string   // hex without '#', e.g. '00FF6B'
   dotShow: boolean
   dotRadius: number     // 0.5–6
@@ -62,62 +62,91 @@ export const DEFAULT_CROSSHAIR: CrosshairSettings = {
 }
 
 // ── Valorant code parser ───────────────────────────────────────────────────────
+//
+// Riot does not publish the import-code format. This follows the community-read format that
+// open-source crosshair renderers use: `0;<general>;P;<primary>;A;<ADS>;S;<sniper>`, as key;value
+// pairs, with a single capital letter starting each profile. Only the primary profile (P) is read.
+// Primary keys: c colour slot (0 white, 1 green, 2 yellow green, 3 green yellow, 4 yellow, 5 cyan,
+// 6 pink, 7 red, 8 custom), u custom colour as RRGGBBAA, h outlines on, o outline opacity,
+// d centre dot on, z dot width (px), a dot opacity, 0b / 1b inner / outer lines on, then
+// 0t 0l 0o 0a / 1t 1l 1o 1a = thickness, length, offset, opacity. A missing key is Valorant's default.
+
+const VALORANT_DEFAULTS = {
+  c: 0, h: 1, o: 0.5, d: 0, z: 2, a: 1,
+  '0b': 1, '0t': 2, '0l': 6, '0o': 3, '0a': 0.8,
+  '1b': 1, '1t': 2, '1l': 2, '1o': 10, '1a': 0.35,
+} as const
+type ValorantKey = keyof typeof VALORANT_DEFAULTS
+
+/** Valorant colour slot → UpForge swatch index, or (no matching swatch) that slot's colour as a custom hex. */
+const VALORANT_SLOTS: ReadonlyArray<number | string> = [0, 1, '7FFF00', 'DFFF00', 2, 3, 4, 5]
+const VALORANT_CUSTOM_SLOT = 8
+const CUSTOM_COLOR_INDEX = 6
+const INVALID_CODE = 'Invalid crosshair code — paste the full code from Valorant'
 
 /**
- * Parse a Valorant crosshair import code into CrosshairSettings.
- * Handles both old format (`0;P;key;val;...`) and new format (`0;s;1;P;key;val;...`).
+ * Parse a Valorant crosshair import code (e.g. `0;P;c;5;h;0;0l;4;0o;2;0a;1;1b;0`) into CrosshairSettings.
  * Throws an error with a user-friendly message on invalid input.
  */
 export function parseValorantCode(code: string): CrosshairSettings {
-  const parts = code.trim().split(';')
+  const parts = code.trim().replace(/;+$/, '').split(';').map(p => p.trim())
+  if (parts[0] !== '0') throw new Error(INVALID_CODE)
 
-  // Find the 'P' profile-start token — may be at index 1 (old) or later (new: 0;s;N;P;...)
-  const pIdx = parts.indexOf('P')
-  if (pIdx < 0 || pIdx + 2 >= parts.length) {
-    throw new Error('Invalid crosshair code — paste the full code from Valorant')
+  // key → value for the primary profile only (the ADS / sniper profiles reuse the same keys).
+  const primary: Record<string, string> = {}
+  let profile = ''
+  for (let i = 1; i < parts.length;) {
+    if (/^[A-Z]$/.test(parts[i])) { profile = parts[i]; i += 1; continue }
+    if (!parts[i] || i + 1 >= parts.length) throw new Error(INVALID_CODE)
+    if (profile === 'P') primary[parts[i]] = parts[i + 1]
+    i += 2
   }
-
-  // Build key → value map starting after the 'P' marker
-  const kv: Record<string, string> = {}
-  for (let i = pIdx + 1; i + 1 < parts.length; i += 2) {
-    kv[parts[i]] = parts[i + 1]
+  const num = (key: ValorantKey): number => {
+    const v = parseFloat(primary[key] ?? '')
+    return Number.isFinite(v) ? v : VALORANT_DEFAULTS[key]
   }
+  const on = (key: ValorantKey) => num(key) !== 0
 
-  const s = { ...DEFAULT_CROSSHAIR }
+  const s: CrosshairSettings = { ...DEFAULT_CROSSHAIR }
 
-  // Color
-  if (kv['c'] !== undefined) {
-    const idx = parseInt(kv['c'], 10)
-    if (idx >= 0 && idx < CROSSHAIR_PALETTE_HEX.length) {
-      s.colorIndex = idx
+  // Colour: u is kept as the custom colour (as in the game) but only used for the custom slot.
+  const u = primary.u ?? ''
+  const customHex = /^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(u) ? u.slice(0, 6).toUpperCase() : null
+  if (customHex) s.customColor = customHex
+  const slot = Math.round(num('c'))
+  if (slot === VALORANT_CUSTOM_SLOT) {
+    s.colorIndex = CUSTOM_COLOR_INDEX
+    s.customColor = customHex ?? 'FFFFFF'
+  } else {
+    const mapped = VALORANT_SLOTS[slot] ?? 0
+    if (typeof mapped === 'number') {
+      s.colorIndex = mapped
     } else {
-      s.colorIndex = 6 // custom
+      s.colorIndex = CUSTOM_COLOR_INDEX
+      s.customColor = mapped
     }
   }
-  if (kv['u'] !== undefined && kv['u'].length === 6) {
-    s.colorIndex = 6
-    s.customColor = kv['u'].toUpperCase()
-  }
 
-  // Dot
-  s.dotShow = (kv['h'] ?? '1') !== '0'
-  if (kv['d'] !== undefined) s.dotOpacity = clamp(parseFloat(kv['d']), 0, 1)
-  if (kv['z'] !== undefined) s.dotRadius  = clamp(parseFloat(kv['z']) * 1.5, 0.5, 6)
+  // Outlines (drawn as the trainer's shadow)
+  s.shadowShow = on('h') && num('o') > 0
 
-  // Inner lines
-  s.innerShow = (kv['0s'] ?? '1') !== '0'
-  if (kv['0t'] !== undefined) s.innerThickness = clamp(parseFloat(kv['0t']), 0.5, 8)
-  if (kv['0l'] !== undefined) s.innerLength    = clamp(parseFloat(kv['0l']), 0, 30)
-  if (kv['0o'] !== undefined) s.innerOffset    = clamp(parseFloat(kv['0o']), 0, 20)
-  if (kv['0a'] !== undefined) s.innerOpacity   = clamp(parseFloat(kv['0a']), 0, 1)
+  // Centre dot: z is its width in px, the same unit as line thickness
+  s.dotShow = on('d')
+  s.dotRadius = clamp(num('z') / 2, 0.5, 6)
+  s.dotOpacity = clamp(num('a'), 0, 1)
 
-  // Outer lines — only active when a length key is present and > 0
-  const outerLen = kv['1l'] !== undefined ? parseFloat(kv['1l']) : 0
-  s.outerShow = outerLen > 0 && (kv['1s'] ?? '1') !== '0'
-  if (kv['1t'] !== undefined) s.outerThickness = clamp(parseFloat(kv['1t']), 0.5, 8)
-  if (kv['1l'] !== undefined) s.outerLength    = clamp(parseFloat(kv['1l']), 0, 30)
-  if (kv['1o'] !== undefined) s.outerOffset    = clamp(parseFloat(kv['1o']), 0, 20)
-  if (kv['1a'] !== undefined) s.outerOpacity   = clamp(parseFloat(kv['1a']), 0, 1)
+  // Inner and outer lines (a 0-thickness line is invisible in game)
+  s.innerShow = on('0b') && num('0t') > 0
+  s.innerThickness = clamp(num('0t'), 0.5, 8)
+  s.innerLength = clamp(num('0l'), 0, 30)
+  s.innerOffset = clamp(num('0o'), 0, 20)
+  s.innerOpacity = clamp(num('0a'), 0, 1)
+
+  s.outerShow = on('1b') && num('1t') > 0
+  s.outerThickness = clamp(num('1t'), 0.5, 8)
+  s.outerLength = clamp(num('1l'), 0, 30)
+  s.outerOffset = clamp(num('1o'), 0, 20)
+  s.outerOpacity = clamp(num('1a'), 0, 1)
 
   return s
 }

@@ -1,19 +1,22 @@
 /**
  * trainer-session-queue.ts
  * Uploads finished trainer runs to POST /api/training/sessions and keeps the ones that could not be
- * sent (offline, API down, signed out) on disk, retrying with backoff until they land. Each run gets a
- * `metadata.client_run_id`, so a resend after a lost response is stored once by the API.
+ * sent (offline, API down, signed out, rate limited) on disk, retrying with backoff until they land or
+ * are a week old. Each run gets a `metadata.client_run_id`, so a resend after a lost response is stored
+ * once by the API.
  * A run is written to disk before its first POST and removed only once the API accepts it, so a crash
  * or quit during that first request still leaves it to resend on the next start.
+ * A run the API refuses (4xx) or that is still unsent after a week is never deleted: it moves to a small
+ * "unsaved" file with the reason, and is not resent automatically.
  * No Electron imports (unit-tested); the IPC layer wires post / token / notify.
  */
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 
-import type { TrainerDrillState, TrainerSyncOutcome } from '../../src/lib/trainer-sync'
+import type { TrainerDrillState, TrainerSyncOutcome, TrainerUploadStatus } from '../../src/lib/trainer-sync'
 
-export type { TrainerDrillState, TrainerSyncOutcome } from '../../src/lib/trainer-sync'
+export type { TrainerDrillState, TrainerSyncOutcome, TrainerUploadStatus } from '../../src/lib/trainer-sync'
 
 interface PendingRun {
   clientRunId: string
@@ -21,27 +24,47 @@ interface PendingRun {
   ownerUserId?: number | null
   key: string
   payload: Record<string, unknown>
+  /** Failed tries so far; only sets the backoff (there is no try limit). */
   attempts: number
   nextAt: number
   createdAt: number
 }
 
+/** A run that could not be saved: kept with the reason so it is never lost silently. */
+interface UnsavedRun {
+  clientRunId: string
+  ownerUserId?: number | null
+  key: string
+  payload: Record<string, unknown>
+  createdAt: number
+  failedAt: number
+  /** rejected = the API refused it (4xx); expired = not uploaded within MAX_AGE_MS. */
+  reason: 'rejected' | 'expired'
+  status: number | null
+  message: string
+}
+
 export interface TrainerSessionQueueOptions {
   file: string
+  /** Where unsaved runs are kept. Default: trainer-unsaved-sessions.json next to `file`. */
+  unsavedFile?: string
   post: (payload: Record<string, unknown>) => Promise<unknown>
   hasToken: () => boolean
   /** Signed-in UpForge account, or null. Runs owned by another account are never sent. */
   currentUserId: () => number | null
   notify?: (outcome: TrainerSyncOutcome) => void
+  /** Runs waiting or unsaved changed (see uploadStatus). */
+  onChange?: () => void
   now?: () => number
   log?: { info: (...a: unknown[]) => void; warn: (...a: unknown[]) => void }
   /** Test hook; defaults to setTimeout (unref'd). */
   schedule?: (fn: () => void, ms: number) => unknown
 }
 
-/** Give up on a run after this many tries or this age (it is then reported as failed). */
-export const MAX_ATTEMPTS = 12
+/** A run still unsent after this long moves to the unsaved file (reported as failed). Unsaved runs count as "recent" this long. */
 export const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+/** The unsaved file keeps the newest this many runs. */
+export const MAX_UNSAVED_RUNS = 50
 const DELAYS_MS = [5_000, 30_000, 120_000, 600_000, 1_800_000]
 
 /** Backoff after the Nth failed attempt (1-based): 5 s, 30 s, 2 min, 10 min, then every 30 min. */
@@ -93,20 +116,34 @@ export function drillStateFrom(response: unknown): TrainerDrillState | null {
 
 export class TrainerSessionQueue {
   private pending: PendingRun[] = []
+  private unsaved: UnsavedRun[] = []
   private outcomes = new Map<string, TrainerSyncOutcome>()
   private flushing = false
   /** Runs with a POST in flight: a flush must not send them a second time. */
   private inFlight = new Set<string>()
   private timerAt: number | null = null
   private readonly now: () => number
+  private readonly unsavedFile: string
 
   constructor(private readonly opts: TrainerSessionQueueOptions) {
     this.now = opts.now ?? Date.now
+    this.unsavedFile = opts.unsavedFile ?? path.join(path.dirname(opts.file), 'trainer-unsaved-sessions.json')
     this.pending = this.read()
+    this.unsaved = this.readUnsaved()
   }
 
   /** Runs still waiting to upload (for tests and diagnostics). */
   get pendingCount(): number { return this.pending.length }
+
+  /** One account's runs (default: the signed-in one) waiting to upload, and those unsaved in the last week. */
+  uploadStatus(userId: number | null = this.opts.currentUserId()): TrainerUploadStatus {
+    if (userId == null) return { waiting: 0, unsaved: 0 }
+    const since = this.now() - MAX_AGE_MS
+    return {
+      waiting: this.pending.filter(r => r.ownerUserId === userId).length,
+      unsaved: this.unsaved.filter(r => r.ownerUserId === userId && r.failedAt >= since).length,
+    }
+  }
 
   /** Latest known sync state for a run shown on the results screen. */
   outcomeFor(key: string): TrainerSyncOutcome | null {
@@ -175,8 +212,8 @@ export class TrainerSessionQueue {
       const retry = isRetryableUploadError(err)
       this.opts.log?.warn('[Trainer] Session upload failed:', (err as Error)?.message, retry ? '(will retry)' : '(not retried)')
       if (!retry) {
-        this.drop(run)
-        return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'failed', drill: null })
+        const status = (err as { status?: unknown } | null)?.status
+        return this.giveUp(run, 'rejected', typeof status === 'number' ? status : null, String((err as Error)?.message ?? ''))
       }
       return this.keep(run, true)
     } finally {
@@ -184,18 +221,35 @@ export class TrainerSessionQueue {
     }
   }
 
+  /** Retryable failures never count against a run: it waits until it uploads or is MAX_AGE_MS old. */
   private keep(run: PendingRun, tried: boolean): TrainerSyncOutcome {
     if (tried) run.attempts += 1
-    const expired = run.attempts >= MAX_ATTEMPTS || this.now() - run.createdAt > MAX_AGE_MS
-    if (expired) {
-      this.drop(run)
-      return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'failed', drill: null }, run)
-    }
+    if (this.now() - run.createdAt > MAX_AGE_MS) return this.giveUp(run, 'expired', null, 'Not uploaded within 7 days')
     run.nextAt = this.now() + retryDelayMs(Math.max(run.attempts, 1))
     if (!this.pending.some(p => p.clientRunId === run.clientRunId)) this.pending.push(run)
     const stored = this.write()
     this.scheduleNext()
     return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'pending', drill: null, ...(stored ? {} : { stored: false }) }, run)
+  }
+
+  /** Moves a run from the upload queue to the unsaved file (not resent automatically) and reports it as failed. */
+  private giveUp(run: PendingRun, reason: UnsavedRun['reason'], status: number | null, message: string): TrainerSyncOutcome {
+    const entry: UnsavedRun = {
+      clientRunId: run.clientRunId,
+      ownerUserId: run.ownerUserId ?? null,
+      key: run.key,
+      payload: run.payload,
+      createdAt: run.createdAt,
+      failedAt: this.now(),
+      reason,
+      status,
+      message,
+    }
+    this.unsaved = [...this.unsaved.filter(u => u.clientRunId !== run.clientRunId), entry].slice(-MAX_UNSAVED_RUNS)
+    // The unsaved copy is written first: a crash in between leaves the run in both files, never in neither.
+    this.writeUnsaved()
+    this.drop(run)
+    return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'failed', drill: null }, run)
   }
 
   private drop(run: PendingRun): void {
@@ -237,24 +291,45 @@ export class TrainerSessionQueue {
     }
   }
 
-  /** Atomic write (temp file + rename) so a crash mid-write never leaves a half-written queue. */
-  private write(): boolean {
-    const tmp = `${this.opts.file}.tmp`
+  private readUnsaved(): UnsavedRun[] {
     try {
-      fs.mkdirSync(path.dirname(this.opts.file), { recursive: true })
-      const json = JSON.stringify(this.pending)
+      const raw = JSON.parse(fs.readFileSync(this.unsavedFile, 'utf8')) as unknown
+      return Array.isArray(raw)
+        ? raw.filter((r): r is UnsavedRun => !!r && typeof r === 'object' && typeof (r as UnsavedRun).clientRunId === 'string' && typeof (r as UnsavedRun).failedAt === 'number')
+        : []
+    } catch {
+      return []
+    }
+  }
+
+  private write(): boolean {
+    return this.writeFile(this.opts.file, this.pending, 'pending sessions')
+  }
+
+  private writeUnsaved(): boolean {
+    return this.writeFile(this.unsavedFile, this.unsaved, 'unsaved sessions')
+  }
+
+  /** Atomic write (temp file + rename) so a crash mid-write never leaves a half-written file. */
+  private writeFile(file: string, data: unknown, what: string): boolean {
+    const tmp = `${file}.tmp`
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      const json = JSON.stringify(data)
       fs.writeFileSync(tmp, json)
       try {
-        fs.renameSync(tmp, this.opts.file)
+        fs.renameSync(tmp, file)
       } catch {
         // Windows can refuse the rename while another process holds the file: write it directly.
-        fs.writeFileSync(this.opts.file, json)
+        fs.writeFileSync(file, json)
         fs.rmSync(tmp, { force: true })
       }
       return true
     } catch (err) {
-      this.opts.log?.warn('[Trainer] Could not save pending sessions:', (err as Error)?.message)
+      this.opts.log?.warn(`[Trainer] Could not save ${what}:`, (err as Error)?.message)
       return false
+    } finally {
+      try { this.opts.onChange?.() } catch { /* a listener error never breaks the queue */ }
     }
   }
 }

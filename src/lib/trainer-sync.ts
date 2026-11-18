@@ -39,7 +39,46 @@ export interface TrainerSyncLine {
   tone: 'win' | 'muted' | 'loss'
 }
 
+/** The signed-in account's trainer runs that have not reached the API (main process → `trainer:upload-status`). */
+export interface TrainerUploadStatus {
+  /** Kept on this computer and retried until they upload. */
+  waiting: number
+  /** Refused by the API, or not uploaded within a week, in the last week. A copy stays on this computer. */
+  unsaved: number
+}
+
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+export function asTrainerUploadStatus(raw: unknown): TrainerUploadStatus | null {
+  const s = raw as Partial<TrainerUploadStatus> | null
+  return s && typeof s.waiting === 'number' && typeof s.unsaved === 'number' ? { waiting: s.waiting, unsaved: s.unsaved } : null
+}
+
+/**
+ * One line about this account's runs that have not reached UpForge, or null when there are none.
+ * Pass `shown` on a screen that already reports one run (the result screen): that run is left out
+ * of the counts and the rest are "other" runs.
+ */
+export function trainerUploadStatusLine(status: TrainerUploadStatus | null, shown?: TrainerSyncOutcome | null): TrainerSyncLine | null {
+  if (!status) return null
+  const other = shown !== undefined
+  // A run on screen with no outcome yet is in its first upload, so it is counted as waiting.
+  const waiting = Math.max(0, status.waiting - (other && (!shown || shown.state === 'pending') ? 1 : 0))
+  const unsaved = Math.max(0, status.unsaved - (shown?.state === 'failed' ? 1 : 0))
+  const runs = (n: number) => `${n} ${other ? 'other ' : ''}${n === 1 ? 'run' : 'runs'}`
+  if (waiting && unsaved) return { text: `${runs(waiting)} waiting to upload. ${runs(unsaved)} from this week could not be saved.`, tone: 'loss' }
+  if (waiting) return { text: `${runs(waiting)} waiting to upload. UpForge retries automatically.`, tone: 'muted' }
+  if (unsaved) return { text: `${runs(unsaved)} from this week could not be saved.`, tone: 'loss' }
+  return null
+}
+
+/** Short save state of one finished run in a list (e.g. each step of a guided session). */
+export function trainerRunSavedLabel(outcome: TrainerSyncOutcome | null): TrainerSyncLine {
+  if (!outcome) return { text: 'Saving…', tone: 'muted' }
+  if (outcome.state === 'saved') return { text: 'Saved', tone: 'muted' }
+  if (outcome.state === 'pending') return { text: 'Waiting to upload', tone: 'muted' }
+  return { text: 'Not saved', tone: 'loss' }
+}
 
 /**
  * One line under the score: did this run count, and what happens to the drill next.

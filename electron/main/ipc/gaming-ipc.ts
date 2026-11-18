@@ -14,7 +14,7 @@ import { GameDetector } from '../game-detector'
 import { SettingsManager } from '../settings-manager'
 import { openExternalSafe, openPathSafe } from '../shell-open'
 import { PerformanceManager } from '../performance-manager'
-import { TrainerBridge } from '../trainer-bridge'
+import { TrainerBridge, trainerLaunchErrorMessage } from '../trainer-bridge'
 import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest, drillGameParams } from '../trainer-payload'
 import { sendOverlayData } from '../overlay-window'
 import { apiPost } from './api-helpers'
@@ -80,8 +80,10 @@ export function setupGamingHandlers(
   // ── Aim Trainer ───────────────────────────────────────────────────────────
 
   // Runs that could not be uploaded are kept on disk and retried, so practice is never silently lost.
+  // Runs the API refuses (or still unsent after a week) move to the unsaved file instead of being deleted.
   const trainerQueue = new TrainerSessionQueue({
     file: path.join(app.getPath('userData'), 'trainer-pending-sessions.json'),
+    unsavedFile: path.join(app.getPath('userData'), 'trainer-unsaved-sessions.json'),
     post: (payload) => {
       const token = auth.getToken()
       if (!token) return Promise.reject(Object.assign(new Error('Signed out'), { status: 401 }))
@@ -94,8 +96,20 @@ export function setupGamingHandlers(
         if (!w.isDestroyed()) w.webContents.send('trainer:session-synced', outcome)
       }
     },
+    onChange: () => sendUploadStatus(),
     log,
   })
+  // "N runs waiting to upload": sent only when the signed-in account's counts change.
+  let lastUploadStatus = ''
+  function sendUploadStatus(): void {
+    const status = trainerQueue.uploadStatus()
+    const key = JSON.stringify(status)
+    if (key === lastUploadStatus) return
+    lastUploadStatus = key
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send('trainer:upload-status', status)
+    }
+  }
   void trainerQueue.flush()
 
   // The account that started each trainer launch owns its result, even if the login changes mid-run.
@@ -112,6 +126,8 @@ export function setupGamingHandlers(
 
   ipcMain.handle('trainer:get-sync-status', (_e, scenario: unknown, completedAt: unknown) =>
     trainerQueue.outcomeFor(trainerRunKey(scenario, completedAt)))
+
+  ipcMain.handle('trainer:get-upload-status', () => trainerQueue.uploadStatus())
 
   // A drill that ends without a result must clear the overlay's "in progress" card.
   trainerBridge?.setEndedCallback((ended) => {
@@ -137,7 +153,8 @@ export function setupGamingHandlers(
       return { ok: true, launchId: trainerBridge.lastLaunch?.launchId }
     } catch (err: any) {
       log.error('[IPC] trainer:launch error:', err)
-      return { ok: false, error: err?.message ?? 'Failed to launch trainer' }
+      // Plain text with one action; paths and developer steps stay in the log.
+      return { ok: false, error: trainerLaunchErrorMessage(err) }
     }
   })
 

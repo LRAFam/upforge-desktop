@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { trainerSyncLine, type TrainerDrillState } from './trainer-sync'
+import { asTrainerUploadStatus, trainerRunSavedLabel, trainerSyncLine, trainerUploadStatusLine, type TrainerDrillState, type TrainerSyncOutcome } from './trainer-sync'
 
 const drill = (over: Partial<TrainerDrillState> = {}): TrainerDrillState => ({ id: 1, title: 'Head Height', status: 'active', completed: false, attempt_count: 1, attempts_allowed: 3, pass_score: 70, next: null, ...over })
 const saved = (d: TrainerDrillState | null) => ({ key: 'k', clientRunId: 'c', state: 'saved' as const, drill: d })
@@ -28,5 +28,42 @@ describe('trainerSyncLine', () => {
   })
   it('free play is only saved to history', () => {
     expect(trainerSyncLine(saved(null), false).text).toBe('Saved to your training history.')
+  })
+})
+
+describe('runs waiting to upload', () => {
+  const outcome = (state: TrainerSyncOutcome['state']): TrainerSyncOutcome => ({ key: 'k', clientRunId: 'c', state, drill: null })
+
+  it('says how many runs are waiting, and nothing once they land', () => {
+    expect(trainerUploadStatusLine({ waiting: 3, unsaved: 0 })).toEqual({ text: '3 runs waiting to upload. UpForge retries automatically.', tone: 'muted' })
+    expect(trainerUploadStatusLine({ waiting: 1, unsaved: 0 })?.text).toBe('1 run waiting to upload. UpForge retries automatically.')
+    expect(trainerUploadStatusLine({ waiting: 0, unsaved: 0 })).toBeNull()
+    expect(trainerUploadStatusLine(null)).toBeNull()
+  })
+
+  it('says when runs this week could not be saved', () => {
+    expect(trainerUploadStatusLine({ waiting: 0, unsaved: 1 })).toEqual({ text: '1 run from this week could not be saved.', tone: 'loss' })
+    expect(trainerUploadStatusLine({ waiting: 2, unsaved: 1 })).toEqual({ text: '2 runs waiting to upload. 1 run from this week could not be saved.', tone: 'loss' })
+  })
+
+  it('on a result screen, counts only the other runs', () => {
+    // The run on screen is still being sent or retried: its own line already says so.
+    expect(trainerUploadStatusLine({ waiting: 1, unsaved: 0 }, null)).toBeNull()
+    expect(trainerUploadStatusLine({ waiting: 3, unsaved: 0 }, outcome('pending'))?.text).toBe('2 other runs waiting to upload. UpForge retries automatically.')
+    expect(trainerUploadStatusLine({ waiting: 2, unsaved: 0 }, outcome('saved'))?.text).toBe('2 other runs waiting to upload. UpForge retries automatically.')
+    expect(trainerUploadStatusLine({ waiting: 0, unsaved: 1 }, outcome('failed'))).toBeNull()
+  })
+
+  it('marks each run in a list as saved, waiting or not saved', () => {
+    expect(trainerRunSavedLabel(null)).toEqual({ text: 'Saving…', tone: 'muted' })
+    expect(trainerRunSavedLabel(outcome('saved'))).toEqual({ text: 'Saved', tone: 'muted' })
+    expect(trainerRunSavedLabel(outcome('pending'))).toEqual({ text: 'Waiting to upload', tone: 'muted' })
+    expect(trainerRunSavedLabel(outcome('failed'))).toEqual({ text: 'Not saved', tone: 'loss' })
+  })
+
+  it('reads the status the main process sends, and nothing else', () => {
+    expect(asTrainerUploadStatus({ waiting: 2, unsaved: 1 })).toEqual({ waiting: 2, unsaved: 1 })
+    expect(asTrainerUploadStatus({ waiting: '2' })).toBeNull()
+    expect(asTrainerUploadStatus(null)).toBeNull()
   })
 })

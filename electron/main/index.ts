@@ -1369,12 +1369,13 @@ function interruptBackgroundWorkForMatch(): void {
       )
     }
   }
-  trainerBridge.kill()
+  // The reason reaches the player ("Closed the trainer because your match started").
+  trainerBridge.kill('match_started')
 }
 
 function abortBackgroundWorkOnGameStart(): void {
   backgroundWork.pause()
-  trainerBridge.kill()
+  trainerBridge.kill('game_started')
 }
 
 function beginMatchPerformanceMode(opts?: { holdPostMatch?: boolean }): void {

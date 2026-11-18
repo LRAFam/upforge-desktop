@@ -2,10 +2,11 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { MAX_ATTEMPTS, TrainerSessionQueue, drillStateFrom, isRetryableUploadError, retryDelayMs, trainerRunKey } from './trainer-session-queue'
+import { MAX_AGE_MS, MAX_UNSAVED_RUNS, TrainerSessionQueue, drillStateFrom, isRetryableUploadError, retryDelayMs, trainerRunKey } from './trainer-session-queue'
 
 const run = (over: Record<string, unknown> = {}) => ({ scenario: 'flick', score: 70, completed_at: '2026-11-15T10:00:00Z', metadata: { user_drill_id: 4 }, ...over })
-const httpError = (status: number) => Object.assign(new Error(`HTTP ${status}`), { status })
+const httpError = (status: number, message = `HTTP ${status}`) => Object.assign(new Error(message), { status })
+const HOUR = 60 * 60 * 1000
 
 describe('TrainerSessionQueue', () => {
   let dir: string
@@ -13,8 +14,14 @@ describe('TrainerSessionQueue', () => {
   let now: number
   let timers: Array<{ fn: () => void; ms: number }>
   let user: number | null
-  const make = (post: (p: Record<string, unknown>) => Promise<unknown>, opts: { token?: () => boolean; notify?: (o: unknown) => void } = {}) =>
-    new TrainerSessionQueue({ file, post, hasToken: opts.token ?? (() => true), currentUserId: () => user, notify: opts.notify, now: () => now, schedule: (fn, ms) => timers.push({ fn, ms }) })
+  const make = (post: (p: Record<string, unknown>) => Promise<unknown>, opts: { token?: () => boolean; notify?: (o: unknown) => void; onChange?: () => void } = {}) =>
+    new TrainerSessionQueue({ file, post, hasToken: opts.token ?? (() => true), currentUserId: () => user, notify: opts.notify, onChange: opts.onChange, now: () => now, schedule: (fn, ms) => timers.push({ fn, ms }) })
+  const unsavedFile = () => path.join(dir, 'trainer-unsaved-sessions.json')
+  const readUnsaved = () => JSON.parse(fs.readFileSync(unsavedFile(), 'utf8')) as Array<Record<string, unknown>>
+  /** Let the queue's own timer run for `ms`: every due run is tried, as the app does while it stays open. */
+  const runFor = async (q: TrainerSessionQueue, ms: number, step = 60_000) => {
+    for (let t = 0; t < ms; t += step) { now += step; await q.flush() }
+  }
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trainer-queue-'))
@@ -87,19 +94,111 @@ describe('TrainerSessionQueue', () => {
     expect(post).toHaveBeenCalledTimes(1)
   })
 
-  it('drops a run the API rejects as invalid and reports it as not saved', async () => {
-    const q = make(vi.fn().mockRejectedValue(httpError(422)))
+  it('moves a run the API rejects to the unsaved file with the API message instead of deleting it', async () => {
+    const q = make(vi.fn().mockRejectedValue(httpError(422, 'The selected scenario is invalid.')))
     const out = await q.submit(run())
     expect(out.state).toBe('failed')
     expect(q.pendingCount).toBe(0)
+    const unsaved = readUnsaved()
+    expect(unsaved).toHaveLength(1)
+    expect(unsaved[0]).toMatchObject({ clientRunId: out.clientRunId, ownerUserId: 1, reason: 'rejected', status: 422, message: 'The selected scenario is invalid.', failedAt: now })
+    expect((unsaved[0].payload as { scenario: string }).scenario).toBe('flick')
+    // Never resent on its own.
+    now += 24 * HOUR
+    const post = vi.fn().mockResolvedValue({})
+    await make(post).flush()
+    expect(post).not.toHaveBeenCalled()
   })
 
-  it('gives up after the attempt limit', async () => {
-    const q = make(vi.fn().mockRejectedValue(httpError(500)))
-    await q.submit(run())
-    for (let i = 1; i < MAX_ATTEMPTS; i++) { now += 3_600_000; await q.flush() }
+  // Runs used to be deleted after 12 failed tries (about 3 h 43 min of app time) whatever the error.
+  for (const [label, error] of [['no network', new Error('ECONNREFUSED')], ['server down', httpError(503)], ['signed-out token', httpError(401)], ['rate limited', httpError(429)]] as const) {
+    it(`keeps a run waiting after 12 failed tries (${label})`, async () => {
+      const post = vi.fn().mockRejectedValue(error)
+      const q = make(post)
+      await q.submit(run())
+      await runFor(q, 12 * HOUR)
+      expect(post.mock.calls.length).toBeGreaterThan(12)
+      expect(q.pendingCount).toBe(1)
+      expect(q.outcomeFor(trainerRunKey('flick', '2026-11-15T10:00:00Z'))?.state).toBe('pending')
+      expect(fs.existsSync(unsavedFile())).toBe(false)
+    })
+  }
+
+  it('24 h offline, then online: the run uploads exactly once with its original run id', async () => {
+    let online = false
+    const post = vi.fn((_p: Record<string, unknown>) => online ? Promise.resolve({ drill: null }) : Promise.reject(new Error('getaddrinfo ENOTFOUND')))
+    const notify = vi.fn()
+    const q = make(post, { notify })
+    const first = await q.submit(run())
+    expect(first.state).toBe('pending')
+    await runFor(q, 24 * HOUR)
+    expect(q.pendingCount).toBe(1)
+
+    online = true
+    const callsWhileOffline = post.mock.calls.length
+    await runFor(q, 5 * HOUR)
+    expect(post.mock.calls.length - callsWhileOffline).toBe(1)
+    const ids = new Set(post.mock.calls.map(c => (c[0] as { metadata: { client_run_id: string } }).metadata.client_run_id))
+    expect(ids).toEqual(new Set([first.clientRunId]))
     expect(q.pendingCount).toBe(0)
-    expect(q.outcomeFor(trainerRunKey('flick', '2026-11-15T10:00:00Z'))?.state).toBe('failed')
+    expect(q.outcomeFor(first.key)?.state).toBe('saved')
+    expect(notify.mock.calls.filter(c => (c[0] as { state: string }).state === 'saved')).toHaveLength(1)
+  })
+
+  it('after 7 days without an upload, moves the run to the unsaved file and reports it as not saved', async () => {
+    const q = make(vi.fn().mockRejectedValue(new Error('offline')))
+    const out = await q.submit(run())
+    await runFor(q, MAX_AGE_MS + HOUR, 30 * 60_000)
+    expect(q.pendingCount).toBe(0)
+    expect(q.outcomeFor(out.key)?.state).toBe('failed')
+    expect(readUnsaved()).toEqual([expect.objectContaining({ clientRunId: out.clientRunId, reason: 'expired', status: null })])
+  })
+
+  it('keeps only the newest unsaved runs', async () => {
+    const q = make(vi.fn().mockRejectedValue(httpError(422)))
+    for (let i = 0; i < MAX_UNSAVED_RUNS + 5; i++) { now += 1000; await q.submit(run({ completed_at: `2026-11-15T10:${String(i).padStart(2, '0')}:00Z` })) }
+    const unsaved = readUnsaved()
+    expect(unsaved).toHaveLength(MAX_UNSAVED_RUNS)
+    expect((unsaved.at(-1)!.payload as { completed_at: string }).completed_at).toBe(`2026-11-15T10:${MAX_UNSAVED_RUNS + 4}:00Z`)
+  })
+
+  describe('upload status (runs waiting / not saved, per account)', () => {
+    it('counts the signed-in account’s waiting and unsaved runs and says when they change', async () => {
+      const onChange = vi.fn()
+      let mode: 'offline' | 'reject' | 'ok' = 'offline'
+      const post = vi.fn(() => mode === 'ok' ? Promise.resolve({}) : Promise.reject(mode === 'reject' ? httpError(422) : new Error('offline')))
+      const q = make(post, { onChange })
+      await q.submit(run({ completed_at: '2026-11-15T10:00:00Z' }))
+      await q.submit(run({ completed_at: '2026-11-15T10:05:00Z' }))
+      await q.submit(run({ completed_at: '2026-11-15T10:10:00Z' }))
+      expect(q.uploadStatus()).toEqual({ waiting: 3, unsaved: 0 })
+      expect(onChange).toHaveBeenCalled()
+
+      user = 2
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 0 })
+      user = null
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 0 })
+      user = 1
+
+      mode = 'ok'
+      onChange.mockClear()
+      await runFor(q, HOUR)
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 0 })
+      expect(onChange).toHaveBeenCalled()
+
+      mode = 'reject'
+      await q.submit(run({ completed_at: '2026-11-15T11:00:00Z' }))
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 1 })
+      // A week later the "not saved" note has run its course; the copy stays in the file.
+      now += MAX_AGE_MS + 1
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 0 })
+      expect(readUnsaved()).toHaveLength(1)
+    })
+
+    it('reads the unsaved file back after a restart', async () => {
+      await make(vi.fn().mockRejectedValue(httpError(422))).submit(run())
+      expect(make(vi.fn()).uploadStatus()).toEqual({ waiting: 0, unsaved: 1 })
+    })
   })
 
   describe('first upload attempt', () => {

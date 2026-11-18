@@ -58,8 +58,10 @@ export interface TrainerLaunchInfo {
   context?: { weakness?: string; score?: number; user_rank?: string }
 }
 
+/** game_started / match_started: UpForge closed the trainer because a game opened or a match began. */
 export type TrainerEndReason =
   | 'completed' | 'user_exit' | 'unknown_scenario' | 'invalid_config' | 'error' | 'crashed' | 'launch_failed'
+  | 'game_started' | 'match_started'
 
 /** `trainer:session-ended` payload: exactly one per launch. */
 export interface TrainerSessionEnded {
@@ -1784,6 +1786,8 @@ declare global {
         getLastLaunch: () => Promise<TrainerLaunchInfo | null>
         /** Upload state of a finished run (saved / pending retry / failed) and its effect on the assigned drill. */
         getSyncStatus: (scenario: string, completedAt: string) => Promise<import('./lib/trainer-sync').TrainerSyncOutcome | null>
+        /** Signed-in account's runs waiting to upload and those not saved this week (changes: `trainer:upload-status`). */
+        getUploadStatus: () => Promise<import('./lib/trainer-sync').TrainerUploadStatus>
         /** Focus metric → allowed trainer drills (API rulebook); null when signed out or offline. */
         getDrillRulebook: (game?: string) => Promise<import('./lib/drill-rulebook').DrillRulebook | null>
         getHistory: (comparison?: import('./lib/training-result-metrics').TrainingComparisonRequest) => Promise<TrainingHistory | null>
