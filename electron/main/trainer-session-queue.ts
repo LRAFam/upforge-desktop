@@ -15,6 +15,8 @@ export type { TrainerDrillState, TrainerSyncOutcome } from '../../src/lib/traine
 
 interface PendingRun {
   clientRunId: string
+  /** UpForge account that played the run. Only ever uploaded while that account is signed in. */
+  ownerUserId?: number | null
   key: string
   payload: Record<string, unknown>
   attempts: number
@@ -26,6 +28,8 @@ export interface TrainerSessionQueueOptions {
   file: string
   post: (payload: Record<string, unknown>) => Promise<unknown>
   hasToken: () => boolean
+  /** Signed-in UpForge account, or null. Runs owned by another account are never sent. */
+  currentUserId: () => number | null
   notify?: (outcome: TrainerSyncOutcome) => void
   now?: () => number
   log?: { info: (...a: unknown[]) => void; warn: (...a: unknown[]) => void }
@@ -105,12 +109,16 @@ export class TrainerSessionQueue {
     return this.outcomes.get(key) ?? null
   }
 
-  /** Upload a finished run now; if it cannot be sent it is saved and retried. */
-  async submit(payload: Record<string, unknown>): Promise<TrainerSyncOutcome> {
+  /**
+   * Upload a finished run now; if it cannot be sent it is saved and retried.
+   * `ownerUserId` is the account that launched the run (defaults to whoever is signed in now).
+   */
+  async submit(payload: Record<string, unknown>, ownerUserId: number | null = this.opts.currentUserId()): Promise<TrainerSyncOutcome> {
     const clientRunId = randomUUID()
     const metadata = { ...((payload.metadata as Record<string, unknown> | undefined) ?? {}), client_run_id: clientRunId }
     const run: PendingRun = {
       clientRunId,
+      ownerUserId,
       key: trainerRunKey(payload.scenario, payload.completed_at),
       payload: { ...payload, metadata },
       attempts: 0,
@@ -135,7 +143,19 @@ export class TrainerSessionQueue {
     }
   }
 
+  /** Runs from older builds have no owner: they are kept, never claimed by whoever signs in. */
+  private ownedByCurrentUser(run: PendingRun): boolean {
+    const current = this.opts.currentUserId()
+    return run.ownerUserId != null && current != null && run.ownerUserId === current
+  }
+
   private async attempt(run: PendingRun, isNew: boolean): Promise<TrainerSyncOutcome> {
+    if (!this.ownedByCurrentUser(run)) {
+      if (run.ownerUserId == null && isNew) {
+        this.opts.log?.warn('[Trainer] Run finished while signed out — kept locally, not uploaded')
+      }
+      return this.keep(run, isNew, false)
+    }
     if (!this.opts.hasToken()) return this.keep(run, isNew, false)
     try {
       const res = await this.opts.post(run.payload)
@@ -158,13 +178,13 @@ export class TrainerSessionQueue {
     const expired = run.attempts >= MAX_ATTEMPTS || this.now() - run.createdAt > MAX_AGE_MS
     if (expired) {
       this.drop(run)
-      return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'failed', drill: null })
+      return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'failed', drill: null }, run)
     }
     run.nextAt = this.now() + retryDelayMs(Math.max(run.attempts, 1))
     if (isNew) this.pending.push(run)
     this.write()
     this.scheduleNext()
-    return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'pending', drill: null })
+    return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'pending', drill: null }, run)
   }
 
   private drop(run: PendingRun): void {
@@ -173,7 +193,9 @@ export class TrainerSessionQueue {
     if (this.pending.length !== before) this.write()
   }
 
-  private report(outcome: TrainerSyncOutcome): TrainerSyncOutcome {
+  private report(outcome: TrainerSyncOutcome, run?: PendingRun): TrainerSyncOutcome {
+    // Another account's run: no sync status or UI events in this account's session.
+    if (run && (run.ownerUserId ?? null) !== this.opts.currentUserId()) return outcome
     this.outcomes.set(outcome.key, outcome)
     if (this.outcomes.size > 50) this.outcomes.delete(this.outcomes.keys().next().value as string)
     this.opts.notify?.(outcome)

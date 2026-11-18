@@ -41,13 +41,20 @@ export function shouldDeferHeavyBackgroundWork(deps: MatchPriorityDeps): boolean
 
 export async function waitUntilBackgroundWorkAllowed(
   deps: MatchPriorityDeps,
-  opts?: { logActivity?: (msg: string) => void; intervalMs?: number; skipDefer?: boolean },
+  opts?: {
+    logActivity?: (msg: string) => void
+    intervalMs?: number
+    skipDefer?: boolean
+    /** Stop waiting early (e.g. the owning account signed out); the caller rechecks ownership. */
+    shouldStop?: () => boolean
+  },
 ): Promise<void> {
   if (opts?.skipDefer) return
 
   const intervalMs = opts?.intervalMs ?? 2000
   let loggedWait = false
   while (shouldDeferHeavyBackgroundWork(deps)) {
+    if (opts?.shouldStop?.()) return
     if (!loggedWait) {
       loggedWait = true
       opts?.logActivity?.(POST_MATCH_COPY.pausedUntilGameEnds)

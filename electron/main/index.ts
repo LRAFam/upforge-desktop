@@ -117,6 +117,7 @@ import {
   shouldDeferHeavyBackgroundWork,
   abortVodCompression,
 } from './match-priority-guard'
+import { AccountChangedError, bumpAccountScope, snapshotAccountOwner } from './account-scope'
 import {
   canAutoEnqueueRecording,
   decidePostMatchNextStep,
@@ -1945,6 +1946,7 @@ function clearPostMatchQueueScope(): void {
 
 function clearAccountScopedRuntimeState(): void {
   replayScope++
+  bumpAccountScope()
   cs2DemoRetrieval.clear()
   replayAttempts.clear()
   stopActiveAnalysisPoll()
@@ -6555,7 +6557,16 @@ async function uploadArchiveOnlyImpl(
     }
   }
 
-  await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
+  // Owned by the account that asked for it — never continue under a different login.
+  const owner = snapshotAccountOwner(getActiveUserId)
+  const accountChanged = (): { archiveId: null; lastError: AnalysisErrorPayload } => {
+    log.info('[CloudSave] Account changed — dropping cloud save started by the previous account')
+    return { archiveId: null, lastError: buildAnalysisErrorPayload(new AccountChangedError().message) }
+  }
+  if (!owner.stillOwned()) return accountChanged()
+
+  await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity, shouldStop: () => !owner.stillOwned() })
+  if (!owner.stillOwned()) return accountChanged()
 
   let effectivePath = videoPath
   try {
@@ -6563,6 +6574,7 @@ async function uploadArchiveOnlyImpl(
       logActivity(`Recording is ${sizeGB} GB — compressing for cloud upload…`)
       send('post-game:compress-start', { sizeGB })
     }, { onProgress: (pct) => send('post-game:compress-progress', pct) })
+    if (!owner.stillOwned()) return accountChanged()
     effectivePath = resolved.path
     if (resolved.compressed && recordingId && effectivePath !== videoPath) {
       recordingsStore.updatePath(recordingId, effectivePath)
@@ -6598,6 +6610,7 @@ async function uploadArchiveOnlyImpl(
   }
 
   try {
+    if (!owner.stillOwned()) return accountChanged()
     logActivity(`Saving recording to cloud${map ? ` (${map})` : ''}`)
     const result = await uploadManager.archiveUpload({
       videoPath: effectivePath,
@@ -6610,6 +6623,12 @@ async function uploadArchiveOnlyImpl(
       coachingExtras,
       onProgress: (pct) => send('post-game:upload-progress', pct),
     })
+
+    if (!owner.stillOwned()) {
+      // Uploaded under the original account's token, but that account is gone: leave the local
+      // file and catalogue alone so nothing from A's task touches B's scope.
+      return accountChanged()
+    }
 
     if (recordingId) {
       recordingsStore.markArchived(recordingId, result.archive_id)
