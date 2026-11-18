@@ -102,6 +102,58 @@ describe('TrainerSessionQueue', () => {
     expect(q.outcomeFor(trainerRunKey('flick', '2026-11-15T10:00:00Z'))?.state).toBe('failed')
   })
 
+  describe('first upload attempt', () => {
+    it('is on disk before the first POST, so a crash mid-request resends the same run once on restart', async () => {
+      let release: (v: unknown) => void = () => {}
+      const hung = vi.fn((_p: Record<string, unknown>) => new Promise((r) => { release = r }))
+      const q = make(hung)
+      const submitted = q.submit(run(), 1)
+      // The POST is in flight and never answers: the run must already be saved with its owner + id.
+      expect(hung).toHaveBeenCalledTimes(1)
+      const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as Array<{ clientRunId: string; ownerUserId: number; payload: { scenario: string; metadata: Record<string, unknown> } }>
+      expect(saved).toHaveLength(1)
+      const sentId = (hung.mock.calls[0][0] as { metadata: { client_run_id: string } }).metadata.client_run_id
+      expect(saved[0].clientRunId).toBe(sentId)
+      expect(saved[0].ownerUserId).toBe(1)
+      expect(saved[0].payload.scenario).toBe('flick')
+      expect(saved[0].payload.metadata).toMatchObject({ user_drill_id: 4, client_run_id: sentId })
+
+      // While the first request is in flight a flush must not send it a second time.
+      now += 60 * 60 * 1000
+      await q.flush()
+      expect(hung).toHaveBeenCalledTimes(1)
+
+      // "Restart": a new queue on the same file resends with the same client_run_id (server dedupes).
+      const post = vi.fn().mockResolvedValue({ drill: null })
+      const restarted = make(post)
+      expect(restarted.pendingCount).toBe(1)
+      await restarted.flush()
+      expect(post).toHaveBeenCalledTimes(1)
+      expect((post.mock.calls[0][0] as { metadata: { client_run_id: string } }).metadata.client_run_id).toBe(sentId)
+      expect(restarted.pendingCount).toBe(0)
+      expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toHaveLength(0)
+
+      release({ drill: null })
+      expect((await submitted).state).toBe('saved')
+    })
+
+    it('removes the saved copy once the first POST is accepted', async () => {
+      const q = make(vi.fn().mockResolvedValue({ drill: null }))
+      expect((await q.submit(run())).state).toBe('saved')
+      expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toHaveLength(0)
+    })
+
+    it('says so when the run could not be kept on disk instead of promising retries', async () => {
+      const blocker = path.join(dir, 'not-a-dir')
+      fs.writeFileSync(blocker, 'x')
+      file = path.join(blocker, 'pending.json')
+      const q = make(vi.fn().mockRejectedValue(new Error('offline')))
+      const out = await q.submit(run())
+      expect(out.state).toBe('pending')
+      expect(out.stored).toBe(false)
+    })
+  })
+
   describe('account ownership', () => {
     it('a run queued by account A never posts while B is signed in, and uploads once A returns', async () => {
       const post = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({})
