@@ -37,7 +37,8 @@ describe('what the renderer may ask for', () => {
   it('only games with a focus loop', () => {
     expect(isFocusGame('valorant')).toBe(true)
     expect(isFocusGame('deadlock')).toBe(true)
-    expect(isFocusGame('cs2')).toBe(false)
+    expect(isFocusGame('cs2')).toBe(true)
+    expect(isFocusGame('dota2')).toBe(false)
     expect(isFocusGame(undefined)).toBe(false)
   })
 
@@ -48,7 +49,7 @@ describe('what the renderer may ask for', () => {
   })
 
   it('refuses anything else before it reaches the API', () => {
-    expect(parseAddFocus({ game: 'cs2', metric: 'adr' })).toEqual({ ok: false, error: 'unsupported_game' })
+    expect(parseAddFocus({ game: 'dota2', metric: 'adr' })).toEqual({ ok: false, error: 'unsupported_game' })
     expect(parseAddFocus({ game: 'valorant', metric: '../admin' })).toEqual({ ok: false, error: 'unknown_metric' })
     expect(parseAddFocus({ game: 'valorant', metric: 'deaths', target: '4' })).toEqual({ ok: false, error: 'invalid_target' })
     expect(parseAddFocus({ game: 'valorant', metric: 'deaths', target: Number.NaN })).toEqual({ ok: false, error: 'invalid_target' })

@@ -4,7 +4,7 @@
  */
 import type { FocusesResult, FocusesState } from '../../src/lib/focuses'
 
-const FOCUS_GAMES = new Set(['valorant', 'lol', 'deadlock'])
+const FOCUS_GAMES = new Set(['valorant', 'lol', 'deadlock', 'cs2'])
 /** Refusal codes the renderer understands. Anything else from the API is reported as "unavailable". */
 const KNOWN_ERRORS = new Set(['limit_reached', 'already_active', 'no_data', 'nothing_to_aim_for', 'invalid_target', 'unknown_metric', 'unsupported_game', 'not_found'])
 

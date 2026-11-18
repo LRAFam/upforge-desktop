@@ -49,11 +49,11 @@ export interface StartingStat {
 
 const MIN = 3
 const NEXT = 'Your next matches get coached automatically: a match report after every game, and your focus is checked over the next 3 games.'
-/** CS2 has no focus loop yet: nothing checks a CS2 focus, so the report never promises a check. */
-const NEXT_CS2 = 'Each CS2 match you record gets a report once its demo is read. Use this focus as your goal for your next games.'
+/** CS2 reports come from demos read on this PC, and only ranked 5v5 matches check a focus. */
+const NEXT_CS2 = 'Each CS2 match you record gets a report once its demo is read, and your focus is checked over your next 3 ranked 5v5 matches.'
 
 /** Games whose focus the API can start and check over the next matches (POST /api/starting-report/{game}/focus). */
-export const STARTABLE_FOCUS_GAMES: readonly StartingGame[] = ['valorant', 'lol', 'deadlock']
+export const STARTABLE_FOCUS_GAMES: readonly StartingGame[] = ['valorant', 'lol', 'deadlock', 'cs2']
 export function canStartFocus(game: string | null | undefined): game is StartingGame {
   return (STARTABLE_FOCUS_GAMES as readonly string[]).includes(game ?? '')
 }
@@ -131,7 +131,7 @@ export function startingReportView(res: StartingReportResponse | null | undefine
   const focusKey = res.report.first_focus?.metric ?? res.focus_suggestion?.metric
   const focusMetric = focusKey ? metrics[focusKey] : undefined
   const sugg = res.focus_suggestion
-  // Only games with a focus loop check a focus; anything else (CS2) shows it as a goal, never a check.
+  // Only games with a focus loop check a focus; any other game shows it as a goal, never a check.
   const checked = canStartFocus(res.game)
   const shares = shareValues(metrics, [sugg?.current, sugg?.target])
   const said = (list: Claim[] | undefined) => texts(list).map(t => sharesAsPercents(t, shares))
@@ -153,7 +153,7 @@ export function startingReportView(res: StartingReportResponse | null | undefine
         : null,
       canStart: checked && !!sugg && sugg.metric === focusKey,
     } : null,
-    next: checked || res.game !== 'cs2' ? NEXT : NEXT_CS2,
+    next: res.game === 'cs2' ? NEXT_CS2 : NEXT,
   }
 }
 
