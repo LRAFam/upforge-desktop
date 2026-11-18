@@ -30,6 +30,8 @@ export interface TrainerSyncOutcome {
   clientRunId: string
   state: TrainerSyncState
   drill: TrainerDrillState | null
+  /** false = still pending but the local copy could not be written (no automatic retry after a restart). */
+  stored?: boolean
 }
 
 export interface TrainerSyncLine {
@@ -47,6 +49,9 @@ export function trainerSyncLine(outcome: TrainerSyncOutcome | null, hasAssignedD
   const pass = (n: number) => String(n * scoreScale)
   if (!outcome) return { text: 'Saving this run…', tone: 'muted' }
   if (outcome.state === 'pending') {
+    if (outcome.stored === false) {
+      return { text: 'Not saved yet, and UpForge could not keep a copy on this computer. Keep the app open and online, and check free disk space.', tone: 'loss' }
+    }
     return { text: 'Not saved yet. UpForge keeps this run and retries automatically.', tone: 'muted' }
   }
   if (outcome.state === 'failed') {

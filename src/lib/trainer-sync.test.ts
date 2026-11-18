@@ -8,6 +8,9 @@ describe('trainerSyncLine', () => {
   it('says when a run is still being saved, waiting to retry, or lost', () => {
     expect(trainerSyncLine(null, true).text).toBe('Saving this run…')
     expect(trainerSyncLine({ key: 'k', clientRunId: 'c', state: 'pending', drill: null }, true).text).toMatch(/retries automatically/)
+    const unstored = trainerSyncLine({ key: 'k', clientRunId: 'c', state: 'pending', drill: null, stored: false }, true)
+    expect(unstored.text).toMatch(/could not keep a copy/)
+    expect(unstored.tone).toBe('loss')
     expect(trainerSyncLine({ key: 'k', clientRunId: 'c', state: 'failed', drill: null }, true)).toEqual({ text: 'This run could not be saved, so it did not count towards your drill.', tone: 'loss' })
   })
   it('names the next tier and its pass mark when the drill is passed', () => {

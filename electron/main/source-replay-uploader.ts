@@ -27,6 +27,9 @@ export interface SourceReplayUploadResult {
   alreadyAnalysed?: boolean
 }
 
+/** A status GET that has sent nothing for this long is abandoned; the poll loop tries again later. */
+export const STATUS_REQUEST_TIMEOUT_MS = 30_000
+
 /** Same cap as the API's AI_DEMO_UPLOAD_MAX_MB default (the AI service refuses bigger uploads). */
 export const DEADLOCK_REPLAY_MAX_MB = 400
 
@@ -100,6 +103,9 @@ export class SourceReplayUploader {
     return { jobId }
   }
 
+  /** Per status request: a connection that never answers is aborted after this long. */
+  statusTimeoutMs = STATUS_REQUEST_TIMEOUT_MS
+
   async pollStatus(game: SourceGame, jobId: string): Promise<{ status: string; error?: string | null }> {
     const apiUrl = getApiBaseUrl()
     const token = this.auth.getToken()
@@ -109,7 +115,9 @@ export class SourceReplayUploader {
     return new Promise((resolve, reject) => {
       const url = new URL(`${apiUrl}${prefix}/${jobId}/status`)
       const proto = url.protocol === 'https:' ? https : http
-      proto.get({
+      let done = false
+      const finish = (fn: () => void) => { if (!done) { done = true; fn() } }
+      const req = proto.get({
         hostname: url.hostname,
         port: url.port || (url.protocol === 'https:' ? 443 : 80),
         path: url.pathname,
@@ -117,15 +125,26 @@ export class SourceReplayUploader {
       }, (res) => {
         let body = ''
         res.on('data', (chunk) => { body += chunk })
+        // A reset after the headers ends the body without 'end': fail instead of waiting forever.
+        res.on('aborted', () => finish(() => reject(new Error('Status response was cut off'))))
+        res.on('error', (err) => finish(() => reject(err)))
+        res.on('close', () => { if (!res.complete) finish(() => reject(new Error('Status response was cut off'))) })
         res.on('end', () => {
-          try {
-            const json = JSON.parse(body)
-            resolve({ status: json.status ?? 'unknown', error: json.error ?? null })
-          } catch {
-            reject(new Error('Invalid JSON from status endpoint'))
-          }
+          finish(() => {
+            try {
+              const json = JSON.parse(body)
+              resolve({ status: json.status ?? 'unknown', error: json.error ?? null })
+            } catch {
+              reject(new Error('Invalid JSON from status endpoint'))
+            }
+          })
         })
-      }).on('error', reject)
+      })
+      req.setTimeout(this.statusTimeoutMs, () => {
+        finish(() => reject(new Error(`Status request timed out after ${this.statusTimeoutMs} ms`)))
+        req.destroy()
+      })
+      req.on('error', (err) => finish(() => reject(err)))
     })
   }
 

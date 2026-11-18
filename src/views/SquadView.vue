@@ -299,8 +299,13 @@ function openWebTeam(inviteValue?: string) {
   window.open(url, '_blank')
 }
 
-function openActivityItem(item: SquadActivityItem) {
-  const url = squadActivityUrl(item)
+async function openActivityItem(item: SquadActivityItem) {
+  let viewerId: number | null = null
+  if (!item.share_token) {
+    const me = await window.api.auth.getUser().catch(() => null) as { id?: number } | null
+    viewerId = typeof me?.id === 'number' ? me.id : null
+  }
+  const url = squadActivityUrl(item, viewerId)
   if (url) window.open(url, '_blank')
 }
 

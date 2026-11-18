@@ -3,6 +3,8 @@
  * Uploads finished trainer runs to POST /api/training/sessions and keeps the ones that could not be
  * sent (offline, API down, signed out) on disk, retrying with backoff until they land. Each run gets a
  * `metadata.client_run_id`, so a resend after a lost response is stored once by the API.
+ * A run is written to disk before its first POST and removed only once the API accepts it, so a crash
+ * or quit during that first request still leaves it to resend on the next start.
  * No Electron imports (unit-tested); the IPC layer wires post / token / notify.
  */
 import fs from 'fs'
@@ -93,6 +95,8 @@ export class TrainerSessionQueue {
   private pending: PendingRun[] = []
   private outcomes = new Map<string, TrainerSyncOutcome>()
   private flushing = false
+  /** Runs with a POST in flight: a flush must not send them a second time. */
+  private inFlight = new Set<string>()
   private timerAt: number | null = null
   private readonly now: () => number
 
@@ -125,7 +129,10 @@ export class TrainerSessionQueue {
       nextAt: this.now(),
       createdAt: this.now(),
     }
-    return this.attempt(run, true)
+    // Save first: if the app dies while this POST is pending, the next start resends the same run id.
+    this.pending.push(run)
+    const stored = this.write()
+    return this.attempt(run, true, stored)
   }
 
   /** Try every pending run that is due. Safe to call often (sign-in, app start, timer). */
@@ -134,7 +141,7 @@ export class TrainerSessionQueue {
     this.flushing = true
     try {
       for (const run of [...this.pending]) {
-        if (run.nextAt > this.now()) continue
+        if (run.nextAt > this.now() || this.inFlight.has(run.clientRunId)) continue
         await this.attempt(run, false)
       }
     } finally {
@@ -149,17 +156,19 @@ export class TrainerSessionQueue {
     return run.ownerUserId != null && current != null && run.ownerUserId === current
   }
 
-  private async attempt(run: PendingRun, isNew: boolean): Promise<TrainerSyncOutcome> {
+  private async attempt(run: PendingRun, isNew: boolean, stored = true): Promise<TrainerSyncOutcome> {
     if (!this.ownedByCurrentUser(run)) {
       if (run.ownerUserId == null && isNew) {
         this.opts.log?.warn('[Trainer] Run finished while signed out — kept locally, not uploaded')
       }
-      return this.keep(run, isNew, false)
+      return this.keep(run, false)
     }
-    if (!this.opts.hasToken()) return this.keep(run, isNew, false)
+    if (!this.opts.hasToken()) return this.keep(run, false)
+    this.inFlight.add(run.clientRunId)
     try {
       const res = await this.opts.post(run.payload)
       this.drop(run)
+      if (!stored) this.opts.log?.warn('[Trainer] Run was sent but could not be saved locally first')
       this.opts.log?.info('[Trainer] Session synced to API', run.attempts ? `(after ${run.attempts} retries)` : '')
       return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'saved', drill: drillStateFrom(res) })
     } catch (err) {
@@ -169,11 +178,13 @@ export class TrainerSessionQueue {
         this.drop(run)
         return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'failed', drill: null })
       }
-      return this.keep(run, isNew, true)
+      return this.keep(run, true)
+    } finally {
+      this.inFlight.delete(run.clientRunId)
     }
   }
 
-  private keep(run: PendingRun, isNew: boolean, tried: boolean): TrainerSyncOutcome {
+  private keep(run: PendingRun, tried: boolean): TrainerSyncOutcome {
     if (tried) run.attempts += 1
     const expired = run.attempts >= MAX_ATTEMPTS || this.now() - run.createdAt > MAX_AGE_MS
     if (expired) {
@@ -181,10 +192,10 @@ export class TrainerSessionQueue {
       return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'failed', drill: null }, run)
     }
     run.nextAt = this.now() + retryDelayMs(Math.max(run.attempts, 1))
-    if (isNew) this.pending.push(run)
-    this.write()
+    if (!this.pending.some(p => p.clientRunId === run.clientRunId)) this.pending.push(run)
+    const stored = this.write()
     this.scheduleNext()
-    return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'pending', drill: null }, run)
+    return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'pending', drill: null, ...(stored ? {} : { stored: false }) }, run)
   }
 
   private drop(run: PendingRun): void {
@@ -226,12 +237,24 @@ export class TrainerSessionQueue {
     }
   }
 
-  private write(): void {
+  /** Atomic write (temp file + rename) so a crash mid-write never leaves a half-written queue. */
+  private write(): boolean {
+    const tmp = `${this.opts.file}.tmp`
     try {
       fs.mkdirSync(path.dirname(this.opts.file), { recursive: true })
-      fs.writeFileSync(this.opts.file, JSON.stringify(this.pending))
+      const json = JSON.stringify(this.pending)
+      fs.writeFileSync(tmp, json)
+      try {
+        fs.renameSync(tmp, this.opts.file)
+      } catch {
+        // Windows can refuse the rename while another process holds the file: write it directly.
+        fs.writeFileSync(this.opts.file, json)
+        fs.rmSync(tmp, { force: true })
+      }
+      return true
     } catch (err) {
       this.opts.log?.warn('[Trainer] Could not save pending sessions:', (err as Error)?.message)
+      return false
     }
   }
 }

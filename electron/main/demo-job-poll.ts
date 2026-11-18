@@ -9,6 +9,17 @@
 export const DEMO_POLL_MAX_MS = 40 * 60 * 1000
 const FIRST_WAIT_MS = 10_000
 const MAX_WAIT_MS = 60_000
+/** One status request may take at most this long (or the time left), so a stalled one can't stall the loop. */
+export const DEMO_POLL_REQUEST_MAX_MS = 45_000
+
+/** Settle with poll()'s result, or reject after `ms` if it is still pending. */
+function withinMs<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Status check took longer than ${ms} ms`)), ms)
+  })
+  return Promise.race([p, deadline]).finally(() => clearTimeout(timer))
+}
 
 export type DemoPollResult =
   | { status: 'completed' }
@@ -32,7 +43,8 @@ export async function pollDemoJob(opts: {
     await sleep(wait)
     wait = Math.min(Math.round(wait * 1.5), MAX_WAIT_MS)
     try {
-      const { status, error } = await opts.poll()
+      const left = Math.max(1, maxMs - (now() - start))
+      const { status, error } = await withinMs(opts.poll(), Math.min(DEMO_POLL_REQUEST_MAX_MS, left))
       if (status === 'completed') return { status: 'completed' }
       if (status === 'failed') return { status: 'failed', error: error ?? null }
     } catch (err) {

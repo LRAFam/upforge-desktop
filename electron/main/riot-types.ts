@@ -401,6 +401,12 @@ export interface MatchData {
    * taken during warmup; manual sync nudges still apply on top.
    */
   cs2DemoVideoShiftMs?: number
+  /**
+   * Total ms cut from the start of the recording file by VOD trims. recordingStartTime is the
+   * epoch of the current file's first frame; recordingStartTime - vodTrimStartMs is when the
+   * recorder actually started, which the loading-time estimates are based on.
+   */
+  vodTrimStartMs?: number
   cs2DemoSyncEvidence?: { pairs: number; livePoints: number }
 
   // Round score progression from presence polling
