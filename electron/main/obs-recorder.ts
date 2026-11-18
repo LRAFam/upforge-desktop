@@ -151,6 +151,9 @@ function describeObsClose(err: unknown): { code: number | null; reason: string |
   return { code: typeof code === 'number' && Number.isFinite(code) ? code : null, reason }
 }
 
+/** How long a clips-only start waits for OBS to confirm the replay buffer is running. */
+const CLIPS_ONLY_REPLAY_VERIFY_MS = 5_000
+
 export class OBSRecorder {
   private _obs = boundObsRequests(new OBSWebSocket())
   private _capturePreviewInFlight: Promise<CapturePreviewResult> | null = null
@@ -210,6 +213,7 @@ export class OBSRecorder {
   private _savingReplay = false
   /** Debounce transient RecordStateChanged outputActive=false while OBS is still muxing. */
   private _recordInactiveSettleTimer: ReturnType<typeof setTimeout> | null = null
+  private _replayInactiveSettleTimer: ReturnType<typeof setTimeout> | null = null
   /** Retry WebSocket connect while a match-owned session lost OBS control. */
   private _reconnectTimer: ReturnType<typeof setInterval> | null = null
 
@@ -317,6 +321,17 @@ export class OBSRecorder {
 
     this._obs.on('ReplayBufferStateChanged', ({ outputActive }) => {
       this._replayBufferActive = outputActive
+      if (this._replayInactiveSettleTimer) {
+        clearTimeout(this._replayInactiveSettleTimer)
+        this._replayInactiveSettleTimer = null
+      }
+      // In clips-only mode the replay buffer is the only capture output: losing it mid-match
+      // means no clips, so confirm (transient events happen) and then report it truthfully.
+      if (outputActive || !this._clipsOnlySession || !this._matchOwnedRecording || this._verifyingStart) return
+      this._replayInactiveSettleTimer = setTimeout(() => {
+        this._replayInactiveSettleTimer = null
+        void this._confirmReplayBufferInactive()
+      }, 1_500)
     })
 
     this._obs.on('ConnectionClosed', (closeError?: unknown) => {
@@ -1319,6 +1334,7 @@ export class OBSRecorder {
           throw new Error('OBS recording was stopped during startup verification.')
         }
       }
+      if (this._clipsOnlySession) await this._startClipsOnlyReplayBuffer(checkCancelled)
       this._verifyingStart = false
       this._matchOwnedRecording = true
       this._gameplayRefitDone = false
@@ -1335,14 +1351,8 @@ export class OBSRecorder {
         game,
       )
 
-      // Full VOD sessions use timestamp bookmarks and post-game extraction, so
-      // running the replay buffer as well only adds memory/output overhead.
-      if (this._clipsOnlySession) {
-        await this._obs.call('StartReplayBuffer').catch((err) => {
-          log.warn('[OBSRecorder] Replay buffer failed to start (non-fatal):', err)
-        })
-        checkCancelled()
-      }
+      // Full VOD sessions use timestamp bookmarks and post-game extraction, so they never
+      // start the replay buffer. Clips-only sessions started and verified it above.
 
       // Begin polling Riot Live Client API for kill events
       if (game !== 'overstep') this._startLiveKillPoll()
@@ -1423,6 +1433,69 @@ export class OBSRecorder {
       await this.releaseStaleMatchOwnership()
       this._stopReconnectLoop()
     }
+  }
+
+  /**
+   * Clips-only capture: the replay buffer is the session's only output, so the session is not
+   * "recording" until OBS confirms the buffer is active. Never falls back to a full VOD.
+   */
+  private async _startClipsOnlyReplayBuffer(checkCancelled: () => void): Promise<void> {
+    this._startDiagnostics.stage = 'start_replay_buffer'
+    // Own the request before awaiting its reply: a timed-out request may still start OBS.
+    this._matchOwnedRecording = true
+    this._startedAt = Date.now()
+    this._verifyingStart = true
+    try {
+      await withTimeout(this._obs.call('StartReplayBuffer'), 5000, 'OBS StartReplayBuffer timed out')
+    } catch (err) {
+      // A protocol rejection proves this request did not start the buffer.
+      const code = (err as { code?: unknown } | null)?.code
+      if (typeof code === 'number' && code >= 200 && code < 1000) {
+        this._matchOwnedRecording = false
+        this._startedAt = null
+        if (code === 500) {
+          throw Object.assign(new Error('OBS Replay Buffer is already running. Stop it in OBS before a clips-only match capture starts.', { cause: err }), { code })
+        }
+        throw Object.assign(new Error(
+          `OBS Replay Buffer could not start (${describeObsError(err)}). Enable Replay Buffer in OBS → Settings → Output, or turn on full-match recording.`,
+          { cause: err },
+        ), { code })
+      }
+      throw err
+    }
+    checkCancelled()
+    this._startDiagnostics.stage = 'wait_replay_buffer_active'
+    const deadline = Date.now() + CLIPS_ONLY_REPLAY_VERIFY_MS
+    for (;;) {
+      checkCancelled()
+      const status = await withTimeout(this._obs.call('GetReplayBufferStatus'), 3000, 'OBS replay buffer status timed out') as { outputActive?: boolean }
+      if (status.outputActive === true) break
+      if (Date.now() >= deadline) {
+        throw new Error(`OBS Replay Buffer did not become active within ${Math.round(CLIPS_ONLY_REPLAY_VERIFY_MS / 1000)}s, so no clips would be captured.`)
+      }
+      await new Promise(resolve => setTimeout(resolve, 250))
+    }
+    checkCancelled()
+    this._replayBufferActive = true
+  }
+
+  private async _confirmReplayBufferInactive(): Promise<void> {
+    if (!this._clipsOnlySession || !this._matchOwnedRecording) return
+    if (this._stopInFlight || this._recordingFailure || this._verifyingStart) return
+    if (this._connected) {
+      try {
+        const status = await this._obs.call('GetReplayBufferStatus') as { outputActive?: boolean }
+        if (status.outputActive) {
+          this._replayBufferActive = true
+          return
+        }
+      } catch {
+        // WebSocket may have dropped — ConnectionClosed handles user-facing state.
+        return
+      }
+    }
+    if (!this._clipsOnlySession || !this._matchOwnedRecording || this._stopInFlight || this._recordingFailure) return
+    this._markRecordingFailure('OBS Replay Buffer stopped during the match, so clips are no longer being captured. Restart OBS before your next match.')
   }
 
   private async _confirmRecordingInactive(): Promise<void> {
@@ -1620,7 +1693,11 @@ export class OBSRecorder {
       if (this._clipsOnlySession) this._outputPath = null
       this._replayBufferActive = false
     } else if (this._clipsOnlySession) {
-      if (!shutdownRequest) await withTimeout(this._obs.call('StopReplayBuffer'), 5000, 'OBS replay buffer stop timed out')
+      if (!shutdownRequest) {
+        // 501 = output not running: the buffer already stopped (e.g. reported mid-match).
+        await withTimeout(this._obs.call('StopReplayBuffer'), 5000, 'OBS replay buffer stop timed out')
+          .catch((err) => { if ((err as { code?: unknown } | null)?.code !== 501) throw err })
+      }
       await waitForRecordingStopped(() => this._obs.call('GetReplayBufferStatus'))
       this._replayBufferActive = false
       this._outputPath = null
@@ -1689,6 +1766,10 @@ export class OBSRecorder {
     if (this._recordInactiveSettleTimer) {
       clearTimeout(this._recordInactiveSettleTimer)
       this._recordInactiveSettleTimer = null
+    }
+    if (this._replayInactiveSettleTimer) {
+      clearTimeout(this._replayInactiveSettleTimer)
+      this._replayInactiveSettleTimer = null
     }
     this._stopLiveKillPoll()
   }
