@@ -269,17 +269,56 @@ describe('TrainerSessionQueue', () => {
       expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 1 })
     })
 
-    it('an app closed for 10 days does not send the run on its next start, as an app left open would not', async () => {
-      await make(vi.fn().mockRejectedValue(new Error('offline'))).submit(run())
+    it('an app closed for 10 days sends its runs on the next start, in the first round it is signed in', async () => {
+      // Three runs that could not be sent; then the app stays closed for 10 days.
+      const offline = make(vi.fn().mockRejectedValue(new Error('offline')))
+      const ids: string[] = []
+      for (const at of ['10:00', '10:05', '10:10']) ids.push((await offline.submit(run({ completed_at: `2026-11-15T${at}:00Z` }))).clientRunId)
       now += 10 * 24 * HOUR
       const post = vi.fn().mockResolvedValue({ drill: null })
+      // The app's first round runs before its saved sign-in has loaded: no try yet, and nothing moves.
+      user = null
       const q = make(post)
       await q.flush()
       expect(post).not.toHaveBeenCalled()
+      expect(q.pendingCount).toBe(3)
+      expect(fs.existsSync(unsavedFile())).toBe(false)
+      // Signed in and online: the next round sends each run once, with its own run id.
+      user = 1
+      await runFor(q, HOUR)
+      expect(post.mock.calls.map(c => (c[0] as { metadata: { client_run_id: string } }).metadata.client_run_id)).toEqual(ids)
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 0 })
+      expect(fs.existsSync(unsavedFile())).toBe(false)
+    })
+
+    it('an app closed for 10 days and opened offline tries the run once, then keeps it for Retry', async () => {
+      await make(vi.fn().mockRejectedValue(new Error('offline'))).submit(run())
+      now += 10 * 24 * HOUR
+      const post = vi.fn().mockRejectedValue(new Error('getaddrinfo ENOTFOUND'))
+      const q = make(post)
+      await q.flush()
+      expect(post).toHaveBeenCalledTimes(1)
       expect(q.pendingCount).toBe(0)
-      // Kept on disk with the reason, for Retry.
+      // Kept on disk with the reason, for Retry; no more background tries.
       expect(readUnsaved()).toEqual([expect.objectContaining({ ownerUserId: 1, reason: 'expired', status: null })])
       expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 1 })
+      await runFor(q, 24 * HOUR, 30 * 60_000)
+      expect(post).toHaveBeenCalledTimes(1)
+    })
+
+    it('a run past its 7 days waits for its own account like a younger run, then gets its one try', async () => {
+      await make(vi.fn().mockRejectedValue(new Error('offline'))).submit(run())
+      now += 10 * 24 * HOUR
+      const post = vi.fn().mockRejectedValue(httpError(503))
+      user = 2
+      const q = make(post)
+      await runFor(q, HOUR)
+      expect(post).not.toHaveBeenCalled()
+      expect(q.pendingCount).toBe(1)
+      user = 1
+      await runFor(q, 24 * HOUR, 30 * 60_000)
+      expect(post).toHaveBeenCalledTimes(1)
+      expect(readUnsaved()).toEqual([expect.objectContaining({ ownerUserId: 1, reason: 'expired' })])
     })
 
     it('Retry sends a run that expired while offline once online, with its original run id', async () => {
@@ -468,6 +507,12 @@ describe('TrainerSessionQueue', () => {
       await q.flush()
       expect(post).not.toHaveBeenCalled()
       expect(q.pendingCount).toBe(1)
+      // No account can ever send it: after its 7 days it moves to the unsaved file, still unsent.
+      now += MAX_AGE_MS + HOUR
+      await q.flush()
+      expect(post).not.toHaveBeenCalled()
+      expect(q.pendingCount).toBe(0)
+      expect(readUnsaved()).toEqual([expect.objectContaining({ clientRunId: 'legacy', ownerUserId: null, reason: 'expired' })])
     })
   })
 })

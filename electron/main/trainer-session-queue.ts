@@ -6,7 +6,7 @@
  * so a resend after a lost response is stored once by the API.
  * A run is written to disk before its first POST and removed only once the API accepts it, so a crash
  * or quit during that first request still leaves it to resend on the next start.
- * A run the API refuses (4xx), or one still unsent when its week of background tries ends, moves to the
+ * A run the API refuses (4xx), or one whose last try after its week of background tries fails, moves to the
  * "unsaved" file with the reason. That file keeps each account's newest MAX_UNSAVED_RUNS runs; the result
  * screen lists them, and its Retry sends them again.
  * No Electron imports (unit-tested); the IPC layer wires post / token / notify.
@@ -71,8 +71,9 @@ export interface TrainerSessionQueueOptions {
 }
 
 /**
- * Background tries stop this long after the run (or the last Retry), checked before each try, so an app left
- * open and an app started a week later treat a run alike. The run then moves to the unsaved file (reported as failed).
+ * Background tries stop this long after the run (or the last Retry): the run then gets one last try, in the first
+ * round its account is signed in, so an app left open and an app started a week later treat a run alike. If that
+ * try fails, the run moves to the unsaved file (reported as failed).
  */
 export const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 /** The unsaved file keeps each account's newest this many runs: one account never pushes out another's. */
@@ -265,12 +266,13 @@ export class TrainerSessionQueue {
 
   /** `round`: called from a retry round, which writes the files once at its end. */
   private async attempt(run: PendingRun, isNew: boolean, stored = true, round?: WriteRound): Promise<TrainerSyncOutcome> {
-    // Checked before the try, not after a failed one: a run is not sent in the background once its week is over,
-    // whether the app stayed open or was started again later. It moves to the unsaved file, where Retry can send it.
-    if (!isNew && this.now() - (run.retriedAt ?? run.createdAt) > MAX_AGE_MS) {
-      return this.giveUp(run, 'expired', null, 'Not uploaded within 7 days', round)
-    }
+    // Past its week a run still gets one last try, in the first round its account is signed in (the app's first
+    // round runs before the saved sign-in loads), whether the app stayed open or was started again later.
+    // If that try fails too, the run moves to the unsaved file, where Retry can send it.
+    const lastTry = !isNew && this.now() - (run.retriedAt ?? run.createdAt) > MAX_AGE_MS
     if (!this.ownedByCurrentUser(run)) {
+      // No account can ever send a run without an owner: it moves once its week is over.
+      if (lastTry && run.ownerUserId == null) return this.giveUp(run, 'expired', null, 'Not uploaded within 7 days', round)
       if (run.ownerUserId == null && isNew) {
         this.opts.log?.warn('[Trainer] Run finished while signed out — kept locally, not uploaded')
       }
@@ -293,13 +295,14 @@ export class TrainerSessionQueue {
         const status = (err as { status?: unknown } | null)?.status
         return this.giveUp(run, 'rejected', typeof status === 'number' ? status : null, String((err as Error)?.message ?? ''), round)
       }
+      if (lastTry) return this.giveUp(run, 'expired', null, 'Not uploaded within 7 days', round)
       return this.keep(run, true, round)
     } finally {
       this.inFlight.delete(run.clientRunId)
     }
   }
 
-  /** Retryable failures never count against a run: it waits until it uploads or its MAX_AGE_MS of tries ends (see attempt). */
+  /** Retryable failures never count against a run: it waits until it uploads or its last try fails (see attempt). */
   private keep(run: PendingRun, tried: boolean, round?: WriteRound): TrainerSyncOutcome {
     if (tried) run.attempts += 1
     run.nextAt = this.now() + retryDelayMs(Math.max(run.attempts, 1))
