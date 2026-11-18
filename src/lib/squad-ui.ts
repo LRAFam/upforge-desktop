@@ -89,9 +89,17 @@ export function squadStatusLabel(status: SquadMemberStatus): string {
   return 'Offline'
 }
 
-export function squadActivityUrl(item: { id?: number; share_token?: string | null; agent?: string | null; map?: string | null; game?: string | null }): string | null {
-  if (item.share_token) return `https://upforge.gg/share/${item.share_token}`
-  if (!item.id) return null
+/**
+ * Web link for a Squad activity row. A shared analysis opens its public `/shared/<token>` report.
+ * Without a share token only the viewer's own analysis links to its (signed-in) results page;
+ * a teammate's private analysis gets no link.
+ */
+export function squadActivityUrl(
+  item: { id?: number; user_id?: number | null; share_token?: string | null; agent?: string | null; map?: string | null; game?: string | null },
+  viewerUserId: number | null,
+): string | null {
+  if (item.share_token) return `https://upforge.gg/shared/${encodeURIComponent(item.share_token)}`
+  if (!item.id || viewerUserId == null || item.user_id !== viewerUserId) return null
   const game = inferActivityGame(item)
   return `https://upforge.gg/${game}/results/${item.id}`
 }
