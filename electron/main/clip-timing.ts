@@ -37,7 +37,7 @@ export function replaceClipFileKeepingOriginal(targetPath: string, replacementPa
     try {
       fs.renameSync(backupPath, targetPath)
     } catch (restoreErr) {
-      throw new Error(`Trim failed and the original clip is kept at ${backupPath}: ${restoreErr instanceof Error ? restoreErr.message : String(restoreErr)}`, { cause: err })
+      throw new Error(`Trim failed and the original file is kept at ${backupPath}: ${restoreErr instanceof Error ? restoreErr.message : String(restoreErr)}`, { cause: err })
     }
     throw err
   }

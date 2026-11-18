@@ -16,6 +16,7 @@ import {
 import { MIN_RECORDING_FILE_BYTES } from './recording-limits'
 import { isOwnedRecordingFile, ownedRecordingFiles } from './owned-recording-files'
 import { getFreeDiskSpace } from './disk-space'
+import { filesHaveIdenticalBytes } from './file-identity'
 import { planRecordingExpiry, type ExpiryWarningStage } from './recording-expiry'
 import {
   planUntrackedRecordings,
@@ -272,16 +273,32 @@ export async function buildStorageUsage(
   return usage
 }
 
-/** Remove legacy global recordings that were copied into the active user folder. */
-export function cleanupLegacyRecordingDuplicates(activeSavePath: string): { removed: number; freedBytes: number } {
+/**
+ * Remove legacy global recordings that were already copied into the active user folder.
+ * A same-named file is not proof of a copy: the legacy file is removed only when the active
+ * file is byte-identical and no catalogue references the legacy path. Only the legacy file
+ * itself is removed (never its compressed/source variants). Anything else is kept.
+ */
+export async function cleanupLegacyRecordingDuplicates(
+  activeSavePath: string,
+): Promise<{ removed: number; freedBytes: number; kept: number }> {
   const legacyDir = legacyGlobalRecordingsDir()
   if (path.normalize(legacyDir) === path.normalize(activeSavePath)) {
-    return { removed: 0, freedBytes: 0 }
+    return { removed: 0, freedBytes: 0, kept: 0 }
   }
-  if (!fs.existsSync(legacyDir)) return { removed: 0, freedBytes: 0 }
+  if (!fs.existsSync(legacyDir)) return { removed: 0, freedBytes: 0, kept: 0 }
+
+  let referenced: Set<string>
+  try {
+    referenced = registeredLocalRecordingPaths()
+  } catch (err) {
+    log.warn('[StorageCleanup] Keeping legacy recordings because a media catalogue could not be read:', err)
+    return { removed: 0, freedBytes: 0, kept: 0 }
+  }
 
   let removed = 0
   let freedBytes = 0
+  let kept = 0
 
   for (const name of fs.readdirSync(legacyDir)) {
     if (!name.toLowerCase().endsWith('.mp4')) continue
@@ -289,16 +306,28 @@ export function cleanupLegacyRecordingDuplicates(activeSavePath: string): { remo
     const activePath = path.join(activeSavePath, name)
     if (!fs.existsSync(activePath)) continue
 
+    if (referenced.has(path.normalize(legacyPath))) {
+      kept++
+      continue
+    }
+    if (!(await filesHaveIdenticalBytes(legacyPath, activePath))) {
+      kept++
+      log.warn(`[StorageCleanup] Keeping legacy recording — same name but different contents: ${legacyPath}`)
+      continue
+    }
+
     try {
-      freedBytes += deleteLocalRecordingFiles(legacyPath)
+      const size = fs.statSync(legacyPath).size
+      await fs.promises.unlink(legacyPath)
+      freedBytes += size
       removed++
-      log.info(`[StorageCleanup] Removed legacy duplicate: ${legacyPath}`)
+      log.info(`[StorageCleanup] Removed verified legacy duplicate: ${legacyPath}`)
     } catch (err) {
       log.warn(`[StorageCleanup] Failed to remove legacy duplicate ${legacyPath}:`, err)
     }
   }
 
-  return { removed, freedBytes }
+  return { removed, freedBytes, kept }
 }
 
 /** Where untracked-file warnings are remembered across runs and restarts. */
@@ -460,7 +489,8 @@ export function runRecordingStorageMaintenance(opts: {
   now?: number
   untrackedCapBytes?: number
 }): StorageMaintenanceResult {
-  const legacy = cleanupLegacyRecordingDuplicates(opts.savePath)
+  // Legacy duplicate cleanup needs async byte verification — run cleanupLegacyRecordingDuplicates separately.
+  const legacy = { removed: 0, freedBytes: 0 }
   const pending = prunePendingRecordingsByAge(
     opts.store,
     opts.recordingRetentionDays,

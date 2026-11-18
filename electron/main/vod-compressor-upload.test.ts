@@ -46,7 +46,7 @@ describe('resolveUploadVideoPath for a large MKV', () => {
     fs.truncateSync(source, 2 * 1024 ** 3) // sparse 2 GB, over the compress threshold
     const out = await resolveUploadVideoPath(source)
     expect(out.path).toBe(path.join(dir, 'match_upforge.mp4'))
-    expect(fs.readdirSync(dir).sort()).toEqual(['match.mkv', 'match_upforge.mp4'])
+    expect(fs.readdirSync(dir).sort()).toEqual(['match.mkv', 'match_upforge.mp4', 'match_upforge.mp4.done'])
     expect(ffmpeg.calls).toHaveLength(1)
   })
 

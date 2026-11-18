@@ -2,7 +2,7 @@
  * Trim a local match VOD and shift timeline markers to match the new file window.
  */
 
-import fs from 'fs'
+import { replaceClipFileKeepingOriginal } from './clip-timing'
 import { recomputeTimelineVideoOffsets, type MatchData } from './riot-local-api'
 
 export interface VodTrimRange {
@@ -62,24 +62,16 @@ export function applyVodTrimToTimeline(timeline: MatchData, range: VodTrimRange)
   }
 }
 
-/** Replace targetPath with trimmedPath, keeping a short-lived backup on failure. */
+/**
+ * Replace targetPath with trimmedPath. On any failure the original stays at targetPath (or, if
+ * even the restore fails, at `targetPath.bak`, named in the error) — it is never deleted.
+ */
 export function swapMediaFileInPlace(targetPath: string, trimmedPath: string): void {
-  const backupPath = `${targetPath}.bak`
-  try {
-    fs.renameSync(targetPath, backupPath)
-    try {
-      fs.renameSync(trimmedPath, targetPath)
-      try { fs.unlinkSync(backupPath) } catch { /* non-fatal */ }
-    } catch (renameErr) {
-      try { fs.renameSync(backupPath, targetPath) } catch { /* best-effort restore */ }
-      throw renameErr
-    }
-  } catch {
-    try { fs.unlinkSync(targetPath) } catch { /* ignore */ }
-    fs.renameSync(trimmedPath, targetPath)
-  }
+  replaceClipFileKeepingOriginal(targetPath, trimmedPath)
 }
 
 export function trimmedOutputPath(sourcePath: string): string {
-  return sourcePath.replace(/\.(mp4|mkv|webm|mov|m4v)$/i, '_trimmed.mp4')
+  const out = sourcePath.replace(/\.(mp4|mkv|webm|mov|m4v)$/i, '_trimmed.mp4')
+  // Never let the temporary output alias the original — failure cleanup deletes it.
+  return out === sourcePath ? `${sourcePath}_trimmed.mp4` : out
 }

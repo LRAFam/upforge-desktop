@@ -6,7 +6,7 @@ import { backgroundWork, BackgroundWorkCancelledError } from './background-work'
 
 import { spawn } from 'child_process'
 import { dirname, join, basename } from 'path'
-import { existsSync, mkdirSync, statSync, unlinkSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import log from 'electron-log'
 import { UPLOAD_COMPRESSION_PRESET } from './recording-preset'
@@ -39,6 +39,64 @@ export function sourcePathForCompressed(compressedPath: string): string | null {
     if (existsSync(candidate)) return candidate
   }
   return join(dir, `${base}.mp4`)
+}
+
+/**
+ * FFmpeg writes here (forced `-f mp4`); the file is promoted to the real sibling only after a
+ * clean exit. The non-video extension keeps recording scans from ever picking it up.
+ */
+export function partialPathFor(outputPath: string): string {
+  return `${outputPath}.partial`
+}
+
+/** Sidecar proving that a prepared sibling was fully written from the current source. */
+export function preparedMarkerPathFor(outputPath: string): string {
+  return `${outputPath}.done`
+}
+
+interface PreparedMarker { sourceSize: number; sourceMtimeMs: number; outputSize: number }
+
+function removeQuietly(p: string): void {
+  if (existsSync(p)) {
+    try { unlinkSync(p) } catch { /* ignore */ }
+  }
+}
+
+/** Promote a finished FFmpeg output and record which source it was made from. */
+function promotePreparedOutput(sourcePath: string, partialPath: string, outputPath: string): number {
+  const outputSize = statSync(partialPath).size
+  if (outputSize <= 0) throw new Error('Prepared video is empty')
+  renameSync(partialPath, outputPath)
+  const src = statSync(sourcePath)
+  const marker: PreparedMarker = { sourceSize: src.size, sourceMtimeMs: src.mtimeMs, outputSize }
+  writeFileSync(preparedMarkerPathFor(outputPath), JSON.stringify(marker))
+  return outputSize
+}
+
+/**
+ * True only when `sibling` was promoted after a clean FFmpeg exit from this exact source.
+ * Partial, interrupted, zero-byte or pre-marker siblings are never trusted.
+ */
+export function isVerifiedPreparedSibling(sourcePath: string, sibling: string): boolean {
+  try {
+    const marker = JSON.parse(readFileSync(preparedMarkerPathFor(sibling), 'utf8')) as PreparedMarker
+    const src = statSync(sourcePath)
+    const out = statSync(sibling)
+    return out.isFile()
+      && out.size > 0
+      && out.size === marker.outputSize
+      && src.size === marker.sourceSize
+      && Math.abs(src.mtimeMs - marker.sourceMtimeMs) < 1
+  } catch {
+    return false
+  }
+}
+
+/** Remove any output, in-progress output and completion marker for `outputPath`. */
+function clearPreparedOutput(outputPath: string): void {
+  removeQuietly(outputPath)
+  removeQuietly(partialPathFor(outputPath))
+  removeQuietly(preparedMarkerPathFor(outputPath))
 }
 
 /** Raw + compressed paths for the same match recording. */
@@ -133,9 +191,9 @@ export async function resolveUploadVideoPath(
 
   const sizeBytes = statSync(sourcePath).size
   const sibling = compressedPathFor(sourcePath)
-  if (existsSync(sibling)) {
+  if (existsSync(sibling) && sibling !== sourcePath) {
     const siblingSize = statSync(sibling).size
-    if (statSync(sibling).mtimeMs >= statSync(sourcePath).mtimeMs && siblingSize < sizeBytes) {
+    if (isVerifiedPreparedSibling(sourcePath, sibling) && siblingSize < sizeBytes) {
       return { path: sibling, sizeBytes: siblingSize, compressed: true }
     }
   }
@@ -188,11 +246,9 @@ export async function remuxVodForUpload(
   onProgress?: (percent: number) => void,
 ): Promise<CompressVodResult> {
   const outputPath = compressedPathFor(sourcePath)
+  const partialPath = partialPathFor(outputPath)
   mkdirSync(dirname(outputPath), { recursive: true })
-
-  if (existsSync(outputPath)) {
-    try { unlinkSync(outputPath) } catch { /* ignore */ }
-  }
+  clearPreparedOutput(outputPath)
 
   try {
     log.info(`[VodCompressor] Remux (stream copy): ${sourcePath}`)
@@ -203,16 +259,16 @@ export async function remuxVodForUpload(
       '-map', '0:a:0?',
       '-c', 'copy',
       '-movflags', '+faststart',
-      outputPath,
+      '-f', 'mp4',
+      partialPath,
     ], onProgress)
-    const outputSizeBytes = statSync(outputPath).size
+    const outputSizeBytes = promotePreparedOutput(sourcePath, partialPath, outputPath)
     return { ok: true, outputPath, outputSizeBytes }
   } catch (err) {
+    // Cancelled or failed: never leave an incomplete file where the next save would find it.
+    clearPreparedOutput(outputPath)
     if (err instanceof BackgroundWorkCancelledError) throw err
     const msg = err instanceof Error ? err.message : String(err)
-    if (existsSync(outputPath)) {
-      try { unlinkSync(outputPath) } catch { /* ignore */ }
-    }
     return { ok: false, outputPath, outputSizeBytes: 0, error: msg }
   }
 }
@@ -222,11 +278,9 @@ export async function compressVodForUpload(
   onProgress?: (percent: number) => void,
 ): Promise<CompressVodResult> {
   const outputPath = compressedPathFor(sourcePath)
+  const partialPath = partialPathFor(outputPath)
   mkdirSync(dirname(outputPath), { recursive: true })
-
-  if (existsSync(outputPath)) {
-    try { unlinkSync(outputPath) } catch { /* ignore */ }
-  }
+  clearPreparedOutput(outputPath)
 
   const scale = UPLOAD_COMPRESSION_PRESET.quality === '1080p' ? '1920:1080' : '1280:720'
   const bitrate = `${UPLOAD_COMPRESSION_PRESET.bitrate}M`
@@ -261,21 +315,20 @@ export async function compressVodForUpload(
         '-c:a', 'aac',
         '-b:a', '128k',
         '-movflags', '+faststart',
-        outputPath,
+        '-f', 'mp4',
+        partialPath,
       ], onProgress)
-      const outputSizeBytes = statSync(outputPath).size
+      const outputSizeBytes = promotePreparedOutput(sourcePath, partialPath, outputPath)
       log.info(
         `[VodCompressor] Done: ${(statSync(sourcePath).size / (1024 ** 3)).toFixed(2)} GB → ` +
         `${(outputSizeBytes / (1024 ** 3)).toFixed(2)} GB`,
       )
       return { ok: true, outputPath, outputSizeBytes }
     } catch (err) {
+      clearPreparedOutput(outputPath)
       if (err instanceof BackgroundWorkCancelledError) throw err
       lastError = err instanceof Error ? err.message : String(err)
       log.warn(`[VodCompressor] ${encoder} failed:`, lastError)
-      if (existsSync(outputPath)) {
-        try { unlinkSync(outputPath) } catch { /* ignore */ }
-      }
     }
   }
 
@@ -346,10 +399,7 @@ function runFfmpegOnce(args: string[], signal: AbortSignal, onProgress?: (percen
 }
 
 export function deleteCompressedSibling(sourcePath: string): void {
-  const compressed = compressedPathFor(sourcePath)
-  if (existsSync(compressed)) {
-    try { unlinkSync(compressed) } catch { /* ignore */ }
-  }
+  clearPreparedOutput(compressedPathFor(sourcePath))
 }
 
 /** Delete a recording and any raw/compressed siblings. Returns bytes freed. */
@@ -361,6 +411,7 @@ export function deleteLocalRecordingFiles(filePath: string): number {
         freed += statSync(variant).size
         unlinkSync(variant)
       }
+      removeQuietly(preparedMarkerPathFor(variant))
     } catch { /* ignore */ }
   }
   return freed
