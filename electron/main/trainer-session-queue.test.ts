@@ -154,6 +154,45 @@ describe('TrainerSessionQueue', () => {
     expect(readUnsaved()).toEqual([expect.objectContaining({ clientRunId: out.clientRunId, reason: 'expired', status: null })])
   })
 
+  it('a retry round writes the queue file once, not once per waiting run', async () => {
+    // 400 runs waiting from an earlier session, all due; the network is down. Each round used to rewrite the
+    // whole file once per run on the app's main process (seconds of freeze with a week of runs).
+    const waiting = Array.from({ length: 400 }, (_, i) => ({ clientRunId: `run-${i}`, ownerUserId: 1, key: `flick|${i}`,
+      payload: run({ completed_at: new Date(now - i * 120_000).toISOString() }), attempts: 1, nextAt: now, createdAt: now - HOUR }))
+    fs.writeFileSync(file, JSON.stringify(waiting))
+    const onChange = vi.fn()
+    const post = vi.fn().mockRejectedValue(new Error('ECONNRESET'))
+    const q = make(post, { onChange })
+    await q.flush()
+    expect(post).toHaveBeenCalledTimes(400)
+    expect(onChange).toHaveBeenCalledTimes(1)
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as Array<{ attempts: number; nextAt: number }>
+    expect(saved).toHaveLength(400)
+    expect(saved.every(r => r.attempts === 2 && r.nextAt === now + retryDelayMs(2))).toBe(true)
+  })
+
+  it('a round where runs land, wait and are refused still writes each file once, the unsaved copy first', async () => {
+    const waiting = ['lands', 'offline', 'refused'].map(id => ({ clientRunId: id, ownerUserId: 1, key: `flick|${id}`,
+      payload: run({ id }), attempts: 1, nextAt: now, createdAt: now - HOUR }))
+    fs.writeFileSync(file, JSON.stringify(waiting))
+    const post = vi.fn((p: Record<string, unknown>) => p.id === 'lands' ? Promise.resolve({}) : Promise.reject(p.id === 'refused' ? httpError(422) : new Error('offline')))
+    const written: string[] = []
+    const q = make(post, { onChange: () => written.push(fs.existsSync(unsavedFile()) ? 'with-unsaved' : 'pending-only') })
+    const writes = vi.spyOn(fs, 'writeFileSync')
+    try {
+      await q.flush()
+      const byFile = (f: string) => writes.mock.calls.filter(([p]) => String(p).startsWith(f)).length
+      expect(byFile(unsavedFile())).toBe(1)
+      expect(byFile(file)).toBe(1)
+      // The unsaved copy is on disk before the queue file drops the refused run.
+      expect(written).toEqual(['with-unsaved', 'with-unsaved'])
+    } finally {
+      writes.mockRestore()
+    }
+    expect((JSON.parse(fs.readFileSync(file, 'utf8')) as Array<{ clientRunId: string }>).map(r => r.clientRunId)).toEqual(['offline'])
+    expect(readUnsaved().map(r => r.clientRunId)).toEqual(['refused'])
+  })
+
   it('keeps only the newest unsaved runs', async () => {
     const q = make(vi.fn().mockRejectedValue(httpError(422)))
     for (let i = 0; i < MAX_UNSAVED_RUNS + 5; i++) { now += 1000; await q.submit(run({ completed_at: `2026-11-15T10:${String(i).padStart(2, '0')}:00Z` })) }

@@ -44,6 +44,12 @@ interface UnsavedRun {
   message: string
 }
 
+/** Files a retry round changed; it writes each one once when the round ends. */
+interface WriteRound {
+  pending: boolean
+  unsaved: boolean
+}
+
 export interface TrainerSessionQueueOptions {
   file: string
   /** Where unsaved runs are kept. Default: trainer-unsaved-sessions.json next to `file`. */
@@ -176,13 +182,19 @@ export class TrainerSessionQueue {
   async flush(): Promise<void> {
     if (this.flushing) return
     this.flushing = true
+    // Each file is written once per round, not once per run: rewriting the whole queue for each of hundreds of
+    // waiting runs froze the app for seconds. The runs are already on disk; a crash mid-round loses only retry counts.
+    const round: WriteRound = { pending: false, unsaved: false }
     try {
       for (const run of [...this.pending]) {
         if (run.nextAt > this.now() || this.inFlight.has(run.clientRunId)) continue
-        await this.attempt(run, false)
+        await this.attempt(run, false, true, round)
       }
     } finally {
       this.flushing = false
+      // The unsaved copy first, as in giveUp: a crash in between leaves a run in both files, never in neither.
+      if (round.unsaved) this.writeUnsaved()
+      if (round.pending) this.write()
       this.scheduleNext()
     }
   }
@@ -193,18 +205,19 @@ export class TrainerSessionQueue {
     return run.ownerUserId != null && current != null && run.ownerUserId === current
   }
 
-  private async attempt(run: PendingRun, isNew: boolean, stored = true): Promise<TrainerSyncOutcome> {
+  /** `round`: called from a retry round, which writes the files once at its end. */
+  private async attempt(run: PendingRun, isNew: boolean, stored = true, round?: WriteRound): Promise<TrainerSyncOutcome> {
     if (!this.ownedByCurrentUser(run)) {
       if (run.ownerUserId == null && isNew) {
         this.opts.log?.warn('[Trainer] Run finished while signed out — kept locally, not uploaded')
       }
-      return this.keep(run, false)
+      return this.keep(run, false, round)
     }
-    if (!this.opts.hasToken()) return this.keep(run, false)
+    if (!this.opts.hasToken()) return this.keep(run, false, round)
     this.inFlight.add(run.clientRunId)
     try {
       const res = await this.opts.post(run.payload)
-      this.drop(run)
+      this.drop(run, round)
       if (!stored) this.opts.log?.warn('[Trainer] Run was sent but could not be saved locally first')
       this.opts.log?.info('[Trainer] Session synced to API', run.attempts ? `(after ${run.attempts} retries)` : '')
       return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'saved', drill: drillStateFrom(res) })
@@ -213,27 +226,30 @@ export class TrainerSessionQueue {
       this.opts.log?.warn('[Trainer] Session upload failed:', (err as Error)?.message, retry ? '(will retry)' : '(not retried)')
       if (!retry) {
         const status = (err as { status?: unknown } | null)?.status
-        return this.giveUp(run, 'rejected', typeof status === 'number' ? status : null, String((err as Error)?.message ?? ''))
+        return this.giveUp(run, 'rejected', typeof status === 'number' ? status : null, String((err as Error)?.message ?? ''), round)
       }
-      return this.keep(run, true)
+      return this.keep(run, true, round)
     } finally {
       this.inFlight.delete(run.clientRunId)
     }
   }
 
   /** Retryable failures never count against a run: it waits until it uploads or is MAX_AGE_MS old. */
-  private keep(run: PendingRun, tried: boolean): TrainerSyncOutcome {
+  private keep(run: PendingRun, tried: boolean, round?: WriteRound): TrainerSyncOutcome {
     if (tried) run.attempts += 1
-    if (this.now() - run.createdAt > MAX_AGE_MS) return this.giveUp(run, 'expired', null, 'Not uploaded within 7 days')
+    if (this.now() - run.createdAt > MAX_AGE_MS) return this.giveUp(run, 'expired', null, 'Not uploaded within 7 days', round)
     run.nextAt = this.now() + retryDelayMs(Math.max(run.attempts, 1))
     if (!this.pending.some(p => p.clientRunId === run.clientRunId)) this.pending.push(run)
-    const stored = this.write()
+    // In a retry round the run is already on disk and the round writes the file once at its end.
+    let stored = true
+    if (round) round.pending = true
+    else stored = this.write()
     this.scheduleNext()
     return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'pending', drill: null, ...(stored ? {} : { stored: false }) }, run)
   }
 
   /** Moves a run from the upload queue to the unsaved file (not resent automatically) and reports it as failed. */
-  private giveUp(run: PendingRun, reason: UnsavedRun['reason'], status: number | null, message: string): TrainerSyncOutcome {
+  private giveUp(run: PendingRun, reason: UnsavedRun['reason'], status: number | null, message: string, round?: WriteRound): TrainerSyncOutcome {
     const entry: UnsavedRun = {
       clientRunId: run.clientRunId,
       ownerUserId: run.ownerUserId ?? null,
@@ -247,15 +263,18 @@ export class TrainerSessionQueue {
     }
     this.unsaved = [...this.unsaved.filter(u => u.clientRunId !== run.clientRunId), entry].slice(-MAX_UNSAVED_RUNS)
     // The unsaved copy is written first: a crash in between leaves the run in both files, never in neither.
-    this.writeUnsaved()
-    this.drop(run)
+    if (round) round.unsaved = true
+    else this.writeUnsaved()
+    this.drop(run, round)
     return this.report({ key: run.key, clientRunId: run.clientRunId, state: 'failed', drill: null }, run)
   }
 
-  private drop(run: PendingRun): void {
+  private drop(run: PendingRun, round?: WriteRound): void {
     const before = this.pending.length
     this.pending = this.pending.filter(p => p.clientRunId !== run.clientRunId)
-    if (this.pending.length !== before) this.write()
+    if (this.pending.length === before) return
+    if (round) round.pending = true
+    else this.write()
   }
 
   private report(outcome: TrainerSyncOutcome, run?: PendingRun): TrainerSyncOutcome {
