@@ -228,9 +228,9 @@ describe('TrainerSessionQueue', () => {
       mode = 'reject'
       await q.submit(run({ completed_at: '2026-11-15T11:00:00Z' }))
       expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 1 })
-      // A week later the "not saved" note has run its course; the copy stays in the file.
+      // Still counted a week later: Retry can send it whenever the player is back online.
       now += MAX_AGE_MS + 1
-      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 0 })
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 1 })
       expect(readUnsaved()).toHaveLength(1)
     })
 
@@ -238,6 +238,137 @@ describe('TrainerSessionQueue', () => {
       await make(vi.fn().mockRejectedValue(httpError(422))).submit(run())
       expect(make(vi.fn()).uploadStatus()).toEqual({ waiting: 0, unsaved: 1 })
     })
+
+    it('lists the signed-in account’s unsaved runs with the reason, newest first, without the run data', async () => {
+      const q = make(vi.fn().mockRejectedValue(httpError(422, 'The selected scenario is invalid.')))
+      await q.submit(run({ scenario: 'flick', completed_at: '2026-11-15T10:00:00Z' }))
+      now += 1000
+      await q.submit(run({ scenario: 'gridshot', completed_at: '2026-11-15T10:05:00Z' }))
+      user = 2
+      await q.submit(run({ scenario: 'tracking' }))
+      expect(q.unsavedRuns().map(r => r.scenario)).toEqual(['tracking'])
+      user = 1
+      const list = q.unsavedRuns()
+      expect(list.map(r => r.scenario)).toEqual(['gridshot', 'flick'])
+      expect(list[0]).toEqual({ clientRunId: expect.any(String), scenario: 'gridshot', completedAt: '2026-11-15T10:05:00Z', reason: 'rejected', status: 422, message: 'The selected scenario is invalid.', failedAt: now })
+      user = null
+      expect(q.unsavedRuns()).toEqual([])
+    })
+  })
+
+  describe('unsaved runs: per-account cap, the 7-day rule and Retry', () => {
+    it('caps the unsaved file per account: one account’s refused runs never push out another’s', async () => {
+      const q = make(vi.fn().mockRejectedValue(httpError(422)))
+      await q.submit(run({ completed_at: '2026-11-15T09:00:00Z' }))
+      user = 2
+      for (let i = 0; i < MAX_UNSAVED_RUNS + 5; i++) { now += 1000; await q.submit(run({ completed_at: `2026-11-15T10:${String(i).padStart(2, '0')}:00Z` })) }
+      const owners = readUnsaved().map(r => r.ownerUserId)
+      expect(owners.filter(o => o === 1)).toHaveLength(1)
+      expect(owners.filter(o => o === 2)).toHaveLength(MAX_UNSAVED_RUNS)
+      user = 1
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 1 })
+    })
+
+    it('an app closed for 10 days does not send the run on its next start, as an app left open would not', async () => {
+      await make(vi.fn().mockRejectedValue(new Error('offline'))).submit(run())
+      now += 10 * 24 * HOUR
+      const post = vi.fn().mockResolvedValue({ drill: null })
+      const q = make(post)
+      await q.flush()
+      expect(post).not.toHaveBeenCalled()
+      expect(q.pendingCount).toBe(0)
+      // Kept on disk with the reason, for Retry.
+      expect(readUnsaved()).toEqual([expect.objectContaining({ ownerUserId: 1, reason: 'expired', status: null })])
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 1 })
+    })
+
+    it('Retry sends a run that expired while offline once online, with its original run id', async () => {
+      let online = false
+      const post = vi.fn((_p: Record<string, unknown>) => online ? Promise.resolve({ drill: null }) : Promise.reject(new Error('getaddrinfo ENOTFOUND')))
+      const q = make(post)
+      const first = await q.submit(run())
+      await runFor(q, MAX_AGE_MS + HOUR, 30 * 60_000)
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 1 })
+
+      online = true
+      const calls = post.mock.calls.length
+      expect(await q.retryUnsaved()).toBe(1)
+      expect(post.mock.calls.length - calls).toBe(1)
+      expect((post.mock.calls.at(-1)![0] as { metadata: { client_run_id: string } }).metadata.client_run_id).toBe(first.clientRunId)
+      expect(q.outcomeFor(first.key)?.state).toBe('saved')
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 0 })
+      expect(readUnsaved()).toEqual([])
+      expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([])
+    })
+
+    it('Retry while still offline gives the run another 7 days of background tries, from the press', async () => {
+      let online = false
+      const post = vi.fn(() => online ? Promise.resolve({}) : Promise.reject(new Error('offline')))
+      const q = make(post)
+      await q.submit(run())
+      await runFor(q, MAX_AGE_MS + HOUR, 30 * 60_000)
+      expect(await q.retryUnsaved()).toBe(1)
+      expect(q.uploadStatus()).toEqual({ waiting: 1, unsaved: 0 })
+      await runFor(q, 3 * 24 * HOUR, 30 * 60_000)
+      expect(q.uploadStatus()).toEqual({ waiting: 1, unsaved: 0 })
+      online = true
+      await runFor(q, HOUR)
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 0 })
+    })
+
+    it('Retry resends only the signed-in account’s runs; one refused again keeps the API’s new reason', async () => {
+      const post = vi.fn().mockRejectedValue(httpError(422, 'The selected scenario is invalid.'))
+      const q = make(post)
+      await q.submit(run({ completed_at: '2026-11-15T10:00:00Z' }))
+      user = 2
+      const theirs = await q.submit(run({ completed_at: '2026-11-15T10:05:00Z' }))
+      post.mockClear()
+      post.mockRejectedValue(httpError(422, 'The heatmap field must not have more than 5000 items.'))
+      now += HOUR
+      expect(await q.retryUnsaved()).toBe(1)
+      expect(post).toHaveBeenCalledTimes(1)
+      expect((post.mock.calls[0][0] as { metadata: { client_run_id: string } }).metadata.client_run_id).toBe(theirs.clientRunId)
+      expect(q.unsavedRuns()).toEqual([expect.objectContaining({ clientRunId: theirs.clientRunId, message: 'The heatmap field must not have more than 5000 items.', failedAt: now })])
+      user = 1
+      expect(q.unsavedRuns()).toEqual([expect.objectContaining({ message: 'The selected scenario is invalid.' })])
+      user = null
+      expect(await q.retryUnsaved()).toBe(0)
+    })
+
+    it('Retry writes the queue file before it takes a run out of the unsaved file: never in neither', async () => {
+      const snapshots: Array<{ pending: boolean; unsaved: boolean }> = []
+      const has = (f: string, id: string) => fs.existsSync(f) && (JSON.parse(fs.readFileSync(f, 'utf8')) as Array<{ clientRunId: string }>).some(r => r.clientRunId === id)
+      let id = ''
+      const q = make(vi.fn().mockRejectedValue(httpError(422)), { onChange: () => { if (id) snapshots.push({ pending: has(file, id), unsaved: has(unsavedFile(), id) }) } })
+      id = (await q.submit(run())).clientRunId
+      snapshots.length = 0
+      expect(await q.retryUnsaved()).toBe(1)
+      expect(snapshots.length).toBeGreaterThanOrEqual(4)
+      expect(snapshots.every(s => s.pending || s.unsaved)).toBe(true)
+      expect(snapshots.at(-1)).toEqual({ pending: false, unsaved: true })
+    })
+
+    it('a run a crash left in both files counts once, and leaves the unsaved file when it lands', async () => {
+      const entry = { clientRunId: 'both', ownerUserId: 1, key: 'flick|x', payload: run(), attempts: 0, nextAt: now, createdAt: now - HOUR }
+      fs.writeFileSync(file, JSON.stringify([entry]))
+      fs.writeFileSync(unsavedFile(), JSON.stringify([{ ...entry, failedAt: now - 1000, reason: 'rejected', status: 422, message: 'x' }]))
+      const q = make(vi.fn().mockResolvedValue({ drill: null }))
+      expect(q.uploadStatus()).toEqual({ waiting: 1, unsaved: 0 })
+      await q.flush()
+      expect(readUnsaved()).toEqual([])
+      expect(q.uploadStatus()).toEqual({ waiting: 0, unsaved: 0 })
+    })
+  })
+
+  it('passes on why the API saved a run without counting it (unranked_reason), and nothing from older APIs', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ session: { id: 1, unranked_reason: 'no_hits' }, drill: null })
+      .mockResolvedValueOnce({ session: { id: 2, unranked_reason: null }, drill: null })
+      .mockResolvedValueOnce({ drill: null })
+    const q = make(post)
+    expect(await q.submit(run({ completed_at: '2026-11-15T10:00:00Z' }))).toMatchObject({ state: 'saved', unrankedReason: 'no_hits' })
+    expect(await q.submit(run({ completed_at: '2026-11-15T10:05:00Z' }))).not.toHaveProperty('unrankedReason')
+    expect(await q.submit(run({ completed_at: '2026-11-15T10:10:00Z' }))).not.toHaveProperty('unrankedReason')
   })
 
   describe('first upload attempt', () => {

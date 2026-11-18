@@ -32,6 +32,22 @@ export interface TrainerSyncOutcome {
   drill: TrainerDrillState | null
   /** false = still pending but the local copy could not be written (no automatic retry after a restart). */
   stored?: boolean
+  /** Saved, but the API's checks did not count it (`unranked_reason`: no_hits, reaction_floor, overlaps_run). Absent on older APIs. */
+  unrankedReason?: string | null
+}
+
+/** A run of the signed-in account that is in the unsaved file (main process → `trainer:get-unsaved-runs`). */
+export interface TrainerUnsavedRun {
+  clientRunId: string
+  scenario: string
+  /** When the run finished (the trainer's own stamp), or null if the run had none. */
+  completedAt: string | null
+  /** rejected = the API refused it (4xx); expired = not uploaded within its week of background tries. */
+  reason: 'rejected' | 'expired'
+  status: number | null
+  /** The API's message for a refused run. */
+  message: string
+  failedAt: number
 }
 
 export interface TrainerSyncLine {
@@ -43,7 +59,7 @@ export interface TrainerSyncLine {
 export interface TrainerUploadStatus {
   /** Kept on this computer and retried until they upload. */
   waiting: number
-  /** Refused by the API, or not uploaded within a week, in the last week. A copy stays on this computer. */
+  /** Refused by the API, or not uploaded within a week. A copy stays on this computer until Retry sends it. */
   unsaved: number
 }
 
@@ -52,6 +68,34 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 export function asTrainerUploadStatus(raw: unknown): TrainerUploadStatus | null {
   const s = raw as Partial<TrainerUploadStatus> | null
   return s && typeof s.waiting === 'number' && typeof s.unsaved === 'number' ? { waiting: s.waiting, unsaved: s.unsaved } : null
+}
+
+export function asTrainerUnsavedRuns(raw: unknown): TrainerUnsavedRun[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((r): r is TrainerUnsavedRun => !!r && typeof r === 'object'
+    && typeof r.clientRunId === 'string' && typeof r.scenario === 'string' && typeof r.message === 'string'
+    && (r.reason === 'rejected' || r.reason === 'expired'))
+}
+
+/** Why a run did not reach UpForge, in plain words; a refused run shows the API's own message. */
+export function unsavedRunReasonText(run: Pick<TrainerUnsavedRun, 'reason' | 'message'>): string {
+  if (run.reason === 'expired') return 'Not uploaded within 7 days, so automatic retries stopped.'
+  const why = run.message.trim()
+  // apiPost's fallback ("Request failed (422)") names no reason.
+  if (!why || /^Request failed \(\d+\)$/.test(why)) return 'UpForge did not accept it.'
+  return `UpForge did not accept it: ${/[.!?]$/.test(why) ? why : `${why}.`}`
+}
+
+/** The API's `unranked_reason` codes (TrainerRunCheck) in plain words. */
+const UNRANKED_REASONS: Record<string, string> = {
+  no_hits: 'no target was hit',
+  reaction_floor: 'the average reaction time is faster than a person can react',
+  overlaps_run: 'it overlaps the time of another run you saved',
+}
+
+function unrankedReasonText(code: string | null | undefined): string | null {
+  if (!code) return null
+  return UNRANKED_REASONS[code] ?? 'it did not pass UpForge’s result checks'
 }
 
 /**
@@ -66,9 +110,9 @@ export function trainerUploadStatusLine(status: TrainerUploadStatus | null, show
   const waiting = Math.max(0, status.waiting - (other && (!shown || shown.state === 'pending') ? 1 : 0))
   const unsaved = Math.max(0, status.unsaved - (shown?.state === 'failed' ? 1 : 0))
   const runs = (n: number) => `${n} ${other ? 'other ' : ''}${n === 1 ? 'run' : 'runs'}`
-  if (waiting && unsaved) return { text: `${runs(waiting)} waiting to upload. ${runs(unsaved)} from this week could not be saved.`, tone: 'loss' }
+  if (waiting && unsaved) return { text: `${runs(waiting)} waiting to upload. ${runs(unsaved)} could not be saved.`, tone: 'loss' }
   if (waiting) return { text: `${runs(waiting)} waiting to upload. UpForge retries automatically.`, tone: 'muted' }
-  if (unsaved) return { text: `${runs(unsaved)} from this week could not be saved.`, tone: 'loss' }
+  if (unsaved) return { text: `${runs(unsaved)} could not be saved.`, tone: 'loss' }
   return null
 }
 
@@ -95,6 +139,16 @@ export function trainerSyncLine(outcome: TrainerSyncOutcome | null, hasAssignedD
   }
   if (outcome.state === 'failed') {
     return { text: hasAssignedDrill ? 'This run could not be saved, so it did not count towards your drill.' : 'This run could not be saved.', tone: 'loss' }
+  }
+  // The API's checks did not count this run (it never credits a drill then); older APIs send no reason.
+  const unranked = unrankedReasonText(outcome.unrankedReason)
+  if (unranked) {
+    return {
+      text: hasAssignedDrill
+        ? `Saved to your training history, but it did not count towards your drill or the leaderboards: ${unranked}.`
+        : `Saved to your training history, but it did not count on the leaderboards: ${unranked}.`,
+      tone: 'muted',
+    }
   }
   const d = outcome.drill
   if (!d) {

@@ -1786,8 +1786,12 @@ declare global {
         getLastLaunch: () => Promise<TrainerLaunchInfo | null>
         /** Upload state of a finished run (saved / pending retry / failed) and its effect on the assigned drill. */
         getSyncStatus: (scenario: string, completedAt: string) => Promise<import('./lib/trainer-sync').TrainerSyncOutcome | null>
-        /** Signed-in account's runs waiting to upload and those not saved this week (changes: `trainer:upload-status`). */
+        /** Signed-in account's runs waiting to upload and those not saved (changes: `trainer:upload-status`). */
         getUploadStatus: () => Promise<import('./lib/trainer-sync').TrainerUploadStatus>
+        /** Signed-in account's runs that could not be saved (refused, or not uploaded within 7 days), with the reason. */
+        getUnsavedRuns: () => Promise<import('./lib/trainer-sync').TrainerUnsavedRun[]>
+        /** Sends those runs again, now or once online. Resolves with how many went back to the upload queue. */
+        retryUnsaved: () => Promise<number>
         /** Focus metric → allowed trainer drills (API rulebook); null when signed out or offline. */
         getDrillRulebook: (game?: string) => Promise<import('./lib/drill-rulebook').DrillRulebook | null>
         getHistory: (comparison?: import('./lib/training-result-metrics').TrainingComparisonRequest) => Promise<TrainingHistory | null>

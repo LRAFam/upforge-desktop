@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { asTrainerUploadStatus, trainerRunSavedLabel, trainerSyncLine, trainerUploadStatusLine, type TrainerDrillState, type TrainerSyncOutcome } from './trainer-sync'
+import { asTrainerUnsavedRuns, asTrainerUploadStatus, trainerRunSavedLabel, trainerSyncLine, trainerUploadStatusLine, unsavedRunReasonText, type TrainerDrillState, type TrainerSyncOutcome } from './trainer-sync'
 
 const drill = (over: Partial<TrainerDrillState> = {}): TrainerDrillState => ({ id: 1, title: 'Head Height', status: 'active', completed: false, attempt_count: 1, attempts_allowed: 3, pass_score: 70, next: null, ...over })
 const saved = (d: TrainerDrillState | null) => ({ key: 'k', clientRunId: 'c', state: 'saved' as const, drill: d })
@@ -40,6 +40,48 @@ describe('trainerSyncLine', () => {
   })
 })
 
+describe('a saved run the API did not count (unranked_reason)', () => {
+  const unranked = (code: string): TrainerSyncOutcome => ({ ...saved(null), unrankedReason: code })
+
+  it('says why in plain words', () => {
+    expect(trainerSyncLine(unranked('no_hits'), true))
+      .toEqual({ text: 'Saved to your training history, but it did not count towards your drill or the leaderboards: no target was hit.', tone: 'muted' })
+    expect(trainerSyncLine(unranked('no_hits'), false).text).toBe('Saved to your training history, but it did not count on the leaderboards: no target was hit.')
+    expect(trainerSyncLine(unranked('reaction_floor'), false).text).toMatch(/: the average reaction time is faster than a person can react\.$/)
+    expect(trainerSyncLine(unranked('overlaps_run'), false).text).toMatch(/: it overlaps the time of another run you saved\.$/)
+  })
+
+  it('a reason this build does not know still says the run did not count, without the code', () => {
+    const line = trainerSyncLine(unranked('some_new_check'), true).text
+    expect(line).toBe('Saved to your training history, but it did not count towards your drill or the leaderboards: it did not pass UpForge’s result checks.')
+    expect(line).not.toContain('some_new_check')
+  })
+
+  it('adds nothing when the API sends no reason (older API)', () => {
+    expect(trainerSyncLine(saved(null), true).text).toBe('Saved to your training history. It did not count towards a drill.')
+    expect(trainerSyncLine({ ...saved(null), unrankedReason: null }, false).text).toBe('Saved to your training history.')
+  })
+})
+
+describe('runs that could not be saved', () => {
+  it('names the reason in plain words, with the API’s own message for a refused run', () => {
+    expect(unsavedRunReasonText({ reason: 'expired', message: 'Not uploaded within 7 days' })).toBe('Not uploaded within 7 days, so automatic retries stopped.')
+    expect(unsavedRunReasonText({ reason: 'rejected', message: 'The selected scenario is invalid.' })).toBe('UpForge did not accept it: The selected scenario is invalid.')
+    expect(unsavedRunReasonText({ reason: 'rejected', message: 'The score field must not be greater than 100' })).toBe('UpForge did not accept it: The score field must not be greater than 100.')
+    // apiPost's fallback text is not a reason.
+    expect(unsavedRunReasonText({ reason: 'rejected', message: 'Request failed (422)' })).toBe('UpForge did not accept it.')
+    expect(unsavedRunReasonText({ reason: 'rejected', message: ' ' })).toBe('UpForge did not accept it.')
+  })
+
+  it('reads the list the main process sends, and nothing else', () => {
+    const ok = { clientRunId: 'c', scenario: 'flick', completedAt: '2026-11-15T10:00:00Z', reason: 'rejected', status: 422, message: 'x', failedAt: 1 }
+    expect(asTrainerUnsavedRuns([ok, { ...ok, completedAt: null, reason: 'expired', status: null }, { clientRunId: 1 }, null, { ...ok, reason: 'lost' }]))
+      .toEqual([ok, { ...ok, completedAt: null, reason: 'expired', status: null }])
+    expect(asTrainerUnsavedRuns(null)).toEqual([])
+    expect(asTrainerUnsavedRuns({ runs: [ok] })).toEqual([])
+  })
+})
+
 describe('runs waiting to upload', () => {
   const outcome = (state: TrainerSyncOutcome['state']): TrainerSyncOutcome => ({ key: 'k', clientRunId: 'c', state, drill: null })
 
@@ -50,9 +92,9 @@ describe('runs waiting to upload', () => {
     expect(trainerUploadStatusLine(null)).toBeNull()
   })
 
-  it('says when runs this week could not be saved', () => {
-    expect(trainerUploadStatusLine({ waiting: 0, unsaved: 1 })).toEqual({ text: '1 run from this week could not be saved.', tone: 'loss' })
-    expect(trainerUploadStatusLine({ waiting: 2, unsaved: 1 })).toEqual({ text: '2 runs waiting to upload. 1 run from this week could not be saved.', tone: 'loss' })
+  it('says when runs could not be saved (kept until they are resent, not only for a week)', () => {
+    expect(trainerUploadStatusLine({ waiting: 0, unsaved: 1 })).toEqual({ text: '1 run could not be saved.', tone: 'loss' })
+    expect(trainerUploadStatusLine({ waiting: 2, unsaved: 1 })).toEqual({ text: '2 runs waiting to upload. 1 run could not be saved.', tone: 'loss' })
   })
 
   it('on a result screen, counts only the other runs', () => {

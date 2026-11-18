@@ -10,7 +10,7 @@ import { useRouter } from 'vue-router'
 import { useTrainerResultStore } from '../stores/trainerResult'
 import type { CoachingDrill, TrainingHistory } from '../env'
 import { drillLoop } from '../lib/drill-loop'
-import { trainerSyncLine, trainerUploadStatusLine, type TrainerSyncOutcome } from '../lib/trainer-sync'
+import { trainerSyncLine, trainerUploadStatusLine, unsavedRunReasonText, type TrainerSyncOutcome, type TrainerUnsavedRun } from '../lib/trainer-sync'
 import { runTrendMessage, topRuns, trainerRunSummary, type RunHistoryState } from '../lib/trainer-run-summary'
 import { useTrainerUploadStatus } from '../composables/useTrainerUploadStatus'
 import { uiV3 } from '../lib/ui-v3'
@@ -63,9 +63,15 @@ async function loadSyncStatus() {
   const outcome = await window.api.trainer.getSyncStatus?.(r.scenario, r.completed_at).catch(() => null)
   if (store.result === r && outcome) syncOutcome.value = outcome
 }
-// Other runs of this account still waiting to upload (or not saved this week).
-const { status: uploadStatus } = useTrainerUploadStatus()
+// Other runs of this account still waiting to upload (or not saved).
+const { status: uploadStatus, unsavedRuns, retrying, retry: retryUnsaved } = useTrainerUploadStatus()
 const otherRunsLine = computed(() => trainerUploadStatusLine(uploadStatus.value, syncOutcome.value))
+// Runs not saved (this one included): each with the reason, and one Retry that sends them all again.
+const showUnsaved = ref(false)
+function unsavedRunTitle(run: TrainerUnsavedRun): string {
+  const label = SCENARIO_META[run.scenario]?.label ?? run.scenario
+  return run.completedAt ? `${label} · ${formatDate(run.completedAt)}` : label
+}
 
 // Assigned drill only: why it was assigned, its state and what the next matches check (API fields only).
 const assignedDrill = ref<CoachingDrill | null>(null)
@@ -354,6 +360,13 @@ onMounted(async () => {
           </span>
           <span class="uf-t4" role="status" :style="{ color: syncLine.tone === 'win' ? 'var(--uf-win)' : syncLine.tone === 'loss' ? 'var(--uf-loss)' : undefined }">{{ syncLine.text }}</span>
           <span v-if="otherRunsLine" class="uf-t4" role="status" :style="otherRunsLine.tone === 'loss' ? 'color: var(--uf-loss)' : undefined">{{ otherRunsLine.text }}</span>
+          <span v-if="unsavedRuns.length" class="uf-tr-unsaved-actions">
+            <button type="button" class="uf-link" :aria-expanded="showUnsaved" aria-controls="uf-tr-unsaved" @click="showUnsaved = !showUnsaved">{{ showUnsaved ? 'Hide runs not saved' : 'Show runs not saved' }}</button>
+            <button type="button" class="uf-link" :disabled="retrying" @click="retryUnsaved">{{ retrying ? 'Retrying…' : 'Retry' }}</button>
+          </span>
+          <ul v-if="showUnsaved && unsavedRuns.length" id="uf-tr-unsaved" class="uf-tr-unsaved" tabindex="0" aria-label="Runs not saved">
+            <li v-for="run in unsavedRuns" :key="run.clientRunId" class="uf-t4">{{ unsavedRunTitle(run) }}: {{ unsavedRunReasonText(run) }}</li>
+          </ul>
         </div>
         <div class="uf-tr-coach uf-rise uf-d1s">
           <span class="uf-label">This run</span>
@@ -824,6 +837,8 @@ onMounted(async () => {
 .uf-tr-kicker { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .uf-tr-icon { width: 36px; height: 36px; flex: none; }
 .uf-tr-score-meta { display: flex; gap: 16px; flex-wrap: wrap; }
+.uf-tr-unsaved-actions { display: flex; gap: 20px; }
+.uf-tr-unsaved { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; max-width: 440px; max-height: 200px; overflow-y: auto; }
 .uf-tr-coach { display: flex; flex-direction: column; gap: 12px; max-width: 760px; padding-bottom: 6px; }
 .uf-tr-actions { display: flex; align-items: center; gap: 24px; margin-top: 8px; }
 .uf-tr-stats { display: flex; margin: 0; border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); }

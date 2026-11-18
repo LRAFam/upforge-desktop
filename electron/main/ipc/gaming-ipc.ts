@@ -130,6 +130,14 @@ export function setupGamingHandlers(
 
   ipcMain.handle('trainer:get-upload-status', () => trainerQueue.uploadStatus())
 
+  // Signed-in account's runs in the unsaved file (reason included), and the result screen's Retry for them.
+  ipcMain.handle('trainer:get-unsaved-runs', () => trainerQueue.unsavedRuns())
+  ipcMain.handle('trainer:retry-unsaved', (event) => {
+    // Resends runs: only the app's own windows may ask.
+    if (!event.senderFrame || !isTrustedRendererUrl(event.senderFrame.url)) return 0
+    return trainerQueue.retryUnsaved()
+  })
+
   // A drill that ends without a result must clear the overlay's "in progress" card.
   trainerBridge?.setEndedCallback((ended) => {
     if (ended.reason !== 'completed') sendOverlayData('overlay:trainer-ended', ended)
