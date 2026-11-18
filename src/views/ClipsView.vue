@@ -908,6 +908,7 @@
         <button class="text-white underline" @click="downloadCloudClip">Download clip</button>
       </div>
       <p v-if="cloudOnly && ['queued', 'processing'].includes(playingClip.analysisStatus)" role="status" class="px-4 py-2 text-sm text-orange-300">AI coaching {{ playingClip.analysisStatus === 'queued' ? 'queued' : 'in progress' }}. Results will appear here.</p>
+      <p v-else-if="playingClip.analysisStatus === 'failed'" role="status" class="px-4 py-2 text-sm text-gray-300" data-test="clip-review-failed">{{ CLIP_REVIEW_FAILED_MESSAGE }}</p>
       <video
         ref="videoEl"
         class="flex-1 w-full object-contain"
@@ -1151,6 +1152,7 @@
             <button type="button" class="uf-link" @click="videoEl?.requestFullscreen()">Fullscreen</button>
           </div>
           <p v-if="cloudOnly && ['queued', 'processing'].includes(playingClip.analysisStatus)" role="status" class="uf-t4 uf-cl-status"><span class="uf-cl-dot uf-live" />AI coaching {{ playingClip.analysisStatus === 'queued' ? 'queued' : 'in progress' }}. Results will appear here.</p>
+          <p v-else-if="playingClip.analysisStatus === 'failed'" role="status" class="uf-t4 uf-cl-status" data-test="clip-review-failed">{{ CLIP_REVIEW_FAILED_MESSAGE }}</p>
           <div class="uf-cl-stage" :style="cursorHidden ? { cursor: 'none' } : undefined" @mousemove="onPlayerMouseMove">
             <video
               ref="videoEl"
@@ -1295,6 +1297,7 @@ import { readCache, writeCache } from '../lib/stale-cache'
 import UfSkeleton from '../components/v3/UfSkeleton.vue'
 import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { formatAnalysisFailureMessage } from '../lib/analysis-failure-messages'
+import { CLIP_REVIEW_FAILED_MESSAGE, clipReviewPrecheck } from '../lib/clip-review-errors'
 import { smartClipTitle } from '../lib/ideas/smart-clip-title'
 import {
   buildClipMatchGroups,
@@ -1378,6 +1381,7 @@ function scheduleCloudPoll(clip: ClipRecord) {
       if (!result.ok) { cloudReviewError.value = result.error; return }
       const { path: _path, ...patch } = result.data.clip
       syncClipInState(clip.id, patch)
+      if (patch.analysisStatus === 'failed') cloudReviewError.value = CLIP_REVIEW_FAILED_MESSAGE
       scheduleCloudPoll(result.data.clip)
     } catch { if (generation === cloudGeneration) cloudReviewError.value = 'Coaching status could not be refreshed. Reopen the clip to retry.' }
   }, 4000)
@@ -1937,6 +1941,8 @@ async function analyseClip(clip: ClipRecord): Promise<boolean> {
       if (clip.id.startsWith('cloud:')) scheduleCloudPoll(result.data.clip)
       return false
     }
+    const refusal = clipReviewPrecheck(clip, result.data.quota)
+    if (refusal) { showToastMsg(refusal, 'error'); return false }
     if (result.data.quota.remaining === 0) {
       upgradeModal.value = { show: true, message: 'No AI clip reviews remain in your current allowance. Review your plan before starting another.' }
       return false
@@ -1974,6 +1980,11 @@ async function submitClipAnalysis(clip: ClipRecord): Promise<boolean> {
     const analysisResult = await window.api.clips.requestAnalysis(clip.id)
     if (analysisResult.needsUpgrade) {
       upgradeModal.value = { show: true, message: analysisResult.message ?? 'Upgrade to get AI coaching on clips.' }
+      return false
+    }
+    if (!analysisResult.ok && analysisResult.refused) {
+      syncClipInState(clip.id, { analysisStatus: 'none' })
+      showToastMsg(analysisResult.error ?? CLIP_REVIEW_FAILED_MESSAGE, 'error')
       return false
     }
     if (!analysisResult.ok) {

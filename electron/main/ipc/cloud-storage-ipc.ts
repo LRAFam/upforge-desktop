@@ -1,4 +1,5 @@
 import { cloudClipReview } from '../../../src/lib/cloud-clip-review'
+import { clipReviewRefusalMessage } from '../../../src/lib/clip-review-errors'
 import { shell, type IpcMain } from 'electron'
 import { validStorageRequest, validStorageSnapshot, type StorageAddonRequest } from '../../../src/lib/storage-addon'
 import type { AuthManager } from '../auth-manager'
@@ -70,8 +71,10 @@ export function setupCloudStorageHandlers(ipc: IpcMain, auth: AuthManager, remov
       if (auth.getToken() !== token || auth.getUser()?.id !== owner) return { ok: false, error: 'Your account changed. Reopen the clip.' }
       return { ok: true, data: cloudClipReview(response.data) }
     } catch (error) {
-      const response = (error as { response?: { status?: number; data?: { message?: string } } }).response
+      const response = (error as { response?: { status?: number; data?: { message?: string; error?: string; max_duration_seconds?: number } } }).response
       console.warn('[CloudClipReview]', response ? `HTTP ${response.status}` : error instanceof Error ? error.message : 'Unknown failure')
+      const refusal = response?.status === 422 ? clipReviewRefusalMessage(response.data?.error, response.data?.max_duration_seconds) : null
+      if (refusal) return { ok: false, needsUpgrade: false, refused: true, error: refusal }
       return { ok: false, needsUpgrade: response?.status === 402, error: response?.status === 402 ? response.data?.message || 'Your clip coaching allowance is exhausted.' : response?.status === 410 ? 'This cloud clip is no longer available.' : 'Clip review could not be loaded. Please retry.' }
     }
   })

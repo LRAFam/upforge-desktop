@@ -26,6 +26,7 @@ import { buildCoachingSubmissionExtras } from '../match-coaching-context'
 import { exportMatchRecap } from '../recap-export'
 import { hasProAccess } from '../subscription'
 import { getApiBaseUrl } from '../api-base'
+import { clipReviewRequestFailure } from '../../../src/lib/clip-review-errors'
 
 export function setupClipHandlers(
   ipcMain: IpcMain,
@@ -275,6 +276,12 @@ export function setupClipHandlers(
       if (err instanceof UpgradeRequiredError) {
         clipStore.update(id, { analysisStatus: 'none' })
         return { ok: false, needsUpgrade: true, message: err.message, upgradeUrl: err.upgradeUrl }
+      }
+      const refusal = clipReviewRequestFailure(err)
+      if (refusal) {
+        // Declined before anything was spent: the clip is simply not reviewed.
+        clipStore.update(id, { analysisStatus: 'none' })
+        return { ok: false, refused: true, error: refusal.error }
       }
       const msg = err instanceof Error ? err.message : String(err)
       clipStore.update(id, { analysisStatus: 'failed' })
