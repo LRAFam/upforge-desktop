@@ -292,7 +292,7 @@ import {
   formatFreeDiskLabel,
   getFreeDiskSpace,
 } from './disk-space'
-import { isLocalOnlyRecording, runRecordingStorageMaintenance } from './storage-cleanup'
+import { cleanupLegacyRecordingDuplicates, isLocalOnlyRecording, runRecordingStorageMaintenance } from './storage-cleanup'
 import { isOwnedRecordingFile } from './owned-recording-files'
 import { expiryNotificationBody, localExpiryDeleteAt } from './recording-expiry'
 import { untrackedNotificationBody } from './untracked-recording-grace'
@@ -2009,6 +2009,14 @@ function runStorageMaintenanceIfReady(notify = false): void {
       mainWindow?.webContents.send('dashboard:refresh')
     }
   }
+  const savePath = recordingSavePath()
+  void cleanupLegacyRecordingDuplicates(savePath)
+    .then((legacy) => {
+      if (legacy.removed > 0) {
+        log.info(`[App] Removed ${legacy.removed} verified legacy duplicate recording(s)`)
+      }
+    })
+    .catch(err => log.warn('[App] Legacy duplicate cleanup failed:', err))
 }
 
 function enforceRecordingPresetAccess(): void {

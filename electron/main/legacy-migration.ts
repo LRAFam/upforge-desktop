@@ -3,20 +3,24 @@ import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
 import { getFreeDiskSpace } from './disk-space'
+import { filesHaveIdenticalBytes } from './file-identity'
 import { legacyGlobalRecordingsDir, userDataRoot, userRecordingsDir } from './user-data-paths'
 
-/** Move when possible; copy+unlink only if cross-volume (EXDEV). */
-function migrateFile(src: string, dest: string): 'moved' | 'skipped' | 'failed' {
+/**
+ * Move when possible; on a cross-volume move (EXDEV) copy to a `.partial` sibling, promote it
+ * once the copy is byte-identical, and only then remove the source. A pre-existing destination
+ * counts as migrated only when its bytes match the source — otherwise both files are kept.
+ */
+export async function migrateFile(src: string, dest: string): Promise<'moved' | 'skipped' | 'failed'> {
   if (!fs.existsSync(src)) return 'skipped'
 
   try {
     if (fs.existsSync(dest)) {
-      const srcSize = fs.statSync(src).size
-      const destSize = fs.statSync(dest).size
-      if (srcSize === destSize) {
-        fs.unlinkSync(src)
+      if (await filesHaveIdenticalBytes(src, dest)) {
+        await fs.promises.unlink(src)
         return 'moved'
       }
+      log.warn(`[UserSession] Keeping ${src} — ${dest} already exists with different contents`)
       return 'skipped'
     }
 
@@ -27,8 +31,18 @@ function migrateFile(src: string, dest: string): 'moved' | 'skipped' | 'failed' 
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code
       if (code !== 'EXDEV') throw err
-      fs.copyFileSync(src, dest)
-      fs.unlinkSync(src)
+      const partial = `${dest}.partial`
+      try {
+        await fs.promises.copyFile(src, partial)
+        if (!(await filesHaveIdenticalBytes(src, partial))) {
+          throw new Error('copied file does not match source')
+        }
+        await fs.promises.rename(partial, dest)
+      } catch (copyErr) {
+        await fs.promises.unlink(partial).catch(() => {})
+        throw copyErr
+      }
+      await fs.promises.unlink(src)
       return 'moved'
     }
   } catch (err) {
@@ -124,7 +138,7 @@ export function scheduleLegacyUserDataMigration(
       const src = path.join(legacyRecordingsDir, name)
       const dest = path.join(targetRecordingsDir, name)
       if (!fs.statSync(src).isFile()) continue
-      const result = migrateFile(src, dest)
+      const result = await migrateFile(src, dest)
       if (result === 'moved') moved++
       else if (result === 'failed') failed++
     }
