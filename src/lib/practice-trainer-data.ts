@@ -15,6 +15,19 @@ export interface PracticeDataReply {
   benchmark: Fetched<TrainingBenchmark | null>
 }
 
+/**
+ * `?tz=` for GET /api/training/sessions so the day streak in `activity` uses the player's local days.
+ * Empty when the runtime cannot say (the API then counts UTC days).
+ */
+export function historyTimeZoneParams(): { tz?: string } {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    return typeof tz === 'string' && tz.length > 0 ? { tz } : {}
+  } catch {
+    return {}
+  }
+}
+
 /** Same order as Practice's cache entry. */
 export type TrainerData = [TrainingHistory | null, SharedTrainingPlan | null, CoachingDrill[], string[], TrainingBenchmark | null]
 

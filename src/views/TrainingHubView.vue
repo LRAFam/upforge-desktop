@@ -51,6 +51,7 @@ import { useTrainerResultStore } from '../stores/trainerResult'
 import { scenariosPlayedToday, usePracticeSessionStore } from '../stores/practiceSession'
 import { mergePracticeData, practiceRefreshNotice, shouldCachePracticeData, type PracticeDataReply, type TrainerData } from '../lib/practice-trainer-data'
 import { storeToRefs } from 'pinia'
+import { practiceActivity } from '../lib/trainer-achievements'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SessionResult {
@@ -1261,26 +1262,17 @@ const trainingStats = computed(() => {
     : null
   const improvement = thisWeekAvg !== null && prevWeekAvg !== null ? thisWeekAvg - prevWeekAvg : null
 
-  // Streak: consecutive days back from today with at least one session
-  const dayKeys = new Set(sessions.map(s => s.completed_at.slice(0, 10)))
-  let streak = 0
-  for (let i = 0; i < 60; i++) {
-    const key = new Date(now.getTime() - i * msPerDay).toISOString().slice(0, 10)
-    if (dayKeys.has(key)) {
-      streak++
-    } else if (i > 0) {
-      break
-    }
-  }
+  // Day streak, week count and total from every run (API `activity`), else from this page of runs.
+  const activity = practiceActivity(apiHistory.value, now)
 
   return {
-    thisWeekCount: sessions.filter(s => new Date(s.completed_at) >= weekAgo).length,
+    thisWeekCount: activity.weekCount,
     comparisonLabel: comparisonRun ? `${SCENARIO_META[comparisonRun.scenario as ScenarioKey]?.label ?? comparisonRun.scenario} · ${comparisonRun.metadata?.difficulty} · ${comparisonRun.duration_seconds}s` : 'No matching runs',
     thisWeekBest: thisWeek.length ? Math.max(...thisWeek.map(s => s.score)) : null,
     thisWeekSessions: thisWeek,
     improvement,
-    streak,
-    totalSessions: apiHistory.value?.total ?? 0,
+    streak: activity.streak,
+    totalSessions: activity.total,
     thisWeekAvg,
   }
 })
