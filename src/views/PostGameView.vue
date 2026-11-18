@@ -98,7 +98,6 @@ const COACHING_TIPS = [
   'The #1 mistake at every rank: pushing aggressively without information.',
   'Positioning decisions happen before the fight starts — map awareness wins rounds.',
   'Pro players spend more time watching replays than playing ranked.',
-  'A consistent warm-up routine can reduce your reaction time by 15–20ms.',
 ]
 
 const state = ref<State>('preparing')

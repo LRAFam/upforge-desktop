@@ -113,3 +113,19 @@ export function leaderboardYouRow(
   if (entries.length >= limit) return { score, note: `Outside the top ${limit}. Ranks past ${limit} aren’t shown.` }
   return { score, note: 'Not on the board yet. It refreshes every 10 minutes and hides players who opted out.' }
 }
+
+/**
+ * Empty state under the Analytics skill shape. The shape only covers the radar drills, so a player
+ * whose runs are all on other drills (e.g. the coach's Head Height) is pointed at "By drill" instead
+ * of being told there are no scores.
+ */
+export function skillShapeEmptyCopy(
+  byScenario: Record<string, { best_score: number | null }> | null | undefined,
+  radarKeys: readonly string[],
+): { title: string; text: string } {
+  const otherDrillBests = Object.entries(byScenario ?? {})
+    .some(([key, s]) => !radarKeys.includes(key) && (s?.best_score ?? 0) > 0)
+  return otherDrillBests
+    ? { title: 'Your runs are on other drills', text: 'This shape covers the core drills only. Your numbers are under By drill below.' }
+    : { title: 'No scores yet', text: 'Finish a drill and your shape starts here.' }
+}

@@ -79,8 +79,8 @@
                 <span class="text-[10px] text-gray-400 font-medium">
                   {{ trainerResult.accuracy_pct.toFixed(1) }}% acc
                 </span>
-                <span class="text-[10px] text-gray-500">
-                  {{ trainerResult.avg_reaction_ms.toFixed(0) }}ms react
+                <span v-if="measuredReactionMs(trainerResult) !== null" class="text-[10px] text-gray-500">
+                  {{ measuredReactionMs(trainerResult)!.toFixed(0) }}ms react
                 </span>
                 <span class="text-[10px] text-gray-600">
                   {{ isTrackingScenario(trainerResult.scenario) ? `${resultHitsCell({ ...trainerResult, duration_seconds: trainerResult.duration_seconds ?? 0 }).value} on target` : `${trainerResult.targets_hit}H / ${trainerResult.targets_missed}M` }}
@@ -340,7 +340,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { isTrackingScenario, resultHitsCell } from '../lib/training-result-metrics'
+import { isTrackingScenario, measuredReactionMs, resultHitsCell } from '../lib/training-result-metrics'
 
 const TOAST_DURATION = 3000
 const CHEATSHEET_DURATION = 7000

@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { measuredReactionMs } from '../lib/training-result-metrics'
 
 export interface AchievementDef {
   id: string
@@ -58,7 +59,8 @@ export function useAchievements() {
     streak?: number
     lastScore?: number
     lastAccuracy?: number
-    lastReactionMs?: number
+    /** The finished run; Reaction King only counts a measured reaction (not tracking, 0 hits or 0 ms). */
+    lastRun?: { scenario: string; avg_reaction_ms: number; targets_hit?: number }
     hasAnalysis?: boolean
   }): Promise<string[]> {
     const newlyUnlocked: string[] = []
@@ -86,7 +88,8 @@ export function useAchievements() {
     if (ctx.lastAccuracy !== undefined && ctx.lastAccuracy >= 90) {
       await tryUnlock('accuracy-90')
     }
-    if (ctx.lastReactionMs !== undefined && ctx.lastReactionMs < 200) {
+    const reactionMs = ctx.lastRun ? measuredReactionMs(ctx.lastRun) : null
+    if (reactionMs !== null && reactionMs < 200) {
       await tryUnlock('reaction-200')
     }
     if (ctx.hasAnalysis) {

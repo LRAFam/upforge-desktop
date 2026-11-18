@@ -40,14 +40,21 @@ export interface SessionHistoryRow {
 export interface SessionSummary {
   steps: SessionStep[]
   results: SessionHistoryRow[]
-  avgScore: number
   focusScore: number | null
   focusScenario: TrainerScenarioKey | null
-  warmupAvg: number | null
   cooldownScore: number | null
   aimBias: string | null
   totalDurationSeconds: number
-  improvementVsWarmup: number | null
+  /**
+   * Focus score minus the player's last run on the same settings (null when none). The warm-up and
+   * cool-down run other settings or drills, so the summary never averages or compares across steps.
+   */
+  focusVsLast: number | null
+}
+
+/** "Easy · 30s": the settings a step ran on, shown next to its score. */
+export function sessionStepSettings(step: Pick<SessionStep, 'difficulty' | 'duration_seconds'>): string {
+  return `${step.difficulty.charAt(0).toUpperCase()}${step.difficulty.slice(1)} · ${step.duration_seconds}s`
 }
 
 const DIFFICULTY_ORDER: TrainerDifficulty[] = ['easy', 'medium', 'hard', 'pro']
@@ -233,38 +240,26 @@ export function computeAimBias(
   return null
 }
 
-export function buildSessionSummary(steps: SessionStep[], results: SessionHistoryRow[]): SessionSummary {
-  const scores = results.map(r => r.score)
-  const avgScore = scores.length
-    ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-    : 0
-
+export function buildSessionSummary(
+  steps: SessionStep[],
+  results: SessionHistoryRow[],
+  focusVsLast: number | null = null,
+): SessionSummary {
   const focusIdx = steps.findIndex(s => s.phase === 'focus')
   const focusResult = focusIdx >= 0 ? results[focusIdx] : null
-  const warmupResults = results.filter((_, i) => steps[i]?.phase === 'warmup')
   const cooldownResult = results.find((_, i) => steps[i]?.phase === 'cooldown') ?? null
-
-  const warmupAvg = warmupResults.length
-    ? Math.round(warmupResults.reduce((a, r) => a + r.score, 0) / warmupResults.length)
-    : null
-
-  const focusScore = focusResult?.score ?? null
-  const improvementVsWarmup =
-    focusScore !== null && warmupAvg !== null ? focusScore - warmupAvg : null
 
   const totalDurationSeconds = steps.reduce((a, s) => a + s.duration_seconds, 0)
 
   return {
     steps,
     results,
-    avgScore,
-    focusScore,
+    focusScore: focusResult?.score ?? null,
     focusScenario: focusResult ? (steps[focusIdx]?.scenario ?? null) : null,
-    warmupAvg,
     cooldownScore: cooldownResult?.score ?? null,
     aimBias: computeAimBias(focusResult?.heatmap),
     totalDurationSeconds,
-    improvementVsWarmup,
+    focusVsLast: focusResult ? focusVsLast : null,
   }
 }
 
