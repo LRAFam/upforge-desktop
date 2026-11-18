@@ -441,6 +441,7 @@ import {
 } from './deadlock-review'
 import { isDeadlockReviewJobId } from './recordings-store'
 import { SourceReplayUploader } from './source-replay-uploader'
+import { cs2MatchExtras, createCs2FocusChecker } from './cs2-focus-check'
 import { lastAnalysisJob } from './analysis-trace'
 import { findLatestReplay } from './source-replay-finder'
 import { isTrustedRendererUrl } from './renderer-trust'
@@ -7407,6 +7408,14 @@ async function startApp(): Promise<void> {
   app.once('will-quit', () => clearInterval(activityPresenceTimer))
   trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
   recordingsStore = new RecordingsStore()
+  // A parsed CS2 demo counts for the player's focus without its report page being opened.
+  const cs2FocusChecker = createCs2FocusChecker({
+    isAuthenticated: () => authManager.isAuthenticated(),
+    markCounted: (id, jobId) => { recordingsStore.markCs2FocusCounted(id, jobId) },
+    post: async (path, body) => (await authManager.getApi().post(path, body, { validateStatus: () => true, timeout: 30000 }).catch(() => null))?.status ?? null,
+    log,
+  })
+  recordingsStore.timelineListener = (rec) => { void cs2FocusChecker.check(rec) }
   const finalizingFileTimer = setInterval(() => { void recordingFileFinalizer.tick() }, 5000)
   finalizingFileTimer.unref()
   app.once('will-quit', () => clearInterval(finalizingFileTimer))
@@ -8272,10 +8281,13 @@ async function startApp(): Promise<void> {
     if (!idOk) return { ok: false, error: 'invalid_match' }
     if (game === 'cs2' && (!facts || typeof facts !== 'object')) return { ok: false, error: 'invalid_facts' }
     if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    const cs2Extras = game === 'cs2' ? cs2MatchExtras(recordingsStore.getById(matchId)) : {}
     const r = game === 'cs2'
-      ? await authManager.getApi().post('/api/cs2/match-report/notes', { match_key: matchId, facts }, { validateStatus: () => true, timeout: 90000 }).catch(() => null)
+      // played_at + job_id (when known) let the API count this match for a focus, once with its demo.
+      ? await authManager.getApi().post('/api/cs2/match-report/notes', { match_key: matchId, facts, ...cs2Extras }, { validateStatus: () => true, timeout: 90000 }).catch(() => null)
       : await authManager.getApi().post(`/api/${game}/match-report/${matchId}/notes`, {}, { validateStatus: () => true, timeout: 90000 }).catch(() => null)
     if (r?.status !== 200 || !r.data?.success) return { ok: false, error: r?.status === 404 ? 'not_found' : 'unavailable' }
+    if (game === 'cs2' && cs2Extras.played_at) recordingsStore.markCs2FocusCounted(matchId, cs2Extras.job_id ?? null)
     return {
       ok: true, notes: r.data.notes ?? null, notes_source: r.data.notes_source ?? null, capped: !!r.data.capped, notes_status: r.data.notes_status ?? null,
       // CS2: this match's focus rows (the renderer checks them); null from APIs that don't send them.
@@ -8456,7 +8468,7 @@ async function startApp(): Promise<void> {
       meta: context.meta,
       onJobId: context.game === 'deadlock'
         ? (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: context.meta?.matchId ?? null, sessionStart: context.matchSessionStart }, recordingId)
-        : undefined,
+        : (jobId) => { recordingsStore.setCs2DemoJob(recordingId, jobId) },
     }).catch((err) => log.warn('[Replay] retry scan failed:', (err as Error)?.message))
     return { ok: true as const }
   })
