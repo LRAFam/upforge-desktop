@@ -160,7 +160,8 @@ export function renderCrosshairPreview(
   function drawArms(gap: number, len: number, thick: number, col: string) {
     ctx!.strokeStyle = col
     ctx!.lineWidth = thick
-    ctx!.lineCap = 'square'
+    // Butt caps: a square cap adds half the thickness at each end (longer lines, smaller gap than the trainer).
+    ctx!.lineCap = 'butt'
     ctx!.beginPath()
     ctx!.moveTo(cx,        cy - gap)
     ctx!.lineTo(cx,        cy - gap - len)
