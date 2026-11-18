@@ -3,7 +3,7 @@
  * earlier run at the same settings, names the best and lists which numbers moved. No praise, advice or
  * causes, so it can never contradict the score label (the drill's own tip stays in its own section).
  */
-import { accuracyMetricLabel, isTimeToHitMetric, isTrackingScenario, reactionMetricLabel } from './training-result-metrics'
+import { accuracyMetricLabel, consistencyTimingsLabel, isConsistencyMeasured, isTimeToHitMetric, isTrackingScenario, reactionMetricLabel } from './training-result-metrics'
 
 export interface RunNumbers {
   scenario: string
@@ -13,6 +13,8 @@ export interface RunNumbers {
   avg_reaction_ms: number
   consistency_score: number
   targets_hit: number
+  /** Says what consistency_score was timed over (trades, lurker duels). */
+  metadata?: Record<string, unknown>
 }
 
 /** ok = earlier runs loaded; failed = they could not load; none = this run is not compared (older scoring / incomplete settings). */
@@ -40,7 +42,7 @@ function measured(r: RunNumbers) {
     tracking,
     // Jiggle Peek / Trade Window send exposure / trade time in avg_reaction_ms, measured even with no hits.
     reaction: !tracking && (isTimeToHitMetric(r.scenario) ? r.targets_hit > 0 : r.avg_reaction_ms > 0),
-    consistency: !tracking && r.targets_hit >= 2,
+    consistency: isConsistencyMeasured(r),
   }
 }
 
@@ -89,7 +91,7 @@ function measurementNotes(run: RunNumbers): string[] {
       ? `No successful hits recorded, so ${reaction} and consistency were not measured.`
       : `${reactionMetricLabel(run.scenario)} was not measured for this run.`]
   }
-  if (!m.consistency) return ['At least two successful hits are needed to measure consistency.']
+  if (!m.consistency) return [`At least two ${consistencyTimingsLabel(run.scenario)} are needed to measure consistency.`]
   return []
 }
 

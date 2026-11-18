@@ -143,6 +143,40 @@ describe('beta duel drill result labels', () => {
   })
 })
 
+describe('numbers a run did not measure are not shown', () => {
+  it('a 100-point Trade Window run of opening kills shows them, and no trade time or spacing', async () => {
+    const { drillDetailCells } = await import('./training-result-metrics')
+    // What the trainer sends now: no mean_trade_ms / mean_spacing_m when nothing was timed.
+    expect(drillDetailCells({ scenario: 'trade_window', metadata: { reps: 24, trades: 0, opening_kills: 24, too_early: 0, too_late: 0, lost_duel: 0, headshots: 24 } }))
+      .toEqual([
+        { label: 'Trades', value: '0/24' }, { label: 'Opening kills', value: '24/24' },
+        { label: 'Too early', value: '0' }, { label: 'Too late', value: '0' }, { label: 'Lost duel', value: '0' },
+      ])
+  })
+
+  it('consistency needs two timings: trades in Trade Window, lurker duels in Defuse Decision, hits elsewhere', async () => {
+    const { isConsistencyMeasured } = await import('./training-result-metrics')
+    // Trade Window: an opening kill is a hit with no trade time.
+    expect(isConsistencyMeasured({ scenario: 'trade_window', targets_hit: 24, metadata: { trades: 0, opening_kills: 24 } })).toBe(false)
+    expect(isConsistencyMeasured({ scenario: 'trade_window', targets_hit: 9, metadata: { trades: 1, opening_kills: 8 } })).toBe(false)
+    expect(isConsistencyMeasured({ scenario: 'trade_window', targets_hit: 5, metadata: { trades: 3, opening_kills: 2 } })).toBe(true)
+    // Defuse Decision: the trainer says how many duel times it used. Older trainers sent the spread of whole
+    // rounds (0 on a clean 94-point run), which is not a consistency.
+    expect(isConsistencyMeasured({ scenario: 'defuse_decision', targets_hit: 5, metadata: { lurkers_killed: 4, consistency_samples: 4 } })).toBe(true)
+    expect(isConsistencyMeasured({ scenario: 'defuse_decision', targets_hit: 5, metadata: { lurkers_killed: 1, consistency_samples: 1 } })).toBe(false)
+    expect(isConsistencyMeasured({ scenario: 'defuse_decision', targets_hit: 5, metadata: { lurkers_killed: 4 } })).toBe(false)
+    // Every other drill: its hits; never for tracking drills.
+    expect(isConsistencyMeasured({ scenario: 'flick', targets_hit: 2 })).toBe(true)
+    expect(isConsistencyMeasured({ scenario: 'hold_angle', targets_hit: 1, metadata: { wins: 1 } })).toBe(false)
+    expect(isConsistencyMeasured({ scenario: 'tracking', targets_hit: 40 })).toBe(false)
+  })
+
+  it('the result screen shows Consistency only when it was measured', () => {
+    const view = readFileSync(resolve(__dirname, '../views/TrainerResultsView.vue'), 'utf8')
+    expect(view).toMatch(/const hasConsistency = computed\(\(\) => isConsistencyMeasured\(result\.value\)\)/)
+  })
+})
+
 describe('trainer comparison model (game + movement)', () => {
   // What the trainer emits for a 60 s medium v3 Strafe Aim run, with the game the desktop launched it with.
   const base = { scenario: 'strafe_aim', duration_seconds: 60, completed_at: '2026-11-18T12:00:00Z' }

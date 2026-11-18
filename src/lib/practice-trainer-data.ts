@@ -1,4 +1,5 @@
 import type { CoachingDrill, SharedTrainingPlan, TrainingBenchmark, TrainingHistory } from '../env'
+import { normalizeTrainingHistory } from './training-result-metrics'
 
 /**
  * Practice's trainer data (history, plan, drills, insights, benchmark) with "could not fetch" kept apart
@@ -31,7 +32,8 @@ export async function collectPracticeData(read: Readers, onError?: (part: string
     }
   }
   const [history, plan, drills, insights, benchmark] = await Promise.all([
-    part('history', read.history),
+    // MySQL sends the API's DECIMAL columns as strings ("72.50"): numbers, as trainer:get-history returns them.
+    part('history', async () => normalizeTrainingHistory(await read.history())),
     part('plan', read.plan),
     part('drills', read.drills),
     part('insights', read.insights),

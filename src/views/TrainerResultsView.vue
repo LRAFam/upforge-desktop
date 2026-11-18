@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useLifetime } from '../composables/useLifetime'
-import { priorTrainingSessions, reactionMetricScore, isTrackingScenario, trainingComparisonRequest, resultCountCells, reactionMetricLabel, isTimeToHitMetric, accuracyMetricLabel, drillDetailCells } from '../lib/training-result-metrics'
+import { priorTrainingSessions, reactionMetricScore, isTrackingScenario, trainingComparisonRequest, resultCountCells, reactionMetricLabel, isTimeToHitMetric, accuracyMetricLabel, drillDetailCells, isConsistencyMeasured } from '../lib/training-result-metrics'
 import { TRAINER_SCENARIOS, isBetaScenario, trainerScenarioDef, type TrainerUiGroup } from '../lib/trainer-scenarios'
 import { asSessionEnded, launchConfigFromInfo, launchTrainer, sessionEndedMessage } from '../lib/trainer-launch'
 import upforgeLogo from '../assets/upforge-logo.webp'
@@ -128,7 +128,8 @@ const reactionTitle = computed(() => timeToHit.value
 const accuracyLabel = computed(() => accuracyMetricLabel(result.value.scenario))
 const detailCells = computed(() => drillDetailCells(result.value))
 const isBeta = computed(() => isBetaScenario(result.value.scenario))
-const hasConsistency = computed(() => !tracking.value && result.value.targets_hit >= 2)
+// Two timings or more: Trade Window times trades (not opening kills), Defuse Decision its lurker duels.
+const hasConsistency = computed(() => isConsistencyMeasured(result.value))
 const countCells = computed(() => resultCountCells(result.value))
 const scenarioTip = computed(() => trainerScenarioDef(result.value.scenario)?.tip ?? 'Pre-aim corners before committing — don\'t wide-peek.')
 const trainerNotice = ref<string | null>(null)

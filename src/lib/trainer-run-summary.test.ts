@@ -55,6 +55,22 @@ describe('trainerRunSummary: measured facts only', () => {
     expect(noHits.details).toEqual(['No successful hits recorded, so time to hit and consistency were not measured.'])
   })
 
+  it('does not compare or count a consistency the run did not measure (Defuse Decision, Trade Window)', () => {
+    // Defuse Decision: older trainers sent the spread of whole rounds (0 on a clean run), never a consistency.
+    const oldDefuse = run({ scenario: 'defuse_decision', score: 90, avg_reaction_ms: 320, consistency_score: 0, targets_hit: 5, metadata: { lurkers_killed: 4 } })
+    const defuse = run({ scenario: 'defuse_decision', score: 94, avg_reaction_ms: 300, consistency_score: 92, targets_hit: 5, metadata: { lurkers_killed: 4, consistency_samples: 4 } })
+    const vsOld = trainerRunSummary({ run: defuse, previous: oldDefuse, best: 90, history: 'ok' })
+    expect(vsOld.details).toContain('Since your last run: reaction 320 → 300 ms.')
+    const oneDuel = trainerRunSummary({ run: { ...defuse, consistency_score: 0, metadata: { lurkers_killed: 1, consistency_samples: 1 } }, previous: null, best: null, history: 'ok' })
+    expect(oneDuel.details).toEqual(['At least two lurker kills are needed to measure consistency.'])
+    // Trade Window: one trade and some opening kills times one trade, so no consistency yet.
+    const trade = run({ scenario: 'trade_window', avg_reaction_ms: 900, consistency_score: 0, targets_hit: 10, metadata: { trades: 1, opening_kills: 9 } })
+    const before = run({ scenario: 'trade_window', avg_reaction_ms: 950, consistency_score: 70, targets_hit: 8, metadata: { trades: 4, opening_kills: 4 } })
+    const tw = trainerRunSummary({ run: trade, previous: before, best: 70, history: 'ok' })
+    expect(tw.details.join(' ')).not.toMatch(/consistency 70/)
+    expect(tw.details.at(-1)).toBe('At least two trades are needed to measure consistency.')
+  })
+
   it('an earlier run from the API with decimals as strings ("72.50", MySQL DECIMAL) still compares', () => {
     // GET /api/training/sessions row as the live API sends it: accuracy, reaction and consistency are strings.
     const apiRow = JSON.parse('{"scenario":"flick","score":60,"accuracy_pct":"72.50","avg_reaction_ms":"340.00","consistency_score":"60.00","targets_hit":38}') as RunNumbers

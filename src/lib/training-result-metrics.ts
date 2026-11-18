@@ -236,6 +236,34 @@ export function leaderboardStatLine(scenario: string, entry: { accuracy_pct: num
   return `${entry.accuracy_pct}% ${label} · ${reaction}`
 }
 
+type ConsistencyRun = { scenario: string; targets_hit: number; metadata?: Record<string, unknown> }
+
+/**
+ * How many timings consistency_score is the spread of: the hits, unless the trainer says otherwise
+ * (metadata.consistency_samples). Older trainers did not say: Trade Window times trades only (an opening
+ * kill has no trade time) and Defuse Decision sent the spread of whole rounds, which is no consistency.
+ */
+function consistencySamples(run: ConsistencyRun): number {
+  const m = run.metadata ?? {}
+  const sent = countOf(m.consistency_samples)
+  if (sent !== null) return sent
+  if (run.scenario === 'trade_window') return countOf(m.trades) ?? 0
+  if (run.scenario === 'defuse_decision') return 0
+  return run.targets_hit
+}
+
+/** True when consistency_score was measured: two timings or more, and never in tracking drills. */
+export function isConsistencyMeasured(run: ConsistencyRun): boolean {
+  return !isTrackingScenario(run.scenario) && consistencySamples(run) >= 2
+}
+
+/** What a drill's consistency is timed over ("At least two … are needed"). */
+export function consistencyTimingsLabel(scenario: string): string {
+  if (scenario === 'trade_window') return 'trades'
+  if (scenario === 'defuse_decision') return 'lurker kills'
+  return 'successful hits'
+}
+
 /** Label for accuracy_pct (Jiggle Peek sends its safe-spot rate there). */
 export function accuracyMetricLabel(scenario: string): string {
   if (isTrackingScenario(scenario)) return 'Time on target'
@@ -284,6 +312,7 @@ export function drillDetailCells(run: { scenario: string; metadata?: Record<stri
       break
     case 'trade_window':
       ratio('Trades', m.trades)
+      ratio('Opening kills', m.opening_kills)
       count('Too early', m.too_early)
       count('Too late', m.too_late)
       count('Lost duel', m.lost_duel)

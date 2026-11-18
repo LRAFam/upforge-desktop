@@ -10,6 +10,7 @@ import {
   type TrainerData,
 } from './practice-trainer-data'
 import { readCache, writeCache } from './stale-cache'
+import type { TrainingHistory } from '../env'
 
 // The focus composable registers its load in onMounted: run it at once here (no component needed).
 const mounted = vi.hoisted(() => [] as Array<() => unknown>)
@@ -94,6 +95,27 @@ describe('Practice keeps its data when UpForge cannot be reached', () => {
     await new Promise(r => setTimeout(r, 0))
     expect(shown.value).toMatchObject({ title: 'Dying first' })
     expect(readCache<{ title: string }>('practice:focus')?.value).toMatchObject({ title: 'Dying first' })
+  })
+
+  it('history comes back with numbers, not the API\'s decimal strings ("72.50"), as trainer:get-history does', async () => {
+    // GET /api/training/sessions as the live API (MySQL) sends it: DECIMAL columns arrive as strings.
+    const row = { id: 7, scenario: 'flick', duration_seconds: 60, score: 60, accuracy_pct: '72.50', avg_reaction_ms: '340.00', consistency_score: '60.00',
+      targets_hit: 38, targets_missed: 12, metadata: { difficulty: 'medium', scoring_version: 3 }, completed_at: '2026-11-18T11:00:00.000000Z' }
+    const api = { total: 1, sessions: [row], by_scenario: { flick: { best_score: 64, avg_accuracy: '72.50', avg_reaction: '340.00', sessions: [row] } } }
+    const reply = await collectPracticeData({
+      history: async () => api as unknown as TrainingHistory,
+      plan: async () => null,
+      drills: async () => [],
+      insights: async () => [],
+      benchmark: async () => null,
+    })
+    expect(reply.history.ok).toBe(true)
+    const history = (reply.history as { ok: true; value: TrainingHistory }).value
+    expect(history.sessions[0]).toMatchObject({ accuracy_pct: 72.5, avg_reaction_ms: 340, consistency_score: 60, targets_hit: 38 })
+    expect(history.sessions[0].accuracy_pct.toFixed(1)).toBe('72.5')
+    expect(history.by_scenario.flick.sessions[0].avg_reaction_ms).toBe(340)
+    expect(history.by_scenario.flick).toMatchObject({ best_score: 64, avg_accuracy: 72.5, avg_reaction: 340 })
+    expect(history.sessions[0].completed_at).toBe('2026-11-18T11:00:00.000000Z')
   })
 
   it('Practice reads its data through the call that tells failed from empty', () => {
