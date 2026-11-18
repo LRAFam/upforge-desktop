@@ -4,33 +4,27 @@
  * slider change is visible without scrolling. Same data and ranges as the classic
  * CrosshairSettingsPanel (lib/crosshair.ts); switches use SettingsToggle (.uf-switch).
  */
-import { nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import {
   CROSSHAIR_PALETTE_HEX,
   CROSSHAIR_PALETTE_NAMES,
   DEFAULT_CROSSHAIR,
   parseValorantCode,
-  renderCrosshairPreview,
   type CrosshairSettings,
 } from '../../../lib/crosshair'
 import SettingsToggle from '../../settings/SettingsToggle.vue'
+// Same drawing as Practice › Loadouts (trainer geometry), so both screens show one crosshair.
+import CrosshairPreview from '../practice/CrosshairPreview.vue'
 import { CROSSHAIR_GROUPS, sliderValueLabel, type CrosshairBoolKey, type CrosshairNumberKey } from './crosshair-editor'
 
 const props = defineProps<{ modelValue: CrosshairSettings }>()
 const emit = defineEmits<{ 'update:modelValue': [value: CrosshairSettings] }>()
 
 const local = reactive<CrosshairSettings>({ ...DEFAULT_CROSSHAIR, ...props.modelValue })
-const canvas = ref<HTMLCanvasElement | null>(null)
 const importCode = ref('')
 const importError = ref('')
 
 watch(() => props.modelValue, v => Object.assign(local, v), { deep: true })
-watch(local, () => nextTick(draw), { deep: true })
-onMounted(draw)
-
-function draw() {
-  if (canvas.value) renderCrosshairPreview(canvas.value, local)
-}
 function commit() {
   emit('update:modelValue', { ...local })
 }
@@ -67,9 +61,9 @@ function applyImport() {
   <div class="uf-xh">
     <div class="uf-xh-preview">
       <div class="uf-xh-canvas">
-        <canvas ref="canvas" width="400" height="400" role="img" aria-label="Crosshair preview" />
+        <CrosshairPreview :settings="local" :scale="2" :size="200" />
       </div>
-      <p class="uf-t4">Live preview. Changes save as you go.</p>
+      <p class="uf-t4">Live preview at 2× trainer size. Changes save as you go.</p>
     </div>
 
     <div class="uf-xh-controls">

@@ -12,9 +12,9 @@ describe('achievements after a trainer run', () => {
     expect(runAchievementContext(run, { total: 4, sessions: [{ completed_at: '2026-11-17T09:00:00' }] }, now).streak).toBe(2)
   })
 
-  it('does not treat a tracking run with no reaction time as a fast reaction', () => {
-    expect(runAchievementContext(run, null, now)).not.toHaveProperty('lastReactionMs')
-    expect(runAchievementContext({ ...run, avg_reaction_ms: 180 }, null, now).lastReactionMs).toBe(180)
+  it('passes the run so Reaction King uses the measured-reaction rule', () => {
+    expect(runAchievementContext({ ...run, avg_reaction_ms: 180 }, null, now).lastRun)
+      .toEqual({ scenario: 'flick', avg_reaction_ms: 180, targets_hit: 1 })
   })
 
   it('checks a 90+ run even when history cannot be read', async () => {

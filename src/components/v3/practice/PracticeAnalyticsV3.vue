@@ -11,7 +11,7 @@ import EmptyArt from '../empty/EmptyArt.vue'
 import { scenarioIconUrl } from '../../../lib/training-icons'
 import type { TrainingBenchmark, TrainingHistory } from '../../../env.d.ts'
 import { bestGroup, settingsLabel } from './best-settings'
-import { benchmarkMeta, benchmarkVisible, pct, recentScores, toneColor, trendSummary } from './practice-session-v3'
+import { benchmarkMeta, benchmarkVisible, pct, recentScores, skillShapeEmptyCopy, toneColor, trendSummary } from './practice-session-v3'
 
 export interface AnalyticsRadar {
   scores: number[]
@@ -54,6 +54,7 @@ const props = defineProps<{
 const emit = defineEmits<{ 'share-week': [] }>()
 
 const hasHistory = computed(() => !!props.history && !!props.history.total)
+const shapeEmpty = computed(() => skillShapeEmptyCopy(props.history?.by_scenario, props.radarKeys))
 const unlocked = computed(() => props.achievements.filter(a => a.unlocked).length)
 const rows = computed(() => props.drills.map(d => {
   const stats = props.history?.by_scenario?.[d.key]
@@ -108,7 +109,7 @@ const labelAnchor = (x: number) => (x < 64 ? 'end' : x > 76 ? 'start' : 'middle'
           </dl>
         </div>
         <p v-if="!radar.hasData && scoringNote" class="uf-t2" style="margin: 0">{{ scoringNote }} Finish a drill to start your shape.</p>
-        <EmptyArt v-else-if="!radar.hasData" size="section" title="No scores yet" text="Finish a drill and your shape starts here." />
+        <EmptyArt v-else-if="!radar.hasData" size="section" :title="shapeEmpty.title" :text="shapeEmpty.text" />
       </section>
 
       <!-- By drill -->

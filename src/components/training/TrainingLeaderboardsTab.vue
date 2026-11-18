@@ -6,6 +6,7 @@ import { TRAINING_ARTWORK } from '../../lib/training-icons'
 import type { ProfileData, TrainerLeaderboardEntry } from '../../env.d.ts'
 import { playerIdentity, type PlayerIdentity } from '../../lib/player-identity'
 import { readCache } from '../../lib/stale-cache'
+import { leaderboardStatLine } from '../../lib/training-result-metrics'
 import PlayerAvatar from '../v3/identity/PlayerAvatar.vue'
 import { leaderboardDisplayName, visibilityLine, youNote } from './leaderboard-visibility'
 import { uiV3 } from '../../lib/ui-v3'
@@ -151,7 +152,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
           <span class="uf-t3">{{ e.name }}<span v-if="e.tag" style="color: var(--uf-faint); font-weight: 400">#{{ e.tag }}</span>
             <span v-if="e.is_current_user" class="uf-label" style="color: var(--uf-red); margin-left: 8px">You</span>
           </span>
-          <span class="uf-t4 uf-num">{{ e.accuracy_pct }}% accuracy · {{ e.avg_reaction_ms }}ms to hit</span>
+          <span class="uf-t4 uf-num">{{ leaderboardStatLine(activeScenario, e) }}</span>
         </span>
         <span class="uf-d4">{{ e.score }}</span>
       </li>
@@ -224,7 +225,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
             {{ e.name }}<span v-if="e.tag" class="text-gray-500">#{{ e.tag }}</span>
             <span v-if="e.is_current_user" class="ml-1 text-[9px] font-bold uppercase text-red-400">You</span>
           </p>
-          <p class="text-[10px] text-gray-600 tabular-nums">{{ e.accuracy_pct }}% acc · {{ e.avg_reaction_ms }}ms</p>
+          <p class="text-[10px] text-gray-600 tabular-nums">{{ leaderboardStatLine(activeScenario, e) }}</p>
         </div>
         <span class="text-lg font-black tabular-nums text-white">{{ e.score }}</span>
       </div>

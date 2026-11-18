@@ -9,7 +9,7 @@ type CheckContext = {
   streak?: number
   lastScore?: number
   lastAccuracy?: number
-  lastReactionMs?: number
+  lastRun?: { scenario: string; avg_reaction_ms: number; targets_hit?: number }
 }
 
 const DAY_MS = 86_400_000
@@ -28,7 +28,7 @@ export function trainingStreak(completedAts: readonly string[], now: Date = new 
 
 /** What the run and the account's history say, in the shape useAchievements().check takes. */
 export function runAchievementContext(
-  result: Pick<SessionResult, 'score' | 'accuracy_pct' | 'avg_reaction_ms' | 'completed_at'>,
+  result: Pick<SessionResult, 'scenario' | 'score' | 'accuracy_pct' | 'avg_reaction_ms' | 'targets_hit' | 'completed_at'>,
   history: { total?: number; sessions?: ReadonlyArray<{ completed_at: string }> } | null,
   now: Date = new Date(),
 ): CheckContext {
@@ -39,8 +39,8 @@ export function runAchievementContext(
     streak: trainingStreak([...runs, result.completed_at], now),
     lastScore: result.score,
     lastAccuracy: result.accuracy_pct,
-    // Tracking drills report 0 ms (no reaction measured): that is not a sub-200 ms reaction.
-    ...(result.avg_reaction_ms > 0 ? { lastReactionMs: result.avg_reaction_ms } : {}),
+    // Reaction King uses measuredReactionMs (useAchievements): no tracking, 0-hit or 0 ms runs.
+    lastRun: { scenario: result.scenario, avg_reaction_ms: result.avg_reaction_ms, targets_hit: result.targets_hit },
   }
 }
 
