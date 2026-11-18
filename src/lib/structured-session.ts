@@ -31,6 +31,8 @@ export interface SessionStep extends SessionDrill {
 export interface SessionHistoryRow {
   scenario: string
   score: number
+  /** Run length; rows from GET /api/training/sessions always have it. */
+  duration_seconds?: number
   metadata?: Record<string, unknown> | null
   accuracy_pct?: number
   avg_reaction_ms?: number
@@ -83,19 +85,25 @@ export function nextDifficulty(current: TrainerDifficulty): TrainerDifficulty | 
 }
 
 /**
- * Bump difficulty when the player has scored well enough at the current tier
- * for enough recent sessions on this scenario.
+ * Bump difficulty when the player has scored well enough at the current tier for enough recent runs.
+ * Only runs at the drill's own settings count: this scenario at this difficulty and (when known) length,
+ * like the API's plan. Runs at other tiers never count, so three near misses at Medium do not launch the
+ * easier drill that replaced that drill at Medium again. `recentSessions` is newest first.
  */
 export function bumpDifficultyForProgression(
   scenario: TrainerScenarioKey,
   current: TrainerDifficulty,
   recentSessions: SessionHistoryRow[],
+  durationSeconds?: number,
 ): TrainerDifficulty {
-  const onScenario = recentSessions.filter(s => s.scenario === scenario).slice(0, PROGRESSION_SESSIONS_REQUIRED)
+  const atTier = recentSessions
+    .filter(s => s.scenario === scenario && s.metadata?.difficulty === current
+      && (durationSeconds === undefined || s.duration_seconds === undefined || s.duration_seconds === durationSeconds))
+    .slice(0, PROGRESSION_SESSIONS_REQUIRED)
 
   if (
-    onScenario.length >= PROGRESSION_SESSIONS_REQUIRED
-    && onScenario.every(s => s.score >= PROGRESSION_MIN_SCORE)
+    atTier.length >= PROGRESSION_SESSIONS_REQUIRED
+    && atTier.every(s => s.score >= PROGRESSION_MIN_SCORE)
   ) {
     return nextDifficulty(current) ?? current
   }
@@ -135,9 +143,13 @@ export function applyProgressionToDrill(
 ): SessionDrill {
   const fromVod = difficultyFromVodBaseline(drill.weakness_score)
   const configured = drill.difficulty ?? fromVod
-  const startIdx = Math.max(DIFFICULTY_ORDER.indexOf(fromVod), DIFFICULTY_ORDER.indexOf(configured))
+  const own = DIFFICULTY_ORDER.indexOf(configured)
+  // An assigned drill (API id) starts at its own difficulty, as the API's plan does: the easier copy assigned
+  // after a pause keeps its parent's review score, which must not lift it back. Other drills start no lower than
+  // their score's tier.
+  const startIdx = drill.user_drill_id != null && own >= 0 ? own : Math.max(DIFFICULTY_ORDER.indexOf(fromVod), own)
   const start = DIFFICULTY_ORDER[Math.max(0, startIdx)] ?? 'medium'
-  const bumped = bumpDifficultyForProgression(drill.scenario, start, recentSessions)
+  const bumped = bumpDifficultyForProgression(drill.scenario, start, recentSessions, drill.duration_seconds)
 
   return { ...drill, difficulty: bumped }
 }

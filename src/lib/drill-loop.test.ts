@@ -66,6 +66,13 @@ describe('drillLoop', () => {
     expect(loop.next).toBeNull()
   })
 
+  it('paused with an easier version assigned: says that version is ready', () => {
+    const loop = drillLoop(statDrill(), state({ status: 'needs_reassignment', attempt_count: 3,
+      next: { id: 8, title: 'Head Height (Easy)', trainer_difficulty: 'easy', pass_score: 70 } }))!
+    expect(loop.state).toEqual({ key: 'paused', label: 'Paused', text: 'Paused after 3 tries below the target. An easier version (Easy) is ready.' })
+    expect(loop.next).toBeNull()
+  })
+
   it('a self-reported done drill is "Marked done"', () => {
     expect(drillLoop({ id: 1, status: 'completed' }, null)!.state.label).toBe('Marked done')
   })

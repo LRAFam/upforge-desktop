@@ -111,7 +111,13 @@ export function trainerSyncLine(outcome: TrainerSyncOutcome | null, hasAssignedD
     return { text: 'Recorded. Practice target hit: your next matches decide this drill.', tone: 'win' }
   }
   if (d.status === 'needs_reassignment') {
-    return { text: `Recorded. ${d.attempt_count} runs below ${pass(d.pass_score)}, so this drill is closed; your next matches can assign a new one.`, tone: 'muted' }
+    const paused = `Recorded. ${d.attempt_count} runs below ${pass(d.pass_score)}, so this drill is paused.`
+    // `next` on a paused drill is the same drill one step easier, already assigned (none below Easy, or an older API).
+    if (d.next) {
+      const tier = d.next.trainer_difficulty ? `${cap(d.next.trainer_difficulty)}, ` : ''
+      return { text: `${paused} An easier version is ready: ${tier}pass at ${pass(d.next.pass_score)}.`, tone: 'muted' }
+    }
+    return { text: `${paused} Your next matches can assign a new one.`, tone: 'muted' }
   }
   const left = Math.max(0, d.attempts_allowed - d.attempt_count)
   return {
