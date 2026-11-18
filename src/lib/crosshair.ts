@@ -70,6 +70,8 @@ export const DEFAULT_CROSSHAIR: CrosshairSettings = {
 // 6 pink, 7 red, 8 custom), u custom colour as RRGGBBAA, h outlines on, o outline opacity,
 // d centre dot on, z dot width (px), a dot opacity, 0b / 1b inner / outer lines on, then
 // 0t 0l 0o 0a / 1t 1l 1o 1a = thickness, length, offset, opacity. A missing key is Valorant's default.
+// Both offsets (0o, 1o) are measured from the centre; UpForge measures the outer one from the inner lines' end
+// (see placeOuterLines).
 
 const VALORANT_DEFAULTS = {
   c: 0, h: 1, o: 0.5, d: 0, z: 2, a: 1,
@@ -144,11 +146,33 @@ export function parseValorantCode(code: string): CrosshairSettings {
 
   s.outerShow = on('1b') && num('1t') > 0
   s.outerThickness = clamp(num('1t'), 0.5, 8)
-  s.outerLength = clamp(num('1l'), 0, 30)
-  s.outerOffset = clamp(num('1o'), 0, 20)
   s.outerOpacity = clamp(num('1a'), 0, 1)
+  placeOuterLines(s, Math.max(0, num('1o')), Math.max(0, num('1l')))
 
   return s
+}
+
+/**
+ * Valorant draws outer lines from `start` to `start + length` px from the centre. UpForge's previews and the
+ * trainer draw them from innerOffset + innerLength + outerOffset, even when the inner lines are hidden, so the
+ * offset is converted here (saved settings keep UpForge's meaning).
+ */
+function placeOuterLines(s: CrosshairSettings, start: number, length: number): void {
+  // Hidden inner lines only push the outer lines out: shrink them to end where the outer lines start.
+  if (s.outerShow && (!s.innerShow || s.innerLength <= 0)) {
+    s.innerOffset = Math.min(s.innerOffset, start)
+    s.innerLength = Math.min(s.innerLength, start - s.innerOffset)
+  }
+  const innerEnd = s.innerOffset + s.innerLength
+  if (start >= innerEnd) {
+    s.outerOffset = clamp(start - innerEnd, 0, 20)
+    s.outerLength = clamp(length, 0, 30)
+    return
+  }
+  // Outer lines that start under the inner lines can only start where those end. They keep their outer end, so the
+  // crosshair reaches as far as in Valorant (length 0 when they lie wholly under the inner lines).
+  s.outerOffset = 0
+  s.outerLength = clamp(start + length - innerEnd, 0, 30)
 }
 
 // ── Canvas preview renderer ────────────────────────────────────────────────────

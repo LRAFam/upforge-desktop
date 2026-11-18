@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { CROSSHAIR_PALETTE_NAMES, parseValorantCode, resolveColor } from './crosshair'
+import { crosshairSettingsToGodot } from '../../electron/main/trainer-settings'
+import { crosshairShapes } from '../components/v3/practice/crosshair-preview'
+import { CROSSHAIR_PALETTE_NAMES, parseValorantCode, resolveColor, type CrosshairSettings } from './crosshair'
 
 /**
  * Public pro codes (as listed on prosettings.net, Nov 2026). Riot does not publish the code format;
@@ -14,6 +16,7 @@ const PRO = {
   crazyface: '0;p;0;s;1;P;c;5;h;0;d;1;z;1;f;0;m;1;0t;1;0l;2;0o;1;0a;1;0e;0.847;1b;0;A;o;1;d;1;z;3;f;0;s;0;0b;0;1b;0;S;c;0;s;0.7;o;0.7',
   nats: '0;P;c;1;o;1.000;0a;1.000;0l;2;0t;1;0o;2;0f;0;1b;0',
   kyedae: '0;s;1;P;c;8;u;FFFFCCFF;h;0;b;1;f;0;0l;4;0o;0;0a;1;0f;0;1b;0',
+  shanks: '0;p;0;c;1;s;1;P;c;5;u;00DD00FF;h;0;f;0;m;1;0l;4;0v;3;0o;1;0a;0.317;0f;0;1l;3;1o;1;1a;0.616;1m;0;1f;0;A;c;4;o;0.515;m;1;0t;1;0l;3;0v;3;0o;1;0a;1;0f;0;1b;0;S;c;1;o;1',
 }
 const colourName = (code: string) => {
   const s = parseValorantCode(code)
@@ -58,10 +61,11 @@ describe('parseValorantCode: shape', () => {
     expect(parseValorantCode(PRO.nats)).toMatchObject({
       shadowShow: true, dotShow: false, innerShow: true, innerThickness: 1, innerLength: 2, innerOffset: 2, innerOpacity: 1, outerShow: false,
     })
-    // Outer lines are on unless 1b;0.
+    // Outer lines are on unless 1b;0. They start under the inner lines, so UpForge draws them from the inner end
+    // (1 px) to where Valorant's end (4 px): see "outer lines sit where Valorant draws them".
     expect(parseValorantCode(PRO.forsaken)).toMatchObject({
       innerShow: true, innerThickness: 3, innerLength: 1, innerOffset: 0, innerOpacity: 1,
-      outerShow: true, outerThickness: 1, outerLength: 4, outerOffset: 0, outerOpacity: 1,
+      outerShow: true, outerThickness: 1, outerLength: 3, outerOffset: 0, outerOpacity: 1,
     })
   })
 
@@ -76,10 +80,11 @@ describe('parseValorantCode: shape', () => {
   })
 
   it('missing keys use Valorant’s defaults (the default code is "0")', () => {
+    // Valorant's outer offset 10 is from the centre; UpForge's is from the inner lines' end (3 + 6), so 1.
     expect(parseValorantCode('0')).toMatchObject({
       colorIndex: 0, shadowShow: true, dotShow: false, dotRadius: 1, dotOpacity: 1,
       innerShow: true, innerThickness: 2, innerLength: 6, innerOffset: 3, innerOpacity: 0.8,
-      outerShow: true, outerThickness: 2, outerLength: 2, outerOffset: 10, outerOpacity: 0.35,
+      outerShow: true, outerThickness: 2, outerLength: 2, outerOffset: 1, outerOpacity: 0.35,
     })
   })
 
@@ -88,5 +93,57 @@ describe('parseValorantCode: shape', () => {
       expect(() => parseValorantCode(bad), bad).toThrow(/paste the full code/)
     }
     expect(parseValorantCode(`  ${PRO.tenz};  `).colorIndex).toBe(3)
+  })
+})
+
+/**
+ * Where a line set's right arm is drawn, in px from the centre. UpForge's preview (and the trainer's Crosshair.gd)
+ * start outer lines at innerOffset + innerLength + outerOffset, whether or not the inner lines are shown.
+ */
+function arm(s: CrosshairSettings, set: 'inner' | 'outer'): [number, number] | null {
+  const only = { ...s, innerShow: set === 'inner' && s.innerShow, outerShow: set === 'outer' && s.outerShow, dotShow: false, shadowShow: false }
+  const right = crosshairShapes(only, 1).rects[3]
+  return right ? [right.x, right.x + right.w] : null
+}
+
+/**
+ * In Valorant both offsets are measured from the centre: a line set runs from `offset` to `offset + length`
+ * (open-source renderers: Crosshair CrosshairUtil.ts, crosshair-codes CrosshairDisplay.tsx, xhair utils.js).
+ * Those renderers add the same firing-error gap to both sets when firing error is on; UpForge does not model it.
+ */
+describe('parseValorantCode: outer lines sit where Valorant draws them', () => {
+  it('default code: outer lines 10–12 px out, 1 px past the inner lines (3–9 px), not 19–21 px', () => {
+    const s = parseValorantCode('0')
+    expect(arm(s, 'inner')).toEqual([3, 9])
+    expect(arm(s, 'outer')).toEqual([10, 12])
+  })
+
+  it('f0rsakeN: outer lines that start under the inner lines still end where Valorant’s end', () => {
+    // Valorant: inner 0–1 px (3 px thick), outer 0–4 px (1 px thick, the first px hidden under the inner line).
+    const s = parseValorantCode(PRO.forsaken)
+    expect(arm(s, 'inner')).toEqual([0, 1])
+    expect(arm(s, 'outer')).toEqual([1, 4])
+  })
+
+  it('Shanks: outer lines that lie on top of the inner lines add no separate lines past them', () => {
+    // Valorant: inner 1–5 px at 0.317, outer 1–4 px at 0.616 drawn over them; nothing beyond 5 px.
+    const s = parseValorantCode(PRO.shanks)
+    expect(arm(s, 'inner')).toEqual([1, 5])
+    expect(arm(s, 'outer')).toBeNull()
+  })
+
+  it('inner lines off: hidden inner lines no longer push the outer lines out', () => {
+    // Codes built from Valorant's defaults (inner 3 / 6 kept even when the inner lines are off).
+    expect(arm(parseValorantCode('0;P;0b;0'), 'outer')).toEqual([10, 12])
+    expect(arm(parseValorantCode('0;P;0b;0;1o;2'), 'outer')).toEqual([2, 4])
+    expect(arm(parseValorantCode('0;P;0b;0;0o;5;1o;2;1l;4'), 'outer')).toEqual([2, 6])
+    expect(parseValorantCode('0;P;0b;0;1o;2').innerShow).toBe(false)
+  })
+
+  it('the trainer gets the same outer start (inner offset + inner length + outer offset)', () => {
+    for (const [code, start] of [['0', 10], ['0;P;0b;0;1o;2', 2]] as const) {
+      const g = crosshairSettingsToGodot(parseValorantCode(code))
+      expect(g.inner_offset + g.inner_length + g.outer_offset, code).toBe(start)
+    }
   })
 })
