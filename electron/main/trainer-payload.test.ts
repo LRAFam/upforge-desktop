@@ -23,6 +23,10 @@ describe('buildTrainingSessionPayload', () => {
     expect((payload.metadata as Record<string, unknown>).user_drill_id).toBeUndefined()
     expect((buildTrainingSessionPayload(result, null).metadata as Record<string, unknown>).user_drill_id).toBeUndefined()
   })
+  it('stamps the app and trainer version that produced the run', () => {
+    const payload = buildTrainingSessionPayload(result, null, { app_version: '3.4.22', trainer_version: '1.13.0' })
+    expect(payload.metadata).toMatchObject({ app_version: '3.4.22', trainer_version: '1.13.0', scoring_version: 3 })
+  })
 })
 
 describe('drillConfigFromRequest', () => {

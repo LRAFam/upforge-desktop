@@ -9,8 +9,10 @@ import SettingsStatusStrip from './SettingsStatusStrip.vue'
 import GameDataCaptureSection from './GameDataCaptureSection.vue'
 import type { StatusItem } from './SettingsStatusStrip.vue'
 import { uiV3 } from '../../lib/ui-v3'
+import trainerPin from '../../../trainer-version.json'
 
 const router = useRouter()
+const trainerVersion = trainerPin.version
 const developerOpen = ref(false)
 
 const {
@@ -168,7 +170,7 @@ function previewOnboarding(): void {
       </SettingsRow>
     </SettingsSection>
 
-    <SettingsSection v-if="!isDev" title="Updates" :hint="`UpForge Desktop v${appVersion}`">
+    <SettingsSection v-if="!isDev" title="Updates" :hint="`UpForge Desktop v${appVersion} · Trainer v${trainerVersion}`">
       <div class="uf-set-row">
         <div class="uf-set-row-text">
           <p v-if="updatePhase === 'idle' || updatePhase === 'checking'" class="uf-t3">{{ updateUpToDate ? 'You are on the latest version' : 'A newer version may be available' }}</p>
@@ -370,7 +372,7 @@ function previewOnboarding(): void {
     <SettingsSection
       v-if="!isDev"
       title="Updates"
-      :hint="`UpForge Desktop v${appVersion}`"
+      :hint="`UpForge Desktop v${appVersion} · Trainer v${trainerVersion}`"
     >
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="min-w-0">

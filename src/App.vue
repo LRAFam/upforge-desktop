@@ -314,11 +314,14 @@ import { isPostGameWindowRoute, shouldInitializeFullAppShell } from './lib/windo
 import type { ClipRecord, ProfileData, ValorantStats } from './env.d.ts'
 import { playerIdentity } from './lib/player-identity'
 import { asTrainerResult, launchConfigFromInfo, shellOpensTrainerResult } from './lib/trainer-launch'
+import { checkRunAchievements } from './lib/trainer-achievements'
+import { useAchievements } from './composables/useAchievements'
 import { useTrainerResultStore } from './stores/trainerResult'
 
 const route = useRoute()
 const router = useRouter()
 const trainerResultStore = useTrainerResultStore()
+const runAchievements = useAchievements()
 const { primaryGame, isValorant, loadFromSettings, applyFromSettings } = usePrimaryGame()
 const { theme, cssVars } = useGameTheme()
 
@@ -826,10 +829,17 @@ onMounted(async () => {
   })
   ;(window as Window & { _appNavCleanup?: () => void })._appNavCleanup = navCleanup
 
-  // A drill that ends outside Practice (e.g. started from Home) still opens its result screen.
+  // Every trainer run, wherever it started (Practice, "Play again", Home), is checked for achievements
+  // here, once. A drill that ends outside Practice (e.g. started from Home) still opens its result screen.
   const trainerResultCleanup = api.on('trainer:session-result', (...args: unknown[]) => {
     const result = asTrainerResult(args[0])
-    if (!result || !shellOpensTrainerResult(route.path)) return
+    if (!result) return
+    void checkRunAchievements(result, {
+      getHistory: () => api.trainer.getHistory(),
+      check: runAchievements.check,
+      notify: (ids) => window.__ufAchievementUnlocked?.(ids),
+    }).catch(() => { /* achievements are best effort */ })
+    if (!shellOpensTrainerResult(route.path)) return
     trainerResultStore.setResult(result, launchConfigFromInfo(args[1]), null)
     router.push('/trainer-results').catch(() => {})
   })
