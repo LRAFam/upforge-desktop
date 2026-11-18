@@ -65,10 +65,9 @@ function movedNumbers(run: RunNumbers, previous: RunNumbers): string[] {
 /** Why some numbers show "Not measured" (facts about the drill, never advice). */
 function measurementNotes(run: RunNumbers): string[] {
   const m = measured(run)
+  // Both tracking drills score crosshair-on-target time over the active drill; neither needs a click.
   if (m.tracking) {
-    return [run.scenario === 'strafe_track'
-      ? 'Tracking accuracy measures time on target while firing. Reaction time and click consistency do not apply to this drill.'
-      : 'Tracking accuracy measures time with the cursor on target. Reaction time and click consistency do not apply to this drill.']
+    return ['Time on target is the share of the drill your crosshair stayed on the target (no click needed). Reaction time and click consistency do not apply to this drill.']
   }
   const reaction = lower(reactionMetricLabel(run.scenario))
   if (!m.reaction) {

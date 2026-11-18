@@ -44,7 +44,10 @@ describe('trainerRunSummary: measured facts only', () => {
     expect(peek.details).toContain('Since your last run: safe-spot rate 60.0% → 70.0%, exposure 420 → 380 ms.')
     const track = trainerRunSummary({ run: run({ scenario: 'tracking', accuracy_pct: 55 }), previous: run({ scenario: 'tracking', accuracy_pct: 50 }), best: 64, history: 'ok' })
     expect(track.details).toContain('Since your last run: time on target 50.0% → 55.0%.')
-    expect(track.details.at(-1)).toMatch(/^Tracking accuracy measures time with the cursor on target/)
+    expect(track.details.at(-1)).toBe('Time on target is the share of the drill your crosshair stayed on the target (no click needed). Reaction time and click consistency do not apply to this drill.')
+    // Strafe Track needs no click either: it does not measure "while firing".
+    const strafe = trainerRunSummary({ run: run({ scenario: 'strafe_track' }), previous: null, best: null, history: 'ok' })
+    expect(strafe.details).toEqual([track.details.at(-1)])
     const oneHit = trainerRunSummary({ run: run({ targets_hit: 1 }), previous: run({ targets_hit: 1, avg_reaction_ms: 400 }), best: 64, history: 'ok' })
     expect(oneHit.details).toContain('Since your last run: time to hit 400 → 310 ms.')
     expect(oneHit.details.at(-1)).toBe('At least two successful hits are needed to measure consistency.')
