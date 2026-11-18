@@ -39,6 +39,16 @@ export function buildTrainingSessionPayload(
 }
 
 /**
+ * The trainer does not report which game's settings it ran with; stamp the launch's game so scores
+ * are only compared with runs on the same game (see trainingComparisonModel). Returns a copy.
+ */
+export function withLaunchGame(result: SessionResult, config: Pick<DrillConfig, 'mouse_settings'> | null | undefined): SessionResult {
+  const game = config?.mouse_settings?.game
+  if (typeof result.metadata?.game === 'string' || typeof game !== 'string' || game === '') return result
+  return { ...result, metadata: { ...result.metadata, game } }
+}
+
+/**
  * Renderer launch request → DrillConfig. Mouse and crosshair settings always come from the saved
  * settings in main (source of truth), so any renderer-sent copies are ignored.
  */
