@@ -83,4 +83,9 @@ describe('drillLoop', () => {
     expect(loop.stat).toBeNull()
     expect(loop.next).toBe('Your next analysed match checks: Headshot rate above 25%')
   })
+
+  it('video drills: the review reason from the API when it sends one', () => {
+    const loop = drillLoop({ id: 4, title: 'Pre-aim head height', status: 'active', source: 'vod', why: ' At 4:12 your crosshair sat at body height. ' }, null)!
+    expect(loop.why).toBe('At 4:12 your crosshair sat at body height.')
+  })
 })

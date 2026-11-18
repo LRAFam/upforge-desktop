@@ -103,6 +103,8 @@ export interface TrainingHistory {
     completed_at: string
   }>
   by_scenario: Record<string, TrainingScenarioStats>
+  /** Counted from every run in the player's time zone (newer API); absent on older APIs and old caches. */
+  activity?: import('./lib/trainer-achievements').TrainingActivity
 }
 
 export interface SharedTrainingPlanStep {

@@ -22,7 +22,7 @@ import { TRAINER_VERSION } from '../trainer-version'
 import { apiPost } from './api-helpers'
 import { TrainerSessionQueue, trainerRunKey } from '../trainer-session-queue'
 import { dismissCoachingDrill } from '../coaching-drill-dismiss'
-import { collectPracticeData } from '../../../src/lib/practice-trainer-data'
+import { collectPracticeData, historyTimeZoneParams } from '../../../src/lib/practice-trainer-data'
 import { listRecentDemosInDir } from '../demo-finder'
 import { SourceReplayUploader } from '../source-replay-uploader'
 import { getDeadlockDetectionStatus } from '../deadlock-match-watcher'
@@ -182,7 +182,7 @@ export function setupGamingHandlers(
   const trainerReads = {
     // Practice's own history read (no comparison filter); the trainer:get-history handler below is unchanged.
     history: async () => {
-      const res = await auth.getApi().get('/api/training/sessions', { params: { limit: 50 } })
+      const res = await auth.getApi().get('/api/training/sessions', { params: { limit: 50, ...historyTimeZoneParams() } })
       return res.data ?? null
     },
     plan: async (game?: unknown) => {
@@ -215,7 +215,7 @@ export function setupGamingHandlers(
     const token = auth.getToken()
     if (!token) return null
     try {
-      const res = await auth.getApi().get('/api/training/sessions', { params: { limit: 50, ...(comparison ? { scenario: comparison.scenario, difficulty: comparison.difficulty, duration_seconds: comparison.duration_seconds, scoring_version: comparison.scoring_version, before: comparison.before, ...(comparison.comparison_model ? { comparison_model: comparison.comparison_model } : {}) } : {}) } })
+      const res = await auth.getApi().get('/api/training/sessions', { params: { limit: 50, ...historyTimeZoneParams(), ...(comparison ? { scenario: comparison.scenario, difficulty: comparison.difficulty, duration_seconds: comparison.duration_seconds, scoring_version: comparison.scoring_version, before: comparison.before, ...(comparison.comparison_model ? { comparison_model: comparison.comparison_model } : {}) } : {}) } })
       // MySQL sends the API's DECIMAL columns as strings ("72.50"); every screen gets numbers.
       return normalizeTrainingHistory(res.data ?? null)
     } catch (err: any) {
