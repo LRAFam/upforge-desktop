@@ -1,12 +1,13 @@
 <script setup lang="ts">
 /**
  * Deadlock replay review body (shared by the review dialog and the match page): the coach's notes, where you stood against your lane, the
- * enemy team and the lobby, the souls curve, item and ability timings, Mid Boss and deaths.
+ * enemy team and the lobby, the souls curve, item and ability timings, Mid Boss, deaths and the coach's practice drills.
  * Data: GET /api/deadlock/demo/{jobId} via `deadlock:get-analysis-detail` (read-only).
  */
 import { computed, ref, watch } from 'vue'
 import UfSkeleton from '../UfSkeleton.vue'
 import { abilityRows, deathRows, fightFacts, itemRows, lobbyLines, midBossRows, soulsCurve, type DeadlockReviewDetail } from './deadlock-review'
+import { deadlockDrills } from './deadlock-drills'
 
 const props = defineProps<{ active: boolean; jobId: string | null; hero?: string | null }>()
 const emit = defineEmits<{ title: [string] }>()
@@ -40,6 +41,7 @@ const abilities = computed(() => abilityRows(detail.value))
 const midBoss = computed(() => midBossRows(detail.value))
 const deaths = computed(() => deathRows(detail.value))
 const coaching = computed(() => detail.value?.coaching ?? null)
+const drills = computed(() => deadlockDrills(detail.value))
 const ps = computed(() => detail.value?.match_stats?.player_stats ?? null)
 const result = computed(() => {
   const r = (detail.value?.match_result ?? '').toLowerCase()
@@ -155,6 +157,14 @@ defineExpose({ openWeb })
           <span class="uf-t3">{{ i.issue }}</span>
           <span class="uf-t4">{{ i.evidence }}</span>
           <span class="uf-t2">{{ i.fix }}</span>
+        </div>
+      </section>
+
+      <section v-if="drills.length" class="dlr-block">
+        <span class="uf-label">Practice</span>
+        <div v-for="(d, n) in drills" :key="n" class="dlr-issue">
+          <span class="uf-t3">{{ d.title }}<span v-if="d.frequency" class="uf-t4"> · {{ d.frequency }}</span></span>
+          <span v-if="d.description" class="uf-t2">{{ d.description }}</span>
         </div>
       </section>
     </div>
