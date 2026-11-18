@@ -16,6 +16,7 @@ import path from 'path'
 import fs from 'fs'
 import log from 'electron-log'
 import type { AuthManager } from './auth-manager'
+import { withLaunchGame } from './trainer-payload'
 
 /** Legacy fixed port (trainer builds before the per-launch port). Not used for new launches. */
 export const LEGACY_TRAINER_PORT = 7891
@@ -478,7 +479,7 @@ export class TrainerBridge {
         continue
       }
       if (state.ended) continue // never forward a result after the launch already ended
-      const result = msg.result
+      const result = withLaunchGame(msg.result, state.config)
       log.info('[TrainerBridge] Received result, score:', result.score)
       this._mainWindow()?.webContents.send('trainer:session-result', result, state.info)
       this._onResultCallback?.(result, state.info)

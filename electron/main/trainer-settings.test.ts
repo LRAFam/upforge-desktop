@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { crosshairSettingsToGodot, normalizeCrosshairSettings, normalizeTrainerMouse, trainerMouseToGodot } from './trainer-settings'
 
@@ -42,5 +44,24 @@ describe('crosshairSettingsToGodot', () => {
   })
   it('drops wrong-typed saved values', () => {
     expect(normalizeCrosshairSettings({ dotRadius: null, innerLength: 'x', outerShow: true })).toMatchObject({ dotRadius: 1.5, innerLength: 10, outerShow: true })
+  })
+})
+
+describe('trainer settings pane only offers settings the trainer uses', () => {
+  const pane = readFileSync(resolve(__dirname, '../../src/components/settings/SettingsTrainerPane.vue'), 'utf8')
+  const bound = [...new Set([...pane.matchAll(/settings\.trainerMouse\.(\w+)/g)].map(m => m[1]))]
+  const changed: Record<string, unknown> = {
+    dpi: 1600, game: 'cs2', sensitivity: 0.9, fov: 95, movementSpeed: 4.4,
+    trainerVolume: 40, scopedMultiplier: 1.5, rawInput: false, pollingRate: 125,
+  }
+
+  it('finds the bound fields', () => {
+    expect(bound).toContain('dpi')
+  })
+
+  it.each(bound)('changing %s changes the trainer launch settings', (field) => {
+    expect(field in changed, `add a test value for ${field}`).toBe(true)
+    const base = trainerMouseToGodot({})
+    expect(trainerMouseToGodot({ [field]: changed[field] })).not.toEqual(base)
   })
 })

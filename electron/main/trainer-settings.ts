@@ -28,6 +28,7 @@ export const DEFAULT_TRAINER_MOUSE: TrainerMouse = {
   game: 'valorant',
   sensitivity: 0.5,
   fov: DEFAULT_TRAINER_FOV,
+  // rawInput / pollingRate: kept so old saves still load; the trainer does not read them (no UI).
   rawInput: true,
   pollingRate: 1000,
   movementSpeed: 6.75,

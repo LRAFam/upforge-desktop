@@ -400,7 +400,7 @@ onMounted(async () => {
           <section class="uf-rise uf-d3s">
             <span class="uf-label">Score trend</span>
             <p class="uf-t4" style="margin: 8px 0 12px">
-              {{ trainingComparisonRequest(result) ? `${result.metadata?.difficulty} · ${result.duration_seconds}s · Updated scoring. Comparisons use matching settings.` : 'Legacy or incomplete settings. This score is saved separately from current comparisons.' }}
+              {{ trainingComparisonRequest(result) ? `${result.metadata?.difficulty} · ${result.duration_seconds}s · Compared only with your runs on the same game, movement and settings.` : 'Older run without full settings. Saved, but not compared with current runs.' }}
             </p>
             <p v-if="trendMessage" class="uf-t2" style="margin: 0">{{ trendMessage }}</p>
             <svg v-else-if="showTrendChart" :viewBox="`0 0 ${W} ${H}`" class="uf-tr-chart" role="img" :aria-label="`Score trend over ${chartScores.length} runs`">
@@ -567,7 +567,7 @@ onMounted(async () => {
       <div class="results-panel flex flex-col gap-5 p-5">
 
         <p class="text-[11px] text-white/50">
-          {{ trainingComparisonRequest(result) ? `${result.metadata?.difficulty} · ${result.duration_seconds}s · Updated scoring. Comparisons use matching settings.` : 'Legacy or incomplete settings. This score is saved separately from current comparisons.' }}
+          {{ trainingComparisonRequest(result) ? `${result.metadata?.difficulty} · ${result.duration_seconds}s · Compared only with your runs on the same game, movement and settings.` : 'Older run without full settings. Saved, but not compared with current runs.' }}
         </p>
         <!-- Score trend chart -->
         <div>

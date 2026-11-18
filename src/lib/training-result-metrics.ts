@@ -10,6 +10,8 @@ export interface TrainingComparisonRequest {
   difficulty: string
   scoring_version: number
   before: string
+  /** Same game + movement model only (API ≥ Nov 2026). Omitted = no model filter (older callers). */
+  comparison_model?: string
 }
 /**
  * Trainer scoring version this desktop understands as "current" (trainer sends metadata.scoring_version).
@@ -27,19 +29,45 @@ export function isCurrentScoringRun(run: { metadata?: Record<string, unknown> } 
   return scoringVersionOf(run) === CURRENT_SCORING_VERSION
 }
 
+/** 2 decimals without trailing zeros (6.75, 5.4, 6) — same as the API's TrainingComparison::number. */
+function modelNumber(value: number): string {
+  return String(Math.round(value * 100) / 100)
+}
+
+/**
+ * The trainer measurement model a score was set on: game + movement model + effective run speed (3D)
+ * or aim scale (2D). Scores are only compared within one model. Null without a game (older runs):
+ * those are legacy. Must match the API's TrainingComparison::model exactly.
+ */
+export function trainingComparisonModel(metadata: Record<string, unknown> | null | undefined): string | null {
+  const game = metadata?.game
+  if (typeof game !== 'string' || game === '') return null
+  const parts = [`game=${game}`]
+  const movement = metadata?.movement
+  if (typeof movement === 'string' && movement !== '') parts.push(`movement=${movement}`)
+  for (const key of ['run_speed_mps', 'aim_scale'] as const) {
+    const value = metadata?.[key]
+    if (typeof value === 'number' && Number.isFinite(value)) parts.push(`${key}=${modelNumber(value)}`)
+  }
+  return parts.join(';')
+}
+
 export function trainingComparisonRequest(run: ComparableTrainingRun): TrainingComparisonRequest | null {
   const difficulty = run.metadata?.difficulty
-  if (!isCurrentScoringRun(run) || typeof difficulty !== 'string'
+  const model = trainingComparisonModel(run.metadata)
+  if (!isCurrentScoringRun(run) || !model || typeof difficulty !== 'string'
     || !['easy', 'medium', 'hard', 'pro'].includes(difficulty)
     || !Number.isInteger(run.duration_seconds) || run.duration_seconds < 10
     || !Number.isFinite(trainingTimestamp(run.completed_at))) return null
   return { scenario: run.scenario, duration_seconds: run.duration_seconds, difficulty,
-    scoring_version: CURRENT_SCORING_VERSION, before: new Date(trainingTimestamp(run.completed_at)).toISOString() }
+    scoring_version: CURRENT_SCORING_VERSION, before: new Date(trainingTimestamp(run.completed_at)).toISOString(),
+    comparison_model: model }
 }
 export function comparableTrainingRuns(a: ComparableTrainingRun, b: ComparableTrainingRun): boolean {
   const left = trainingComparisonRequest(a), right = trainingComparisonRequest(b)
   return !!left && !!right && left.scenario === right.scenario
     && left.duration_seconds === right.duration_seconds && left.difficulty === right.difficulty
+    && left.comparison_model === right.comparison_model
 }
 
 /** Godot timestamps without an offset are UTC, matching its UTC clock call. */
