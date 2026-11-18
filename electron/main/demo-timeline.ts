@@ -30,9 +30,7 @@ export function cs2DemoReadError(demoPath: string | null | undefined): string | 
   return demoPath ? cs2DemoReadErrors.get(demoPath) ?? null : null
 }
 
-/** Shown when the demo exists but the parser cannot read it — usually a CS2 update changed the format. */
-export const CS2_DEMO_UNREADABLE_MESSAGE =
-  'UpForge could not read this CS2 demo. A CS2 game update can change the demo format: update UpForge to the latest version, then scan again.'
+export { CS2_DEMO_UNREADABLE_MESSAGE } from './demo-read-messages'
 
 /**
  * Parse a Source-engine .dem replay into MatchData for clip extraction and VOD review.
