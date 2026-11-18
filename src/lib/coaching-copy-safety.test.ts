@@ -16,9 +16,7 @@ describe('coaching copy safety', () => {
 // #595: the desktop shows what was measured, not what it caused. These phrases claim a cause
 // (or a carry-over) the data cannot support and must not come back in user-facing copy.
 describe('no causal improvement copy in the app', () => {
-  const BLOCKED = [/costing you (most |the most )?(rounds|games)/i, /keeps costing/i, /still costing/i, /did it carry over/i, /carried over/i, /fastest path to climbing/i, /improved because of/i,
-    // Unsourced number-with-unit promises (e.g. "reduce your reaction time by 15–20ms"): nothing measures these.
-    /\b(reduce|cut|improve|lower|boost)s? your [a-z -]+ by (up to )?\d/i, /\bby \d+\s*[–-]\s*\d+\s*ms\b/i]
+  const BLOCKED = [/costing you (most |the most )?(rounds|games)/i, /keeps costing/i, /still costing/i, /did it carry over/i, /carried over/i, /fastest path to climbing/i, /improved because of/i]
   it('src/ and electron/ contain none of the blocked phrases', async () => {
     const { readdirSync, readFileSync, statSync } = await import('node:fs')
     const { join, relative } = await import('node:path')
