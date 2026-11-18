@@ -166,7 +166,7 @@ async function confirmAttach() {
       emit('attached')
       emit('close')
     } else if (result.error !== 'Cancelled') {
-      error.value = result.error ?? 'Could not read this replay.'
+      error.value = result.error ?? 'Could not open this replay file. Check it is the replay for this match, or pick another file.'
     }
   } catch {
     error.value = 'Attach failed — try another file.'

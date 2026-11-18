@@ -1,7 +1,8 @@
 import fs from 'fs'
 import log from 'electron-log'
 import { peekDemoHeader } from './demo-header-peek'
-import { buildTimelineFromDemo } from './demo-timeline'
+import { buildTimelineFromDemo, cs2DemoReadError, CS2_DEMO_UNREADABLE_MESSAGE } from './demo-timeline'
+import { REPLAY_UNREADABLE_MESSAGE } from './demo-read-messages'
 import {
   isDemoLikelyIncomplete,
   sanitizeDemoClientName,
@@ -194,7 +195,9 @@ export async function buildDemoPreviewSummary(opts: {
           playerName: sanitizeDemoClientName(peek?.clientName),
           error: incomplete
             ? 'Steam may still be downloading this replay — open CS2 → Watch → Your Matches, then rescan'
-            : 'Could not fully parse this replay — try Rescan or pick another file',
+            : opts.game === 'cs2' && cs2DemoReadError(normalized)
+              ? CS2_DEMO_UNREADABLE_MESSAGE
+              : 'Could not fully parse this replay — try Rescan or pick another file',
         }
       }
       return {
@@ -222,6 +225,6 @@ export async function buildDemoPreviewSummary(opts: {
     return summary
   } catch (err) {
     log.warn('[DemoPreview] Failed:', (err as Error).message)
-    return { ...empty, error: 'Could not read this replay' }
+    return { ...empty, error: REPLAY_UNREADABLE_MESSAGE }
   }
 }
