@@ -482,6 +482,10 @@ const api = {
     getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),
     getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all', difficulty?: string, durationSeconds?: number) =>
       ipcRenderer.invoke('trainer:get-leaderboard', scenario, period, difficulty, durationSeconds),
+    getLeaderboardVisibility: () =>
+      ipcRenderer.invoke('trainer:get-leaderboard-visibility') as Promise<{ ok: true; visible: boolean } | { ok: false; error: string }>,
+    setLeaderboardVisibility: (visible: boolean) =>
+      ipcRenderer.invoke('trainer:set-leaderboard-visibility', visible) as Promise<{ ok: true; visible: boolean } | { ok: false; error: string }>,
   },
       deadlock: {
         listReplays: () => ipcRenderer.invoke('deadlock:list-replays'),

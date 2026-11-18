@@ -17,6 +17,8 @@ import { PerformanceManager } from '../performance-manager'
 import { TrainerBridge } from '../trainer-bridge'
 import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest, drillGameParams } from '../trainer-payload'
 import { sendOverlayData } from '../overlay-window'
+import { APP_VERSION } from '../app-version'
+import { TRAINER_VERSION } from '../trainer-version'
 import { apiPost } from './api-helpers'
 import { TrainerSessionQueue, trainerRunKey } from '../trainer-session-queue'
 import { dismissCoachingDrill } from '../coaching-drill-dismiss'
@@ -107,7 +109,7 @@ export function setupGamingHandlers(
       ? launchOwners.get(launch.launchId) ?? null
       : auth.getUser()?.id ?? null
     if (launch) launchOwners.delete(launch.launchId)
-    void trainerQueue.submit(buildTrainingSessionPayload(result, launch), owner)
+    void trainerQueue.submit(buildTrainingSessionPayload(result, launch, { app_version: APP_VERSION, trainer_version: TRAINER_VERSION }), owner)
   })
 
   ipcMain.handle('trainer:get-sync-status', (_e, scenario: unknown, completedAt: unknown) =>
@@ -242,6 +244,29 @@ export function setupGamingHandlers(
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch leaderboard:', err?.message)
       return []
+    }
+  })
+
+  // Leaderboard visibility (all boards): the account's privacy setting, read and changed in the app.
+  ipcMain.handle('trainer:get-leaderboard-visibility', async () => {
+    if (!auth.getToken()) return { ok: false, error: 'Sign in to change this.' }
+    try {
+      const res = await auth.getApi().get('/api/profile/privacy')
+      return { ok: true, visible: res.data?.leaderboard_opt_in !== false }
+    } catch (err: any) {
+      log.warn('[Trainer] Failed to read leaderboard visibility:', err?.message)
+      return { ok: false, error: 'Couldn’t check your leaderboard setting.' }
+    }
+  })
+  ipcMain.handle('trainer:set-leaderboard-visibility', async (_e, visible: unknown) => {
+    if (typeof visible !== 'boolean') return { ok: false, error: 'Invalid setting.' }
+    if (!auth.getToken()) return { ok: false, error: 'Sign in to change this.' }
+    try {
+      const res = await auth.getApi().put('/api/profile/privacy', { leaderboard_opt_in: visible })
+      return { ok: true, visible: res.data?.leaderboard_opt_in !== false }
+    } catch (err: any) {
+      log.warn('[Trainer] Failed to change leaderboard visibility:', err?.message)
+      return { ok: false, error: 'Couldn’t save that. Try again.' }
     }
   })
 

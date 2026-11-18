@@ -10,6 +10,7 @@ import UfButton from '../UfButton.vue'
 import EmptyArt from '../empty/EmptyArt.vue'
 import { scenarioIconUrl } from '../../../lib/training-icons'
 import type { TrainingBenchmark, TrainingHistory } from '../../../env.d.ts'
+import { bestGroup, settingsLabel } from './best-settings'
 import { benchmarkMeta, benchmarkVisible, pct, recentScores, toneColor, trendSummary } from './practice-session-v3'
 
 export interface AnalyticsRadar {
@@ -60,6 +61,8 @@ const rows = computed(() => props.drills.map(d => {
   return {
     ...d,
     best: stats?.best_score ?? null,
+    // The best is from one difficulty and length (the latest run's); say which.
+    bestSettings: settingsLabel(bestGroup(stats?.comparison)),
     trend: trendSummary(stats?.trend ?? null),
     recent: recentScores(stats?.sessions),
     spark: props.sparkline(d.key),
@@ -138,7 +141,7 @@ const labelAnchor = (x: number) => (x < 64 ? 'end' : x > 76 ? 'start' : 'middle'
               </svg>
               <span class="uf-an-best">
                 <span class="uf-d4" :style="r.best == null ? 'color: var(--uf-faint)' : undefined">{{ r.best ?? '—' }}</span>
-                <span class="uf-t4">best</span>
+                <span class="uf-t4">{{ r.best != null && r.bestSettings ? `best · ${r.bestSettings}` : 'best' }}</span>
               </span>
             </div>
             <div v-if="r.bench" class="uf-an-bench">
@@ -202,7 +205,7 @@ const labelAnchor = (x: number) => (x < 64 ? 'end' : x > 76 ? 'start' : 'middle'
 .uf-an-runs > span:not(.uf-t4) { flex: 1; background: var(--uf-line-2); }
 .uf-an-runs > span:last-child:not(.uf-t4) { background: var(--uf-bone); }
 .uf-an-spark { flex: none; overflow: visible; }
-.uf-an-best { width: 56px; flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.uf-an-best { min-width: 56px; flex: none; white-space: nowrap; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .uf-an-bench { display: flex; align-items: center; gap: 14px; padding-left: 54px; flex-wrap: wrap; }
 .uf-an-bench b { color: var(--uf-bone); font-weight: 600; }
 .uf-an-benchbar { position: relative; width: 160px; height: 3px; background: var(--uf-line); flex: none; }

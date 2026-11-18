@@ -1796,6 +1796,9 @@ declare global {
         getCorrelation: () => Promise<string[]>
         getBenchmark: () => Promise<TrainingBenchmark | null>
         getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all', difficulty?: string, durationSeconds?: number) => Promise<TrainerLeaderboardEntry[]>
+        /** Whether the account appears on leaderboards (PUT/GET /api/profile/privacy `leaderboard_opt_in`). */
+        getLeaderboardVisibility: () => Promise<{ ok: true; visible: boolean } | { ok: false; error: string }>
+        setLeaderboardVisibility: (visible: boolean) => Promise<{ ok: true; visible: boolean } | { ok: false; error: string }>
       }
       deadlock: {
         listReplays: () => Promise<{

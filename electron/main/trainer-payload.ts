@@ -7,6 +7,12 @@ import type { AppSettings } from './settings-manager'
 import type { DrillConfig, SessionResult, TrainerLaunchInfo } from './trainer-bridge'
 import { crosshairSettingsToGodot, trainerMouseToGodot } from './trainer-settings'
 
+/** Which app and bundled trainer produced a run (stored in metadata so support can tell builds apart). */
+export interface RunVersions {
+  app_version: string
+  trainer_version: string
+}
+
 /**
  * Session sync payload for POST /api/training/sessions. `launch` is the launch this result belongs to
  * (from the bridge), so a late result never picks up the next drill's user_drill_id.
@@ -14,6 +20,7 @@ import { crosshairSettingsToGodot, trainerMouseToGodot } from './trainer-setting
 export function buildTrainingSessionPayload(
   result: SessionResult,
   launch: Pick<TrainerLaunchInfo, 'difficulty' | 'user_drill_id'> | null,
+  versions?: RunVersions,
 ): Record<string, unknown> {
   const {
     max_streak,
@@ -31,6 +38,10 @@ export function buildTrainingSessionPayload(
   if (metadata.scoring_version == null && launch?.difficulty) metadata.difficulty = launch.difficulty // Legacy trainer compatibility only; these runs are excluded from current comparisons.
   if (launch?.user_drill_id) metadata.user_drill_id = launch.user_drill_id
   else delete metadata.user_drill_id
+  if (versions) {
+    metadata.app_version = versions.app_version
+    metadata.trainer_version = versions.trainer_version
+  }
 
   return {
     ...core,

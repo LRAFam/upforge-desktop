@@ -34,6 +34,7 @@ import TrainingScenarioCard from '../components/training/TrainingScenarioCard.vu
 import TrainingLeaderboardsTab from '../components/training/TrainingLeaderboardsTab.vue'
 import TrainingLoadoutsTab from '../components/training/TrainingLoadoutsTab.vue'
 import PracticeV3 from './v3/PracticeV3.vue'
+import { bestForSettings, bestGroup } from '../components/v3/practice/best-settings'
 import { uiV3 } from '../lib/ui-v3'
 import { readCache, writeCache } from '../lib/stale-cache'
 import UfButton from '../components/v3/UfButton.vue'
@@ -461,11 +462,19 @@ const recommendedDrills = computed(() => {
   return (picks.length ? picks : assignedDrills.value).slice(0, 3)
 })
 
+// The comparison group (difficulty + length) the API's best and rank for this drill come from.
+function scenarioBestGroup(scenario: string) {
+  return bestGroup(benchmarkData.value?.[scenario]?.comparison) ?? bestGroup(apiHistory.value?.by_scenario?.[scenario]?.comparison)
+}
+
+// A drill not in today's plan launches with the settings of the player's best (else Medium · 1 min),
+// so the settings a row prints, its best and rank, and what "Play" launches all agree.
 function drillForScenario(scenario: ScenarioKey): AssignedDrill {
+  const group = scenarioBestGroup(scenario)
   return assignedDrills.value.find(d => d.scenario === scenario) ?? {
     scenario,
-    difficulty: 'medium',
-    duration_seconds: 60,
+    difficulty: group?.difficulty ?? 'medium',
+    duration_seconds: group?.duration_seconds ?? 60,
     weakness: '',
     weakness_score: 0,
     reason: '',
@@ -519,11 +528,19 @@ const scenarioCards = computed(() =>
     .filter(def => matchesScenarioCategory(def.key, activeDrillCategory.value))
     .map(def => {
       const scenario = def.key
+      const drill = drillForScenario(scenario)
+      const best = bestForSettings(
+        scenario, drill, scenarioBestGroup(scenario),
+        benchmarkData.value?.[scenario]?.user_best ?? apiHistory.value?.by_scenario[scenario]?.best_score ?? null,
+        benchmarkData.value?.[scenario]?.global_rank ?? null,
+        apiHistory.value?.sessions,
+        benchmarkData.value?.[scenario]?.comparison?.scoring_version ?? apiHistory.value?.by_scenario?.[scenario]?.comparison?.scoring_version ?? null,
+      )
       return {
         scenario,
-        drill: drillForScenario(scenario),
-        pb: benchmarkData.value?.[scenario]?.user_best ?? apiHistory.value?.by_scenario[scenario]?.best_score ?? null,
-        rank: benchmarkData.value?.[scenario]?.global_rank ?? null,
+        drill,
+        pb: best.best,
+        rank: best.rank,
         progress: scenarioProgress(scenario),
         completed: completedDrills.value.has(scenario),
       }
@@ -770,17 +787,8 @@ onMounted(async () => {
       trainerResultStore.setResult(r, currentLaunchConfig, null)
       router.push('/trainer-results')
     }
-    window.api.trainer.getHistory().then(async h => {
-      apiHistory.value = h
-      const newAchs = await achievements.check({
-        totalDrills: h?.total ?? 0,
-        streak: trainingStats.value.streak,
-        lastScore: r.score,
-        lastAccuracy: r.accuracy_pct,
-        lastReactionMs: r.avg_reaction_ms,
-      })
-      if (newAchs.length) window.__ufAchievementUnlocked?.(newAchs)
-    })
+    // Achievements are checked by the app shell for every run (src/App.vue).
+    window.api.trainer.getHistory().then(h => { apiHistory.value = h })
   }))
 
   // Fetch training history + coaching drills from API
