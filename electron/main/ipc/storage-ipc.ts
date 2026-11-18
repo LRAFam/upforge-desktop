@@ -16,6 +16,7 @@ import type { SettingsManager } from '../settings-manager'
 import type { RecordingsStore } from '../recordings-store'
 import type { MatchData } from '../riot-types'
 import { UpgradeRequiredError } from '../errors'
+import { snapshotAccountOwner } from '../account-scope'
 import {
   getStorageBreakdown,
   purgeCloudBackedLocals,
@@ -129,6 +130,8 @@ export function setupStorageHandlers(ipcMain: IpcMain, deps: StorageIpcDeps): vo
 
     bulkPendingUploadRunning = true
     const user = authManager.getUser()
+    // These rows belong to the account signed in now; stop if it signs out or switches.
+    const owner = snapshotAccountOwner(getActiveUserId)
     let uploaded = 0
     let failed = 0
     let stoppedEarly = false
@@ -149,6 +152,11 @@ export function setupStorageHandlers(ipcMain: IpcMain, deps: StorageIpcDeps): vo
     try {
       for (let i = 0; i < pending.length; i++) {
         const rec = pending[i]!
+        if (!owner.stillOwned()) {
+          stoppedEarly = true
+          stopReason = 'Signed out — remaining recordings were not saved'
+          break
+        }
         current = i + 1
         paused = backgroundWork.blocked
         mainWindow.webContents.send('storage:upload-progress', {

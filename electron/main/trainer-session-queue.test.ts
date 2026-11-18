@@ -12,14 +12,16 @@ describe('TrainerSessionQueue', () => {
   let file: string
   let now: number
   let timers: Array<{ fn: () => void; ms: number }>
+  let user: number | null
   const make = (post: (p: Record<string, unknown>) => Promise<unknown>, opts: { token?: () => boolean; notify?: (o: unknown) => void } = {}) =>
-    new TrainerSessionQueue({ file, post, hasToken: opts.token ?? (() => true), notify: opts.notify, now: () => now, schedule: (fn, ms) => timers.push({ fn, ms }) })
+    new TrainerSessionQueue({ file, post, hasToken: opts.token ?? (() => true), currentUserId: () => user, notify: opts.notify, now: () => now, schedule: (fn, ms) => timers.push({ fn, ms }) })
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trainer-queue-'))
     file = path.join(dir, 'pending.json')
     now = 1_000_000
     timers = []
+    user = 1
   })
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }))
 
@@ -98,6 +100,54 @@ describe('TrainerSessionQueue', () => {
     for (let i = 1; i < MAX_ATTEMPTS; i++) { now += 3_600_000; await q.flush() }
     expect(q.pendingCount).toBe(0)
     expect(q.outcomeFor(trainerRunKey('flick', '2026-11-15T10:00:00Z'))?.state).toBe('failed')
+  })
+
+  describe('account ownership', () => {
+    it('a run queued by account A never posts while B is signed in, and uploads once A returns', async () => {
+      const post = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({})
+      const notify = vi.fn()
+      user = 101
+      const q = make(post, { notify })
+      expect((await q.submit(run())).state).toBe('pending')
+      notify.mockClear()
+
+      user = 202
+      now += 60 * 60 * 1000
+      await q.flush()
+      expect(post).toHaveBeenCalledTimes(1) // only A's original attempt
+      expect(q.pendingCount).toBe(1)
+      expect(notify).not.toHaveBeenCalled() // B sees no A sync events
+
+      // Survives restart: a new queue reading the same file still knows the owner.
+      user = 101
+      const restarted = make(post, { notify })
+      now += 60 * 60 * 1000
+      await restarted.flush()
+      expect(post).toHaveBeenCalledTimes(2)
+      expect(restarted.pendingCount).toBe(0)
+      const ids = post.mock.calls.map(c => (c[0] as { metadata: { client_run_id: string } }).metadata.client_run_id)
+      expect(ids[0]).toBe(ids[1])
+    })
+
+    it('a trainer launched by A whose result arrives after switching to B is queued for A', async () => {
+      const post = vi.fn().mockResolvedValue({})
+      user = 202
+      const q = make(post)
+      const out = await q.submit(run(), 101)
+      expect(post).not.toHaveBeenCalled()
+      expect(out.state).toBe('pending')
+      expect(q.pendingCount).toBe(1)
+    })
+
+    it('runs from older builds without an owner are kept, never claimed by whoever signs in', async () => {
+      fs.writeFileSync(file, JSON.stringify([{ clientRunId: 'legacy', key: 'k', payload: run(), attempts: 0, nextAt: 0, createdAt: now }]))
+      const post = vi.fn().mockResolvedValue({})
+      user = 202
+      const q = make(post)
+      await q.flush()
+      expect(post).not.toHaveBeenCalled()
+      expect(q.pendingCount).toBe(1)
+    })
   })
 })
 

@@ -88,6 +88,7 @@ export function setupGamingHandlers(
       return apiPost(apiBase, '/api/training/sessions', JSON.stringify(payload), token)
     },
     hasToken: () => !!auth.getToken(),
+    currentUserId: () => auth.getUser()?.id ?? null,
     notify: (outcome) => {
       for (const w of BrowserWindow.getAllWindows()) {
         if (!w.isDestroyed()) w.webContents.send('trainer:session-synced', outcome)
@@ -97,10 +98,16 @@ export function setupGamingHandlers(
   })
   void trainerQueue.flush()
 
+  // The account that started each trainer launch owns its result, even if the login changes mid-run.
+  const launchOwners = new Map<number, number | null>()
   trainerBridge?.setResultCallback((result, launch) => {
     sendOverlayData('overlay:trainer-result', result)
     void trainerQueue.flush() // earlier runs first, e.g. after signing back in
-    void trainerQueue.submit(buildTrainingSessionPayload(result, launch))
+    const owner = launch && launchOwners.has(launch.launchId)
+      ? launchOwners.get(launch.launchId) ?? null
+      : auth.getUser()?.id ?? null
+    if (launch) launchOwners.delete(launch.launchId)
+    void trainerQueue.submit(buildTrainingSessionPayload(result, launch), owner)
   })
 
   ipcMain.handle('trainer:get-sync-status', (_e, scenario: unknown, completedAt: unknown) =>
@@ -115,7 +122,13 @@ export function setupGamingHandlers(
     if (!trainerBridge) return { ok: false, error: 'Trainer not available' }
     try {
       const enrichedConfig = drillConfigFromRequest(config ?? {}, settingsManager.get())
+      const ownerAtLaunch = auth.getUser()?.id ?? null
       await trainerBridge.launch(enrichedConfig)
+      const launchId = trainerBridge.lastLaunch?.launchId
+      if (launchId != null) {
+        launchOwners.set(launchId, ownerAtLaunch)
+        if (launchOwners.size > 20) launchOwners.delete(launchOwners.keys().next().value as number)
+      }
       sendOverlayData('overlay:trainer-started', {
         scenario: enrichedConfig.scenario,
         difficulty: enrichedConfig.difficulty,
