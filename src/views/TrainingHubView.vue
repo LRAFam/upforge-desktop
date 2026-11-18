@@ -18,6 +18,7 @@ import {
 } from '../lib/trainer-scenarios'
 import {
   buildSessionSummary,
+  sessionStepSettings,
   applyProgressionToDrill,
   SESSION_AUTO_ADVANCE_SEC,
   type SessionDrill,
@@ -1361,7 +1362,8 @@ function startSessionCountdown(nextStep: number) {
 function finishStructuredSession() {
   if (!structuredSession.value) return
   const { plan, results } = structuredSession.value
-  sessionSummary.value = buildSessionSummary(plan, results)
+  const focus = results[plan.findIndex(s => s.phase === 'focus')]
+  sessionSummary.value = buildSessionSummary(plan, results, focus ? scoreDelta(focus) : null)
   structuredSession.value = null
   showSessionSummary.value = true
   clearSessionTimer()
@@ -1508,27 +1510,22 @@ const CATEGORY_ICON: Record<string, string> = {
         @close="dismissSessionSummary"
       >
         <template v-if="sessionSummary">
-          <div class="uf-result-hero">
-            <span class="uf-d1">{{ sessionSummary.avgScore }}</span>
+          <div v-if="sessionSummary.focusScore !== null" class="uf-result-hero">
+            <span class="uf-d1">{{ sessionSummary.focusScore }}</span>
             <div class="uf-result-side">
-              <span class="uf-t4">Session average</span>
-              <template v-if="sessionSummary.focusScore !== null">
-                <span class="uf-t3">
-                  Focus drill · {{ SCENARIO_META[sessionSummary.focusScenario ?? 'flick']?.label ?? sessionSummary.focusScenario }}
-                  <span class="uf-d4" style="margin-left: 6px">{{ sessionSummary.focusScore }}</span>
-                </span>
-                <span
-                  v-if="sessionSummary.improvementVsWarmup !== null"
-                  class="uf-t4 uf-num"
-                  :style="{ color: toneColor(deltaTone(sessionSummary.improvementVsWarmup)) }"
-                >{{ signed(sessionSummary.improvementVsWarmup) }} vs warm-up</span>
-              </template>
+              <span class="uf-t4">Focus drill</span>
+              <span class="uf-t3">{{ SCENARIO_META[sessionSummary.focusScenario ?? 'flick']?.label ?? sessionSummary.focusScenario }}</span>
+              <span
+                v-if="sessionSummary.focusVsLast !== null"
+                class="uf-t4 uf-num"
+                :style="{ color: toneColor(deltaTone(sessionSummary.focusVsLast)) }"
+              >{{ signed(sessionSummary.focusVsLast) }} vs your last run on these settings</span>
             </div>
           </div>
           <ol class="uf-summary-steps">
             <li v-for="(step, i) in sessionSummary.steps" :key="i">
               <span class="uf-t4" style="width: 90px">{{ step.phaseLabel }}</span>
-              <span class="uf-t3" style="flex: 1">{{ SCENARIO_META[step.scenario]?.label }}</span>
+              <span class="uf-t3" style="flex: 1">{{ SCENARIO_META[step.scenario]?.label }} <span class="uf-t4">· {{ sessionStepSettings(step) }}</span></span>
               <span class="uf-d4">{{ sessionSummary.results[i]?.score ?? '—' }}</span>
             </li>
           </ol>
@@ -1754,10 +1751,6 @@ const CATEGORY_ICON: Record<string, string> = {
           </div>
 
           <div class="px-5 py-3 flex items-end gap-4">
-            <div>
-              <span class="text-5xl font-black tabular-nums text-white">{{ sessionSummary.avgScore }}</span>
-              <p class="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Session avg</p>
-            </div>
             <div v-if="sessionSummary.focusScore !== null" class="flex-1">
               <p class="text-[10px] text-gray-500 uppercase tracking-wide">Focus drill</p>
               <p class="text-2xl font-black tabular-nums" :class="scoreColor(sessionSummary.focusScore)">
@@ -1765,8 +1758,8 @@ const CATEGORY_ICON: Record<string, string> = {
               </p>
               <p class="text-[10px] text-gray-600">
                 {{ SCENARIO_META[sessionSummary.focusScenario ?? 'flick']?.label ?? sessionSummary.focusScenario }}
-                <span v-if="sessionSummary.improvementVsWarmup !== null" :class="sessionSummary.improvementVsWarmup >= 0 ? 'text-green-400' : 'text-red-400'">
-                  · {{ sessionSummary.improvementVsWarmup >= 0 ? '+' : '' }}{{ sessionSummary.improvementVsWarmup }} vs warm-up
+                <span v-if="sessionSummary.focusVsLast !== null" :class="sessionSummary.focusVsLast >= 0 ? 'text-green-400' : 'text-red-400'">
+                  · {{ sessionSummary.focusVsLast >= 0 ? '+' : '' }}{{ sessionSummary.focusVsLast }} vs your last run on these settings
                 </span>
               </p>
             </div>
@@ -1782,6 +1775,7 @@ const CATEGORY_ICON: Record<string, string> = {
               <p class="text-[8px] font-bold uppercase tracking-wide opacity-80">{{ step.phaseLabel }}</p>
               <p class="text-lg font-black tabular-nums">{{ sessionSummary.results[i]?.score ?? '—' }}</p>
               <p class="text-[8px] opacity-70 truncate">{{ SCENARIO_META[step.scenario]?.label }}</p>
+              <p class="text-[8px] opacity-60 truncate">{{ sessionStepSettings(step) }}</p>
             </div>
           </div>
 
