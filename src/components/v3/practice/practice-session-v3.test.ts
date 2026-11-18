@@ -81,3 +81,19 @@ describe('leaderboardYouRow', () => {
     expect(leaderboardYouRow([{}], null, 'all', now)?.note).toBe('No run with these settings yet.')
   })
 })
+
+describe('skill shape empty state', () => {
+  const radar = ['flick', 'tracking', 'microadjust', 'switching', 'duel']
+  it('points a player with only Head Height runs at their numbers, not "No scores yet"', async () => {
+    const { skillShapeEmptyCopy } = await import('./practice-session-v3')
+    const copy = skillShapeEmptyCopy({ head_height: { best_score: 72 } }, radar)
+    expect(copy.title).not.toBe('No scores yet')
+    expect(copy.text).toContain('By drill')
+  })
+  it('still says "No scores yet" when there are none', async () => {
+    const { skillShapeEmptyCopy } = await import('./practice-session-v3')
+    expect(skillShapeEmptyCopy({}, radar).title).toBe('No scores yet')
+    expect(skillShapeEmptyCopy({ head_height: { best_score: null } }, radar).title).toBe('No scores yet')
+    expect(skillShapeEmptyCopy(null, radar).title).toBe('No scores yet')
+  })
+})

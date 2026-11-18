@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { measuredReactionMs } from '../lib/training-result-metrics'
 
 export interface AchievementDef {
   id: string
@@ -36,15 +37,26 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'focus-streak-5',   name: 'Habit Formed',         description: 'Hit your focus 5 games in a row',                icon: ICON_STAR,      category: 'streak', secret: true },
 ]
 
-export function useAchievements() {
-  const unlocked = ref<Record<string, string>>({}) // id → ISO date string
+// One list for the whole window: the app shell checks after every trainer run, and the screens that
+// show achievements see those unlocks without reloading. id → ISO date string.
+const unlocked = ref<Record<string, string>>({})
+let loaded: Promise<void> | null = null
 
+export function useAchievements() {
   async function load() {
     const s = await window.api.settings.get().catch(() => null)
-    unlocked.value = (s as any)?.achievements ?? {}
+    const saved = (s as { achievements?: Record<string, string> } | null)?.achievements ?? {}
+    // Keep unlocks made while this read was in flight.
+    unlocked.value = { ...saved, ...unlocked.value }
+  }
+
+  function ensureLoaded(): Promise<void> {
+    loaded ??= load()
+    return loaded
   }
 
   async function unlock(id: string): Promise<boolean> {
+    await ensureLoaded()
     if (unlocked.value[id]) return false
     unlocked.value[id] = new Date().toISOString()
     // Spread to a plain object — Vue reactive proxies can't be serialized by
@@ -58,9 +70,12 @@ export function useAchievements() {
     streak?: number
     lastScore?: number
     lastAccuracy?: number
-    lastReactionMs?: number
+    /** The finished run; Reaction King only counts a measured reaction (not tracking, 0 hits or 0 ms). */
+    lastRun?: { scenario: string; avg_reaction_ms: number; targets_hit?: number }
     hasAnalysis?: boolean
   }): Promise<string[]> {
+    // Never decide from an empty list: an unread file would re-toast and overwrite old unlocks.
+    await ensureLoaded()
     const newlyUnlocked: string[] = []
 
     const tryUnlock = async (id: string) => {
@@ -86,7 +101,8 @@ export function useAchievements() {
     if (ctx.lastAccuracy !== undefined && ctx.lastAccuracy >= 90) {
       await tryUnlock('accuracy-90')
     }
-    if (ctx.lastReactionMs !== undefined && ctx.lastReactionMs < 200) {
+    const reactionMs = ctx.lastRun ? measuredReactionMs(ctx.lastRun) : null
+    if (reactionMs !== null && reactionMs < 200) {
       await tryUnlock('reaction-200')
     }
     if (ctx.hasAnalysis) {

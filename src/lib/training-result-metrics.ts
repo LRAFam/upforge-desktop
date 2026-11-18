@@ -212,6 +212,30 @@ export function isTimeToHitMetric(scenario: string): boolean {
   return reactionMetricLabel(scenario) === 'Time to hit'
 }
 
+/**
+ * avg_reaction_ms when it is a measured reaction / time to hit, else null. Tracking drills never
+ * measure one (the trainer sends 0), a run with no hits has nothing to time, and Jiggle Peek /
+ * Trade Window send other timings in that field. 0 ms is "not measured", never a real time.
+ */
+export function measuredReactionMs(run: { scenario: string; avg_reaction_ms: number; targets_hit?: number }): number | null {
+  if (isTrackingScenario(run.scenario)) return null
+  const label = reactionMetricLabel(run.scenario)
+  if (label !== 'Time to hit' && label !== 'Reaction') return null
+  if (run.targets_hit !== undefined && !(run.targets_hit > 0)) return null
+  const ms = run.avg_reaction_ms
+  return typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? ms : null
+}
+
+/** Stat line under a leaderboard name: no "0ms to hit" for tracking drills or unmeasured reactions. */
+export function leaderboardStatLine(scenario: string, entry: { accuracy_pct: number; avg_reaction_ms: number }): string {
+  if (isTrackingScenario(scenario)) return `${entry.accuracy_pct}% time on target`
+  const label = accuracyMetricLabel(scenario).toLowerCase()
+  const ms = measuredReactionMs({ scenario, avg_reaction_ms: entry.avg_reaction_ms })
+  if (ms === null) return `${entry.accuracy_pct}% ${label}`
+  const reaction = reactionMetricLabel(scenario) === 'Time to hit' ? `${Math.round(ms)}ms to hit` : `${Math.round(ms)}ms reaction`
+  return `${entry.accuracy_pct}% ${label} · ${reaction}`
+}
+
 /** Label for accuracy_pct (Jiggle Peek sends its safe-spot rate there). */
 export function accuracyMetricLabel(scenario: string): string {
   if (isTrackingScenario(scenario)) return 'Time on target'

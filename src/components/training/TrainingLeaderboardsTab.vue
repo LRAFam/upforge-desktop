@@ -6,7 +6,9 @@ import { TRAINING_ARTWORK } from '../../lib/training-icons'
 import type { ProfileData, TrainerLeaderboardEntry } from '../../env.d.ts'
 import { playerIdentity, type PlayerIdentity } from '../../lib/player-identity'
 import { readCache } from '../../lib/stale-cache'
+import { leaderboardStatLine } from '../../lib/training-result-metrics'
 import PlayerAvatar from '../v3/identity/PlayerAvatar.vue'
+import { leaderboardDisplayName, visibilityLine, youNote } from './leaderboard-visibility'
 import { uiV3 } from '../../lib/ui-v3'
 import UfTabs from '../v3/UfTabs.vue'
 import UfSkeleton from '../v3/UfSkeleton.vue'
@@ -74,7 +76,36 @@ onMounted(async () => {
   if (!uiV3.value) return
   const p = await window.api?.profile?.get().catch(() => null) as ProfileData | null | undefined
   if (p?.latest_stats) meStats.value = p.latest_stats
+  myBoardName.value = leaderboardDisplayName(p?.user)
 })
+
+// UI v3: say who other players see here, and let the player hide (account privacy setting).
+const boardVisible = ref<boolean | null>(null)
+const myBoardName = ref<string | null>(null)
+const visibilitySaving = ref(false)
+const visibilityError = ref<string | null>(null)
+const boardVisibilityLine = computed(() => visibilityLine(boardVisible.value, myBoardName.value))
+onMounted(async () => {
+  if (!uiV3.value) return
+  const r = await window.api?.trainer?.getLeaderboardVisibility?.().catch(() => null)
+  if (r?.ok) boardVisible.value = r.visible
+})
+async function toggleBoardVisibility() {
+  if (boardVisible.value === null || visibilitySaving.value) return
+  visibilitySaving.value = true
+  visibilityError.value = null
+  try {
+    const r = await window.api.trainer.setLeaderboardVisibility(!boardVisible.value)
+    if (r.ok) {
+      boardVisible.value = r.visible
+      void load()
+    } else visibilityError.value = r.error
+  } catch {
+    visibilityError.value = 'Couldn’t save that. Try again.'
+  } finally {
+    visibilitySaving.value = false
+  }
+}
 watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
 </script>
 
@@ -102,6 +133,11 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
     </div>
     <p class="uf-t4" style="margin: 0">Only runs since the scoring update in {{ SCORING_UPDATE_LABEL }} count. Older runs stay in your history.</p>
 
+    <p v-if="boardVisibilityLine" class="uf-t4 uf-lb-visibility">
+      {{ boardVisibilityLine }}
+      <button type="button" class="uf-link" :disabled="visibilitySaving" @click="toggleBoardVisibility">{{ boardVisible ? 'Hide me' : 'Show me' }}</button>
+      <span v-if="visibilityError" role="alert" style="color: var(--uf-red)">{{ visibilityError }}</span>
+    </p>
     <ol v-if="loading && !entries.length" class="uf-lb-rows" aria-busy="true" aria-label="Loading leaderboard">
       <li v-for="i in 6" :key="i"><UfSkeleton :w="36" :h="26" /><UfSkeleton :w="32" :h="32" /><span class="uf-lb-name"><UfSkeleton w="34%" :h="15" /><UfSkeleton w="22%" :h="13" /></span><UfSkeleton :w="40" :h="26" /></li>
     </ol>
@@ -117,7 +153,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
           <span class="uf-t3">{{ e.name }}<span v-if="e.tag" style="color: var(--uf-faint); font-weight: 400">#{{ e.tag }}</span>
             <span v-if="e.is_current_user" class="uf-label" style="color: var(--uf-red); margin-left: 8px">You</span>
           </span>
-          <span class="uf-t4 uf-num">{{ e.accuracy_pct }}% accuracy · {{ e.avg_reaction_ms }}ms to hit</span>
+          <span class="uf-t4 uf-num">{{ leaderboardStatLine(activeScenario, e) }}</span>
         </span>
         <span class="uf-d4">{{ e.score }}</span>
       </li>
@@ -127,7 +163,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
       <PlayerAvatar :identity="meIdentity" :size="32" badge />
       <span class="uf-lb-name">
         <span class="uf-t3">You</span>
-        <span class="uf-t4">{{ you.note }}</span>
+        <span class="uf-t4">{{ youNote(you.note, boardVisible) }}</span>
       </span>
       <span class="uf-d4" :style="you.score == null ? 'color: var(--uf-faint)' : undefined">{{ you.score ?? '—' }}</span>
     </div>
@@ -190,7 +226,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
             {{ e.name }}<span v-if="e.tag" class="text-gray-500">#{{ e.tag }}</span>
             <span v-if="e.is_current_user" class="ml-1 text-[9px] font-bold uppercase text-red-400">You</span>
           </p>
-          <p class="text-[10px] text-gray-600 tabular-nums">{{ e.accuracy_pct }}% acc · {{ e.avg_reaction_ms }}ms</p>
+          <p class="text-[10px] text-gray-600 tabular-nums">{{ leaderboardStatLine(activeScenario, e) }}</p>
         </div>
         <span class="text-lg font-black tabular-nums text-white">{{ e.score }}</span>
       </div>
@@ -204,6 +240,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
 .uf-lb-filters { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
 .uf-lb-field { display: flex; flex-direction: column; gap: 6px; }
 .uf-lb-select { width: auto; min-width: 140px; }
+.uf-lb-visibility { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
 .uf-lb-period { margin-left: auto; }
 .uf-lb-rows { list-style: none; margin: 0; padding: 0; }
 .uf-lb-rows li { display: flex; align-items: center; gap: 18px; padding: 12px 12px 12px 10px; border-top: 1px solid var(--uf-line); border-left: 2px solid transparent; }
