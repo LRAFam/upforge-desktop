@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEMO_POLL_MAX_MS, pollDemoJob } from './demo-job-poll'
 
 /** Fake clock: sleep() moves time forward instead of waiting. */
@@ -42,5 +42,34 @@ describe('pollDemoJob', () => {
     const res = await pollDemoJob({ poll, ...c })
     expect(res).toEqual({ status: 'timeout' })
     expect(c.now()).toBeGreaterThanOrEqual(DEMO_POLL_MAX_MS)
+  })
+})
+
+describe('pollDemoJob: a status request that never answers', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  it('still returns timeout after the overall window when every request hangs', async () => {
+    vi.useFakeTimers()
+    const poll = vi.fn(() => new Promise<{ status: string }>(() => {}))
+    const onPollError = vi.fn()
+    let settled: unknown = null
+    void pollDemoJob({ poll, onPollError }).then((r) => { settled = r })
+    await vi.advanceTimersByTimeAsync(DEMO_POLL_MAX_MS + 5 * 60 * 1000)
+    expect(settled).toEqual({ status: 'timeout' })
+    // A hung request is abandoned and polling carries on with fresh requests.
+    expect(poll.mock.calls.length).toBeGreaterThan(1)
+    expect(onPollError).toHaveBeenCalled()
+  })
+
+  it('moves past one stalled request and reaches a later completed status', async () => {
+    vi.useFakeTimers()
+    const poll = vi.fn()
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValue({ status: 'completed' })
+    let settled: unknown = null
+    void pollDemoJob({ poll }).then((r) => { settled = r })
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    expect(settled).toEqual({ status: 'completed' })
+    expect(poll).toHaveBeenCalledTimes(2)
   })
 })

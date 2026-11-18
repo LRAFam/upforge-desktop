@@ -98,3 +98,52 @@ describe('SourceReplayUploader: Deadlock replay size limit', () => {
     expect(err.message).toContain('300 MB')
   })
 })
+
+describe('SourceReplayUploader.pollStatus: stalled connections', () => {
+  let server: import('node:http').Server
+  let sockets: import('node:net').Socket[] = []
+  const prevApi = process.env.VITE_API_URL
+
+  async function listen(handler: import('node:http').RequestListener): Promise<void> {
+    const http = await import('node:http')
+    server = http.createServer(handler)
+    server.on('connection', (s) => sockets.push(s))
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+    const { port } = server.address() as import('node:net').AddressInfo
+    process.env.VITE_API_URL = `http://127.0.0.1:${port}`
+  }
+
+  afterEach(async () => {
+    process.env.VITE_API_URL = prevApi
+    if (prevApi === undefined) delete process.env.VITE_API_URL
+    for (const s of sockets) s.destroy()
+    sockets = []
+    await new Promise<void>((r) => server?.close(() => r()))
+  })
+
+  it('aborts a request that never answers within the request deadline', async () => {
+    await listen(() => { /* accept, never respond */ })
+    const up = new SourceReplayUploader({ getToken: () => 'token' } as never)
+    up.statusTimeoutMs = 200
+    const started = Date.now()
+    await expect(up.pollStatus('cs2', 'job-1')).rejects.toThrow(/timed out/i)
+    expect(Date.now() - started).toBeLessThan(5_000)
+  })
+
+  it('rejects (never stays pending) when the response is cut off mid-body', async () => {
+    await listen((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.write('{"status":')
+      setTimeout(() => res.socket?.destroy(), 20)
+    })
+    const up = new SourceReplayUploader({ getToken: () => 'token' } as never)
+    up.statusTimeoutMs = 2_000
+    await expect(up.pollStatus('cs2', 'job-2')).rejects.toThrow()
+  })
+
+  it('still reads a normal status reply', async () => {
+    await listen((_req, res) => { res.writeHead(200); res.end('{"status":"completed"}') })
+    const up = new SourceReplayUploader({ getToken: () => 'token' } as never)
+    await expect(up.pollStatus('deadlock', 'job-3')).resolves.toEqual({ status: 'completed', error: null })
+  })
+})
