@@ -5,6 +5,7 @@
  */
 import type { AppSettings } from './settings-manager'
 import type { DrillConfig } from './trainer-bridge'
+import { trainerFovInRange, trainerSensitivityInRange } from '../../src/lib/trainer-mouse-limits'
 
 type TrainerMouse = AppSettings['trainerMouse']
 type CrosshairSettings = AppSettings['crosshairSettings']
@@ -74,13 +75,16 @@ function mergeTyped<T extends object>(defaults: T, saved: unknown): T {
 /**
  * Deep-merge a saved (possibly partial / legacy) trainerMouse with defaults.
  * FOV: a missing value gets the game's default; CS2 still on the old universal default (103, which CS2
- * cannot be set to) is moved to CS2's default 90. Any other saved FOV is the user's and is kept.
+ * cannot be set to) is moved to CS2's default 90. Any other saved FOV is the user's and is kept, within 60–120.
+ * FOV and sensitivity always stay where the trainer can start a drill (it refuses every drill otherwise).
  */
 export function normalizeTrainerMouse(saved: unknown): TrainerMouse {
   const merged = mergeTyped(DEFAULT_TRAINER_MOUSE, saved)
   const savedFov = isRecord(saved) && typeof saved.fov === 'number' && Number.isFinite(saved.fov) ? saved.fov : null
   if (savedFov === null) merged.fov = defaultTrainerFov(merged.game)
   else if (merged.game === 'cs2' && savedFov === DEFAULT_TRAINER_FOV) merged.fov = CS2_DEFAULT_FOV
+  merged.fov = trainerFovInRange(merged.fov)
+  merged.sensitivity = trainerSensitivityInRange(merged.sensitivity)
   merged.scopedMultiplier = Math.min(SCOPED_MULTIPLIER_MAX, Math.max(SCOPED_MULTIPLIER_MIN, merged.scopedMultiplier))
   return merged
 }
