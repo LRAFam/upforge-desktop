@@ -92,12 +92,12 @@ const { summary: cloudRetentionSummary } = useCloudRetention()
 const postGameCloud = computed(() => postGameCloudLine(cloudRetentionSummary.value))
 
 const COACHING_TIPS = [
-  'Players who review their gameplay weekly improve 2x faster than those who don\'t.',
-  'Crosshair placement accounts for up to 40% of your ability to win gunfights.',
-  'Economy management separates Gold from Diamond more than aim does.',
-  'The #1 mistake at every rank: pushing aggressively without information.',
+  'Reviewing your own games each week shows you the habits you repeat.',
+  'Keep your crosshair at head height where enemies are likely to appear.',
+  'Buy as a team: a shared save round sets up a full buy next round.',
+  'Get information before you push — a blind push gives the enemy the first shot.',
   'Positioning decisions happen before the fight starts — map awareness wins rounds.',
-  'Pro players spend more time watching replays than playing ranked.',
+  'Before your next game, pick one mistake from this match to watch for.',
 ]
 
 const state = ref<State>('preparing')

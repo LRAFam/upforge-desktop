@@ -8,8 +8,8 @@ const read = (p: string) => readFileSync(resolve(__dirname, '../../../..', p), '
 describe('Practice follows the primary game', () => {
   it('sends the game with the plan and drill requests', () => {
     const view = read('src/views/TrainingHubView.vue')
-    expect(view).toMatch(/getPlan\(game\)/)
-    expect(view).toMatch(/getCoachingDrills\(game\)/)
+    expect(view).toMatch(/getPracticeData\(game\)/)
+    expect(read('electron/main/ipc/gaming-ipc.ts')).toMatch(/plan: \(\) => trainerReads\.plan\(game\),\s*drills: \(\) => trainerReads\.drills\(game\)/)
     expect(view).toMatch(/planForGame\(plan, game\)/)
     expect(view).toMatch(/drillsForGame\(/)
     const ipc = read('electron/main/ipc/gaming-ipc.ts')
