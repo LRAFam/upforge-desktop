@@ -25,6 +25,13 @@ export interface EnsureObsConnectedOptions {
   allowProcessRestart?: boolean
   /** Recheck live match state immediately before a destructive restart. */
   canRestartProcess?: () => boolean
+  /**
+   * Close and relaunch an OBS process whose WebSocket cannot be reached. Off by default:
+   * an unreachable OBS may be the player's own stream or recording (WebSocket disabled, other
+   * port), and a failed connection says nothing about its outputs. Only an explicit user
+   * "Restart OBS" action that has warned it stops OBS activity may set this.
+   */
+  restartUnreachableProcess?: boolean
   onActivity?: (msg: string) => void
 }
 
@@ -43,6 +50,10 @@ export type EnsureObsConnectedResult =
       needsManualRestart?: boolean
       launched?: boolean
     }
+
+export const OBS_UNREACHABLE_KEPT_OPEN =
+  'UpForge left OBS running because it cannot tell whether OBS is recording or streaming. '
+  + 'If OBS is stuck, close it yourself, then click Launch OBS + Connect.'
 
 /** Skip kill-restart while OBS may still be booting after our last launch. */
 const OBS_LAUNCH_COOLDOWN_MS = 90_000
@@ -101,7 +112,8 @@ export function ensureObsConnected(
   // must share the whole operation too, including installation and process probes.
   const promise = Promise.resolve().then(() => ensureObsConnectedOnce(obsRecorder, opts, () =>
     !obsRecorder.isRecording() && callers.every(caller =>
-      caller.allowProcessRestart !== false && caller.canRestartProcess?.() !== false,
+      caller.restartUnreachableProcess === true
+      && caller.allowProcessRestart !== false && caller.canRestartProcess?.() !== false,
     ),
   )).finally(() => {
     if (pendingConnections.get(obsRecorder)?.promise === promise) pendingConnections.delete(obsRecorder)
@@ -180,6 +192,18 @@ async function ensureObsConnectedOnce(
       }
     }
     if (!canRestartProcess() || recentlyLaunchedObs()) {
+      if (!recentlyLaunchedObs() && !obsRecorder.isRecording()) {
+        log.warn('[OBS Ensure] OBS is running but unreachable — leaving it open (its outputs are unknown)')
+        return {
+          ok: false,
+          processRunning: true,
+          needsManualRestart: true,
+          error: `${explainObsConnectionFailure({
+            processRunning: true,
+            connectError: patient.error ?? existing.error,
+          })} ${OBS_UNREACHABLE_KEPT_OPEN}`,
+        }
+      }
       if (recentlyLaunchedObs()) {
         log.warn('[OBS Ensure] Process up but WebSocket still down during launch cooldown — not killing')
         opts.onActivity?.('OBS still starting — waiting for connection…')

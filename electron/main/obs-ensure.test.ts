@@ -106,7 +106,26 @@ describe('ensureObsConnected', () => {
     expect(rec.connect).toHaveBeenCalledTimes(retries + 1)
   })
 
-  it('kills hung OBS then relaunches when process is up but WebSocket keeps failing', async () => {
+  it('automatic recovery never closes a running OBS it cannot reach (it may be streaming)', async () => {
+    vi.mocked(isObsProcessRunning).mockResolvedValue(true)
+    vi.mocked(terminateObsProcess).mockResolvedValue({ ok: true })
+    vi.mocked(launchObsStudio).mockResolvedValue({ ok: true })
+    const refused = { ok: false as const, error: 'connect ECONNREFUSED 127.0.0.1:4455' }
+    const rec = mockRecorder({ connectResults: [refused, refused, refused, refused, refused] })
+
+    // Same options startup, watchdog and preflight pass.
+    const result = await ensureObsConnected(rec as never, {
+      password: 'upforge', port: 4455, allowProcessRestart: true, canRestartProcess: () => true,
+    })
+
+    expect(terminateObsProcess).not.toHaveBeenCalled()
+    expect(restartObsStudioElevated).not.toHaveBeenCalled()
+    expect(launchObsStudio).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ ok: false, processRunning: true, needsManualRestart: true })
+    expect(result.ok === false && result.error).toContain('left OBS running')
+  })
+
+  it('kills hung OBS then relaunches only on an explicit restart request', async () => {
     vi.mocked(isObsProcessRunning).mockResolvedValue(true)
     vi.mocked(terminateObsProcess).mockResolvedValue({ ok: true })
     vi.mocked(launchObsStudio).mockResolvedValue({ ok: true })
@@ -119,7 +138,7 @@ describe('ensureObsConnected', () => {
       ],
     })
 
-    const result = await ensureObsConnected(rec as never, { password: 'upforge', port: 4455 })
+    const result = await ensureObsConnected(rec as never, { password: 'upforge', port: 4455, restartUnreachableProcess: true })
 
     expect(terminateObsProcess).toHaveBeenCalled()
     expect(launchObsStudio).toHaveBeenCalledWith({ password: 'upforge', port: 4455 })
@@ -143,7 +162,7 @@ describe('ensureObsConnected', () => {
       ],
     })
 
-    const result = await ensureObsConnected(rec as never, { password: 'upforge', port: 4455 })
+    const result = await ensureObsConnected(rec as never, { password: 'upforge', port: 4455, restartUnreachableProcess: true })
 
     expect(restartObsStudioElevated).toHaveBeenCalledWith({ password: 'upforge', port: 4455 })
     expect(launchObsStudio).not.toHaveBeenCalled()
@@ -231,8 +250,8 @@ describe('ensureObsConnected', () => {
     rec.connect.mockResolvedValue(fail())
     const opts = { password: 'upforge', port: 4455 }
     await Promise.all([
-      ensureObsConnected(rec as never, { ...opts, allowProcessRestart: true }),
-      ensureObsConnected(rec as never, { ...opts, allowProcessRestart: false }),
+      ensureObsConnected(rec as never, { ...opts, allowProcessRestart: true, restartUnreachableProcess: true }),
+      ensureObsConnected(rec as never, { ...opts, allowProcessRestart: false, restartUnreachableProcess: true }),
     ])
     expect(terminateObsProcess).not.toHaveBeenCalled()
     expect(launchObsStudio).not.toHaveBeenCalled()
@@ -247,7 +266,7 @@ describe('ensureObsConnected', () => {
       rec.isRecording.mockReturnValue(true)
       return fail()
     })
-    await ensureObsConnected(rec as never, { password: 'upforge', port: 4455 })
+    await ensureObsConnected(rec as never, { password: 'upforge', port: 4455, restartUnreachableProcess: true })
     expect(terminateObsProcess).not.toHaveBeenCalled()
   })
 
@@ -262,7 +281,7 @@ describe('ensureObsConnected', () => {
       return fail()
     })
     await ensureObsConnected(rec as never, {
-      password: 'upforge', port: 4455, canRestartProcess: () => mayRestart,
+      password: 'upforge', port: 4455, canRestartProcess: () => mayRestart, restartUnreachableProcess: true,
     })
     expect(terminateObsProcess).not.toHaveBeenCalled()
   })
