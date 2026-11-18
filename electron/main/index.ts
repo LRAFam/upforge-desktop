@@ -440,6 +440,7 @@ import {
 } from './deadlock-review'
 import { isDeadlockReviewJobId } from './recordings-store'
 import { SourceReplayUploader } from './source-replay-uploader'
+import { lastAnalysisJob } from './analysis-trace'
 import { findLatestReplay } from './source-replay-finder'
 import { isTrustedRendererUrl } from './renderer-trust'
 import { initValorantContentFallback } from './valorant-content-fallback'
@@ -7942,6 +7943,10 @@ async function startApp(): Promise<void> {
         dedicatedLolAccount,
       },
       demo,
+      trace: {
+        userId: typeof (authUser as { id?: unknown } | null)?.id === 'number' ? (authUser as { id: number }).id : null,
+        last: lastAnalysisJob(),
+      },
     })
   })
 

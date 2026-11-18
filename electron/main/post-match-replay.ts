@@ -4,7 +4,7 @@ import { buildTimelineFromDemo } from './demo-timeline'
 import { pollDemoJob } from './demo-job-poll'
 import { findLatestReplay, type SourceGame } from './source-replay-finder'
 import { SourceReplayUploader } from './source-replay-uploader'
-import { UpgradeRequiredError } from './errors'
+import { ReplayTooLargeError, UpgradeRequiredError } from './errors'
 import type { AuthManager } from './auth-manager'
 import type { MatchData } from './riot-types'
 
@@ -137,6 +137,10 @@ export async function uploadReplayInBackground(
     log.warn(`[Replay] ${game} upload flow error:`, err)
     if (err instanceof UpgradeRequiredError) {
       send('post-game:demo-status', { status: 'error', error: err.message, needsUpgrade: true, upgradeUrl: err.upgradeUrl })
+      return { status: 'error' }
+    }
+    if (err instanceof ReplayTooLargeError) {
+      send('post-game:demo-status', { status: 'error', error: err.message })
       return { status: 'error' }
     }
     send('post-game:demo-status', { status: 'error', error: 'Replay upload failed' })

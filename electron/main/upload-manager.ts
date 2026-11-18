@@ -1,3 +1,4 @@
+import { clientVersionHeaders, noteAnalysisJob } from './analysis-trace'
 import { backgroundWork } from './background-work'
 import { parseRetryAfter, UploadRateLimitError, uploadRateLimitScope } from './upload-rate-limit'
 import fs from 'fs'
@@ -421,6 +422,7 @@ export class UploadManager {
     // Persist job_id immediately — if the app crashes during upload or
     // analysis, the user can resume polling from the next launch.
     savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game }, ownerUserId)
+    noteAnalysisJob({ jobId: job_id, game: opts.game, clientRecordingId: opts.recordingId ?? null })
     this._checkCancelled(generation)
 
     const stopHeartbeat = this._startUploadHeartbeat(job_id, token, generation)
@@ -798,6 +800,7 @@ export class UploadManager {
           'Content-Length': Buffer.byteLength(body),
           'Authorization': `Bearer ${token}`,
           'Accept':        'application/json',
+          ...clientVersionHeaders(),
         },
       }, (res) => {
         let data = ''

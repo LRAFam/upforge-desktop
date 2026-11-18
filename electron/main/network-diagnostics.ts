@@ -2,6 +2,7 @@
  * In-app network evidence for support: DNS probes for Riot PD + UpForge API,
  * plus last known Riot/upload failure context.
  */
+import { formatTraceSection, type AnalysisJobTrace } from './analysis-trace'
 import dns from 'dns'
 import { promisify } from 'util'
 import { riotPdHostname } from './riot-pd-shard'
@@ -202,12 +203,15 @@ export function formatSupportBundle(opts: {
   lastMatch?: SupportLastMatchSnapshot | null
   lol?: SupportLolProbeSnapshot | null
   demo?: SupportDemoSnapshot | null
+  /** Ids an operator needs to open the failed job (user, last job, recording). */
+  trace?: { userId: number | null; last: AnalysisJobTrace | null } | null
 }): string {
   const { version, network, activityLog, riot } = opts
   const lines: string[] = [
     `UpForge Support Bundle v${version}`,
     `Generated: ${new Date().toISOString()}`,
     '',
+    ...(opts.trace ? [...formatTraceSection({ version, ...opts.trace }), ''] : []),
     '=== NETWORK ===',
     `Trigger: ${network.trigger}`,
     `Probed at: ${new Date(network.at).toISOString()}`,

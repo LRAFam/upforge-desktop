@@ -1,17 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const pollStatus = vi.fn()
+const upload = vi.fn(async (): Promise<{ jobId: string }> => ({ jobId: 'job-1' }))
 vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn(), debug: vi.fn() } }))
 vi.mock('./demo-timeline', () => ({ buildTimelineFromDemo: vi.fn() }))
 vi.mock('./source-replay-finder', () => ({ findLatestReplay: vi.fn() }))
 vi.mock('./source-replay-uploader', () => ({
   SourceReplayUploader: class {
-    upload = vi.fn(async () => ({ jobId: 'job-1' }))
+    upload = upload
     pollStatus = pollStatus
   },
 }))
 
 import { uploadReplayInBackground } from './post-match-replay'
+import { ReplayTooLargeError } from './errors'
 
 function fakeWindow() {
   const send = vi.fn()
@@ -43,5 +45,15 @@ describe('uploadReplayInBackground polling', () => {
     const statuses = send.mock.calls.filter(c => c[0] === 'post-game:demo-status').map(c => (c[1] as { status: string }).status)
     expect(statuses.at(-1)).toBe('still_analysing')
     expect(statuses).not.toContain('error')
+  })
+})
+
+describe('uploadReplayInBackground: replay over the size limit', () => {
+  it('shows the size message instead of a generic upload failure', async () => {
+    upload.mockRejectedValueOnce(new ReplayTooLargeError('This replay (512 MB) is too large to analyse: the limit is 400 MB.'))
+    const { send, win } = fakeWindow()
+    await expect(uploadReplayInBackground('deadlock', '/x.dem', auth, win)).resolves.toEqual({ status: 'error' })
+    expect(send).toHaveBeenCalledWith('post-game:demo-status', { status: 'error', error: 'This replay (512 MB) is too large to analyse: the limit is 400 MB.' })
+    expect(pollStatus).not.toHaveBeenCalled()
   })
 })

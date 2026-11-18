@@ -115,6 +115,27 @@ describe('formatSupportBundle', () => {
     expect(text).not.toContain('—')
   })
 
+  it('puts the ids header straight after the title so an operator can find the job', () => {
+    const text = formatSupportBundle({
+      version: '3.4.13',
+      network: sampleSnapshot(),
+      activityLog: [],
+      riot: {
+        lockfileFound: false, region: null, accessTokenPresent: false, entitlementsTokenPresent: false,
+        currentMatchId: null, lastSessionLoopState: 'MENUS', clientVersion: 'release-x',
+      },
+      trace: { userId: 7, last: { jobId: 'job-xyz', game: 'cs2', clientRecordingId: 'rec-1', at: 1_700_000_000_000 } },
+    })
+    const lines = text.split('\n')
+    const idsAt = lines.indexOf('=== IDS ===')
+    expect(idsAt).toBeGreaterThan(0)
+    expect(idsAt).toBeLessThan(lines.indexOf('=== NETWORK ==='))
+    expect(text).toContain('User id: 7')
+    expect(text).toContain('App version: 3.4.13')
+    expect(text).toContain('Last job id: job-xyz')
+    expect(text).toContain('Client recording id: rec-1')
+  })
+
   it('includes LAST MATCH and LEAGUE when provided', () => {
     const text = formatSupportBundle({
       version: '2.10.77',
