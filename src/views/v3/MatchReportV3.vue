@@ -18,7 +18,7 @@ import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import { formatMapLabel, getAgentImage, getMapImage } from '../../lib/valorant'
 import { matchReportView, reportPracticeMetric, type MatchReportState } from '../../lib/match-report'
 import {
-  applyGameNotes, cs2NotesFacts, type GameNotesResult,
+  applyGameNotes, applyMatchChecks, cs2NotesFacts, type GameNotesResult,
   cs2ReportView, deadlockReportView, lolReportView,
   type Cs2ReportTimeline, type DeadlockReportResponse, type LolReportResponse, type ReportGame,
 } from '../../lib/match-report-games'
@@ -112,7 +112,11 @@ async function loadNotes(g: 'lol' | 'deadlock' | 'cs2', id: string, facts: unkno
     }
     const pending = res.notes_status === 'pending' && !res.notes
     notesStillPending = pending
-    if (pending) return false
+    // This match's focus rows don't wait for the notes (CS2 counts the match on this call).
+    if (pending) {
+      state.value = { kind: 'ready', view: applyMatchChecks(state.value.view, res) }
+      return false
+    }
     const next = { kind: 'ready' as const, view: applyGameNotes(state.value.view, res as GameNotesResult) }
     state.value = next
     writeCache(`match-report:${g}:${id}`, next)

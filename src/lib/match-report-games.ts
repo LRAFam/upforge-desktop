@@ -257,7 +257,13 @@ export interface GameNotes {
   next_action?: GameNotesClaim | null
   positive?: GameNotesClaim | null
 }
-export interface GameNotesResult { notes?: GameNotes | null; notes_source?: string | null; capped?: boolean }
+export interface GameNotesResult {
+  notes?: GameNotes | null
+  notes_source?: string | null
+  capped?: boolean
+  /** CS2: every focus this match counted for (the notes call is where a CS2 match counts). Older APIs omit it. */
+  focus_checks?: unknown
+}
 
 const claimText = (c: GameNotesClaim | null | undefined): string | null =>
   c && typeof c.text === 'string' && c.text.trim() ? c.text.trim() : null
@@ -268,6 +274,7 @@ const claimText = (c: GameNotesClaim | null | undefined): string | null =>
  */
 export function applyGameNotes(view: MatchReportView, res: GameNotesResult | null | undefined): MatchReportView {
   if (!res) return view
+  view = applyMatchChecks(view, res)
   const notes = res.notes ?? null
   const fromAi = res.notes_source === 'ai' || res.notes_source === 'ai_repaired'
   if (!notes || !fromAi) return { ...view, notesCapped: !!res.capped && !fromAi }
@@ -285,6 +292,12 @@ export function applyGameNotes(view: MatchReportView, res: GameNotesResult | nul
     notesCapped: false,
     hasCoachNote: true,
   }
+}
+
+/** This match's focus rows from a notes answer; an answer without the list leaves the report as it is. */
+export function applyMatchChecks(view: MatchReportView, res: Pick<GameNotesResult, 'focus_checks'> | null | undefined): MatchReportView {
+  if (!res || res.focus_checks == null) return view
+  return { ...view, focusChecks: sanitizeMatchChecks(res.focus_checks) }
 }
 
 export interface Cs2RoundData {

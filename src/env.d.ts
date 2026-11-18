@@ -973,7 +973,7 @@ declare global {
         dropFocus: (id: number) => Promise<import('./lib/focuses').FocusesResult>
         getMatchReport: (matchId: string) => Promise<{ ok: true; report: import('./lib/match-report').MatchReportResponse } | { ok: false; error: string }>
         getGameMatchReport: (game: 'lol' | 'deadlock', matchId: string) => Promise<{ ok: true; report: unknown } | { ok: false; error: string }>
-        getGameMatchNotes: (game: 'lol' | 'deadlock' | 'cs2', matchId: string, facts?: unknown) => Promise<{ ok: true; notes: unknown; notes_source: string | null; capped: boolean; notes_status?: 'ready' | 'pending' | 'capped' | 'none' | null } | { ok: false; error: string }>
+        getGameMatchNotes: (game: 'lol' | 'deadlock' | 'cs2', matchId: string, facts?: unknown) => Promise<{ ok: true; notes: unknown; notes_source: string | null; capped: boolean; notes_status?: 'ready' | 'pending' | 'capped' | 'none' | null; focus_checks?: unknown } | { ok: false; error: string }>
         getStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: true; report: import('./lib/starting-report').StartingReportResponse } | { ok: false; error: string }>
         generateStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: true; report: import('./lib/starting-report').StartingReportResponse } | { ok: false; error: string }>
         dismissStartingReport: (game: import('./lib/starting-report').StartingGame) => Promise<{ ok: boolean }>

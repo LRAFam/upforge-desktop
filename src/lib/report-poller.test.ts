@@ -90,6 +90,11 @@ describe('match-report:game-notes IPC', () => {
     const block = main.slice(start, main.indexOf('\n  })', start))
     expect(block).toMatch(/notes_status:/)
   })
+  it('passes this match’s focus rows through (CS2 counts the match on the notes call)', () => {
+    const start = main.indexOf("ipcMain.handle('match-report:game-notes'")
+    const block = main.slice(start, main.indexOf('\n  })', start))
+    expect(block).toMatch(/focus_checks:/)
+  })
 })
 
 describe('MatchReportV3 pending notes', () => {
@@ -97,5 +102,8 @@ describe('MatchReportV3 pending notes', () => {
   it('polls while notes are pending and stops on unmount', () => {
     expect(sfc).toMatch(/notes_status === 'pending'/)
     expect(sfc).toMatch(/onBeforeUnmount\(\(\) => \{[^\n]*notesPoller\.stop\(\)/)
+  })
+  it('shows this match’s focus rows while the notes are still being written', () => {
+    expect(sfc).toMatch(/if \(pending\) \{\s*state\.value = \{ kind: 'ready', view: applyMatchChecks\(/)
   })
 })
