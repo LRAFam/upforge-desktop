@@ -22,6 +22,7 @@ import { TRAINER_VERSION } from '../trainer-version'
 import { apiPost } from './api-helpers'
 import { TrainerSessionQueue, trainerRunKey } from '../trainer-session-queue'
 import { dismissCoachingDrill } from '../coaching-drill-dismiss'
+import { collectPracticeData, historyTimeZoneParams } from '../../../src/lib/practice-trainer-data'
 import { listRecentDemosInDir } from '../demo-finder'
 import { SourceReplayUploader } from '../source-replay-uploader'
 import { getDeadlockDetectionStatus } from '../deadlock-match-watcher'
@@ -150,11 +151,45 @@ export function setupGamingHandlers(
     return { ok: true }
   })
 
+  // Practice's reads. They throw when the API can't be reached; the single-part handlers below answer
+  // null / [] then (unchanged), and trainer:get-practice-data reports "failed" apart from "empty".
+  const trainerReads = {
+    // Practice's own history read (no comparison filter); the trainer:get-history handler below is unchanged.
+    history: async () => {
+      const res = await auth.getApi().get('/api/training/sessions', { params: { limit: 50, ...historyTimeZoneParams() } })
+      return res.data ?? null
+    },
+    plan: async (game?: unknown) => {
+      const res = await auth.getApi().get('/api/training/plan', drillGameParams(game))
+      return res.data?.plan ?? null
+    },
+    drills: async (game?: unknown) => {
+      const res = await auth.getApi().get('/api/drills', drillGameParams(game))
+      const data = res.data
+      if (Array.isArray(data)) return data
+      if (data && typeof data === 'object') return (data as Record<string, unknown>).active ?? []
+      return []
+    },
+    insights: async () => correlationInsightsFrom((await auth.getApi().get('/api/training/correlation')).data),
+    benchmark: async () => (await auth.getApi().get('/api/training/benchmark')).data?.benchmark ?? null,
+  }
+
+  ipcMain.handle('trainer:get-practice-data', async (_e, game?: unknown) => {
+    if (!auth.getToken()) return null
+    return collectPracticeData({
+      history: () => trainerReads.history(),
+      plan: () => trainerReads.plan(game),
+      drills: () => trainerReads.drills(game) as Promise<import('../../../src/env').CoachingDrill[]>,
+      insights: () => trainerReads.insights(),
+      benchmark: () => trainerReads.benchmark(),
+    }, (part, err: any) => log.warn(`[Trainer] Failed to fetch practice ${part}:`, err?.message))
+  })
+
   ipcMain.handle('trainer:get-history', async (_event, comparison?: import('../../../src/lib/training-result-metrics').TrainingComparisonRequest) => {
     const token = auth.getToken()
     if (!token) return null
     try {
-      const res = await auth.getApi().get('/api/training/sessions', { params: { limit: 50, ...(comparison ? { scenario: comparison.scenario, difficulty: comparison.difficulty, duration_seconds: comparison.duration_seconds, scoring_version: comparison.scoring_version, before: comparison.before, ...(comparison.comparison_model ? { comparison_model: comparison.comparison_model } : {}) } : {}) } })
+      const res = await auth.getApi().get('/api/training/sessions', { params: { limit: 50, ...historyTimeZoneParams(), ...(comparison ? { scenario: comparison.scenario, difficulty: comparison.difficulty, duration_seconds: comparison.duration_seconds, scoring_version: comparison.scoring_version, before: comparison.before, ...(comparison.comparison_model ? { comparison_model: comparison.comparison_model } : {}) } : {}) } })
       return res.data ?? null
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch training history:', err?.message)
@@ -167,8 +202,7 @@ export function setupGamingHandlers(
     const token = auth.getToken()
     if (!token) return null
     try {
-      const res = await auth.getApi().get('/api/training/plan', drillGameParams(game))
-      return res.data?.plan ?? null
+      return await trainerReads.plan(game)
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch shared training plan:', err?.message)
       return null
@@ -179,11 +213,7 @@ export function setupGamingHandlers(
     const token = auth.getToken()
     if (!token) return []
     try {
-      const res = await auth.getApi().get('/api/drills', drillGameParams(game))
-      const data = res.data
-      if (Array.isArray(data)) return data
-      if (data && typeof data === 'object') return (data as Record<string, unknown>).active ?? []
-      return []
+      return await trainerReads.drills(game)
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch coaching drills:', err?.message)
       return []
@@ -213,8 +243,7 @@ export function setupGamingHandlers(
     const token = auth.getToken()
     if (!token) return []
     try {
-      const res = await auth.getApi().get('/api/training/correlation')
-      return correlationInsightsFrom(res.data)
+      return await trainerReads.insights()
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch correlation insights:', err?.message)
       return []
@@ -225,8 +254,7 @@ export function setupGamingHandlers(
     const token = auth.getToken()
     if (!token) return null
     try {
-      const res = await auth.getApi().get('/api/training/benchmark')
-      return res.data?.benchmark ?? null
+      return await trainerReads.benchmark()
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch benchmark:', err?.message)
       return null

@@ -55,9 +55,10 @@ export function drillLoop(
   const statLine = fromMatches ? coachingStatLine(drill?.stat)?.text ?? null : null
   const metric = text(drill?.success_metric)
 
+  // Review drills carry the coach's reason as `why` on newer APIs; older rows fall back to the title.
   const why = fromMatches
     ? text(drill?.why)
-    : text(drill?.title ?? state?.title) ? `Assigned from your match review: ${text(drill?.title ?? state?.title)}.` : null
+    : text(drill?.why) ?? (text(drill?.title ?? state?.title) ? `Assigned from your match review: ${text(drill?.title ?? state?.title)}.` : null)
 
   const nextCheck = fromMatches
     ? `Your next ranked games check ${statLine ? statLine.replace(/ · now .*$/, '') : 'the same stat'}.`

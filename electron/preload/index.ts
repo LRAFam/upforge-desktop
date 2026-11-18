@@ -480,6 +480,8 @@ const api = {
     dismissCoachingDrill: (id: number) => ipcRenderer.invoke('trainer:dismiss-coaching-drill', id),
     getCorrelation: () => ipcRenderer.invoke('trainer:get-correlation'),
     getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),
+    /** Practice's history, plan, drills, insights and benchmark, each "ok" or "failed" (null when signed out). */
+    getPracticeData: (game?: string) => ipcRenderer.invoke('trainer:get-practice-data', game),
     getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all', difficulty?: string, durationSeconds?: number) =>
       ipcRenderer.invoke('trainer:get-leaderboard', scenario, period, difficulty, durationSeconds),
     getLeaderboardVisibility: () =>

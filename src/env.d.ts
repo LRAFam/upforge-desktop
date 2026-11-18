@@ -101,6 +101,8 @@ export interface TrainingHistory {
     completed_at: string
   }>
   by_scenario: Record<string, TrainingScenarioStats>
+  /** Counted from every run in the player's time zone (newer API); absent on older APIs and old caches. */
+  activity?: import('./lib/trainer-achievements').TrainingActivity
 }
 
 export interface SharedTrainingPlanStep {
@@ -1795,6 +1797,8 @@ declare global {
         dismissCoachingDrill: (id: number) => Promise<{ ok: true } | { ok: false; error: string }>
         getCorrelation: () => Promise<string[]>
         getBenchmark: () => Promise<TrainingBenchmark | null>
+        /** Practice's trainer data, each part "ok" or "failed" (offline) apart from empty; null when signed out. */
+        getPracticeData: (game?: string) => Promise<import('./lib/practice-trainer-data').PracticeDataReply | null>
         getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all', difficulty?: string, durationSeconds?: number) => Promise<TrainerLeaderboardEntry[]>
         /** Whether the account appears on leaderboards (PUT/GET /api/profile/privacy `leaderboard_opt_in`). */
         getLeaderboardVisibility: () => Promise<{ ok: true; visible: boolean } | { ok: false; error: string }>
