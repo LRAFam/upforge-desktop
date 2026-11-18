@@ -46,6 +46,15 @@ function measured(r: RunNumbers) {
 
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)
 
+/**
+ * A run's number, or null when it has none. Earlier runs come from the API, whose DECIMAL columns
+ * MySQL sends as strings ("72.50"); `.toFixed` on those would throw and blank the result screen.
+ */
+function num(v: unknown): number | null {
+  const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v
+  return typeof n === 'number' && Number.isFinite(n) ? n : null
+}
+
 /** "accuracy 72.0% → 81.0%" for each number measured in both runs that changed. */
 function movedNumbers(run: RunNumbers, previous: RunNumbers): string[] {
   const now = measured(run), before = measured(previous)
@@ -53,12 +62,17 @@ function movedNumbers(run: RunNumbers, previous: RunNumbers): string[] {
   const add = (label: string, from: string, to: string, unit = '') => {
     if (from !== to) out.push(`${lower(label)} ${from}${unit} → ${to}${unit}`)
   }
-  add(accuracyMetricLabel(run.scenario), previous.accuracy_pct.toFixed(1), run.accuracy_pct.toFixed(1), '%')
-  if (now.reaction && before.reaction) {
-    const from = String(Math.round(previous.avg_reaction_ms)), to = String(Math.round(run.avg_reaction_ms))
+  const accFrom = num(previous.accuracy_pct), accTo = num(run.accuracy_pct)
+  if (accFrom !== null && accTo !== null) add(accuracyMetricLabel(run.scenario), accFrom.toFixed(1), accTo.toFixed(1), '%')
+  const reactFrom = num(previous.avg_reaction_ms), reactTo = num(run.avg_reaction_ms)
+  if (now.reaction && before.reaction && reactFrom !== null && reactTo !== null) {
+    const from = String(Math.round(reactFrom)), to = String(Math.round(reactTo))
     if (from !== to) out.push(`${lower(reactionMetricLabel(run.scenario))} ${from} → ${to} ms`)
   }
-  if (now.consistency && before.consistency) add('Consistency', String(Math.round(previous.consistency_score)), String(Math.round(run.consistency_score)))
+  const consFrom = num(previous.consistency_score), consTo = num(run.consistency_score)
+  if (now.consistency && before.consistency && consFrom !== null && consTo !== null) {
+    add('Consistency', String(Math.round(consFrom)), String(Math.round(consTo)))
+  }
   return out
 }
 
@@ -116,7 +130,7 @@ export function trainerRunSummary({ run, previous, best, history }: RunSummaryIn
   if (history === 'none') return { headline: 'Not compared with your other runs: this run used older scoring or incomplete settings.', details: notes }
   if (!previous) return { headline: 'First run at these settings.', details: notes }
 
-  const score = run.score * SCALE, prev = previous.score * SCALE
+  const score = run.score * SCALE, prev = Number(previous.score) * SCALE
   const delta = score - prev
   const headline = delta > 0
     ? `Up ${delta} from your last run at these settings (${prev} → ${score}).`
@@ -125,10 +139,11 @@ export function trainerRunSummary({ run, previous, best, history }: RunSummaryIn
       : `Same score as your last run at these settings (${score}).`
 
   const details: string[] = []
-  if (best !== null) {
-    if (run.score > best) details.push(`New best at these settings. Previous best: ${best * SCALE}.`)
-    else if (run.score === best) details.push(`Matches your best at these settings (${best * SCALE}).`)
-    else details.push(`Best at these settings: ${best * SCALE}.`)
+  const bestScore = num(best)
+  if (bestScore !== null) {
+    if (run.score > bestScore) details.push(`New best at these settings. Previous best: ${bestScore * SCALE}.`)
+    else if (run.score === bestScore) details.push(`Matches your best at these settings (${bestScore * SCALE}).`)
+    else details.push(`Best at these settings: ${bestScore * SCALE}.`)
   }
   const moved = movedNumbers(run, previous)
   if (moved.length) details.push(`Since your last run: ${moved.join(', ')}.`)

@@ -75,6 +75,44 @@ export function trainingTimestamp(value: string): number {
   const iso = value.replace(' ', 'T')
   return Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? iso : `${iso}Z`)
 }
+/** Number fields of a stored run, and of a drill's group, in GET /api/training/sessions. */
+const RUN_NUMBER_KEYS = ['id', 'duration_seconds', 'score', 'accuracy_pct', 'avg_reaction_ms', 'consistency_score', 'targets_hit', 'targets_missed']
+const GROUP_NUMBER_KEYS = ['best_score', 'trend', 'avg_accuracy', 'avg_reaction', 'min_reaction', 'max_reaction', 'max_streak']
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** A numeric string ("72.50") as a number; anything else (null, '', other text) unchanged. */
+function numberFromApi(v: unknown): unknown {
+  if (typeof v !== 'string' || v.trim() === '') return v
+  const n = Number(v)
+  return Number.isFinite(n) ? n : v
+}
+
+function withNumbers(v: unknown, keys: string[]): unknown {
+  if (!isRecord(v)) return v
+  const out = { ...v }
+  for (const key of keys) if (key in out) out[key] = numberFromApi(out[key])
+  return out
+}
+
+/**
+ * Training history with its numbers as numbers. The API keeps accuracy, reaction and consistency in
+ * DECIMAL columns and MySQL sends those as strings ("72.50"): sums still work on them, `.toFixed` throws.
+ * Null and anything not shaped like history come back unchanged.
+ */
+export function normalizeTrainingHistory<T>(data: T): T {
+  if (!isRecord(data)) return data
+  const withRuns = (v: Record<string, unknown>) =>
+    Array.isArray(v.sessions) ? { ...v, sessions: v.sessions.map(r => withNumbers(r, RUN_NUMBER_KEYS)) } : v
+  const out = withRuns(data)
+  if (!isRecord(data.by_scenario)) return out as T
+  const groups = Object.entries(data.by_scenario).map(([scenario, group]) => {
+    const g = withNumbers(group, GROUP_NUMBER_KEYS)
+    return [scenario, isRecord(g) ? withRuns(g) : g]
+  })
+  return { ...out, by_scenario: Object.fromEntries(groups) } as T
+}
+
 export function priorTrainingSessions<T extends ComparableTrainingRun>(sessions: T[], current: ComparableTrainingRun): T[] {
   const time = trainingTimestamp(current.completed_at)
   return sessions.filter(s => comparableTrainingRuns(s, current) && trainingTimestamp(s.completed_at) < time)

@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { CURRENT_SCORING_VERSION, priorTrainingSessions, reactionMetricScore, resultCountCells, resultHitsCell, trackingTimes, trainingTimestamp, trainingComparisonRequest, trainingComparisonModel } from './training-result-metrics'
+import { CURRENT_SCORING_VERSION, normalizeTrainingHistory, priorTrainingSessions, reactionMetricScore, resultCountCells, resultHitsCell, trackingTimes, trainingTimestamp, trainingComparisonRequest, trainingComparisonModel } from './training-result-metrics'
+import { trainerRunSummary } from './trainer-run-summary'
+import type { TrainingHistory } from '../env'
 describe('training result measurements', () => {
   it('compares the last completed run whether the current run has synced or not', () => {
     const current = { scenario: 'flick', duration_seconds: 60, metadata: { difficulty: 'medium', scoring_version: 3, game: 'valorant' }, completed_at: '2026-09-24T12:00:00', score: 39 }
@@ -46,6 +50,46 @@ describe('training result measurements', () => {
       { label: 'Targets', value: '40/50' }, { label: 'Hits per minute', value: '40' }, { label: 'Miss rate', value: '20%' },
     ])
     expect(resultHitsCell({ scenario: 'flick', duration_seconds: 60, accuracy_pct: 80, targets_hit: 40, targets_missed: 10 })).toEqual({ label: 'Hits', value: '40/50' })
+  })
+})
+
+describe('training history from the API: numbers as numbers', () => {
+  // GET /api/training/sessions as the live API (MySQL) sends it: DECIMAL columns arrive as strings.
+  const row = '{"id":7,"scenario":"flick","duration_seconds":60,"score":60,"accuracy_pct":"72.50","avg_reaction_ms":"340.00","consistency_score":"60.00","targets_hit":38,"targets_missed":12,"metadata":{"difficulty":"medium","scoring_version":3,"game":"valorant"},"completed_at":"2026-11-18T11:00:00.000000Z"}'
+  const apiJson = `{"sessions":[${row}],"by_scenario":{"flick":{"best_score":64,"comparison":null,"avg_accuracy":72.5,"trend":null,"sessions":[${row}]},"gridshot":{"best_score":null,"comparison":null,"trend":null,"sessions":[]}},"total":1}`
+
+  it('turns decimal strings into numbers in both session lists and leaves everything else alone', () => {
+    const h = normalizeTrainingHistory(JSON.parse(apiJson))
+    for (const r of [h.sessions[0], h.by_scenario.flick.sessions[0]]) {
+      expect(r).toMatchObject({ id: 7, score: 60, accuracy_pct: 72.5, avg_reaction_ms: 340, consistency_score: 60, targets_hit: 38, targets_missed: 12 })
+      expect(r.completed_at).toBe('2026-11-18T11:00:00.000000Z')
+      expect(r.metadata).toEqual({ difficulty: 'medium', scoring_version: 3, game: 'valorant' })
+    }
+    expect(h.by_scenario.flick.best_score).toBe(64)
+    expect(h.by_scenario.gridshot).toEqual({ best_score: null, comparison: null, trend: null, sessions: [] })
+    expect(h.total).toBe(1)
+  })
+
+  it('is null-safe and keeps values that are not numbers', () => {
+    expect(normalizeTrainingHistory(null)).toBeNull()
+    const odd = normalizeTrainingHistory({ sessions: [{ accuracy_pct: null, avg_reaction_ms: '', consistency_score: 'n/a' }, null], by_scenario: [] })
+    expect(odd.sessions).toEqual([{ accuracy_pct: null, avg_reaction_ms: '', consistency_score: 'n/a' }, null])
+    expect(odd.by_scenario).toEqual([])
+  })
+
+  it('a repeat run on the result screen compares with the API row without throwing', () => {
+    const h = normalizeTrainingHistory(JSON.parse(apiJson) as TrainingHistory)
+    const current = { scenario: 'flick', duration_seconds: 60, score: 64, accuracy_pct: 81, avg_reaction_ms: 310, consistency_score: 58, targets_hit: 40,
+      metadata: { difficulty: 'medium', scoring_version: 3, game: 'valorant' }, completed_at: '2026-11-18T12:00:00' }
+    const previous = priorTrainingSessions(h.by_scenario.flick.sessions, current)[0]
+    expect(trainerRunSummary({ run: current, previous, best: h.by_scenario.flick.best_score, history: 'ok' }).details)
+      .toContain('Since your last run: accuracy 72.5% → 81.0%, time to hit 340 → 310 ms, consistency 60 → 58.')
+  })
+
+  it('the desktop normalises history where trainer:get-history returns it', () => {
+    const ipc = readFileSync(resolve(__dirname, '../../electron/main/ipc/gaming-ipc.ts'), 'utf8')
+    const handler = ipc.slice(ipc.indexOf("'trainer:get-history'"), ipc.indexOf("'trainer:get-plan'"))
+    expect(handler).toMatch(/return normalizeTrainingHistory\(res\.data/)
   })
 })
 

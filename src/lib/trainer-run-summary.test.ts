@@ -55,6 +55,23 @@ describe('trainerRunSummary: measured facts only', () => {
     expect(noHits.details).toEqual(['No successful hits recorded, so time to hit and consistency were not measured.'])
   })
 
+  it('an earlier run from the API with decimals as strings ("72.50", MySQL DECIMAL) still compares', () => {
+    // GET /api/training/sessions row as the live API sends it: accuracy, reaction and consistency are strings.
+    const apiRow = JSON.parse('{"scenario":"flick","score":60,"accuracy_pct":"72.50","avg_reaction_ms":"340.00","consistency_score":"60.00","targets_hit":38}') as RunNumbers
+    const s = trainerRunSummary({ run: run(), previous: apiRow, best: 64, history: 'ok' })
+    expect(s.headline).toBe('Up 40 from your last run at these settings (600 → 640).')
+    expect(s.details).toEqual([
+      'Matches your best at these settings (640).',
+      'Since your last run: accuracy 72.5% → 81.0%, time to hit 340 → 310 ms, consistency 60 → 58.',
+    ])
+    // A best that arrives as a string is still the same number.
+    expect(trainerRunSummary({ run: run(), previous: apiRow, best: '64' as unknown as number, history: 'ok' }).details[0])
+      .toBe('Matches your best at these settings (640).')
+    // A number the API left out is skipped, never printed as "NaN".
+    const partial = trainerRunSummary({ run: run(), previous: { ...apiRow, accuracy_pct: null as unknown as number }, best: 64, history: 'ok' })
+    expect(partial.details).toContain('Since your last run: time to hit 340 → 310 ms, consistency 60 → 58.')
+  })
+
   it('offline, shows no rank and no "play another run" trend hint', () => {
     const current = { score: 64, completed_at: '2026-11-18T10:00:00Z' }
     const prior = [{ score: 70, completed_at: '2026-11-17T10:00:00Z' }, { score: 50, completed_at: '2026-11-16T10:00:00Z' }]
