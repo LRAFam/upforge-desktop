@@ -2,7 +2,7 @@
 /**
  * "Your focuses": everything the player is working on in one game, with a way to add one of the
  * habits the game measures (with the suggested target or their own) and to drop one.
- * Works for every game with a focus loop (Valorant, League, Deadlock).
+ * Works for every game with a focus loop (Valorant, League, Deadlock, CS2).
  *
  * While there is no list (first load, signed out, or a server without /api/focuses) the `fallback`
  * slot renders instead: screens put their older single-focus block there, so an older server
@@ -62,7 +62,7 @@ const canAdd = computed(() => canAddFocus(state.value))
 const blocked = computed(() => addBlockedLine(state.value))
 const recent = computed<FocusItem[]>(() => (props.showRecent ? (state.value?.recent ?? []).slice(0, 3) : []))
 
-// Streak badges for League and Deadlock (Valorant's come from the Home focus panel, so they are never unlocked twice).
+// Streak badges for League, Deadlock and CS2 (Valorant's come from the Home focus panel, so they are never unlocked twice).
 const achievements = useAchievements()
 watch(() => state.value?.streak, async (n) => {
   if (props.game === 'valorant' || typeof n !== 'number') return

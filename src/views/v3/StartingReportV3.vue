@@ -7,7 +7,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UfButton from '../../components/v3/UfButton.vue'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
-import { insufficientLine, loadingLine, startingReportView, type StartingGame } from '../../lib/starting-report'
+import { canStartFocus, insufficientLine, loadingLine, startingReportView, type StartingGame } from '../../lib/starting-report'
 import { useStartingReport } from '../../components/v3/starting/useStartingReport'
 import { ofN } from '../../components/v3/coach-flow/coach-visuals'
 
@@ -26,7 +26,7 @@ watch(game, () => { void load({ generate: true }) })
 
 async function startFocus() {
   const g = game.value
-  if (g !== 'valorant' && g !== 'lol' && g !== 'deadlock') return
+  if (!canStartFocus(g)) return
   focusState.value = 'starting'
   const res = await window.api?.app?.startStartingFocus?.(g).catch(() => null)
   focusState.value = res?.ok ? 'started' : 'failed'

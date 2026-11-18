@@ -131,7 +131,7 @@ const api = {
     getStartingReport: (game: 'valorant' | 'lol' | 'deadlock' | 'cs2') => ipcRenderer.invoke('starting-report:get', game),
     generateStartingReport: (game: 'valorant' | 'lol' | 'deadlock' | 'cs2') => ipcRenderer.invoke('starting-report:generate', game),
     dismissStartingReport: (game: 'valorant' | 'lol' | 'deadlock' | 'cs2') => ipcRenderer.invoke('starting-report:dismiss', game),
-    startStartingFocus: (game: 'valorant' | 'lol' | 'deadlock') => ipcRenderer.invoke('starting-report:start-focus', game),
+    startStartingFocus: (game: 'valorant' | 'lol' | 'deadlock' | 'cs2') => ipcRenderer.invoke('starting-report:start-focus', game),
     syncFocus: () => ipcRenderer.invoke('focus:sync'),
     onFocusUpdated: (cb: (payload: unknown) => void) => {
       const listener = (_e: unknown, payload: unknown) => cb(payload)

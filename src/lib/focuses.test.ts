@@ -108,7 +108,8 @@ describe('adding a focus', () => {
   it('knows which games have a focus loop', () => {
     expect(hasFocusLoop('valorant')).toBe(true)
     expect(hasFocusLoop('deadlock')).toBe(true)
-    expect(hasFocusLoop('cs2')).toBe(false)
+    expect(hasFocusLoop('cs2')).toBe(true)
+    expect(hasFocusLoop('dota2')).toBe(false)
     expect(hasFocusLoop(null)).toBe(false)
   })
 })

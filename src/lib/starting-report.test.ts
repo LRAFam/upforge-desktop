@@ -35,14 +35,21 @@ describe('startingReportView', () => {
     expect(v.kind === 'ready' && v.focus?.heading).toBe('Your first focus')
   })
 
-  it('never promises a CS2 focus check: CS2 has no focus loop', () => {
+  it('lets CS2 players start the focus, checked over ranked 5v5 demos only', () => {
     const v = startingReportView({ ...ready, game: 'cs2' })
+    if (v.kind !== 'ready') throw new Error('ready expected')
+    expect(v.focus?.canStart).toBe(true)
+    expect(v.focus?.heading).toBe('Your first focus')
+    expect(v.focus?.target).toBe('Aim for at most 11% over your next 3 games')
+    expect(v.next).toBe('Each CS2 match you record gets a report once its demo is read, and your focus is checked over your next 3 ranked 5v5 matches.')
+  })
+
+  it('never promises a focus check for a game without a focus loop', () => {
+    const v = startingReportView({ ...ready, game: 'dota2' as never })
     if (v.kind !== 'ready') throw new Error('ready expected')
     expect(v.focus?.canStart).toBe(false)
     expect(v.focus?.heading).toBe('What to work on first')
-    expect(v.focus?.target).toBe('Aim for at most 11%')
-    expect(v.next).not.toMatch(/checked|next 3 games/)
-    expect(JSON.stringify(v)).not.toMatch(/checked over|over your next/)
+    expect(JSON.stringify(v.focus)).not.toMatch(/checked over|over your next/)
   })
 
   it('reports how many matches are still needed', () => {

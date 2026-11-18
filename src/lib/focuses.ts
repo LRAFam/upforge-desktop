@@ -41,7 +41,7 @@ export interface FocusesState {
 export type FocusesResult = ({ ok: true } & FocusesState) | { ok: false; error: string; state?: FocusesState }
 
 /** Games with a focus loop on the server. */
-export const FOCUS_GAMES = ['valorant', 'lol', 'deadlock'] as const
+export const FOCUS_GAMES = ['valorant', 'lol', 'deadlock', 'cs2'] as const
 export function hasFocusLoop(game: string | null | undefined): boolean {
   return (FOCUS_GAMES as readonly string[]).includes(game ?? '')
 }
