@@ -777,7 +777,7 @@ onMounted(async () => {
         streak: trainingStats.value.streak,
         lastScore: r.score,
         lastAccuracy: r.accuracy_pct,
-        lastReactionMs: r.avg_reaction_ms,
+        lastRun: r,
       })
       if (newAchs.length) window.__ufAchievementUnlocked?.(newAchs)
     })

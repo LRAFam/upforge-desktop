@@ -12,7 +12,7 @@ import UfTabs from '../v3/UfTabs.vue'
 import UfSkeleton from '../v3/UfSkeleton.vue'
 import EmptyArt from '../v3/empty/EmptyArt.vue'
 import { isBest, leaderboardYouRow, type LeaderboardYouRow } from '../v3/practice/practice-session-v3'
-import { CURRENT_SCORING_VERSION, trainingTimestamp } from '../../lib/training-result-metrics'
+import { CURRENT_SCORING_VERSION, leaderboardStatLine, trainingTimestamp } from '../../lib/training-result-metrics'
 import '../v3/practice/practice-v3.css'
 
 const PERIOD_TABS = [{ key: 'week', label: 'This week' }, { key: 'month', label: 'This month' }, { key: 'all', label: 'All time' }]
@@ -116,7 +116,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
           <span class="uf-t3">{{ e.name }}<span v-if="e.tag" style="color: var(--uf-faint); font-weight: 400">#{{ e.tag }}</span>
             <span v-if="e.is_current_user" class="uf-label" style="color: var(--uf-red); margin-left: 8px">You</span>
           </span>
-          <span class="uf-t4 uf-num">{{ e.accuracy_pct }}% accuracy · {{ e.avg_reaction_ms }}ms to hit</span>
+          <span class="uf-t4 uf-num">{{ leaderboardStatLine(activeScenario, e) }}</span>
         </span>
         <span class="uf-d4">{{ e.score }}</span>
       </li>
@@ -189,7 +189,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
             {{ e.name }}<span v-if="e.tag" class="text-gray-500">#{{ e.tag }}</span>
             <span v-if="e.is_current_user" class="ml-1 text-[9px] font-bold uppercase text-red-400">You</span>
           </p>
-          <p class="text-[10px] text-gray-600 tabular-nums">{{ e.accuracy_pct }}% acc · {{ e.avg_reaction_ms }}ms</p>
+          <p class="text-[10px] text-gray-600 tabular-nums">{{ leaderboardStatLine(activeScenario, e) }}</p>
         </div>
         <span class="text-lg font-black tabular-nums text-white">{{ e.score }}</span>
       </div>
