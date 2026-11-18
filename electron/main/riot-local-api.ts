@@ -2400,8 +2400,21 @@ export function totalRecordingOffsetMs(timeline: MatchData): number {
     // Measured from the round timer; a manual nudge is the change from the default sync offset.
     return timeline.roundTimerOffsetMs + manualSyncNudgeMs(timeline)
   }
-  const { offset } = computeRecordingOffsetMeta(timeline)
-  return offset + effectiveVideoSyncOffsetMs(timeline)
+  const { offset } = computeRecordingOffsetMeta(untrimmedTiming(timeline))
+  return offset + effectiveVideoSyncOffsetMs(timeline) - vodTrimStartMs(timeline)
+}
+
+/** ms cut from the start of the recording file by VOD trims (0 when never trimmed). */
+function vodTrimStartMs(timeline: Pick<MatchData, 'vodTrimStartMs'>): number {
+  const ms = timeline.vodTrimStartMs
+  return typeof ms === 'number' && Number.isFinite(ms) ? ms : 0
+}
+
+/** Timing as it was before any VOD trim, for the estimates that are based on when the recorder started. */
+function untrimmedTiming(timeline: MatchData): MatchData {
+  const trim = vodTrimStartMs(timeline)
+  if (!trim || timeline.recordingStartTime == null) return timeline
+  return { ...timeline, recordingStartTime: timeline.recordingStartTime - trim }
 }
 
 /** How far the user has nudged sync away from the default (0 when untouched or reset). */
@@ -2417,16 +2430,18 @@ function gameTimeToEventVideoOffsetMs(timeline: MatchData, gameTimeMs: number): 
   if (timeline.game === 'lol') {
     // LoL anchors to the in-game clock zero (stored on matchStartTime), so the
     // loading-screen gap is added back and events land at the right video time.
-    return lolGameTimeToVideoOffsetMs(gameTimeMs, {
-      gameClockZeroEpoch: timeline.matchStartTime,
-      recordingStartTime: timeline.recordingStartTime,
+    const untrimmed = untrimmedTiming(timeline)
+    return Math.max(0, lolGameTimeToVideoOffsetMs(gameTimeMs, {
+      gameClockZeroEpoch: untrimmed.matchStartTime,
+      recordingStartTime: untrimmed.recordingStartTime,
       syncOffset: effectiveVideoSyncOffsetMs(timeline),
-    })
+    }) - vodTrimStartMs(timeline))
   }
   if (timeline.game === 'cs2' && timeline.cs2DemoVideoShiftMs != null) {
+    // The demo shift is measured against the current file, and the VOD trim moves it directly.
     return Math.max(0, gameTimeMs + timeline.cs2DemoVideoShiftMs + effectiveVideoSyncOffsetMs(timeline))
   }
-  return Math.max(0, gameTimeToVideoOffsetMs(gameTimeMs, timeline) + effectiveVideoSyncOffsetMs(timeline))
+  return Math.max(0, gameTimeToVideoOffsetMs(gameTimeMs, untrimmedTiming(timeline)) + effectiveVideoSyncOffsetMs(timeline) - vodTrimStartMs(timeline))
 }
 
 /** Shift all event timestamps by deltaMs and persist on the timeline object. */

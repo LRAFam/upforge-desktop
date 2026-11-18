@@ -14,34 +14,68 @@ function trimDurationMs(range: VodTrimRange): number {
   return Math.round((range.endSec - range.startSec) * 1000)
 }
 
-function inTrimWindow(ms: number | undefined | null, trimDurMs: number): boolean {
-  return ms != null && ms >= 0 && ms < trimDurMs
-}
+type Seekable = { videoOffsetMs?: number }
 
-/** Shift timeline markers after cutting [startSec, endSec) from the recording file. */
+/**
+ * Shift timeline markers after cutting the file down to [startSec, endSec).
+ *
+ * Trimming moves where the file starts, not when the match happened: game-clock epochs
+ * (matchStartTime, gameplayStartTime) stay as they are. recordingStartTime moves to the new
+ * first frame, the file-relative anchors (measured round-timer offset, CS2 demo shift) move back
+ * by the cut, and vodTrimStartMs remembers the cut for the loading-time estimates. Events are
+ * kept by their position in the old file, so nothing inside the kept window is lost.
+ */
 export function applyVodTrimToTimeline(timeline: MatchData, range: VodTrimRange): void {
   const startMs = Math.round(range.startSec * 1000)
   const endMs = Math.round(range.endSec * 1000)
   const trimDurMs = trimDurationMs(range)
 
-  if (timeline.recordingStartTime != null) timeline.recordingStartTime += startMs
-  if (timeline.gameplayStartTime != null) timeline.gameplayStartTime += startMs
-  if (timeline.matchStartTime != null) timeline.matchStartTime += startMs
-  if (timeline.startTime != null) timeline.startTime += startMs
-  if (timeline.roundTimerOffsetMs != null) timeline.roundTimerOffsetMs -= startMs
-
+  // Positions in the file as it is now (before the cut).
   recomputeTimelineVideoOffsets(timeline)
+  const inWindow = (ev: Seekable): boolean =>
+    ev.videoOffsetMs != null && ev.videoOffsetMs >= startMs && ev.videoOffsetMs < endMs
+  const keepAndShift = <T extends Seekable>(events: T[] | undefined): T[] =>
+    (events ?? []).filter(inWindow).map((ev) => {
+      ev.videoOffsetMs = ev.videoOffsetMs! - startMs
+      return ev
+    })
 
-  const keepEvent = <T extends { videoOffsetMs?: number }>(ev: T): boolean =>
-    inTrimWindow(ev.videoOffsetMs, trimDurMs)
+  // Spatial seek points follow their source events by index, so decide them before filtering.
+  const spatial = timeline.spatialSummary?.events
+  if (spatial?.length) {
+    const sources: Record<string, Seekable[] | undefined> = {
+      death: timeline.playerDeaths,
+      kill: timeline.playerKills,
+      plant: timeline.spikePlants,
+      defuse: timeline.spikeDefuses,
+    }
+    const seen: Record<string, number> = {}
+    timeline.spatialSummary!.events = spatial.filter((ev) => {
+      const i = seen[ev.type] ?? 0
+      seen[ev.type] = i + 1
+      const src = sources[ev.type]?.[i]
+      return src ? inWindow(src) : ev.videoOffsetMs != null && inWindow(ev)
+    })
+  }
 
-  timeline.playerKills = (timeline.playerKills ?? []).filter(keepEvent)
-  timeline.playerDeaths = (timeline.playerDeaths ?? []).filter(keepEvent)
-  timeline.killEvents = (timeline.killEvents ?? []).filter(keepEvent)
-  timeline.firstBloods = (timeline.firstBloods ?? []).filter(keepEvent)
-  timeline.spikePlants = (timeline.spikePlants ?? []).filter(keepEvent)
-  timeline.spikeDefuses = (timeline.spikeDefuses ?? []).filter(keepEvent)
-  timeline.spikeDetonations = (timeline.spikeDetonations ?? []).filter(keepEvent)
+  timeline.playerKills = keepAndShift(timeline.playerKills)
+  timeline.playerDeaths = keepAndShift(timeline.playerDeaths)
+  timeline.killEvents = keepAndShift(timeline.killEvents)
+  timeline.firstBloods = keepAndShift(timeline.firstBloods)
+  timeline.spikePlants = keepAndShift(timeline.spikePlants)
+  timeline.spikeDefuses = keepAndShift(timeline.spikeDefuses)
+  timeline.spikeDetonations = keepAndShift(timeline.spikeDetonations)
+  if (timeline.objectiveEvents) timeline.objectiveEvents = keepAndShift(timeline.objectiveEvents)
+
+  if (timeline.recordingStartTime != null) timeline.recordingStartTime += startMs
+  if (timeline.startTime != null) timeline.startTime += startMs
+  timeline.vodTrimStartMs = (timeline.vodTrimStartMs ?? 0) + startMs
+  if (timeline.roundTimerOffsetMs != null) timeline.roundTimerOffsetMs -= startMs
+  if (timeline.cs2DemoVideoShiftMs != null) timeline.cs2DemoVideoShiftMs -= startMs
+
+  // Same positions from the anchors (also re-syncs spatial seek points); markers without a game
+  // time keep the shifted position set above.
+  recomputeTimelineVideoOffsets(timeline)
 
   if (timeline.duelMoments?.length) {
     timeline.duelMoments = timeline.duelMoments
