@@ -48,6 +48,9 @@ import { coachingDrillExtras, drillsForGame, matchDrillRows, oldScoringBests, ol
 const ICON_LOCK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
 const ICON_TROPHY_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/><path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>`
 import { useTrainerResultStore } from '../stores/trainerResult'
+import { scenariosPlayedToday, usePracticeSessionStore } from '../stores/practiceSession'
+import { mergePracticeData, practiceRefreshNotice, shouldCachePracticeData, type PracticeDataReply, type TrainerData } from '../lib/practice-trainer-data'
+import { storeToRefs } from 'pinia'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SessionResult {
@@ -85,6 +88,9 @@ interface AssignedDrill {
 // ── State ─────────────────────────────────────────────────────────────────────
 const router = useRouter()
 const trainerResultStore = useTrainerResultStore()
+// Guided session + runs seen this app session live in a store: every run opens the result screen,
+// which unmounts this view.
+const practiceSession = usePracticeSessionStore()
 const launching = ref(false)
 const drillRunning = ref(false)    // true from launch success → until result received
 const showResultModal = ref(false) // completion modal
@@ -97,7 +103,6 @@ const lastResult = ref<SessionResult | null>(null)
 const lastPlayedDrill = ref<AssignedDrill | null>(null) // preserved after activeDrill cleared
 const sessionHistory = ref<SessionResult[]>([])
 const activeDrill = ref<AssignedDrill | null>(null)
-const completedDrills = ref<Set<string>>(new Set())
 const apiHistory = ref<TrainingHistory | null>(null)
 const sharedTrainingPlan = ref<SharedTrainingPlan | null>(null)
 const coachingDrills = ref<CoachingDrill[]>([])
@@ -524,6 +529,9 @@ if (uiV3.value) {
 const { primaryGame } = usePrimaryGame()
 const pickerScenarioMeta = computed(() => Object.entries(SCENARIO_META).filter(([key]) => isScenarioForGame(key, primaryGame.value)))
 
+// "Played today": today's runs from saved history plus runs this app has seen (history can lag a run).
+const playedToday = computed(() => scenariosPlayedToday([...(apiHistory.value?.sessions ?? []), ...practiceSession.recentRuns]))
+
 const scenarioCards = computed(() =>
   TRAINER_SCENARIOS
     .filter(def => isScenarioForGame(def.key, primaryGame.value))
@@ -544,7 +552,7 @@ const scenarioCards = computed(() =>
         pb: best.best,
         rank: best.rank,
         progress: scenarioProgress(scenario),
-        completed: completedDrills.value.has(scenario),
+        completed: playedToday.value.has(scenario),
       }
     }),
 )
@@ -635,8 +643,14 @@ function assignedLaunchRequest(drill: AssignedDrill) {
   }
 }
 
-async function launchDrill(drill: AssignedDrill) {
+async function launchDrill(drill: AssignedDrill, opts: { guidedStep?: boolean } = {}) {
   if (launching.value || drillRunning.value) return
+  // A single drill during a guided session would be counted as the session's step (same drill) or
+  // never reach the result screen: finish or cancel the session first.
+  if (structuredSessionActive.value && !opts.guidedStep) {
+    trainerNotice.value = 'Finish or cancel your guided session first.'
+    return
+  }
   activeDrill.value = drill
   launching.value = true
   trainerNotice.value = null
@@ -669,24 +683,31 @@ function launchVodDrill(drill: VodDrill) {
 
 // ── Trainer data (history, plan, drills, insights, benchmark) ───
 // No AI coaching request here: nothing on Practice shows it, so it was a paid call thrown away.
-type TrainerData = [
-  Awaited<ReturnType<typeof window.api.trainer.getHistory>>,
-  Awaited<ReturnType<typeof window.api.trainer.getPlan>>,
-  Awaited<ReturnType<typeof window.api.trainer.getCoachingDrills>>,
-  Awaited<ReturnType<typeof window.api.trainer.getCorrelation>>,
-  Awaited<ReturnType<typeof window.api.trainer.getBenchmark>>,
-]
 // Plan and drills follow the primary game (`?game=`), so each game keeps its own cache.
 const trainerCacheKey = (game: string) => `practice:trainer:${game}`
 
-function fetchTrainerData(game: string = primaryGame.value): Promise<TrainerData> {
-  return Promise.all([
-    window.api.trainer.getHistory(),
-    window.api.trainer.getPlan(game),
-    window.api.trainer.getCoachingDrills(game),
-    window.api.trainer.getCorrelation(),
-    window.api.trainer.getBenchmark(),
-  ])
+// Offline / server down: each part that failed keeps its last saved copy (screen and cache), with one
+// quiet "couldn't refresh" line, instead of an empty account saved over the remembered one.
+const trainerRefreshNotice = ref<string | null>(null)
+const ALL_FAILED: PracticeDataReply = { history: { ok: false }, plan: { ok: false }, drills: { ok: false }, insights: { ok: false }, benchmark: { ok: false } }
+
+async function fetchTrainerData(game: string = primaryGame.value) {
+  const previous = readCache<TrainerData>(trainerCacheKey(game))?.value ?? null
+  const reply = await window.api.trainer.getPracticeData(game).catch(() => ALL_FAILED)
+  return { ...mergePracticeData(reply, previous), hadSaved: previous !== null }
+}
+
+/** Show the fetched data; cache it unless that would save a failed (empty) part over nothing. */
+function applyFetchedTrainerData(fetched: Awaited<ReturnType<typeof fetchTrainerData>>, game: string) {
+  applyTrainerData(fetched.data, game)
+  trainerRefreshNotice.value = practiceRefreshNotice(fetched.failed, fetched.hadSaved)
+  if (uiV3.value && shouldCachePracticeData(fetched.failed, fetched.hadSaved)) writeCache(trainerCacheKey(game), fetched.data)
+}
+
+async function retryTrainerRefresh() {
+  const game = primaryGame.value
+  const fetched = await fetchTrainerData(game)
+  if (game === primaryGame.value) applyFetchedTrainerData(fetched, game)
 }
 
 function applyTrainerData([history, plan, drills, insights, benchmark]: TrainerData, game: string = primaryGame.value) {
@@ -726,10 +747,9 @@ watch(primaryGame, async (game) => {
     coachingDrills.value = []
     assignedDrills.value = []
   }
-  const data = await fetchTrainerData(game).catch(() => null)
-  if (!data || game !== primaryGame.value) return
-  applyTrainerData(data, game)
-  writeCache(trainerCacheKey(game), data)
+  const fetched = await fetchTrainerData(game)
+  if (game !== primaryGame.value) return
+  applyFetchedTrainerData(fetched, game)
 })
 
 // ── IPC listener ──────────────────────────────────────────────────────────────
@@ -763,10 +783,8 @@ onMounted(async () => {
     const currentLaunchConfig = launchConfigFromInfo(launch)
       ?? (activeDrill.value ? trainerLaunchConfig(assignedLaunchRequest(activeDrill.value)) : null)
 
-    if (activeDrill.value) {
-      completedDrills.value.add(activeDrill.value.scenario)
-      lastPlayedDrill.value = activeDrill.value
-    }
+    practiceSession.recordRun(r)
+    if (activeDrill.value) lastPlayedDrill.value = activeDrill.value
     activeDrill.value = null
     drillRunning.value = false
 
@@ -790,7 +808,8 @@ onMounted(async () => {
       router.push('/trainer-results')
     }
     // Achievements are checked by the app shell for every run (src/App.vue).
-    window.api.trainer.getHistory().then(h => { apiHistory.value = h })
+    // Offline answers null: keep the history on screen rather than blanking it.
+    window.api.trainer.getHistory().then(h => { if (h) apiHistory.value = h })
   }))
 
   // Fetch training history + coaching drills from API
@@ -798,12 +817,9 @@ onMounted(async () => {
   loadingHistory.value = !cachedTrainer
   if (cachedTrainer) startPBCarousel()
   try {
-    const data = await (earlyTrainerFetch ?? fetchTrainerData(earlyTrainerGame))
+    const fetched = await (earlyTrainerFetch ?? fetchTrainerData(earlyTrainerGame))
     // The game changed while this was loading: the watcher above loads the new game's data.
-    if (earlyTrainerGame === primaryGame.value) {
-      applyTrainerData(data, earlyTrainerGame)
-      if (uiV3.value) writeCache(trainerCacheKey(earlyTrainerGame), data)
-    }
+    if (earlyTrainerGame === primaryGame.value) applyFetchedTrainerData(fetched, earlyTrainerGame)
     if (!cachedTrainer) startPBCarousel()
   } finally {
     loadingHistory.value = false
@@ -1285,12 +1301,7 @@ const dailyChallenge = computed(() => {
 })
 
 // ── Guided session (warmup → focus → cooldown) ───────────────────────────────
-const structuredSession = ref<{
-  active: boolean
-  stepIndex: number
-  plan: SessionStep[]
-  results: SessionResult[]
-} | null>(null)
+const { guided: structuredSession } = storeToRefs(practiceSession)
 
 const sessionCountdown = ref(0)
 const showSessionSummary = ref(false)
@@ -1336,7 +1347,7 @@ async function launchStructuredStep(stepIndex: number) {
     weakness_score: step.weakness_score,
     reason: step.reason,
     user_drill_id: step.user_drill_id,
-  })
+  }, { guidedStep: true })
 }
 
 async function startStructuredSession() {
@@ -1447,13 +1458,18 @@ const CATEGORY_ICON: Record<string, string> = {
         <UfButton variant="secondary" icon="close" class="uf-insession-end" @click="stopDrill">Stop</UfButton>
       </div>
 
+      <div v-if="trainerRefreshNotice" class="uf-insession uf-rise" role="status">
+        <span class="uf-t3">{{ trainerRefreshNotice }}</span>
+        <UfButton variant="link" class="uf-insession-end" @click="retryTrainerRefresh">Try again</UfButton>
+      </div>
+
       <div v-if="trainerNotice" class="uf-insession uf-rise" role="status">
         <span class="uf-t3">{{ trainerNotice }}</span>
         <UfButton variant="link" class="uf-insession-end" @click="trainerNotice = null">Dismiss</UfButton>
       </div>
 
       <div v-if="structuredSessionWaiting" class="uf-insession uf-rise" role="status">
-        <span class="uf-label">Guided session · step {{ structuredSessionStepIndex + 1 }} of {{ structuredSessionPlan.length }}</span>
+        <span class="uf-label">{{ sessionCountdown > 0 ? 'Guided session' : 'Resume session' }} · step {{ structuredSessionStepIndex + 1 }} of {{ structuredSessionPlan.length }}</span>
         <span class="uf-t3">
           Next: {{ SCENARIO_META[structuredSessionPlan[structuredSessionStepIndex]?.scenario ?? 'flick']?.label }}
           <span class="uf-t4">· {{ structuredSessionPlan[structuredSessionStepIndex]?.phaseLabel }}</span>
@@ -1599,7 +1615,7 @@ const CATEGORY_ICON: Record<string, string> = {
             <div class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
             <div>
               <span class="text-[11px] font-bold text-amber-300 uppercase tracking-wider">
-                Guided Session · Step {{ structuredSessionStepIndex + 1 }}/{{ structuredSessionPlan.length }} ·
+                {{ sessionCountdown > 0 ? 'Guided Session' : 'Resume Session' }} · Step {{ structuredSessionStepIndex + 1 }}/{{ structuredSessionPlan.length }} ·
                 Next: {{ SCENARIO_META[structuredSessionPlan[structuredSessionStepIndex]?.scenario ?? 'flick']?.label }}
                 ({{ structuredSessionPlan[structuredSessionStepIndex]?.phaseLabel }})
               </span>
@@ -1826,7 +1842,7 @@ const CATEGORY_ICON: Record<string, string> = {
       :categories="DRILL_CATEGORY_FILTERS"
       :drills="scenarioCards.map(c => ({ scenario: c.scenario, label: SCENARIO_META[c.scenario]?.label ?? c.scenario, description: SCENARIO_META[c.scenario]?.description ?? '', beta: isBetaScenario(c.scenario), difficulty: c.drill.difficulty, durationSeconds: c.drill.duration_seconds, personalBest: c.pb, oldBest: oldBests[c.scenario] ?? null, globalRank: c.rank, completed: c.completed }))"
       :running-scenario="drillRunning ? activeDrill?.scenario ?? null : null"
-      :busy="launching || drillRunning"
+      :busy="launching || drillRunning || structuredSessionActive"
       :daily="{ scenarioLabel: SCENARIO_META[dailyChallenge.scenario]?.label ?? dailyChallenge.scenario, target: dailyChallenge.target, completed: dailyChallenge.completed }"
       :free-play-options="pickerScenarioMeta.map(([key, meta]) => ({ key, label: meta.label }))"
       :insights="correlationInsights"

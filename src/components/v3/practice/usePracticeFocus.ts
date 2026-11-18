@@ -26,7 +26,8 @@ export function usePracticeFocus(api: FocusApi | undefined) {
     if (!api?.getFocus) return
     try {
       const res = await api.getFocus()
-      if (!disposed) {
+      // null = the request failed (offline / server error): keep the remembered focus and its cache.
+      if (!disposed && res) {
         focus.value = activeFocusOf(res)
         writeCache(FOCUS_CACHE_KEY, focus.value)
       }
