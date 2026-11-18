@@ -166,6 +166,24 @@ describe('applyGameNotes', () => {
   it('ignores a missing result', () => {
     expect(applyGameNotes(base, null)).toBe(base)
   })
+
+  // CS2: the notes call is where the match counts for the focus, so its answer carries this match's focus number.
+  const cs2Checks = [
+    { focus_id: 1, metric: 'adr', label: 'ADR', better: 'higher', unit: 'count', target: 77, value: 80.4, hit: true, status: 'active' },
+    { focus_id: 2, metric: 'opening_win_rate', label: 'Opening duels won', better: 'higher', unit: 'share', target: 0.55, value: 0.4, hit: false, status: 'active' },
+  ]
+  it('shows this match’s focus numbers from the notes answer, with or without AI notes', () => {
+    const withNotes = applyGameNotes(base, { notes_source: 'ai', notes: { headline: { text: 'x' } }, focus_checks: cs2Checks })
+    expect(withNotes.focusChecks?.map(c => [c.metric, c.value, c.target, c.hit])).toEqual([['adr', 80.4, 77, true], ['opening_win_rate', 0.4, 0.55, false]])
+    const capped = applyGameNotes(base, { notes_source: 'fallback', capped: true, notes: null, focus_checks: cs2Checks })
+    expect(capped.focusChecks).toHaveLength(2)
+    expect(capped.notesCapped).toBe(true)
+  })
+  it('keeps the focus rows already on the report when the notes answer has none (older API)', () => {
+    const shown = { ...base, focusChecks: applyGameNotes(base, { notes: null, focus_checks: cs2Checks }).focusChecks }
+    expect(applyGameNotes(shown, { notes_source: 'ai', notes: { headline: { text: 'x' } } }).focusChecks).toHaveLength(2)
+    expect(applyGameNotes(shown, { notes: null, focus_checks: [{ label: 'bad' }] }).focusChecks).toEqual([])
+  })
 })
 
 describe('cs2NotesFacts', () => {
