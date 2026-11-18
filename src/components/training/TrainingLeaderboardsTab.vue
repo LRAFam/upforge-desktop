@@ -14,6 +14,7 @@ import UfTabs from '../v3/UfTabs.vue'
 import UfSkeleton from '../v3/UfSkeleton.vue'
 import EmptyArt from '../v3/empty/EmptyArt.vue'
 import { isBest, leaderboardYouRow, type LeaderboardYouRow } from '../v3/practice/practice-session-v3'
+import { SCORING_UPDATE_LABEL } from '../v3/practice/practice-v3'
 import { CURRENT_SCORING_VERSION, trainingTimestamp } from '../../lib/training-result-metrics'
 import '../v3/practice/practice-v3.css'
 
@@ -130,7 +131,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
       <UfTabs :items="PERIOD_TABS" :model-value="activePeriod" size="filter" label="Leaderboard period" class="uf-lb-period"
         @update:model-value="activePeriod = $event as 'week' | 'month' | 'all'" />
     </div>
-    <p class="uf-t4" style="margin: 0">Only runs since the scoring update on 24 Sep 2026 count. Older runs stay in your history.</p>
+    <p class="uf-t4" style="margin: 0">Only runs since the scoring update in {{ SCORING_UPDATE_LABEL }} count. Older runs stay in your history.</p>
 
     <p v-if="boardVisibilityLine" class="uf-t4 uf-lb-visibility">
       {{ boardVisibilityLine }}

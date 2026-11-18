@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useLifetime } from '../composables/useLifetime'
-import { priorTrainingSessions, reactionMetricScore, isTrackingScenario, trainingComparisonRequest, resultCountCells, reactionMetricLabel, isTimeToHitMetric, accuracyMetricLabel, drillDetailCells } from '../lib/training-result-metrics'
+import { priorTrainingSessions, reactionMetricScore, isTrackingScenario, trainingComparisonRequest, resultCountCells, reactionMetricLabel, isTimeToHitMetric, accuracyMetricLabel, drillDetailCells, isConsistencyMeasured } from '../lib/training-result-metrics'
 import { TRAINER_SCENARIOS, isBetaScenario, trainerScenarioDef, type TrainerUiGroup } from '../lib/trainer-scenarios'
 import { asSessionEnded, launchConfigFromInfo, launchTrainer, sessionEndedMessage } from '../lib/trainer-launch'
 import upforgeLogo from '../assets/upforge-logo.webp'
@@ -10,7 +10,9 @@ import { useRouter } from 'vue-router'
 import { useTrainerResultStore } from '../stores/trainerResult'
 import type { CoachingDrill, TrainingHistory } from '../env'
 import { drillLoop } from '../lib/drill-loop'
-import { trainerSyncLine, type TrainerSyncOutcome } from '../lib/trainer-sync'
+import { trainerSyncLine, trainerUploadStatusLine, unsavedRunReasonText, type TrainerSyncOutcome, type TrainerUnsavedRun } from '../lib/trainer-sync'
+import { runTrendMessage, topRuns, trainerRunSummary, type RunHistoryState } from '../lib/trainer-run-summary'
+import { useTrainerUploadStatus } from '../composables/useTrainerUploadStatus'
 import { uiV3 } from '../lib/ui-v3'
 import { scenarioIconUrl } from '../lib/training-icons'
 import UfButton from '../components/v3/UfButton.vue'
@@ -27,6 +29,8 @@ if (!store.result) {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const history = ref<TrainingHistory | null>(null)
+/** ok = earlier runs loaded; failed = they did not (offline / signed out); none = this run is not compared. */
+const historyState = ref<RunHistoryState>('loading')
 const launching = ref(false)
 const launched = ref(false)
 const heatmapCanvas = ref<HTMLCanvasElement | null>(null)
@@ -58,6 +62,15 @@ async function loadSyncStatus() {
   if (!r) return
   const outcome = await window.api.trainer.getSyncStatus?.(r.scenario, r.completed_at).catch(() => null)
   if (store.result === r && outcome) syncOutcome.value = outcome
+}
+// Other runs of this account still waiting to upload (or not saved).
+const { status: uploadStatus, unsavedRuns, retrying, retry: retryUnsaved } = useTrainerUploadStatus()
+const otherRunsLine = computed(() => trainerUploadStatusLine(uploadStatus.value, syncOutcome.value))
+// Runs not saved (this one included): each with the reason, and one Retry that sends them all again.
+const showUnsaved = ref(false)
+function unsavedRunTitle(run: TrainerUnsavedRun): string {
+  const label = SCENARIO_META[run.scenario]?.label ?? run.scenario
+  return run.completedAt ? `${label} · ${formatDate(run.completedAt)}` : label
 }
 
 // Assigned drill only: why it was assigned, its state and what the next matches check (API fields only).
@@ -115,7 +128,8 @@ const reactionTitle = computed(() => timeToHit.value
 const accuracyLabel = computed(() => accuracyMetricLabel(result.value.scenario))
 const detailCells = computed(() => drillDetailCells(result.value))
 const isBeta = computed(() => isBetaScenario(result.value.scenario))
-const hasConsistency = computed(() => !tracking.value && result.value.targets_hit >= 2)
+// Two timings or more: Trade Window times trades (not opening kills), Defuse Decision its lurker duels.
+const hasConsistency = computed(() => isConsistencyMeasured(result.value))
 const countCells = computed(() => resultCountCells(result.value))
 const scenarioTip = computed(() => trainerScenarioDef(result.value.scenario)?.tip ?? 'Pre-aim corners before committing — don\'t wide-peek.')
 const trainerNotice = ref<string | null>(null)
@@ -124,23 +138,9 @@ const priorSessions = computed(() => priorTrainingSessions(
 ))
 const scoreDelta = computed(() => priorSessions.value.length ? (result.value.score - priorSessions.value[0].score) * 10 : null)
 
-// Top 5 sessions for this scenario (including current, sorted by score desc)
-const leaderboard = computed(() => {
-  const sessions = priorSessions.value
-  const current = {
-    score: result.value.score,
-    completed_at: result.value.completed_at,
-    isCurrent: true,
-  }
-  const all = [
-    ...sessions.map(s => ({ score: s.score, completed_at: s.completed_at, isCurrent: false })),
-    current,
-  ]
-  return all
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 6)
-    .map((s, i) => ({ ...s, rank: i + 1 }))
-})
+// Top runs at these settings (this run included). Without earlier runs there is no rank or trend
+// ("★1" and "play another run" would be false): both stay hidden and the summary says why.
+const leaderboard = computed(() => topRuns(historyState.value, priorSessions.value, result.value))
 
 // Score history for chart (chronological, last 10 sessions + current)
 const chartScores = computed<number[]>(() => {
@@ -148,6 +148,8 @@ const chartScores = computed<number[]>(() => {
   const hist = [...sessions].reverse().slice(-9).map(s => s.score)
   return [...hist, result.value.score]
 })
+const trendMessage = computed(() => runTrendMessage(historyState.value, chartScores.value.length))
+const showTrendChart = computed(() => historyState.value === 'ok' && chartScores.value.length >= 2)
 
 // ── SVG chart ─────────────────────────────────────────────────────────────────
 const W = 400, H = 100
@@ -196,55 +198,14 @@ const chartDots = computed(() => {
   }))
 })
 
-// ── Coaching insight ─────────────────────────────────────────────────────────
-const coachingInsight = computed(() => {
-  const r = result.value
-  const lines: string[] = []
-  const acc  = r.accuracy_pct
-  const rxn  = r.avg_reaction_ms
-  const cons = r.consistency_score
-  const total = r.targets_hit + r.targets_missed
-
-  if (acc < 25) {
-    lines.push('Accuracy is very low. Let your crosshair fully settle before clicking. Pre-aim common positions instead of reacting after the target appears.')
-  } else if (acc < 45) {
-    lines.push('Accuracy suggests rushed shots. Slow down slightly — a well-aimed shot 50ms later is worth more than two misses.')
-  } else if (acc < 65) {
-    lines.push('Accuracy is building. Hold tighter crosshair placement so you need less movement to reach targets.')
-  } else if (acc >= 85) {
-    lines.push('Excellent accuracy. Consider increasing difficulty or target speed to push your ceiling further.')
-  }
-
-  if (!timeToHit.value) {
-    // Exposure / trade time: the reaction-time advice below does not apply.
-  } else if (hasReaction.value && rxn > 700) {
-    lines.push('High reaction time detected. Ensure you click promptly and aren\'t over-tracking. If this is a flick drill, check your sensitivity — too low causes slow swings.')
-  } else if (hasReaction.value && rxn > 350) {
-    lines.push('Reaction time has room to improve. Stay mentally engaged between targets — anticipate the next appearance zone rather than waiting for it.')
-  } else if (hasReaction.value && rxn < 150 && acc < 65) {
-    lines.push('Very fast reactions but accuracy is suffering. Dial back speed slightly to find your precision floor.')
-  }
-
-  if (hasConsistency.value && cons < 35) {
-    lines.push('High variance detected. Warm up for 2–3 minutes before your next session — cold muscles amplify inconsistency significantly.')
-  } else if (hasConsistency.value && cons < 55) {
-    lines.push('Moderate consistency. Identify your strongest few shots and try to replicate that mental state across the full drill.')
-  }
-
-  if (hasConsistency.value && total > 0 && r.targets_hit / total > 0.9 && cons < 60) {
-    lines.push('High hit rate but lower consistency suggests mechanical capability without full control yet. Deliberate repetition will lock this in.')
-  }
-
-  if (!hasReaction.value && !tracking.value) lines.push('No successful hits recorded. Reaction time and consistency are not available for this run.')
-  if (tracking.value) return [r.scenario === 'strafe_track' ? 'Tracking accuracy measures time on target while firing. Reaction time and click consistency do not apply to this drill.' : 'Tracking accuracy measures time with the cursor on target. Reaction time and click consistency do not apply to this drill.']
-  if (hasReaction.value && !hasConsistency.value) lines.push('At least two successful hits are needed to measure consistency.')
-
-  if (!lines.length) {
-    lines.push('Strong performance across all metrics. Consistency is the key to translating trainer scores into real match impact. Stay on a daily cadence.')
-  }
-
-  return lines
-})
+// ── Run summary: measured facts only (change vs the last matching run, best, numbers that moved) ──
+const summary = computed(() => trainerRunSummary({
+  run: result.value,
+  previous: priorSessions.value[0] ?? null,
+  best: history.value?.by_scenario?.[result.value.scenario]?.best_score ?? null,
+  history: historyState.value,
+}))
+const summaryLines = computed(() => [summary.value.headline, ...summary.value.details])
 
 // ── Heatmap ──────────────────────────────────────────────────────────────────
 function drawHeatmap() {
@@ -315,10 +276,12 @@ async function loadComparison() {
   const comparison = trainingComparisonRequest(current)
   store.setPB(false)
   history.value = null
+  historyState.value = comparison ? 'loading' : 'none'
   if (!comparison) return
-  const response = await window.api.trainer.getHistory(comparison)
+  const response = await window.api.trainer.getHistory(comparison).catch(() => null)
   if (store.result !== current) return
   history.value = response
+  historyState.value = response ? 'ok' : 'failed'
   const best = response?.by_scenario?.[current.scenario]?.best_score
   store.setPB(response !== null && best != null && current.score > best)
 }
@@ -397,11 +360,19 @@ onMounted(async () => {
             <span v-if="isPB" class="uf-t4" style="color: var(--uf-gold)">★ New personal best</span>
           </span>
           <span class="uf-t4" role="status" :style="{ color: syncLine.tone === 'win' ? 'var(--uf-win)' : syncLine.tone === 'loss' ? 'var(--uf-loss)' : undefined }">{{ syncLine.text }}</span>
+          <span v-if="otherRunsLine" class="uf-t4" role="status" :style="otherRunsLine.tone === 'loss' ? 'color: var(--uf-loss)' : undefined">{{ otherRunsLine.text }}</span>
+          <span v-if="unsavedRuns.length" class="uf-tr-unsaved-actions">
+            <button type="button" class="uf-link" :aria-expanded="showUnsaved" aria-controls="uf-tr-unsaved" @click="showUnsaved = !showUnsaved">{{ showUnsaved ? 'Hide runs not saved' : 'Show runs not saved' }}</button>
+            <button type="button" class="uf-link" :disabled="retrying" @click="retryUnsaved">{{ retrying ? 'Retrying…' : 'Retry' }}</button>
+          </span>
+          <ul v-if="showUnsaved && unsavedRuns.length" id="uf-tr-unsaved" class="uf-tr-unsaved" tabindex="0" aria-label="Runs not saved">
+            <li v-for="run in unsavedRuns" :key="run.clientRunId" class="uf-t4">{{ unsavedRunTitle(run) }}: {{ unsavedRunReasonText(run) }}</li>
+          </ul>
         </div>
         <div class="uf-tr-coach uf-rise uf-d1s">
-          <span class="uf-label">Session feedback</span>
-          <p class="uf-t1" style="margin: 0">{{ coachingInsight[0] }}</p>
-          <p v-for="(line, i) in coachingInsight.slice(1)" :key="i" class="uf-t2" style="margin: 0">{{ line }}</p>
+          <span class="uf-label">This run</span>
+          <p class="uf-t1" style="margin: 0">{{ summary.headline }}</p>
+          <p v-for="(line, i) in summary.details" :key="i" class="uf-t2" style="margin: 0">{{ line }}</p>
           <div class="uf-tr-actions">
             <UfButton v-if="store.launchConfig" variant="primary" icon="play" :disabled="launching" @click="playAgain">{{ launching ? 'Launching…' : 'Play again' }}</UfButton>
             <UfButton variant="link" @click="backToHub">Back to training</UfButton>
@@ -445,8 +416,8 @@ onMounted(async () => {
             <p class="uf-t4" style="margin: 8px 0 12px">
               {{ trainingComparisonRequest(result) ? `${result.metadata?.difficulty} · ${result.duration_seconds}s · Compared only with your runs on the same game, movement and settings.` : 'Older run without full settings. Saved, but not compared with current runs.' }}
             </p>
-            <p v-if="chartScores.length < 2" class="uf-t2" style="margin: 0">Play another run with the same difficulty and length to see a trend.</p>
-            <svg v-else :viewBox="`0 0 ${W} ${H}`" class="uf-tr-chart" role="img" :aria-label="`Score trend over ${chartScores.length} runs`">
+            <p v-if="trendMessage" class="uf-t2" style="margin: 0">{{ trendMessage }}</p>
+            <svg v-else-if="showTrendChart" :viewBox="`0 0 ${W} ${H}`" class="uf-tr-chart" role="img" :aria-label="`Score trend over ${chartScores.length} runs`">
               <line v-for="g in gridLines" :key="g.label" :x1="PAD.left" :y1="g.y" :x2="W - PAD.right" :y2="g.y" stroke="var(--uf-line)" stroke-width="1" />
               <text v-for="g in gridLines" :key="`t-${g.label}`" :x="PAD.left - 4" :y="g.y + 3.5" text-anchor="end" fill="var(--uf-faint)" font-size="8">{{ g.label }}</text>
               <path :d="chartPath" fill="none" stroke="var(--uf-bone)" stroke-width="1.5" stroke-linejoin="round" />
@@ -485,18 +456,20 @@ onMounted(async () => {
             </section>
             <div class="uf-hair" />
           </template>
-          <section class="uf-tr-block">
-            <span class="uf-label">Top runs · this drill</span>
-            <p v-if="leaderboard.length === 0" class="uf-t4" style="margin: 0">No runs on record yet.</p>
-            <ol v-else class="uf-tr-top">
-              <li v-for="entry in leaderboard" :key="entry.rank" :class="{ current: entry.isCurrent }">
-                <span class="uf-t4 uf-num" :style="isBest(entry.rank) ? 'color: var(--uf-gold)' : undefined" style="width: 32px">{{ isBest(entry.rank) ? '★' : '' }}{{ entry.rank }}</span>
-                <span class="uf-d4">{{ entry.score * 10 }}</span>
-                <span class="uf-t4" style="margin-left: auto">{{ entry.isCurrent ? 'This run' : formatDate(entry.completed_at) }}</span>
-              </li>
-            </ol>
-          </section>
-          <div class="uf-hair" />
+          <!-- Only with earlier runs loaded: offline the run would rank "★1" against nothing. -->
+          <template v-if="leaderboard.length">
+            <section class="uf-tr-block">
+              <span class="uf-label">Top runs · this drill</span>
+              <ol class="uf-tr-top">
+                <li v-for="entry in leaderboard" :key="entry.rank" :class="{ current: entry.isCurrent }">
+                  <span class="uf-t4 uf-num" :style="isBest(entry.rank) ? 'color: var(--uf-gold)' : undefined" style="width: 32px">{{ isBest(entry.rank) ? '★' : '' }}{{ entry.rank }}</span>
+                  <span class="uf-d4">{{ entry.score * 10 }}</span>
+                  <span class="uf-t4" style="margin-left: auto">{{ entry.isCurrent ? 'This run' : formatDate(entry.completed_at) }}</span>
+                </li>
+              </ol>
+            </section>
+            <div class="uf-hair" />
+          </template>
           <section class="uf-tr-block">
             <span class="uf-label">Tip</span>
             <span class="uf-t4">
@@ -574,15 +547,9 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- Leaderboard -->
-        <div>
+        <!-- Leaderboard (only with earlier runs loaded) -->
+        <div v-if="leaderboard.length">
           <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-2 px-0.5">This Scenario — Top Sessions</div>
-          <div
-            v-if="leaderboard.length === 0"
-            class="text-xs text-white/50 italic px-0.5"
-          >
-            No sessions on record yet.
-          </div>
           <div
             v-for="entry in leaderboard"
             :key="entry.rank"
@@ -619,8 +586,8 @@ onMounted(async () => {
         <!-- Score trend chart -->
         <div>
           <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-3">Score Trend</div>
-          <div v-if="chartScores.length < 2" class="h-[100px] flex items-center justify-center">
-            <span class="text-xs text-white/50 italic">Complete another run with the same difficulty and duration to show a trend</span>
+          <div v-if="!showTrendChart" class="h-[100px] flex items-center justify-center">
+            <span class="text-xs text-white/50 italic">{{ trendMessage }}</span>
           </div>
           <svg v-else :viewBox="`0 0 ${W} ${H}`" class="w-full h-[100px]">
             <defs>
@@ -742,17 +709,14 @@ onMounted(async () => {
       <!-- ═══ RIGHT PANEL ══════════════════════════════════════════════════ -->
       <div class="results-panel flex flex-col gap-4 p-5">
 
-        <!-- AI Coaching insight -->
+        <!-- Run summary: measured facts only -->
         <div>
           <div class="flex items-center gap-1.5 mb-3">
-            <svg class="w-3 h-3 text-[#ff4655]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.5A3.992 3.992 0 0112 18a3.992 3.992 0 01-2.79-1.115l-.347-.499z" />
-            </svg>
-            <span class="text-[9px] font-bold uppercase tracking-widest text-white/40">Session feedback</span>
+            <span class="text-[9px] font-bold uppercase tracking-widest text-white/40">This run</span>
           </div>
           <div class="space-y-4">
             <p
-              v-for="(line, i) in coachingInsight"
+              v-for="(line, i) in summaryLines"
               :key="i"
               class="text-sm leading-relaxed text-white/70"
             >
@@ -874,6 +838,8 @@ onMounted(async () => {
 .uf-tr-kicker { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .uf-tr-icon { width: 36px; height: 36px; flex: none; }
 .uf-tr-score-meta { display: flex; gap: 16px; flex-wrap: wrap; }
+.uf-tr-unsaved-actions { display: flex; gap: 20px; }
+.uf-tr-unsaved { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; max-width: 440px; max-height: 200px; overflow-y: auto; }
 .uf-tr-coach { display: flex; flex-direction: column; gap: 12px; max-width: 760px; padding-bottom: 6px; }
 .uf-tr-actions { display: flex; align-items: center; gap: 24px; margin-top: 8px; }
 .uf-tr-stats { display: flex; margin: 0; border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); }

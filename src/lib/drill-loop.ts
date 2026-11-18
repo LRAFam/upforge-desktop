@@ -33,6 +33,7 @@ export interface DrillLoop {
 }
 
 const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 /**
  * The loop for the drill this run counted towards, or null for free play (no assigned drill on record).
@@ -79,7 +80,10 @@ export function drillLoop(
     next = null
   } else if (status === 'needs_reassignment') {
     const tries = state?.attempts_allowed ?? 3
-    s = { key: 'paused', label: 'Paused', text: `Paused after ${tries} tries below the target. Your next matches can assign a new drill.` }
+    // The API's `next` on a paused drill is the same drill one step easier, already assigned.
+    const tier = state?.next?.trainer_difficulty ? ` (${cap(state.next.trainer_difficulty)})` : ''
+    const then = state?.next ? `An easier version${tier} is ready.` : 'Your next matches can assign a new drill.'
+    s = { key: 'paused', label: 'Paused', text: `Paused after ${tries} tries below the target. ${then}` }
     next = null
   } else if (status !== 'active') {
     s = status === 'completed'

@@ -29,6 +29,18 @@ describe('trainer mouse settings', () => {
     expect(normalizeTrainerMouse({ scopedMultiplier: '' }).scopedMultiplier).toBe(1)
     expect(trainerMouseToGodot({ scopedMultiplier: 1.25 }).scoped_multiplier).toBe(1.25)
   })
+  it('keeps FOV and sensitivity where the trainer can start a drill (it refuses every drill otherwise)', () => {
+    // The trainer refuses sensitivity 0 or below and a FOV outside 1–179. FOV stays in the settings box's 60–120.
+    expect(normalizeTrainerMouse({ fov: 1030 }).fov).toBe(120)
+    expect(normalizeTrainerMouse({ fov: 0 }).fov).toBe(60)
+    expect(normalizeTrainerMouse({ game: 'cs2', fov: 68 }).fov).toBe(68)
+    expect(normalizeTrainerMouse({ sensitivity: 0 }).sensitivity).toBe(0.01)
+    expect(normalizeTrainerMouse({ sensitivity: -2 }).sensitivity).toBe(0.01)
+    // Any positive sensitivity starts a drill; games such as Overwatch 2 go above the box's 20.
+    expect(normalizeTrainerMouse({ sensitivity: 25 }).sensitivity).toBe(25)
+    // The launch payload goes through the same rule.
+    expect(trainerMouseToGodot({ fov: 1030, sensitivity: 0 })).toMatchObject({ fov: 120, sensitivity: 0.01 })
+  })
 })
 
 describe('crosshairSettingsToGodot', () => {
@@ -57,6 +69,13 @@ describe('trainer settings pane only offers settings the trainer uses', () => {
 
   it('finds the bound fields', () => {
     expect(bound).toContain('dpi')
+  })
+
+  it('the FOV and sensitivity boxes bring a typed value into range before saving', () => {
+    for (const field of ['fov', 'sensitivity']) {
+      const input = pane.match(new RegExp(`<input v-model\\.number="settings\\.trainerMouse\\.${field}"[^>]*>`))?.[0] ?? ''
+      expect(input, field).toContain('@change="clampTrainerMouseInput(settings.trainerMouse); debouncedSave()"')
+    }
   })
 
   it.each(bound)('changing %s changes the trainer launch settings', (field) => {

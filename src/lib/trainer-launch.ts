@@ -92,6 +92,28 @@ export function asSessionEnded(raw: unknown): TrainerSessionEnded | null {
   return typeof e.reason === 'string' ? (e as TrainerSessionEnded) : null
 }
 
+/** Names of the Settings › Trainer fields, by the trainer's `mouse_settings` key. */
+const MOUSE_SETTING_NAMES: Record<string, string> = {
+  sensitivity: 'in-game sensitivity', fov: 'horizontal FOV', dpi: 'mouse DPI', game: 'game',
+  movement_speed: 'movement speed', trainer_volume: 'trainer volume', scoped_multiplier: 'scoped sensitivity multiplier',
+}
+
+/**
+ * The trainer refuses a launch whose saved mouse or crosshair settings it cannot use ("mouse_settings.fov must
+ * be from 1 to 179"). Every drill fails the same way, so the line names the setting and where to change it.
+ */
+function refusedSettingMessage(message: string | undefined): string | null {
+  const mouse = /^mouse_settings\.(\w+)/.exec(message ?? '')
+  if (mouse) {
+    const name = MOUSE_SETTING_NAMES[mouse[1]] ?? 'mouse'
+    return `The trainer can’t use your ${name} setting. Check it in Settings › Trainer, then try again.`
+  }
+  if (/^crosshair_settings\./.test(message ?? '')) {
+    return 'The trainer can’t use your crosshair settings. Check them in Settings › Trainer, then try again.'
+  }
+  return null
+}
+
 /**
  * Short, friendly line for a drill that ended without a result, or null when nothing needs saying
  * (finished normally, the player quit on purpose, or a launch failure the launcher already reported).
@@ -107,9 +129,14 @@ export function sessionEndedMessage(ended: Pick<TrainerSessionEnded, 'reason' | 
     case 'unknown_scenario':
       return 'This drill isn’t in your trainer version yet. Update UpForge and try again.'
     case 'invalid_config':
-      return 'The trainer couldn’t read this drill’s settings. Try again, or pick another drill.'
+      return refusedSettingMessage(ended.message) ?? 'The trainer couldn’t read this drill’s settings. Try again, or pick another drill.'
     case 'crashed':
       return 'The aim trainer closed before the drill finished. Nothing was saved — try again.'
+    // The app closes the trainer when a game opens or a match starts (CS2 / Deadlock: the game client).
+    case 'game_started':
+      return 'Closed the trainer because your game opened. This drill was not saved.'
+    case 'match_started':
+      return 'Closed the trainer because your match started. This drill was not saved.'
     case 'error':
     default:
       return 'Something went wrong in the aim trainer. Nothing was saved — try again.'

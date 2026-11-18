@@ -6,6 +6,7 @@ import CrosshairSettingsPanel from '../CrosshairSettingsPanel.vue'
 import { uiV3 } from '../../lib/ui-v3'
 import CrosshairEditorV3 from '../v3/settings/CrosshairEditorV3.vue'
 import { shortcutKeyParts } from '../v3/settings/settings-display'
+import { clampTrainerMouseInput } from '../../lib/trainer-mouse-limits'
 
 const {
   conflictResults,
@@ -53,7 +54,7 @@ const HOTKEY_ROWS = [
         </div>
       </div>
       <SettingsRow label="In-game sensitivity" hint="Copy it from your game settings.">
-        <input v-model.number="settings.trainerMouse.sensitivity" type="number" min="0.01" max="20" step="0.01" aria-label="In-game sensitivity" class="uf-input is-mono" style="width: 120px" @change="debouncedSave">
+        <input v-model.number="settings.trainerMouse.sensitivity" type="number" min="0.01" max="20" step="0.01" aria-label="In-game sensitivity" class="uf-input is-mono" style="width: 120px" @change="clampTrainerMouseInput(settings.trainerMouse); debouncedSave()">
       </SettingsRow>
       <div class="uf-field">
         <div class="uf-usage-head">
@@ -64,7 +65,7 @@ const HOTKEY_ROWS = [
         <p class="uf-t4">eDPI = DPI × sensitivity, so the trainer matches your in-game feel.</p>
       </div>
       <label class="uf-field"><span class="uf-t4">Horizontal FOV</span>
-        <input v-model.number="settings.trainerMouse.fov" type="number" min="60" max="120" step="1" class="uf-input" style="width: 120px" @change="debouncedSave">
+        <input v-model.number="settings.trainerMouse.fov" type="number" min="60" max="120" step="1" class="uf-input" style="width: 120px" @change="clampTrainerMouseInput(settings.trainerMouse); debouncedSave()">
       </label>
       <div class="uf-field">
         <span class="uf-t3">Movement speed</span>

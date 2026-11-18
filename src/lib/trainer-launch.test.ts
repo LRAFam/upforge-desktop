@@ -33,6 +33,21 @@ describe('trainer launch helper', () => {
     expect(sessionEndedMessage({ reason: 'invalid_config' })).toBeTruthy()
     expect(sessionEndedMessage({ reason: 'error' })).toBeTruthy()
   })
+  it('a refused mouse or crosshair setting names the setting and where to change it, not "pick another drill"', () => {
+    expect(sessionEndedMessage({ reason: 'invalid_config', message: 'mouse_settings.sensitivity must be above 0' }))
+      .toBe('The trainer can’t use your in-game sensitivity setting. Check it in Settings › Trainer, then try again.')
+    expect(sessionEndedMessage({ reason: 'invalid_config', message: 'mouse_settings.fov must be from 1 to 179' }))
+      .toBe('The trainer can’t use your horizontal FOV setting. Check it in Settings › Trainer, then try again.')
+    expect(sessionEndedMessage({ reason: 'invalid_config', message: 'crosshair_settings.color must be three numbers' }))
+      .toBe('The trainer can’t use your crosshair settings. Check them in Settings › Trainer, then try again.')
+    // Anything else about the drill keeps the general line.
+    expect(sessionEndedMessage({ reason: 'invalid_config', message: 'difficulty must be easy, medium, hard or pro' }))
+      .toBe('The trainer couldn’t read this drill’s settings. Try again, or pick another drill.')
+  })
+  it('says when UpForge closed the trainer because a game or a match started', () => {
+    expect(sessionEndedMessage({ reason: 'game_started' })).toBe('Closed the trainer because your game opened. This drill was not saved.')
+    expect(sessionEndedMessage({ reason: 'match_started' })).toBe('Closed the trainer because your match started. This drill was not saved.')
+  })
 })
 
 describe('trainer results outside Practice', () => {

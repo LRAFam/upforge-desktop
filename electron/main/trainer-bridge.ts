@@ -100,8 +100,10 @@ export interface TrainerLaunchInfo {
   context?: DrillConfig['context']
 }
 
+/** game_started / match_started: UpForge closed the trainer because a game opened or a match began. */
 export type TrainerEndReason =
   | 'completed' | 'user_exit' | 'unknown_scenario' | 'invalid_config' | 'error' | 'crashed' | 'launch_failed'
+  | 'game_started' | 'match_started'
 
 export interface TrainerSessionEnded {
   launchId: number
@@ -132,6 +134,73 @@ export function parseTrainerLine(line: string):
     }
   }
   return { kind: 'result', result: obj as unknown as SessionResult }
+}
+
+// ── Launch failures: plain text with one action ─────────────────────────────────
+
+export const TRAINER_MISSING_MESSAGE = 'The aim trainer is missing from your UpForge install. Reinstall UpForge to restore it.'
+export const TRAINER_BLOCKED_MESSAGE = 'Your antivirus or security settings blocked the aim trainer. Allow UpForge in your antivirus, then try again.'
+export const TRAINER_START_FAILED_MESSAGE = 'The aim trainer did not start. Try again, or restart UpForge.'
+
+/** A launch failure whose message is already written for players (shown as is). */
+export class TrainerLaunchError extends Error {
+  constructor(readonly code: 'missing' | 'no_response' | 'exited' | 'superseded' | 'stopped', message: string) {
+    super(message)
+    this.name = 'TrainerLaunchError'
+  }
+}
+
+/**
+ * What the player sees when a launch fails. System errors from starting the process become one plain
+ * action; anything else is generic in a packaged app (paths and developer steps stay in the log).
+ */
+export function trainerLaunchErrorMessage(err: unknown, packaged: boolean = app.isPackaged): string {
+  if (err instanceof TrainerLaunchError) return err.message
+  const code = (err as { code?: unknown } | null)?.code
+  if (code === 'ENOENT') return TRAINER_MISSING_MESSAGE
+  // Windows reports a process an antivirus refused to start as UNKNOWN; macOS / Linux as EACCES / EPERM.
+  if (code === 'EACCES' || code === 'EPERM' || code === 'UNKNOWN') return TRAINER_BLOCKED_MESSAGE
+  const detail = (err as Error | null)?.message
+  return !packaged && detail ? detail : TRAINER_START_FAILED_MESSAGE
+}
+
+/**
+ * The command that starts the trainer: the bundled binary, or in development the Godot editor (Mac /
+ * Linux). A packaged app that lost its binary (e.g. removed by antivirus) never falls back to the editor.
+ */
+export function resolveTrainerSpawn(opts: {
+  packaged: boolean
+  platform: NodeJS.Platform
+  trainerPath: string
+  appPath: string
+  exists: (p: string) => boolean
+}): { cmd: string; args: string[] } {
+  if (opts.exists(opts.trainerPath)) return { cmd: opts.trainerPath, args: [] }
+  if (opts.packaged) throw new TrainerLaunchError('missing', TRAINER_MISSING_MESSAGE)
+
+  if (opts.platform === 'win32') {
+    throw new Error(
+      `UpForge Trainer binary not found at: ${opts.trainerPath}\n\n` +
+      'To fix: export the Godot project (upforge-trainer) for Windows ' +
+      'and place upforge-trainer.exe in resources/trainer/, ' +
+      'or install the full UpForge release which bundles it automatically.'
+    )
+  }
+
+  // Mac/Linux dev fallback: run the Godot project directly via editor CLI.
+  // Check absolute paths — Electron's main process doesn't inherit shell PATH.
+  const godotCandidates = [
+    '/Applications/Godot.app/Contents/MacOS/Godot',
+    '/opt/homebrew/bin/godot',
+    '/usr/local/bin/godot',
+  ]
+  const godotBin = godotCandidates.find(c => {
+    try { return opts.exists(c) } catch { return false }
+  })
+  if (!godotBin) {
+    throw new Error('Godot engine not found. Install from godotengine.org or: brew install godot')
+  }
+  return { cmd: godotBin, args: ['--path', path.resolve(opts.appPath, '..', 'upforge-trainer')] }
 }
 
 /** Ask the OS for a free localhost port. */
@@ -224,39 +293,21 @@ export class TrainerBridge {
   private _resolveSpawnArgs(): { cmd: string; args: string[] } {
     if (this._opts.resolveSpawnArgs) return this._opts.resolveSpawnArgs()
     const trainerPath = this._trainerPath()
-
-    if (fs.existsSync(trainerPath)) {
-      log.info('[TrainerBridge] Using bundled binary:', trainerPath)
-      return { cmd: trainerPath, args: [] }
+    try {
+      const spawnArgs = resolveTrainerSpawn({
+        packaged: app.isPackaged,
+        platform: process.platform,
+        trainerPath,
+        appPath: app.getAppPath(),
+        exists: (p) => fs.existsSync(p),
+      })
+      if (spawnArgs.cmd === trainerPath) log.info('[TrainerBridge] Using bundled binary:', trainerPath)
+      else log.warn('[TrainerBridge] No binary — running project via Godot editor (dev):', spawnArgs.args[1])
+      return spawnArgs
+    } catch (err) {
+      log.error('[TrainerBridge] Trainer binary not found at:', trainerPath)
+      throw err
     }
-
-    if (process.platform === 'win32') {
-      throw new Error(
-        `UpForge Trainer binary not found at: ${trainerPath}\n\n` +
-        'To fix: export the Godot project (upforge-trainer) for Windows ' +
-        'and place upforge-trainer.exe in resources/trainer/, ' +
-        'or install the full UpForge release which bundles it automatically.'
-      )
-    }
-
-    // Mac/Linux dev fallback: run the Godot project directly via editor CLI.
-    // Check absolute paths — Electron's main process doesn't inherit shell PATH.
-    const godotCandidates = [
-      '/Applications/Godot.app/Contents/MacOS/Godot',
-      '/opt/homebrew/bin/godot',
-      '/usr/local/bin/godot',
-    ]
-    const godotBin = godotCandidates.find(c => {
-      try { return fs.existsSync(c) } catch { return false }
-    })
-
-    if (!godotBin) {
-      throw new Error('Godot engine not found. Install from godotengine.org or: brew install godot')
-    }
-
-    const projectDir = path.resolve(app.getAppPath(), '..', 'upforge-trainer')
-    log.warn('[TrainerBridge] No binary — running project via Godot editor (dev):', projectDir)
-    return { cmd: godotBin, args: ['--path', projectDir] }
   }
 
   /**
@@ -291,7 +342,7 @@ export class TrainerBridge {
     try {
       const { cmd, args } = this._resolveSpawnArgs()
       state.port = await (this._opts.getPort ?? getFreePort)()
-      if (this._launch !== state) throw new Error('Trainer launch was replaced by a newer one')
+      if (this._launch !== state) throw supersededError()
       const fullArgs = [...args, '--', `--upforge-port=${state.port}`]
       log.info('[TrainerBridge] Spawning trainer:', cmd, fullArgs)
       const proc = (this._opts.spawn ?? nodeSpawn)(cmd, fullArgs, { detached: false })
@@ -306,7 +357,7 @@ export class TrainerBridge {
         log.info('[TrainerBridge] Trainer exited with code:', code)
         state.proc = null
         if (!state.connected && state.connectAbort) {
-          state.connectAbort(new Error(exitCodeMessage(code)))
+          state.connectAbort(new TrainerLaunchError('exited', exitCodeMessage(code)))
         } else {
           this._end(state, { reason: 'crashed', exitCode: code, message: exitCodeMessage(code) })
         }
@@ -345,7 +396,7 @@ export class TrainerBridge {
       const tryConnect = () => {
         if (settled) return
         if (this._launch !== state || state.ended) {
-          fail(new Error('Trainer launch was replaced by a newer one'))
+          fail(supersededError())
           return
         }
         const socket = new net.Socket()
@@ -353,7 +404,7 @@ export class TrainerBridge {
           socket.destroy()
           if (settled) return
           if (Date.now() >= deadline) {
-            fail(new Error('Could not connect to the aim trainer. It may be blocked by antivirus — try again.'))
+            fail(new TrainerLaunchError('no_response', 'Could not connect to the aim trainer. It may be blocked by antivirus — try again.'))
           } else {
             timer = setTimeout(tryConnect, retryMs)
           }
@@ -363,7 +414,7 @@ export class TrainerBridge {
           socket.removeListener('error', onConnectError)
           if (settled || this._launch !== state || state.ended) {
             socket.destroy()
-            fail(new Error('Trainer launch was replaced by a newer one'))
+            fail(supersededError())
             return
           }
           settled = true
@@ -453,7 +504,7 @@ export class TrainerBridge {
   }
 
   private _teardown(state: LaunchState): void {
-    state.connectAbort?.(new Error('Trainer stopped'))
+    state.connectAbort?.(new TrainerLaunchError('stopped', 'The trainer was closed before the drill started.'))
     state.socket?.destroy()
     state.socket = null
     try { state.proc?.kill() } catch { /* already gone */ }
@@ -467,6 +518,10 @@ export class TrainerBridge {
     this._end(state, { reason })
     this._teardown(state)
   }
+}
+
+function supersededError(): TrainerLaunchError {
+  return new TrainerLaunchError('superseded', 'A newer drill started instead.')
 }
 
 function exitCodeMessage(code: number | null): string {
