@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { weeklyShareCardData } from '../lib/weekly-share-card'
 import { priorTrainingSessions, comparableTrainingRuns, trainingComparisonRequest, resultHitsCell, isTrackingScenario } from '../lib/training-result-metrics'
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useLifetime } from '../composables/useLifetime'
@@ -1085,10 +1086,9 @@ async function exportWeeklyCard() {
 
     const stats = trainingStats.value
     const now = new Date()
-    // Week label: Mon of this week → today
-    const dayOfWeek = now.getDay() // 0=Sun
-    const monday = new Date(now.getTime() - ((dayOfWeek === 0 ? 6 : dayOfWeek - 1) * 86400000))
-    const weekLabel = `${monday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+    // One window (last 7 days incl. today) for the dates and every number below.
+    const week = weeklyShareCardData(apiHistory.value?.sessions ?? [], now, s => SCENARIO_META[s]?.label ?? s)
+    const weekLabel = week.rangeLabel
 
     // UPFORGE wordmark (top-left)
     ctx.font = 'bold 22px system-ui, sans-serif'
@@ -1120,17 +1120,19 @@ async function exportWeeklyCard() {
     const drillsX = 120
     ctx.font = 'bold 96px system-ui, sans-serif'
     ctx.fillStyle = '#ffffff'
-    ctx.fillText(String(stats.thisWeekCount), drillsX, 240)
+    ctx.fillText(String(week.runCount), drillsX, 240)
     ctx.font = 'bold 14px system-ui, sans-serif'
     ctx.fillStyle = 'rgba(255,255,255,0.4)'
-    ctx.fillText('DRILLS THIS WEEK', drillsX, 268)
+    ctx.fillText('DRILLS · LAST 7 DAYS', drillsX, 268)
 
     // Stat cards row
+    const scoreTint = (n: number | undefined) => n === undefined ? '#6b7280' : n >= 80 ? '#4ade80' : n >= 60 ? '#fbbf24' : '#f87171'
+    const vs = week.vsPrevious?.value
     const cards = [
-      { label: 'AVG SCORE', value: stats.thisWeekAvg !== null ? String(stats.thisWeekAvg) : '—', color: stats.thisWeekAvg !== null ? (stats.thisWeekAvg >= 80 ? '#4ade80' : stats.thisWeekAvg >= 60 ? '#fbbf24' : '#f87171') : '#6b7280' },
-      { label: 'BEST SCORE', value: stats.thisWeekBest !== null ? String(stats.thisWeekBest) : '—', color: stats.thisWeekBest !== null ? (stats.thisWeekBest >= 80 ? '#4ade80' : stats.thisWeekBest >= 60 ? '#fbbf24' : '#f87171') : '#6b7280' },
-      { label: 'DAY STREAK', value: stats.streak > 0 ? `${stats.streak}d` : '—', color: stats.streak > 0 ? '#fb923c' : '#6b7280' },
-      { label: 'VS LAST WEEK', value: stats.improvement !== null ? (stats.improvement > 0 ? `+${stats.improvement}` : String(stats.improvement)) : '—', color: stats.improvement === null ? '#6b7280' : stats.improvement > 0 ? '#4ade80' : stats.improvement < 0 ? '#f87171' : '#9ca3af' },
+      { label: 'AVG SCORE', covers: week.avg?.covers ?? '', value: week.avg ? String(week.avg.value) : '—', color: scoreTint(week.avg?.value) },
+      { label: 'BEST SCORE', covers: week.best?.covers ?? '', value: week.best ? String(week.best.value) : '—', color: scoreTint(week.best?.value) },
+      { label: 'DAY STREAK', covers: '', value: stats.streak > 0 ? `${stats.streak}d` : '—', color: stats.streak > 0 ? '#fb923c' : '#6b7280' },
+      { label: 'VS PREVIOUS 7 DAYS', covers: week.vsPrevious?.covers ?? '', value: vs !== undefined ? (vs > 0 ? `+${vs}` : String(vs)) : '—', color: vs === undefined ? '#6b7280' : vs > 0 ? '#4ade80' : vs < 0 ? '#f87171' : '#9ca3af' },
     ]
     const cardW = 180, cardH = 110, cardGap = 20
     const totalCardsW = cards.length * cardW + (cards.length - 1) * cardGap
@@ -1155,25 +1157,26 @@ async function exportWeeklyCard() {
       ctx.font = '600 10px system-ui, sans-serif'
       ctx.fillStyle = 'rgba(255,255,255,0.35)'
       ctx.fillText(card.label, cx + cardW / 2, cardsY + 80)
+      // What the number covers (drill + settings), so no number reads as a whole-week figure
+      if (card.covers) {
+        ctx.font = '500 10px system-ui, sans-serif'
+        ctx.fillStyle = 'rgba(255,255,255,0.28)'
+        ctx.fillText(card.covers, cx + cardW / 2, cardsY + 96, cardW - 16)
+      }
       ctx.textAlign = 'left'
     })
 
     // Scenario mini pills (bottom section)
-    const weekSessions = stats.thisWeekSessions
-    const scenarioCounts: Record<string, number> = {}
-    weekSessions.forEach(s => { scenarioCounts[s.scenario] = (scenarioCounts[s.scenario] ?? 0) + 1 })
-    const scenarioEntries = Object.entries(scenarioCounts).sort((a, b) => b[1] - a[1])
-
-    if (scenarioEntries.length) {
+    if (week.drills.length) {
       const pillY = 460
       ctx.font = '600 11px system-ui, sans-serif'
       ctx.fillStyle = 'rgba(255,255,255,0.25)'
-      ctx.fillText('TRAINED THIS WEEK:', 40, pillY)
+      ctx.fillText('TRAINED IN THE LAST 7 DAYS:', 40, pillY)
 
       const SCENARIO_COLORS: Record<string, string> = { flick: '#f87171', tracking: '#38bdf8', microadjust: '#a78bfa', switching: '#fbbf24', duel: '#34d399' }
       let pillX = 40
-      scenarioEntries.forEach(([scenario, count]) => {
-        const label = `${scenario.charAt(0).toUpperCase() + scenario.slice(1)} ×${count}`
+      week.drills.forEach(({ scenario, label: drillLabel, count }) => {
+        const label = `${drillLabel} ×${count}`
         ctx.font = '700 11px system-ui, sans-serif'
         const tw = ctx.measureText(label).width
         const pw = tw + 20, ph = 26
