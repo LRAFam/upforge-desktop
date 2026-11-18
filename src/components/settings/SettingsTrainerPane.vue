@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useSettings } from '../../composables/useSettings'
 import SettingsSection from './SettingsSection.vue'
-import SettingsToggle from './SettingsToggle.vue'
 import SettingsRow from './SettingsRow.vue'
 import CrosshairSettingsPanel from '../CrosshairSettingsPanel.vue'
 import { uiV3 } from '../../lib/ui-v3'
@@ -64,17 +63,9 @@ const HOTKEY_ROWS = [
         <div class="uf-meter"><span class="uf-fill" :style="{ width: Math.min(100, (settings.trainerMouse.dpi * settings.trainerMouse.sensitivity) / 30) + '%' }" /></div>
         <p class="uf-t4">eDPI = DPI × sensitivity, so the trainer matches your in-game feel.</p>
       </div>
-      <div class="uf-set-split">
-        <label class="uf-field"><span class="uf-t4">Horizontal FOV</span>
-          <input v-model.number="settings.trainerMouse.fov" type="number" min="60" max="120" step="1" class="uf-input" @change="debouncedSave">
-        </label>
-        <label class="uf-field"><span class="uf-t4">Polling rate</span>
-          <select v-model.number="settings.trainerMouse.pollingRate" class="uf-select" @change="debouncedSave"><option :value="125">125 Hz</option><option :value="250">250 Hz</option><option :value="500">500 Hz</option><option :value="1000">1000 Hz</option><option :value="2000">2000 Hz</option><option :value="4000">4000 Hz</option></select>
-        </label>
-      </div>
-      <SettingsRow label="Raw input" hint="Bypass OS pointer acceleration">
-        <SettingsToggle label="Raw input" :on="!!settings.trainerMouse.rawInput" @click="settings.trainerMouse.rawInput = !settings.trainerMouse.rawInput; debouncedSave()" />
-      </SettingsRow>
+      <label class="uf-field"><span class="uf-t4">Horizontal FOV</span>
+        <input v-model.number="settings.trainerMouse.fov" type="number" min="60" max="120" step="1" class="uf-input" style="width: 120px" @change="debouncedSave">
+      </label>
       <div class="uf-field">
         <span class="uf-t3">Movement speed</span>
         <div class="uf-seg" role="group" aria-label="Movement speed">
@@ -191,34 +182,9 @@ const HOTKEY_ROWS = [
         <p class="mt-2 text-xs text-gray-600">eDPI = DPI × sensitivity, so the trainer matches your in-game feel.</p>
       </div>
 
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="mb-1 block text-xs text-gray-400">Horizontal FOV</label>
-          <input type="number" v-model.number="settings.trainerMouse.fov" min="60" max="120" step="1" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none" @change="debouncedSave" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-gray-400">Polling rate</label>
-          <select v-model.number="settings.trainerMouse.pollingRate" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none" @change="debouncedSave">
-            <option :value="125">125 Hz</option>
-            <option :value="250">250 Hz</option>
-            <option :value="500">500 Hz</option>
-            <option :value="1000">1000 Hz</option>
-            <option :value="2000">2000 Hz</option>
-            <option :value="4000">4000 Hz</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="flex items-center justify-between gap-4">
-        <div>
-          <p class="text-sm text-gray-200">Raw input</p>
-          <p class="mt-1 text-xs text-gray-500">Bypass OS pointer acceleration</p>
-        </div>
-        <SettingsToggle
-          label="Raw input"
-          :on="!!settings.trainerMouse.rawInput"
-          @click="settings.trainerMouse.rawInput = !settings.trainerMouse.rawInput; debouncedSave()"
-        />
+      <div>
+        <label class="mb-1 block text-xs text-gray-400">Horizontal FOV</label>
+        <input type="number" v-model.number="settings.trainerMouse.fov" min="60" max="120" step="1" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none" @change="debouncedSave" />
       </div>
 
       <div>
