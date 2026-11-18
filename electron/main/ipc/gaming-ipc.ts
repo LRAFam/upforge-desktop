@@ -152,7 +152,7 @@ export function setupGamingHandlers(
     const token = auth.getToken()
     if (!token) return null
     try {
-      const res = await auth.getApi().get('/api/training/sessions', { params: { limit: 50, ...(comparison ? { scenario: comparison.scenario, difficulty: comparison.difficulty, duration_seconds: comparison.duration_seconds, scoring_version: comparison.scoring_version, before: comparison.before } : {}) } })
+      const res = await auth.getApi().get('/api/training/sessions', { params: { limit: 50, ...(comparison ? { scenario: comparison.scenario, difficulty: comparison.difficulty, duration_seconds: comparison.duration_seconds, scoring_version: comparison.scoring_version, before: comparison.before, ...(comparison.comparison_model ? { comparison_model: comparison.comparison_model } : {}) } : {}) } })
       return res.data ?? null
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch training history:', err?.message)

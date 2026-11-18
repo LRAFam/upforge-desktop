@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { CURRENT_SCORING_VERSION, priorTrainingSessions, reactionMetricScore, resultCountCells, resultHitsCell, trackingTimes, trainingTimestamp, trainingComparisonRequest } from './training-result-metrics'
+import { CURRENT_SCORING_VERSION, priorTrainingSessions, reactionMetricScore, resultCountCells, resultHitsCell, trackingTimes, trainingTimestamp, trainingComparisonRequest, trainingComparisonModel } from './training-result-metrics'
 describe('training result measurements', () => {
   it('compares the last completed run whether the current run has synced or not', () => {
-    const current = { scenario: 'flick', duration_seconds: 60, metadata: { difficulty: 'medium', scoring_version: 3 }, completed_at: '2026-09-24T12:00:00', score: 39 }
+    const current = { scenario: 'flick', duration_seconds: 60, metadata: { difficulty: 'medium', scoring_version: 3, game: 'valorant' }, completed_at: '2026-09-24T12:00:00', score: 39 }
     const previous = { ...current, completed_at: '2026-09-24T11:00:00.000000Z', score: 38 }
     expect(priorTrainingSessions([previous], current)).toEqual([previous])
     expect(priorTrainingSessions([{ ...current, completed_at: current.completed_at + 'Z' }, previous], current)).toEqual([previous])
     expect(priorTrainingSessions([current], current)).toEqual([])
   })
   it('excludes legacy, different difficulty, duration and drill from comparisons', () => {
-    const current = { scenario: 'flick', duration_seconds: 60, metadata: { difficulty: 'medium', scoring_version: 3 }, completed_at: '2026-09-24T12:00:00Z' }
+    const current = { scenario: 'flick', duration_seconds: 60, metadata: { difficulty: 'medium', scoring_version: 3, game: 'valorant' }, completed_at: '2026-09-24T12:00:00Z' }
     const previous = { ...current, completed_at: '2026-09-24T11:00:00Z' }
     expect(priorTrainingSessions([
       previous, { ...previous, metadata: undefined }, { ...previous, duration_seconds: 120 },
-      { ...previous, scenario: 'sixshot' }, { ...previous, metadata: { difficulty: 'hard', scoring_version: 3 } },
+      { ...previous, scenario: 'sixshot' }, { ...previous, metadata: { difficulty: 'hard', scoring_version: 3, game: 'valorant' } },
       { ...previous, metadata: { difficulty: 'medium', scoring_version: 1 } },
       { ...previous, metadata: { difficulty: 'medium', scoring_version: 2 } },
     ], current)).toEqual([previous])
@@ -28,7 +28,7 @@ describe('training result measurements', () => {
   })
   it('asks the API for current-scoring comparisons only', () => {
     expect(CURRENT_SCORING_VERSION).toBe(3)
-    const run = { scenario: 'flick', duration_seconds: 60, metadata: { difficulty: 'medium', scoring_version: 3 }, completed_at: '2026-11-04T12:00:00Z' }
+    const run = { scenario: 'flick', duration_seconds: 60, metadata: { difficulty: 'medium', scoring_version: 3, game: 'valorant' }, completed_at: '2026-11-04T12:00:00Z' }
     expect(trainingComparisonRequest(run)?.scoring_version).toBe(3)
     expect(trainingComparisonRequest({ ...run, metadata: { difficulty: 'medium', scoring_version: 2 } })).toBeNull()
   })
@@ -96,5 +96,31 @@ describe('beta duel drill result labels', () => {
       ])
     expect(drillDetailCells({ scenario: 'retake_crossfire', metadata: { reps: 5, cleared: 3, mean_isolation_pct: 71.6, correct_first: 4, layout_ids: ['a'] } }))
       .toEqual([{ label: 'Cleared', value: '3/5' }, { label: 'Isolation', value: '72%' }, { label: 'Correct first', value: '4/5' }])
+  })
+})
+
+describe('trainer comparison model (game + movement)', () => {
+  // What the trainer emits for a 60 s medium v3 Strafe Aim run, with the game the desktop launched it with.
+  const base = { scenario: 'strafe_aim', duration_seconds: 60, completed_at: '2026-11-18T12:00:00Z' }
+  const valorant = { ...base, metadata: { difficulty: 'medium', scoring_version: 3, game: 'valorant', movement: 'valorant_v1', run_speed_mps: 5.4 } }
+  const cs2 = { ...base, completed_at: '2026-11-18T11:00:00Z', metadata: { difficulty: 'medium', scoring_version: 3, game: 'cs2', movement: 'snappy_v0', run_speed_mps: 6.75 } }
+
+  it('builds the same canonical key as the API', () => {
+    expect(trainingComparisonModel(valorant.metadata)).toBe('game=valorant;movement=valorant_v1;run_speed_mps=5.4')
+    expect(trainingComparisonModel(cs2.metadata)).toBe('game=cs2;movement=snappy_v0;run_speed_mps=6.75')
+    expect(trainingComparisonModel({ game: 'valorant', run_speed_mps: 6.0 })).toBe('game=valorant;run_speed_mps=6')
+    expect(trainingComparisonModel({ game: 'valorant', aim_scale: 0.5 })).toBe('game=valorant;aim_scale=0.5')
+    expect(trainingComparisonModel({ movement: 'valorant_v1' })).toBeNull()
+  })
+  it('never compares runs from another game or movement speed', () => {
+    const earlierValorant = { ...valorant, completed_at: '2026-11-18T10:00:00Z' }
+    const fasterValorant = { ...earlierValorant, metadata: { ...valorant.metadata, run_speed_mps: 9 } }
+    expect(priorTrainingSessions([cs2, earlierValorant, fasterValorant], valorant)).toEqual([earlierValorant])
+    expect(trainingComparisonRequest(valorant)?.comparison_model).toBe('game=valorant;movement=valorant_v1;run_speed_mps=5.4')
+  })
+  it('treats a run without a game as legacy, not a matching comparison', () => {
+    const legacy = { ...valorant, metadata: { difficulty: 'medium', scoring_version: 3, movement: 'valorant_v1', run_speed_mps: 5.4 } }
+    expect(trainingComparisonRequest(legacy)).toBeNull()
+    expect(priorTrainingSessions([{ ...legacy, completed_at: '2026-11-18T10:00:00Z' }], valorant)).toEqual([])
   })
 })

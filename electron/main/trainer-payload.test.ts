@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest, drillGameParams } from './trainer-payload'
+import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest, drillGameParams, withLaunchGame } from './trainer-payload'
+import type { DrillConfig } from './trainer-bridge'
 import { DEFAULT_CROSSHAIR_SETTINGS, DEFAULT_TRAINER_MOUSE } from './trainer-settings'
 
 const result = {
@@ -64,5 +65,15 @@ describe('drillGameParams', () => {
     expect(drillGameParams(undefined)).toEqual({})
     expect(drillGameParams('apex')).toEqual({})
     expect(drillGameParams(3)).toEqual({})
+  })
+})
+
+describe('withLaunchGame', () => {
+  it('stamps the game the drill was launched with so scores are compared per game', () => {
+    const config = { mouse_settings: { game: 'cs2' } } as Pick<DrillConfig, 'mouse_settings'>
+    expect(withLaunchGame(result, config).metadata?.game).toBe('cs2')
+    expect((result.metadata as Record<string, unknown>).game).toBeUndefined() // input untouched
+    expect(withLaunchGame({ ...result, metadata: { ...result.metadata, game: 'valorant' } }, config).metadata?.game).toBe('valorant')
+    expect(withLaunchGame(result, {}).metadata?.game).toBeUndefined()
   })
 })
