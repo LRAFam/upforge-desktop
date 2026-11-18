@@ -6,6 +6,7 @@ import { recordingPathVariants, sourcePathForCompressed, deleteLocalRecordingFil
 import { recordingMatchesLinkedRiot, localMediaRoot, type LinkedRiotId } from './user-data-paths'
 import { healRecordingPath } from './heal-recording-paths'
 import { DEADLOCK_RECORDING_MODES } from './deadlock-recording-hero'
+import { isCs2DemoJobId } from './cs2-focus-check'
 import {
   catalogueWriter,
   installTimeline,
@@ -116,6 +117,10 @@ export interface PendingRecording {
   manualAnalyseRequested?: boolean
   /** Cloud replay review job for a Deadlock recording, started only by the user (it costs a credit). */
   deadlockReviewJobId?: string
+  /** CS2 demo analysis job for this recording's demo (lets the API count notes + demo as one match). */
+  cs2DemoJobId?: string
+  /** Set once the API counted this CS2 match: the demo job it was counted under ('' = this recording's id). */
+  cs2FocusKeyJob?: string
   /** User deleted the local footage, so automatic Riot stats polling stays paused until Retry sync. */
   matchStatsSyncPaused?: boolean
   /** Session-only, read-only archive mounted from the production API for developer testing. */
@@ -214,6 +219,9 @@ export class RecordingsStore {
   flush(): Promise<void> {
     return catalogueWriter(this.filePath).flush()
   }
+
+  /** Called after a row's timeline is replaced (e.g. a CS2 demo was parsed). Shared by forUser() views. */
+  timelineListener: ((rec: PendingRecording) => void) | null = null
 
   constructor() {
     this.recordings = this.load()
@@ -568,6 +576,24 @@ export class RecordingsStore {
     return true
   }
 
+  /** CS2 only: link the demo analysis job uploaded for this recording. Ignores non-UUID ids. */
+  setCs2DemoJob(id: string, jobId: string): boolean {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec || rec.game !== 'cs2' || !isCs2DemoJobId(jobId)) return false
+    rec.cs2DemoJobId = jobId
+    this.persist()
+    return true
+  }
+
+  /** CS2 only: remember which key the API counted this match under (first call wins). */
+  markCs2FocusCounted(id: string, jobId: string | null): boolean {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec || rec.game !== 'cs2' || typeof rec.cs2FocusKeyJob === 'string') return false
+    rec.cs2FocusKeyJob = isCs2DemoJobId(jobId) ? jobId : ''
+    this.persist()
+    return true
+  }
+
   /** Deadlock only: store the resolved hero name (never a raw hero_N key). */
   setDeadlockHero(matchId: string, heroName: string): number {
     const name = heroName.trim()
@@ -776,6 +802,7 @@ export class RecordingsStore {
     if (timeline.playerName?.trim()) rec.riotName = timeline.playerName.trim()
     if (timeline.playerTag?.trim()) rec.riotTag = timeline.playerTag.trim()
     this.persist()
+    try { this.timelineListener?.(rec) } catch { /* a listener never breaks a save */ }
     return true
   }
 
