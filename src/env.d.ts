@@ -839,7 +839,7 @@ declare global {
       }
       personalReview: { get: (source: import('./lib/personal-review').PersonalReviewSource) => Promise<import('./lib/review-notebook').NotebookResult<unknown>>; save: (document: import('./lib/personal-review').PersonalReview) => Promise<import('./lib/review-notebook').NotebookResult<unknown>> }
       storageAddon: { request: (request: import('./lib/storage-addon').StorageAddonRequest) => Promise<{ ok: true; data: import('./lib/storage-addon').StorageAddonSnapshot | null } | { ok: false; error: string; unavailable?: boolean }> }
-      cloudClip: { review: (id: number, analyse?: boolean) => Promise<{ ok: true; data: import('./lib/cloud-clip-review').CloudClipReview } | { ok: false; error: string; needsUpgrade?: boolean }> }
+      cloudClip: { review: (id: number, analyse?: boolean) => Promise<{ ok: true; data: import('./lib/cloud-clip-review').CloudClipReview } | { ok: false; error: string; needsUpgrade?: boolean; refused?: boolean }> }
       cloudStorage: { download: (file: { kind: 'clip' | 'recording' | 'analysis_video'; id: string }) => Promise<{ ok: true } | { ok: false; error: string; removed?: boolean }>; playback: (file: { kind: 'clip' | 'recording' | 'analysis_video'; id: string }) => Promise<{ ok: true; url: string } | { ok: false; error: string; removed?: boolean }>; retention: () => Promise<{ ok: true; data: import('./lib/cloud-retention').RetentionSummary } | { ok: false; error: string; unavailable?: boolean }>; list: (query: import('./lib/cloud-storage').CloudQuery) => Promise<{ ok: true; data: unknown } | { ok: false; error: string }> }
       accountUsage: { get: () => Promise<{ ok: true; data: unknown } | { ok: false; error: string }>; buyReports: () => Promise<import('./lib/review-notebook').NotebookResult<{ checkout_url: string }>> }
       roundReview: {
@@ -1477,7 +1477,7 @@ declare global {
         getHotkeyStatus: () => Promise<{ saveClipRegistered: boolean; toggleOverlayRegistered: boolean }>
         setHotkey: (action: string, accelerator: string) => Promise<{ ok: boolean }>
         upload: (id: string) => Promise<{ ok: boolean; apiClipId?: number; error?: string; needsUpgrade?: boolean; message?: string; upgradeUrl?: string; uploadResolution?: 'hd' | '720p' }>
-        requestAnalysis: (id: string) => Promise<{ ok: boolean; error?: string; needsUpgrade?: boolean; message?: string; upgradeUrl?: string }>
+        requestAnalysis: (id: string) => Promise<{ ok: boolean; error?: string; needsUpgrade?: boolean; refused?: boolean; message?: string; upgradeUrl?: string }>
         share: (id: string) => Promise<{ ok: boolean; shareToken?: string; error?: string }>
         publish: (id: string, caption?: string) => Promise<{ ok: boolean; error?: string }>
         saveBookmark: () => Promise<{ ok: boolean; bookmarkCount?: number; reason?: string }>

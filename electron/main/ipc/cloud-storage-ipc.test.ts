@@ -128,3 +128,16 @@ it('reads the cloud retention summary and reports an older API as unavailable', 
   get.mockRejectedValue({ response: { status: 404 } })
   expect(await handlers['cloud-storage:retention']({})).toMatchObject({ ok: false, unavailable: true })
 })
+
+it('shows friendly text for clip review refusals instead of a generic error', async () => {
+  const handlers: Record<string, (...args: any[]) => Promise<any>> = {}
+  const get = vi.fn(), post = vi.fn()
+  setupCloudStorageHandlers({ handle: (name: string, fn: typeof handlers[string]) => { handlers[name] = fn } } as unknown as IpcMain, { getToken: () => 'token', getUser: () => ({ id: 1 }), getApi: () => ({ get, post }) } as unknown as AuthManager)
+  post.mockRejectedValueOnce({ response: { status: 422, data: { error: 'clip_review_game_unsupported', message: 'x' } } })
+  const unsupported = await handlers['cloud-clip:review']({}, 12, true)
+  expect(unsupported).toMatchObject({ ok: false, needsUpgrade: false, error: expect.stringContaining('Valorant clips only') })
+  expect(unsupported.error).not.toMatch(/clip_review/)
+  post.mockRejectedValueOnce({ response: { status: 422, data: { error: 'clip_review_too_long', max_duration_seconds: 120 } } })
+  expect(await handlers['cloud-clip:review']({}, 12, true)).toMatchObject({ ok: false, error: expect.stringContaining('up to 120 seconds') })
+  expect(get).not.toHaveBeenCalled()
+})

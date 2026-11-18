@@ -102,7 +102,12 @@ export function apiPost(base: string, pathname: string, body: string, token: str
             (typeof json.message === 'string' && json.message) ||
             ''
           // status lets callers tell a retryable failure (5xx, 401, 429) from a rejected request (422).
-          reject(Object.assign(new Error(apiMessage || `Request failed (${res.statusCode})`), { status: res.statusCode }))
+          // code + data let callers map known refusals (e.g. clip_review_too_long) to friendly copy.
+          reject(Object.assign(new Error(apiMessage || `Request failed (${res.statusCode})`), {
+            status: res.statusCode,
+            code: typeof json.error === 'string' ? json.error : undefined,
+            data: json,
+          }))
         } else {
           resolve(json)
         }
@@ -169,6 +174,10 @@ export function pollClipAnalysis(
         })
       } else if (status === 'failed') {
         clipStore.update(localClipId, { analysisStatus: 'failed' })
+        // Let the clips screen show the failed-review note (failed reviews don't use the allowance).
+        BrowserWindow.getAllWindows().forEach(w => {
+          if (!w.isDestroyed()) w.webContents.send('clips:updated')
+        })
       } else {
         clipStore.update(localClipId, { analysisStatus: 'processing' })
         pollClipAnalysis(localClipId, apiClipId, token, clipStore, apiBase, attempt + 1)

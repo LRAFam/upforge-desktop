@@ -1,7 +1,11 @@
 import type { ClipRecord } from '../env.d.ts'
-export interface CloudClipReview { clip: ClipRecord; quota: { limit: number | null; used: number; remaining: number | null } }
+export interface CloudClipReview {
+  clip: ClipRecord
+  /** gameSupported / maxDurationSeconds: the API's review gate (null on older APIs). */
+  quota: { limit: number | null; used: number; remaining: number | null; gameSupported: boolean | null; maxDurationSeconds: number | null }
+}
 export function cloudClipReview(value: unknown): CloudClipReview {
-  const data = value as { clip?: Record<string, any>; quota?: CloudClipReview['quota'] }
+  const data = value as { clip?: Record<string, any>; quota?: { limit: number | null; used: number; remaining: number | null; game_supported?: unknown; max_duration_seconds?: unknown } }
   const c = data?.clip, q = data?.quota
   if (!c || !Number.isSafeInteger(c.id) || c.id < 1 || typeof c.video_url !== 'string' || !q || !Number.isSafeInteger(q.used) || q.used < 0 || !((q.limit === null && q.remaining === null) || (Number.isSafeInteger(q.limit) && Number(q.limit) >= 0 && Number.isSafeInteger(q.remaining) && Number(q.remaining) >= 0))) throw new Error('Clip details could not be verified.')
   const url = new URL(c.video_url)
@@ -10,7 +14,12 @@ export function cloudClipReview(value: unknown): CloudClipReview {
   const a = c.clip_analysis
   if (a && !['queued','processing','completed','failed'].includes(a.status)) throw new Error('Clip coaching status is invalid.')
   const text = (v: unknown) => typeof v === 'string' ? v : null
-  return { quota: q, clip: {
+  const quota: CloudClipReview['quota'] = {
+    limit: q.limit, used: q.used, remaining: q.remaining,
+    gameSupported: typeof q.game_supported === 'boolean' ? q.game_supported : null,
+    maxDurationSeconds: Number.isSafeInteger(q.max_duration_seconds) && Number(q.max_duration_seconds) > 0 ? Number(q.max_duration_seconds) : null,
+  }
+  return { quota, clip: {
     id: `cloud:${c.id}`, apiClipId: c.id, path: url.href, thumbPath: null,
     trigger: c.trigger, map: text(c.map), agent: text(c.agent), title: text(c.title),
     durationSeconds: Number(c.duration_seconds), round: Number.isInteger(c.round) ? c.round : null,
