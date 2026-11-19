@@ -69,3 +69,40 @@ describe('SettingsManager recorded modes', () => {
     expect(new SettingsManager().get().recordedModesByGame.valorant).toEqual(['COMPETITIVE'])
   })
 })
+
+describe('SettingsManager trainer sensitivity per game', () => {
+  /** A trainerMouse saved by an app from before sensitivity was kept per game. */
+  const oldTrainerMouse = { dpi: 1600, game: 'valorant', sensitivity: 0.35, fov: 103, rawInput: true, pollingRate: 1000, movementSpeed: 6.75, trainerVolume: 60, scopedMultiplier: 0.9 }
+
+  it('an existing install keeps its trainer settings, and its sensitivity becomes the saved game’s own', () => {
+    fs.writeFileSync(settingsFile(), JSON.stringify({ primaryGame: 'valorant', trainerMouse: oldTrainerMouse }))
+    const manager = new SettingsManager()
+    expect(manager.get().trainerMouse).toMatchObject({
+      ...oldTrainerMouse, perGame: { valorant: { sensitivity: 0.35, fov: 103 } }, windowMode: 'fullscreen', vsync: false, maxFps: 360,
+    })
+
+    // Title-bar switch (it saves { ...trainerMouse, game }): CS2 gets its own number, not Valorant's 0.35.
+    manager.save({ primaryGame: 'cs2', trainerMouse: { ...manager.get().trainerMouse, game: 'cs2' } })
+    expect(manager.get().trainerMouse).toMatchObject({ game: 'cs2', sensitivity: 1.114, fov: 90, dpi: 1600, trainerVolume: 60 })
+    manager.save({ trainerMouse: { ...manager.get().trainerMouse, sensitivity: 1.5 } })
+    manager.save({ primaryGame: 'valorant', trainerMouse: { ...manager.get().trainerMouse, game: 'valorant' } })
+    expect(manager.get().trainerMouse).toMatchObject({ game: 'valorant', sensitivity: 0.35, fov: 103 })
+
+    // After a restart.
+    const reopened = new SettingsManager().get().trainerMouse
+    expect(reopened).toMatchObject({ game: 'valorant', sensitivity: 0.35 })
+    expect(reopened.perGame).toEqual({ valorant: { sensitivity: 0.35, fov: 103 }, cs2: { sensitivity: 1.5, fov: 90 } })
+  })
+
+  it('a "Custom" game save becomes Valorant, the scale the trainer always used for it', () => {
+    fs.writeFileSync(settingsFile(), JSON.stringify({ trainerMouse: { ...oldTrainerMouse, game: 'custom', sensitivity: 0.42 } }))
+    expect(new SettingsManager().get().trainerMouse).toMatchObject({ game: 'valorant', sensitivity: 0.42, fov: 103 })
+  })
+
+  it('switching the account to League leaves the trainer on its game', () => {
+    fs.writeFileSync(settingsFile(), JSON.stringify({ primaryGame: 'cs2', trainerMouse: { ...oldTrainerMouse, game: 'cs2', sensitivity: 1.2, fov: 90 } }))
+    const manager = new SettingsManager()
+    manager.save({ primaryGame: 'lol', trainerMouse: { ...manager.get().trainerMouse, game: 'lol' as never } })
+    expect(manager.get().trainerMouse).toMatchObject({ game: 'cs2', sensitivity: 1.2, fov: 90 })
+  })
+})

@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { asTrainerResult, launchConfigFromInfo, launchTrainer, sessionEndedMessage, shellOpensTrainerResult, trainerLaunchConfig } from './trainer-launch'
+import { asTrainerResult, drillHasLesson, launchConfigFromInfo, launchTrainer, sessionEndedMessage, shellOpensTrainerResult, trainerLaunchConfig } from './trainer-launch'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
@@ -18,6 +20,19 @@ describe('trainer launch helper', () => {
     expect(await launchTrainer({ scenario: 'gridshot', duration_seconds: 30 })).toMatchObject({ ok: true, launchId: 3, config: { scenario: 'gridshot', duration_seconds: 30 } })
     expect(launch).toHaveBeenLastCalledWith({ scenario: 'gridshot', duration_seconds: 30, difficulty: 'medium' })
     expect(launch.mock.calls.every(([cfg]) => !('duration' in cfg))).toBe(true)
+  })
+  it('"Show the lesson" asks the trainer for the drill’s guided lesson; "Play again" after it does not', async () => {
+    const launch = vi.fn().mockResolvedValue({ ok: true, launchId: 5 })
+    vi.stubGlobal('window', { api: { trainer: { launch } } })
+    const res = await launchTrainer({ scenario: 'hold_angle', duration_seconds: 60, difficulty: 'hard', lesson: true })
+    expect(launch).toHaveBeenLastCalledWith({ scenario: 'hold_angle', duration_seconds: 60, difficulty: 'hard', lesson: true })
+    expect(res.config).toEqual({ scenario: 'hold_angle', duration_seconds: 60, difficulty: 'hard' })
+    await launchTrainer(res.config)
+    expect(launch).toHaveBeenLastCalledWith({ scenario: 'hold_angle', duration_seconds: 60, difficulty: 'hard' })
+  })
+  it('offers "Show the lesson" only on drills that have a guided lesson in the bundled trainer', () => {
+    for (const scenario of ['head_height', 'angle_clearing', 'hold_angle', 'jiggle_peek', 'strafe_aim']) expect(drillHasLesson(scenario), scenario).toBe(true)
+    for (const scenario of ['flick', 'distance_switching', 'trade_window', 'operator_hold', '', 'nope']) expect(drillHasLesson(scenario), scenario).toBe(false)
   })
   it('rebuilds "Play again" from the launch main sent with the result', () => {
     expect(launchConfigFromInfo({ launchId: 1, scenario: 'flick', duration_seconds: 60, difficulty: 'pro', user_drill_id: 9 }))
@@ -64,5 +79,14 @@ describe('trainer results outside Practice', () => {
     expect(asTrainerResult({ scenario: 'flick', score: 70, completed_at: '2026-11-16T10:00:00Z' })).not.toBeNull()
     expect(asTrainerResult({ scenario: 'flick' })).toBeNull()
     expect(asTrainerResult(null)).toBeNull()
+  })
+})
+
+describe('the results screen shows a drill’s lesson again', () => {
+  const view = readFileSync(resolve(__dirname, '../views/TrainerResultsView.vue'), 'utf8')
+  it('offers "Show the lesson" only on drills that have one, and launches the same drill with lesson: true', () => {
+    expect(view).toContain('drillHasLesson(store.launchConfig.scenario)')
+    expect(view).toContain('launchFromResults({ ...store.launchConfig, lesson: true })')
+    expect(view).toMatch(/<UfButton v-if="canShowLesson"[^>]*@click="showLesson">Show the lesson<\/UfButton>/)
   })
 })

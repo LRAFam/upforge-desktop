@@ -61,7 +61,8 @@ export function withLaunchGame(result: SessionResult, config: Pick<DrillConfig, 
 
 /**
  * Renderer launch request → DrillConfig. Mouse and crosshair settings always come from the saved
- * settings in main (source of truth), so any renderer-sent copies are ignored.
+ * settings in main (source of truth), so any renderer-sent copies are ignored. `lesson: true` ("Show the
+ * lesson") is passed on; anything else is left out so the trainer shows a lesson the first time only.
  */
 export function drillConfigFromRequest(
   req: Record<string, unknown>,
@@ -80,6 +81,7 @@ export function drillConfigFromRequest(
     ...(typeof req.target_size_override === 'number' ? { target_size_override: req.target_size_override } : {}),
     ...(req.context && typeof req.context === 'object' ? { context: req.context as DrillConfig['context'] } : {}),
     ...(userDrillId ? { user_drill_id: userDrillId } : {}),
+    ...(req.lesson === true ? { lesson: true } : {}),
     mouse_settings: trainerMouseToGodot(settings.trainerMouse),
     crosshair_settings: crosshairSettingsToGodot(settings.crosshairSettings),
   }

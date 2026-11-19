@@ -3,7 +3,7 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { useLifetime } from '../composables/useLifetime'
 import { priorTrainingSessions, reactionMetricScore, isTrackingScenario, trainingComparisonRequest, resultCountCells, reactionMetricLabel, isTimeToHitMetric, accuracyMetricLabel, drillDetailCells, isConsistencyMeasured } from '../lib/training-result-metrics'
 import { TRAINER_SCENARIOS, isBetaScenario, trainerScenarioDef, type TrainerUiGroup } from '../lib/trainer-scenarios'
-import { asSessionEnded, launchConfigFromInfo, launchTrainer, sessionEndedMessage } from '../lib/trainer-launch'
+import { asSessionEnded, drillHasLesson, launchConfigFromInfo, launchTrainer, sessionEndedMessage } from '../lib/trainer-launch'
 import upforgeLogo from '../assets/upforge-logo.webp'
 import TrainingIcon from '../components/training/TrainingIcon.vue'
 import { useRouter } from 'vue-router'
@@ -241,6 +241,13 @@ async function playAgain() {
   await launchFromResults(store.launchConfig)
 }
 
+// The trainer runs a drill's guided lesson once per PC. "Show the lesson" plays the drill again with it first.
+const canShowLesson = computed(() => !!store.launchConfig && drillHasLesson(store.launchConfig.scenario))
+async function showLesson() {
+  if (launching.value || !store.launchConfig) return
+  await launchFromResults({ ...store.launchConfig, lesson: true })
+}
+
 /** Every launch from this screen updates launchConfig, so the next result and "Play again" match it. */
 async function launchFromResults(req: Parameters<typeof launchTrainer>[0]) {
   launching.value = true
@@ -375,6 +382,7 @@ onMounted(async () => {
           <p v-for="(line, i) in summary.details" :key="i" class="uf-t2" style="margin: 0">{{ line }}</p>
           <div class="uf-tr-actions">
             <UfButton v-if="store.launchConfig" variant="primary" icon="play" :disabled="launching" @click="playAgain">{{ launching ? 'Launching…' : 'Play again' }}</UfButton>
+            <UfButton v-if="canShowLesson" variant="secondary" :disabled="launching" @click="showLesson">Show the lesson</UfButton>
             <UfButton variant="link" @click="backToHub">Back to training</UfButton>
           </div>
           <p v-if="launched" class="uf-t4" style="margin: 0; color: var(--uf-win)">Trainer launched. Finish the drill to see your results here.</p>

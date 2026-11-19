@@ -319,7 +319,8 @@ export interface AppSettings {
   /** Mouse & trainer sensitivity settings */
   trainerMouse: {
     dpi: number
-    game: 'valorant' | 'cs2' | 'deadlock' | 'lol' | 'apex' | 'overwatch2' | 'custom'
+    game: import('./lib/trainer-games').TrainerGame
+    /** The current game's sensitivity and FOV; each game's own are kept in `perGame`. */
     sensitivity: number
     fov: number
     rawInput: boolean
@@ -327,6 +328,11 @@ export interface AppSettings {
     movementSpeed: number
     trainerVolume: number
     scopedMultiplier: number
+    perGame: import('./lib/trainer-games').TrainerAimByGame
+    windowMode: import('./lib/trainer-display').TrainerWindowMode
+    vsync: boolean
+    /** 0 = no cap. */
+    maxFps: number
   }
   /** Crosshair appearance for the aim trainer */
   crosshairSettings: {

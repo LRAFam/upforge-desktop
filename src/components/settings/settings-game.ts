@@ -2,22 +2,24 @@
  * Settings follows the title-bar game (cross-game pass 2026-11-02). Pure helpers so they can be unit-tested.
  */
 import type { PrimaryGame } from '../../lib/games'
+import { isTrainerGame, switchTrainerGame, type TrainerAimByGame } from '../../lib/trainer-games'
 
 interface GameFields {
   primaryGame?: string
-  trainerMouse: { game: string }
+  trainerMouse: { game: string; sensitivity: number; fov: number; perGame?: TrainerAimByGame }
 }
 
 /**
- * Mirror a title-bar game switch into the Settings copy. The switch already saved `primaryGame` and
- * `trainerMouse.game` (usePrimaryGame.setPrimaryGame); without this the open Settings screen keeps showing
- * the old game's blocks (CS2 demo folder, Deadlock diagnostics) and its next save writes the old game back.
- * Returns true when something changed.
+ * Mirror a title-bar game switch into the Settings copy. The switch already saved `primaryGame` and, for a game
+ * the trainer has a scale for, moved the trainer to that game with its own sensitivity and FOV
+ * (usePrimaryGame.setPrimaryGame). Without this the open Settings screen keeps showing the old game's blocks
+ * (CS2 demo folder, Deadlock diagnostics) and the old game's sensitivity, and its next save writes them back.
+ * League has no trainer scale: the trainer stays on its game. Returns true when something changed.
  */
 export function followSelectedGame(settings: GameFields, game: PrimaryGame): boolean {
   if (settings.primaryGame === game) return false
   settings.primaryGame = game
-  settings.trainerMouse.game = game
+  if (isTrainerGame(game)) Object.assign(settings.trainerMouse, switchTrainerGame(settings.trainerMouse, game))
   return true
 }
 

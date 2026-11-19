@@ -4,20 +4,15 @@
  * Kept free of Electron imports so it can be unit-tested.
  */
 import type { AppSettings } from './settings-manager'
-import type { DrillConfig } from './trainer-bridge'
+import type { DrillConfig, TrainerSpawnOptions } from './trainer-bridge'
 import { trainerFovInRange, trainerSensitivityInRange } from '../../src/lib/trainer-mouse-limits'
+import { DEFAULT_TRAINER_FOV, defaultTrainerFov, isTrainerGame, switchTrainerGame, TRAINER_GAMES, type TrainerAimByGame } from '../../src/lib/trainer-games'
+import { TRAINER_MAX_FPS_DEFAULT, trainerMaxFpsInRange } from '../../src/lib/trainer-display'
+
+export { CS2_DEFAULT_FOV, DEFAULT_TRAINER_FOV, defaultTrainerFov } from '../../src/lib/trainer-games'
 
 type TrainerMouse = AppSettings['trainerMouse']
 type CrosshairSettings = AppSettings['crosshairSettings']
-
-/** Generic default FOV (Valorant's fixed 103° horizontal). */
-export const DEFAULT_TRAINER_FOV = 103
-/** CS2's own FOV value (the trainer reads CS2 fov as CS2's 4:3 value; CS2's default is 90). */
-export const CS2_DEFAULT_FOV = 90
-
-export function defaultTrainerFov(game: string | null | undefined): number {
-  return game === 'cs2' ? CS2_DEFAULT_FOV : DEFAULT_TRAINER_FOV
-}
 
 /** In-game Scoped Sensitivity Multiplier: 1.0 keeps the same on-screen feel when scoped. */
 export const DEFAULT_SCOPED_MULTIPLIER = 1.0
@@ -35,6 +30,10 @@ export const DEFAULT_TRAINER_MOUSE: TrainerMouse = {
   movementSpeed: 6.75,
   trainerVolume: 80,
   scopedMultiplier: DEFAULT_SCOPED_MULTIPLIER,
+  perGame: {},
+  windowMode: 'fullscreen',
+  vsync: false,
+  maxFps: TRAINER_MAX_FPS_DEFAULT,
 }
 
 export const DEFAULT_CROSSHAIR_SETTINGS: CrosshairSettings = {
@@ -72,21 +71,64 @@ function mergeTyped<T extends object>(defaults: T, saved: unknown): T {
   return out as T
 }
 
+/** Saved sensitivity / FOV per game: games the trainer knows, two numbers each, kept where it can start a drill. */
+function normalizePerGame(saved: unknown): TrainerAimByGame {
+  const out: TrainerAimByGame = {}
+  if (!isRecord(saved)) return out
+  for (const game of TRAINER_GAMES) {
+    const aim = saved[game]
+    if (!isRecord(aim)) continue
+    const { sensitivity, fov } = aim
+    if (typeof sensitivity !== 'number' || !Number.isFinite(sensitivity) || typeof fov !== 'number' || !Number.isFinite(fov)) continue
+    out[game] = { sensitivity: trainerSensitivityInRange(sensitivity), fov: trainerFovInRange(fov) }
+  }
+  return out
+}
+
 /**
  * Deep-merge a saved (possibly partial / legacy) trainerMouse with defaults.
+ * Game: "Custom" (no longer offered) and games the trainer has no scale for ran on Valorant's scale, so they
+ * become Valorant: the trainer behaves exactly as before.
  * FOV: a missing value gets the game's default; CS2 still on the old universal default (103, which CS2
  * cannot be set to) is moved to CS2's default 90. Any other saved FOV is the user's and is kept, within 60–120.
  * FOV and sensitivity always stay where the trainer can start a drill (it refuses every drill otherwise).
+ * `perGame` keeps each game's sensitivity and FOV; the current game's entry is always the current numbers, so
+ * an older save's single value becomes its game's own.
  */
 export function normalizeTrainerMouse(saved: unknown): TrainerMouse {
   const merged = mergeTyped(DEFAULT_TRAINER_MOUSE, saved)
+  if (!isTrainerGame(merged.game)) merged.game = 'valorant'
   const savedFov = isRecord(saved) && typeof saved.fov === 'number' && Number.isFinite(saved.fov) ? saved.fov : null
   if (savedFov === null) merged.fov = defaultTrainerFov(merged.game)
-  else if (merged.game === 'cs2' && savedFov === DEFAULT_TRAINER_FOV) merged.fov = CS2_DEFAULT_FOV
+  else if (merged.game === 'cs2' && savedFov === DEFAULT_TRAINER_FOV) merged.fov = defaultTrainerFov('cs2')
   merged.fov = trainerFovInRange(merged.fov)
   merged.sensitivity = trainerSensitivityInRange(merged.sensitivity)
   merged.scopedMultiplier = Math.min(SCOPED_MULTIPLIER_MAX, Math.max(SCOPED_MULTIPLIER_MIN, merged.scopedMultiplier))
+  merged.windowMode = merged.windowMode === 'windowed' ? 'windowed' : 'fullscreen'
+  merged.maxFps = trainerMaxFpsInRange(merged.maxFps)
+  merged.perGame = { ...normalizePerGame(merged.perGame), [merged.game]: { sensitivity: merged.sensitivity, fov: merged.fov } }
   return merged
+}
+
+/**
+ * Apply a saved change to the trainer settings. A change of game loads that game's own sensitivity and FOV
+ * (switchTrainerGame): numbers that came along unchanged from the old game are that game's, so callers that
+ * save `{ ...trainerMouse, game }` (title-bar switch, onboarding) move correctly; a number typed for the new
+ * game in the same save is kept. A game the trainer has no scale for (League) leaves the trainer's game as it
+ * is. `perGame` is only ever written here, never taken from a copy sent back by a screen.
+ */
+export function mergeTrainerMouse(prev: unknown, patch: unknown): TrainerMouse {
+  const before = normalizeTrainerMouse(prev)
+  const change: Record<string, unknown> = { ...(isRecord(patch) ? patch : {}) }
+  delete change.perGame
+  const game = isTrainerGame(change.game) ? change.game : before.game
+  if (game === before.game) return normalizeTrainerMouse({ ...before, ...change, game })
+  const moved = switchTrainerGame(before, game)
+  const typed = (key: 'sensitivity' | 'fov'): number => {
+    const value = change[key]
+    return typeof value === 'number' && Number.isFinite(value) && value !== before[key] ? value : moved[key]
+  }
+  return normalizeTrainerMouse({ ...before, ...change, game, sensitivity: typed('sensitivity'), fov: typed('fov'), perGame: moved.perGame })
 }
 
 export function normalizeCrosshairSettings(saved: unknown): CrosshairSettings {
@@ -141,7 +183,10 @@ export function crosshairSettingsToGodot(input: Partial<CrosshairSettings> | nul
   }
 }
 
-/** Mouse settings sent to Godot (main process is the source of truth; the renderer never sends these). */
+/**
+ * Mouse settings sent to Godot (main process is the source of truth; the renderer never sends these).
+ * V-Sync and the frame cap ride in `mouse_settings` too: that is where the trainer reads them (scripts/Main.gd).
+ */
 export function trainerMouseToGodot(input: unknown): NonNullable<DrillConfig['mouse_settings']> {
   const ms = normalizeTrainerMouse(input)
   return {
@@ -152,5 +197,12 @@ export function trainerMouseToGodot(input: unknown): NonNullable<DrillConfig['mo
     movement_speed: ms.movementSpeed,
     trainer_volume: ms.trainerVolume / 100,
     scoped_multiplier: ms.scopedMultiplier,
+    vsync: ms.vsync,
+    max_fps: ms.maxFps,
   }
+}
+
+/** How to start the trainer process: the window mode is read from its command line, before any drill arrives. */
+export function trainerSpawnOptions(input: unknown): TrainerSpawnOptions {
+  return { windowed: normalizeTrainerMouse(input).windowMode === 'windowed' }
 }

@@ -51,6 +51,19 @@ describe('drillConfigFromRequest', () => {
     expect(cfg.mouse_settings?.scoped_multiplier).toBe(0.8)
     expect(drillConfigFromRequest({ scenario: 'operator_hold' }, settings).mouse_settings?.scoped_multiplier).toBe(1)
   })
+  it('sends the saved V-Sync and frame cap (renderer copies ignored)', () => {
+    const cfg = drillConfigFromRequest({ scenario: 'flick', mouse_settings: { vsync: false, max_fps: 30 } },
+      { ...settings, trainerMouse: { ...DEFAULT_TRAINER_MOUSE, vsync: true, maxFps: 144 } })
+    expect(cfg.mouse_settings).toMatchObject({ vsync: true, max_fps: 144 })
+    expect(drillConfigFromRequest({ scenario: 'flick' }, settings).mouse_settings).toMatchObject({ vsync: false, max_fps: 360 })
+  })
+  it('asks for the drill’s guided lesson only when the player asked to see it again', () => {
+    expect(drillConfigFromRequest({ scenario: 'hold_angle', lesson: true }, settings).lesson).toBe(true)
+    // Anything else leaves it to the trainer (a lesson runs the first time on this PC).
+    for (const lesson of [false, 'true', 1, null, undefined]) {
+      expect('lesson' in drillConfigFromRequest({ scenario: 'hold_angle', lesson }, settings), String(lesson)).toBe(false)
+    }
+  })
 })
 
 describe('correlationInsightsFrom', () => {

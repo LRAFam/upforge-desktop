@@ -261,6 +261,7 @@ import { shouldUseOnboardingBonus } from '../../src/lib/onboarding-match-mission
 import { parseMatchHighlightsFromApi } from '../../src/lib/match-highlights'
 import { extractSpatialFromAnalysisPayload } from '../../src/lib/analysis-enrichment'
 import { desktopVodResultsUrl, isPrimaryGame } from '../../src/lib/games'
+import { isTrainerGame } from '../../src/lib/trainer-games'
 import { analysisScoreText, coachingReadyBody } from '../../src/lib/analysis-ready-copy'
 import { RecordingsStore, riotAccountRole, type ClipOnlyReason, type PendingRecording } from './recordings-store'
 import { flushAllCataloguesSync, rowTimelineSummary } from './recordings-store-files'
@@ -1728,7 +1729,8 @@ function syncPrimaryGameFromUser(): void {
   const current = settingsManager.get()
   settingsManager.save({
     primaryGame: game,
-    trainerMouse: { ...current.trainerMouse, game },
+    // The trainer follows games it has a sensitivity scale for (not League), with that game's own sensitivity.
+    ...(isTrainerGame(game) ? { trainerMouse: { ...current.trainerMouse, game } } : {}),
   })
   mainWindow?.webContents.send('settings:changed', settingsManager.get())
   handlePrimaryGameSwitch(game, current.primaryGame)

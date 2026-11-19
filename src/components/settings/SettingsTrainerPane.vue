@@ -1,12 +1,16 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useSettings } from '../../composables/useSettings'
 import SettingsSection from './SettingsSection.vue'
 import SettingsRow from './SettingsRow.vue'
+import SettingsToggle from './SettingsToggle.vue'
 import CrosshairSettingsPanel from '../CrosshairSettingsPanel.vue'
 import { uiV3 } from '../../lib/ui-v3'
 import CrosshairEditorV3 from '../v3/settings/CrosshairEditorV3.vue'
 import { shortcutKeyParts } from '../v3/settings/settings-display'
 import { clampTrainerMouseInput } from '../../lib/trainer-mouse-limits'
+import { TRAINER_GAMES, TRAINER_GAME_LABELS } from '../../lib/trainer-games'
+import { TRAINER_FRAME_CAPS, frameCapLabel, type TrainerWindowMode } from '../../lib/trainer-display'
 
 const {
   conflictResults,
@@ -22,12 +26,21 @@ const {
   hotkeys,
   inGameOverlayEnabled,
   isMac,
+  isWindows,
   visibleInGameFeedbackOptions,
   rebinding,
+  selectTrainerGame,
   setInGameFeedback,
   settings,
   startRebind,
 } = useSettings()
+
+const MOVEMENT_PRESETS = [{ label: 'Slow', value: 4.4 }, { label: 'Run', value: 6.75 }, { label: 'Fast', value: 9.0 }]
+const WINDOW_MODES: Array<{ value: TrainerWindowMode; label: string }> = [{ value: 'fullscreen', label: 'Fullscreen' }, { value: 'windowed', label: 'Window' }]
+/** The offered frame caps, plus a saved one that is not among them. */
+const frameCaps = computed(() => TRAINER_FRAME_CAPS.includes(settings.trainerMouse.maxFps)
+  ? TRAINER_FRAME_CAPS
+  : [...TRAINER_FRAME_CAPS, settings.trainerMouse.maxFps])
 
 const HOTKEY_ROWS = [
   { id: 'save-clip', label: 'Bookmark clip moment', hint: 'Press during a match to save a clip', fallback: 'F9', overlayOnly: false },
@@ -39,9 +52,9 @@ const HOTKEY_ROWS = [
 <template>
   <div v-if="uiV3" class="uf-set-pane">
     <SettingsSection title="Mouse &amp; trainer" hint="Match the aim trainer to how your mouse feels in game">
-      <SettingsRow label="Game" hint="The trainer copies this game's sensitivity scale.">
-        <select v-model="settings.trainerMouse.game" aria-label="Game" class="uf-select is-inline" @change="debouncedSave">
-          <option value="valorant">Valorant</option><option value="cs2">CS2</option><option value="deadlock">Deadlock</option><option value="apex">Apex Legends</option><option value="overwatch2">Overwatch 2</option><option value="custom">Custom</option>
+      <SettingsRow label="Game" hint="The trainer copies this game's sensitivity scale. Sensitivity and FOV are kept for each game.">
+        <select :value="settings.trainerMouse.game" aria-label="Game" class="uf-select is-inline" @change="selectTrainerGame(($event.target as HTMLSelectElement).value)">
+          <option v-for="game in TRAINER_GAMES" :key="game" :value="game">{{ TRAINER_GAME_LABELS[game] }}</option>
         </select>
       </SettingsRow>
       <div class="uf-field">
@@ -70,9 +83,9 @@ const HOTKEY_ROWS = [
       <div class="uf-field">
         <span class="uf-t3">Movement speed</span>
         <div class="uf-seg" role="group" aria-label="Movement speed">
-          <button v-for="preset in [{ label: 'Walk', value: 4.4 }, { label: 'Run', value: 6.75 }, { label: 'Fast', value: 9.0 }]" :key="preset.value" type="button" :aria-pressed="(settings.trainerMouse.movementSpeed ?? 6.75) === preset.value" @click="settings.trainerMouse.movementSpeed = preset.value; debouncedSave()">{{ preset.label }}</button>
+          <button v-for="preset in MOVEMENT_PRESETS" :key="preset.value" type="button" :aria-pressed="(settings.trainerMouse.movementSpeed ?? 6.75) === preset.value" @click="settings.trainerMouse.movementSpeed = preset.value; debouncedSave()">{{ preset.label }}</button>
         </div>
-        <p class="uf-t4">Walk = Valorant shift-walk. Run = Valorant default. Fast = free aim feel.</p>
+        <p class="uf-t4">Run is Valorant's run speed. Hold Shift in a drill to walk.</p>
       </div>
       <div class="uf-field">
         <div class="uf-usage-head"><span class="uf-t3">Trainer volume</span><span class="uf-t4 uf-num">{{ settings.trainerMouse.trainerVolume ?? 80 }}%</span></div>
@@ -83,6 +96,22 @@ const HOTKEY_ROWS = [
         <input v-model.number="settings.trainerMouse.scopedMultiplier" type="number" min="0.1" max="3" step="0.01" class="uf-input" @change="debouncedSave">
         <span class="uf-t4">Match your in-game Scoped Sensitivity Multiplier</span>
       </label>
+    </SettingsSection>
+
+    <SettingsSection title="Trainer display" hint="How the aim trainer window runs. Changes apply from the next drill.">
+      <SettingsRow v-if="isWindows" label="Window mode" hint="Fullscreen has the lowest input lag. Pick Window if capture software or a second screen needs it.">
+        <div class="uf-seg" role="group" aria-label="Window mode">
+          <button v-for="mode in WINDOW_MODES" :key="mode.value" type="button" :aria-pressed="settings.trainerMouse.windowMode === mode.value" @click="settings.trainerMouse.windowMode = mode.value; debouncedSave()">{{ mode.label }}</button>
+        </div>
+      </SettingsRow>
+      <SettingsRow label="V-Sync" hint="Off has the lowest input lag. Turn it on if the picture tears.">
+        <SettingsToggle label="V-Sync" :on="settings.trainerMouse.vsync" @click="settings.trainerMouse.vsync = !settings.trainerMouse.vsync; debouncedSave()" />
+      </SettingsRow>
+      <SettingsRow label="Frame cap" hint="The most frames a second the trainer draws.">
+        <select :value="settings.trainerMouse.maxFps" aria-label="Frame cap" class="uf-select is-inline" @change="settings.trainerMouse.maxFps = Number(($event.target as HTMLSelectElement).value); debouncedSave()">
+          <option v-for="fps in frameCaps" :key="fps" :value="fps">{{ frameCapLabel(fps) }}</option>
+        </select>
+      </SettingsRow>
     </SettingsSection>
 
     <SettingsSection title="Crosshair" hint="Preview and edit your trainer crosshair">
@@ -139,13 +168,8 @@ const HOTKEY_ROWS = [
     >
       <div>
         <label class="mb-1 block text-xs text-gray-400">Game</label>
-        <select v-model="settings.trainerMouse.game" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none" @change="debouncedSave">
-          <option value="valorant">Valorant</option>
-          <option value="cs2">CS2</option>
-          <option value="deadlock">Deadlock</option>
-          <option value="apex">Apex Legends</option>
-          <option value="overwatch2">Overwatch 2</option>
-          <option value="custom">Custom</option>
+        <select :value="settings.trainerMouse.game" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none" @change="selectTrainerGame(($event.target as HTMLSelectElement).value)">
+          <option v-for="game in TRAINER_GAMES" :key="game" :value="game">{{ TRAINER_GAME_LABELS[game] }}</option>
         </select>
       </div>
 
@@ -192,7 +216,7 @@ const HOTKEY_ROWS = [
         <label class="mb-2 block text-xs text-gray-400">Movement speed</label>
         <div class="grid grid-cols-3 gap-2">
           <button
-            v-for="preset in [{ label: 'Walk', value: 4.4 }, { label: 'Run', value: 6.75 }, { label: 'Fast', value: 9.0 }]"
+            v-for="preset in MOVEMENT_PRESETS"
             :key="preset.value"
             type="button"
             class="rounded-xl border py-2 text-[11px] font-semibold transition-all"
@@ -200,7 +224,7 @@ const HOTKEY_ROWS = [
             @click="settings.trainerMouse.movementSpeed = preset.value; debouncedSave()"
           >{{ preset.label }}</button>
         </div>
-        <p class="mt-2 text-xs text-gray-600">Walk = Valorant shift-walk. Run = Valorant default. Fast = free aim feel.</p>
+        <p class="mt-2 text-xs text-gray-600">Run is Valorant's run speed. Hold Shift in a drill to walk.</p>
       </div>
 
       <div>
