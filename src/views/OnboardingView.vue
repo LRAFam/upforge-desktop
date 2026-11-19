@@ -1269,6 +1269,7 @@ import { resolveOnboardingStep } from '../lib/onboarding-flow'
 import { VALORANT_FOCUS_DESKTOP_ONLY } from '../lib/focus'
 import { useRoute, useRouter } from 'vue-router'
 import { PRIMARY_GAME_ARTWORK, isPrimaryGame, type PrimaryGame } from '../lib/games'
+import { isTrainerGame } from '../lib/trainer-games'
 import { resolveMaxValorantAccounts } from '../lib/valorant-account-cap'
 import {
   deriveOnboardingMissionProgress,
@@ -2631,10 +2632,8 @@ async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; r
       onboardingCampaignSyncPending: true,
       firstRun: false,
       primaryGame: selectedGame.value,
-      trainerMouse: {
-        ...current.trainerMouse,
-        game: selectedGame.value,
-      },
+      // The trainer follows games it has a sensitivity scale for (not League), with that game's own sensitivity.
+      ...(isTrainerGame(selectedGame.value) ? { trainerMouse: { ...current.trainerMouse, game: selectedGame.value } } : {}),
     })
     void syncPendingOnboardingCampaign({
       complete: () => window.api.auth.completeOnboardingCampaign(),

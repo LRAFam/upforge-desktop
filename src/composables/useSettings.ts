@@ -19,6 +19,8 @@ import { uiV3 } from '../lib/ui-v3'
 import { readArchiveQuota } from '../lib/archive-retention-hint'
 import { usePrimaryGame } from './usePrimaryGame'
 import { cs2AccountHint, cs2SteamNameToShow, followSelectedGame } from '../components/settings/settings-game'
+import { isTrainerGame, switchTrainerGame } from '../lib/trainer-games'
+import { TRAINER_MAX_FPS_DEFAULT } from '../lib/trainer-display'
 
 export type RiotAccountRow = {
   id: number
@@ -143,6 +145,8 @@ function createSettings() {
     system: true,
   })
   const isMac = ref(navigator.userAgent.toLowerCase().includes('mac'))
+  /** Settings only Windows uses (the trainer runs in a window everywhere else). */
+  const isWindows = ref(navigator.userAgent.includes('Windows'))
   const audioStatus = ref<{ winAudioMode: string | false | null; audioEnabled: boolean } | null>(null)
   const fixingAudio = ref(false)
   const testingRiotApi = ref(false)
@@ -524,6 +528,10 @@ function createSettings() {
       movementSpeed: 6.75,
       trainerVolume: 80,
       scopedMultiplier: 1.0,
+      perGame: {},
+      windowMode: 'fullscreen',
+      vsync: false,
+      maxFps: TRAINER_MAX_FPS_DEFAULT,
     },
     autoOpenBrowser: false,
     crosshairSettings: {
@@ -826,8 +834,7 @@ function createSettings() {
 
   async function selectPrimaryGame(game: PrimaryGame): Promise<void> {
     if (settings.primaryGame === game) return
-    settings.primaryGame = game
-    settings.trainerMouse.game = game
+    followSelectedGame(settings, game)
     await window.api.settings.save({ primaryGame: game, trainerMouse: { ...toRaw(settings.trainerMouse) } })
     if (game === 'deadlock') void loadDeadlockLink()
     else if (game === 'cs2') await loadCs2Faceit()
@@ -864,14 +871,35 @@ function createSettings() {
     window.api.cs2.openAnalyze()
   }
   
+  async function saveAll(): Promise<void> {
+    // toRaw strips Vue Proxy wrappers so arrays/objects serialize cleanly over IPC
+    await window.api.settings.save(JSON.parse(JSON.stringify(toRaw(settings))))
+    await refreshRecordingBackendStatus()
+    showSaved()
+  }
+
   function debouncedSave(): void {
     if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(async () => {
-      // toRaw strips Vue Proxy wrappers so arrays/objects serialize cleanly over IPC
-      await window.api.settings.save(JSON.parse(JSON.stringify(toRaw(settings))))
-      await refreshRecordingBackendStatus()
-      showSaved()
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      void saveAll()
     }, 500)
+  }
+
+  /**
+   * Settings › Trainer game picker: the trainer moves to `game` with that game's own sensitivity and FOV
+   * (the main process does the same move for the title bar). An edit still waiting to save is saved first,
+   * so it lands on the game it was typed for.
+   */
+  async function selectTrainerGame(game: string): Promise<void> {
+    if (!isTrainerGame(game) || settings.trainerMouse.game === game) return
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+      try { await saveAll() } catch { /* the switch still goes ahead */ }
+    }
+    Object.assign(settings.trainerMouse, switchTrainerGame(settings.trainerMouse, game))
+    debouncedSave()
   }
   
   // AI training: one account setting on the server (ai_training_opt_out, default false = included).
@@ -1488,6 +1516,7 @@ function createSettings() {
     installUpdate,
     isDev,
     isMac,
+    isWindows,
     loadHotkeyStatus,
     loadStorageUsage,
     obsConnect,
@@ -1536,6 +1565,7 @@ function createSettings() {
     riotAccountsMax,
     sectionOpen,
     selectPrimaryGame,
+    selectTrainerGame,
     setInGameFeedback,
     setRecordingPreset,
     setCreatorQuality,

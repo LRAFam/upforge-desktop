@@ -88,6 +88,16 @@ describe('TrainerBridge', () => {
     bridge.kill()
   })
 
+  it('starts the trainer in a window when that was chosen (the trainer reads it from its command line)', async () => {
+    const { bridge, procs } = setup({ godot: p => { fakeGodot(p) } })
+    await bridge.launch(config, { windowed: true })
+    expect(procs[0].args.slice(2)).toEqual(['--', expect.stringMatching(/^--upforge-port=\d+$/), '--upforge-windowed'])
+    bridge.kill()
+    await bridge.launch(config)
+    expect(procs[1].args).not.toContain('--upforge-windowed')
+    bridge.kill()
+  })
+
   it('forwards results with their launch, never events; one session-ended per launch', async () => {
     let godot: ReturnType<typeof fakeGodot> | null = null
     const { bridge, ended, results, procs } = setup({ godot: p => { godot = fakeGodot(p) } })

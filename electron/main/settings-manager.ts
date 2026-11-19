@@ -2,7 +2,9 @@ import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { recordingDirectoryProblem } from './recording-save-safety'
-import { DEFAULT_CROSSHAIR_SETTINGS, DEFAULT_TRAINER_MOUSE, normalizeCrosshairSettings, normalizeTrainerMouse } from './trainer-settings'
+import { DEFAULT_CROSSHAIR_SETTINGS, mergeTrainerMouse, normalizeCrosshairSettings, normalizeTrainerMouse } from './trainer-settings'
+import type { TrainerAimByGame, TrainerGame } from '../../src/lib/trainer-games'
+import type { TrainerWindowMode } from '../../src/lib/trainer-display'
 import {
   migrateOnboardingFlags,
   withOnboardingComplete,
@@ -180,7 +182,9 @@ export interface AppSettings {
   /** Mouse & trainer sensitivity settings */
   trainerMouse: {
     dpi: number
-    game: 'valorant' | 'cs2' | 'deadlock' | 'lol' | 'apex' | 'overwatch2' | 'custom'
+    /** The game whose sensitivity scale the trainer copies (src/lib/trainer-games.ts). */
+    game: TrainerGame
+    /** The current game's sensitivity and FOV; every game's own are kept in `perGame`. */
     sensitivity: number
     fov: number
     rawInput: boolean
@@ -188,6 +192,13 @@ export interface AppSettings {
     movementSpeed: number   // m/s — how fast the player moves in trainer scenarios
     trainerVolume: number   // 0–100 — hit/miss sound volume
     scopedMultiplier: number // 0.1–3.0 — in-game Scoped Sensitivity Multiplier (Operator Hold)
+    /** Sensitivity and FOV last used for each game, so a game switch never keeps another game's number. */
+    perGame: TrainerAimByGame
+    /** `windowed` starts the trainer in a window (`--upforge-windowed`); `fullscreen` is the trainer's own choice. */
+    windowMode: TrainerWindowMode
+    vsync: boolean
+    /** Frame cap: 0 = no cap, else 30–1000 (trainer default 360). */
+    maxFps: number
   }
   /** Crosshair appearance for the aim trainer */
   crosshairSettings: {
@@ -272,7 +283,7 @@ const DEFAULTS: AppSettings = {
   obsPassword: '',
   obsReplayBufferSeconds: 30,
   obsPreserveActiveScene: false,
-  trainerMouse: { ...DEFAULT_TRAINER_MOUSE },
+  trainerMouse: normalizeTrainerMouse(null),
   crosshairSettings: { ...DEFAULT_CROSSHAIR_SETTINGS },
   autoOpenBrowser: false,
 }
@@ -420,8 +431,9 @@ export class SettingsManager {
       ...applyRecordingPresetFields({ ...this.settings, ...normalizedPartial }, allowCreator),
     }
     // Trainer mouse / crosshair: a partial save keeps the other fields (and defaults for missing ones).
+    // A game switch loads that game's own sensitivity and FOV (mergeTrainerMouse).
     if (normalizedPartial.trainerMouse) {
-      this.settings.trainerMouse = normalizeTrainerMouse({ ...prevTrainerMouse, ...normalizedPartial.trainerMouse })
+      this.settings.trainerMouse = mergeTrainerMouse(prevTrainerMouse, normalizedPartial.trainerMouse)
     }
     if (normalizedPartial.crosshairSettings) {
       this.settings.crosshairSettings = normalizeCrosshairSettings({ ...prevCrosshair, ...normalizedPartial.crosshairSettings })

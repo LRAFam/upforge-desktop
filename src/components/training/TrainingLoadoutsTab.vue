@@ -7,20 +7,22 @@ import { uiV3 } from '../../lib/ui-v3'
 import UfButton from '../v3/UfButton.vue'
 import CrosshairPreview from '../v3/practice/CrosshairPreview.vue'
 import { getMapImage } from '../../lib/valorant'
+import { trainerAimFacts } from '../../lib/trainer-games'
 
 // Real map art behind the crosshair so colour and outline contrast read like in game.
 const previewBackdrop = getMapImage('Ascent')
 
 const router = useRouter()
 const crosshair = ref<CrosshairSettings | null>(null)
-const mouseDpi = ref<number | null>(null)
+/** Game, sensitivity and FOV the trainer launches with (it never reads DPI). */
+const aimFacts = ref<Array<{ label: string; value: string }>>([])
 
 onMounted(async () => {
   try {
     const s = await window.api.settings.get()
     // Older saved settings can miss newer fields; fill them from the trainer defaults.
     crosshair.value = s.crosshairSettings ? { ...DEFAULT_CROSSHAIR, ...(s.crosshairSettings as Partial<CrosshairSettings>) } : null
-    mouseDpi.value = s.trainerMouse?.dpi ?? null
+    aimFacts.value = trainerAimFacts(s.trainerMouse)
   } catch { /* ignore */ }
 })
 
@@ -37,7 +39,7 @@ function openSettings() {
     <div class="uf-lo-row">
       <CrosshairPreview v-if="crosshair" :settings="crosshair" :scale="2" :size="200" :background="previewBackdrop" />
       <dl class="uf-lo-facts">
-        <div v-if="mouseDpi"><dt class="uf-t4">Mouse DPI</dt><dd class="uf-d4">{{ mouseDpi }}</dd></div>
+        <div v-for="fact in aimFacts" :key="fact.label"><dt class="uf-t4">{{ fact.label }}</dt><dd class="uf-d4">{{ fact.value }}</dd></div>
         <div><dt class="uf-t4">Crosshair</dt><dd class="uf-t3">Synced to trainer · shown at 2×</dd></div>
       </dl>
     </div>
@@ -76,7 +78,7 @@ function openSettings() {
           />
         </div>
         <div class="text-[11px] text-gray-500 space-y-1">
-          <p v-if="mouseDpi">DPI: <span class="text-gray-300 font-semibold tabular-nums">{{ mouseDpi }}</span></p>
+          <p v-for="fact in aimFacts" :key="fact.label">{{ fact.label }}: <span class="text-gray-300 font-semibold tabular-nums">{{ fact.value }}</span></p>
           <p>Crosshair synced to trainer</p>
         </div>
       </div>

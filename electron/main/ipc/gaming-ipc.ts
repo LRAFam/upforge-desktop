@@ -16,6 +16,7 @@ import { openExternalSafe, openPathSafe } from '../shell-open'
 import { PerformanceManager } from '../performance-manager'
 import { TrainerBridge, trainerLaunchErrorMessage } from '../trainer-bridge'
 import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest, drillGameParams } from '../trainer-payload'
+import { trainerSpawnOptions } from '../trainer-settings'
 import { sendOverlayData } from '../overlay-window'
 import { APP_VERSION } from '../app-version'
 import { TRAINER_VERSION } from '../trainer-version'
@@ -149,9 +150,10 @@ export function setupGamingHandlers(
   ipcMain.handle('trainer:launch', async (_e, config: Record<string, unknown>) => {
     if (!trainerBridge) return { ok: false, error: 'Trainer not available' }
     try {
-      const enrichedConfig = drillConfigFromRequest(config ?? {}, settingsManager.get())
+      const saved = settingsManager.get()
+      const enrichedConfig = drillConfigFromRequest(config ?? {}, saved)
       const ownerAtLaunch = auth.getUser()?.id ?? null
-      await trainerBridge.launch(enrichedConfig)
+      await trainerBridge.launch(enrichedConfig, trainerSpawnOptions(saved.trainerMouse))
       const launchId = trainerBridge.lastLaunch?.launchId
       if (launchId != null) {
         launchOwners.set(launchId, ownerAtLaunch)

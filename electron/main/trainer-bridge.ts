@@ -38,6 +38,11 @@ export interface DrillConfig {
   target_size_override?: number
   /** Assigned/user drill this run counts towards (never set for free play). Sent to the API in metadata. */
   user_drill_id?: number
+  /**
+   * `true` runs the drill's guided lesson before the clock even when this PC has seen it ("Show the lesson").
+   * Left out, the trainer shows a lesson the first time only. Drills without a lesson ignore it.
+   */
+  lesson?: boolean
   context?: {
     weakness?: string
     score?: number
@@ -52,6 +57,10 @@ export interface DrillConfig {
     trainer_volume?: number
     /** In-game Scoped Sensitivity Multiplier (Operator Hold). */
     scoped_multiplier?: number
+    /** V-Sync on or off for the drill (trainer default: off). */
+    vsync?: boolean
+    /** Frame cap; 0 = no cap (trainer default: 360). */
+    max_fps?: number
   }
   crosshair_settings?: {
     color: [number, number, number]
@@ -203,6 +212,17 @@ export function resolveTrainerSpawn(opts: {
   return { cmd: godotBin, args: ['--path', path.resolve(opts.appPath, '..', 'upforge-trainer')] }
 }
 
+/** How to start the trainer process. Read by the trainer at start, before any drill config arrives. */
+export interface TrainerSpawnOptions {
+  /** `--upforge-windowed`: a maximized window instead of the trainer's own choice (exclusive fullscreen on Windows). */
+  windowed?: boolean
+}
+
+/** The trainer's own arguments (after `--`): the connection port, then the window mode (scripts/Main.gd). */
+export function trainerUserArgs(port: number, opts: TrainerSpawnOptions = {}): string[] {
+  return [`--upforge-port=${port}`, ...(opts.windowed ? ['--upforge-windowed'] : [])]
+}
+
 /** Ask the OS for a free localhost port. */
 export function getFreePort(host = TRAINER_HOST): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -315,7 +335,7 @@ export class TrainerBridge {
    * Resolves once the config is sent; rejects (after killing the process) when it cannot connect.
    * Every launch ends with exactly one `trainer:session-ended`.
    */
-  async launch(config: DrillConfig): Promise<void> {
+  async launch(config: DrillConfig, spawnOpts: TrainerSpawnOptions = {}): Promise<void> {
     // Always kill any lingering process before spawning a fresh one (a previous drill may be in its
     // post-completion quit delay, and a new config sent to a dying process would end mid-countdown).
     if (this._launch) {
@@ -343,7 +363,7 @@ export class TrainerBridge {
       const { cmd, args } = this._resolveSpawnArgs()
       state.port = await (this._opts.getPort ?? getFreePort)()
       if (this._launch !== state) throw supersededError()
-      const fullArgs = [...args, '--', `--upforge-port=${state.port}`]
+      const fullArgs = [...args, '--', ...trainerUserArgs(state.port, spawnOpts)]
       log.info('[TrainerBridge] Spawning trainer:', cmd, fullArgs)
       const proc = (this._opts.spawn ?? nodeSpawn)(cmd, fullArgs, { detached: false })
       state.proc = proc

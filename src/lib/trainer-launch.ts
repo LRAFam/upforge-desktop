@@ -14,6 +14,18 @@ export interface TrainerLaunchRequest {
   difficulty?: string
   context?: Record<string, unknown>
   user_drill_id?: number | null
+  /** Run the drill's guided lesson first even when this PC has seen it (sent as `lesson: true`, this launch only). */
+  lesson?: boolean
+}
+
+/**
+ * Drills with a guided lesson in the bundled trainer (upforge-trainer `_has_lesson()` at the tag in
+ * trainer-version.json). Elsewhere `lesson: true` does nothing, so "Show the lesson" is not offered there.
+ */
+const DRILLS_WITH_LESSON: ReadonlySet<string> = new Set(['head_height', 'angle_clearing', 'hold_angle', 'jiggle_peek', 'strafe_aim'])
+
+export function drillHasLesson(scenario: string): boolean {
+  return DRILLS_WITH_LESSON.has(scenario)
 }
 
 export interface TrainerLaunchOutcome {
@@ -43,10 +55,11 @@ export function trainerLaunchConfig(req: TrainerLaunchRequest): LaunchConfig {
 
 export const TRAINER_LAUNCH_FAILED_MESSAGE = 'The aim trainer did not start. Try again, or restart UpForge.'
 
+/** The returned `config` never asks for the lesson, so "Play again" after "Show the lesson" is a normal run. */
 export async function launchTrainer(req: TrainerLaunchRequest): Promise<TrainerLaunchOutcome> {
   const config = trainerLaunchConfig(req)
   try {
-    const res = await window.api.trainer.launch({ ...config })
+    const res = await window.api.trainer.launch({ ...config, ...(req.lesson === true ? { lesson: true } : {}) })
     if (res?.ok) return { ok: true, launchId: res.launchId, config }
     return { ok: false, error: res?.error || TRAINER_LAUNCH_FAILED_MESSAGE, config }
   } catch (e) {
