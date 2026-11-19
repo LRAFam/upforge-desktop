@@ -18,8 +18,19 @@ export interface DeadlockCloudKillEvent {
   victim_hero?: string
 }
 
+/** The review's end-of-match scoreboard (`match_stats.player_stats`): the replay's own counters, equal to Valve's. */
+export interface DeadlockCloudScoreboard {
+  kills?: number | null
+  deaths?: number | null
+  assists?: number | null
+}
+
 export interface DeadlockCloudTimelineInput {
   events: DeadlockCloudKillEvent[] | null | undefined
+  /** Final K/D/A. The kill feed can list assists Valve does not count, so this wins over counting `events`. */
+  scoreboard?: DeadlockCloudScoreboard | null
+  /** Net worth at match end (`match_stats.economy.final_souls`). */
+  finalSouls?: number | null
   hero?: string | null
   jobId: string
   recordingStartTime: number
@@ -35,6 +46,14 @@ function valid(e: unknown): e is DeadlockCloudKillEvent {
   const x = e as DeadlockCloudKillEvent
   return !!x && (x.type === 'kill' || x.type === 'death' || x.type === 'assist')
     && typeof x.time_seconds === 'number' && Number.isFinite(x.time_seconds) && x.time_seconds >= 0
+}
+
+const count = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0
+
+/** Scoreboard K/D/A when the review has all three; null for older reviews, which fall back to counting the feed. */
+function scoreboardKda(board: DeadlockCloudScoreboard | null | undefined): { kills: number; deaths: number; assists: number } | null {
+  if (!board || !count(board.kills) || !count(board.deaths) || !count(board.assists)) return null
+  return { kills: board.kills, deaths: board.deaths, assists: board.assists }
 }
 
 /** Returns null when the review has no usable events, so a sparse recording stays sparse. */
@@ -73,10 +92,11 @@ export function deadlockTimelineFromCloud(input: DeadlockCloudTimelineInput): Ma
   timeline.playerKills = kills
   timeline.playerDeaths = deaths
   timeline.killEvents = all
+  // Final numbers come from the scoreboard; the feed rows above are for the timeline only.
+  const kda = scoreboardKda(input.scoreboard)
+    ?? { kills: kills.length, deaths: deaths.length, assists: all.length - kills.length - deaths.length }
   timeline.finalStats = {
-    kills: kills.length,
-    deaths: deaths.length,
-    assists: all.length - kills.length - deaths.length,
+    ...kda,
     score: 0,
     summonerName: null,
     agent: input.hero ?? null,
@@ -85,6 +105,7 @@ export function deadlockTimelineFromCloud(input: DeadlockCloudTimelineInput): Ma
     headshotPct: null,
     adr: null,
     accountLevel: null,
+    endSouls: count(input.finalSouls) ? input.finalSouls : null,
   }
   timeline.matchDetails = {
     source: 'deadlock_cloud_replay',

@@ -297,6 +297,8 @@ export interface FinalPlayerStats {
   visionScore?: number | null
   vision_score?: number | null
   cs?: number | null
+  /** Deadlock: net worth at match end from the replay review (Valve's number) — null when unknown */
+  endSouls?: number | null
 }
 
 /** Round score snapshot captured from presence polling */
