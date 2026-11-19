@@ -351,3 +351,117 @@ export function drillDetailCells(run: { scenario: string; metadata?: Record<stri
   }
   return cells
 }
+
+/**
+ * The number a drill is built on, read from the run's metadata (the trainer sends it, the API stores it):
+ * Head Height's placement error (with its horizontal and vertical parts), Strafe Aim's clean-stop rate
+ * and 3D Duel's accuracy while moving and while still. One entry per value; the parts sit beside it.
+ */
+interface MeasureDef {
+  key: string
+  label: string
+  unit: string
+  digits: number
+  /** Metadata count that must be above 0 for the value to be measured (the trainer sends 0 for none). */
+  needs?: (m: Record<string, unknown>) => boolean
+}
+interface DrillMeasureDef { measures: MeasureDef[]; parts: MeasureDef[]; note: string }
+
+const shotsAbove0 = (...keys: string[]) => (m: Record<string, unknown>) =>
+  keys.reduce((t, k) => t + (countOf(m[k]) ?? 0), 0) > 0
+
+const DRILL_MEASURES: Record<string, DrillMeasureDef> = {
+  head_height: {
+    measures: [{ key: 'mean_placement_error_deg', label: 'Placement error', unit: '°', digits: 2 }],
+    parts: [
+      { key: 'mean_horizontal_error_deg', label: 'Horizontal', unit: '°', digits: 2 },
+      { key: 'mean_vertical_error_deg', label: 'Vertical', unit: '°', digits: 2 },
+    ],
+    note: 'Average distance from the crosshair to the head when it first became visible. Lower is better.',
+  },
+  strafe_aim: {
+    measures: [{ key: 'counter_strafe_rate_pct', label: 'Clean stops', unit: '%', digits: 0, needs: shotsAbove0('still_shots', 'moving_shots') }],
+    parts: [
+      { key: 'still_shots', label: 'Shots after stopping', unit: '', digits: 0 },
+      { key: 'moving_shots', label: 'Shots while moving', unit: '', digits: 0 },
+    ],
+    note: 'Share of shots fired at or under the game\'s accurate movement speed.',
+  },
+  duel: {
+    measures: [
+      { key: 'moving_accuracy_pct', label: 'Moving accuracy', unit: '%', digits: 0, needs: shotsAbove0('shots_while_moving') },
+      { key: 'still_accuracy_pct', label: 'Still accuracy', unit: '%', digits: 0, needs: shotsAbove0('shots_while_still') },
+    ],
+    parts: [],
+    note: 'Hits per shot, split by whether you were moving or standing still when you fired.',
+  },
+}
+
+function measureValue(def: MeasureDef, m: Record<string, unknown>): number | null {
+  const n = numOf(m[def.key])
+  if (n === null || n < 0) return null
+  return def.needs && !def.needs(m) ? null : n
+}
+
+function measureText(def: MeasureDef, n: number): string {
+  return `${n.toFixed(def.digits)}${def.unit}`
+}
+
+export interface DrillMeasure {
+  /** The drill's own numbers, shown before the score. */
+  measures: ResultCountCell[]
+  /** What makes them up (Head Height: horizontal and vertical error). */
+  parts: ResultCountCell[]
+  note: string
+}
+
+/** The drill's own measure for one run; null for other drills or when the run has none of its values. */
+export function drillMeasure(run: { scenario: string; metadata?: Record<string, unknown> }): DrillMeasure | null {
+  const def = DRILL_MEASURES[run.scenario]
+  if (!def) return null
+  const m = run.metadata ?? {}
+  const cells = (defs: MeasureDef[]) => defs.flatMap((d) => {
+    const n = measureValue(d, m)
+    return n === null ? [] : [{ label: d.label, value: measureText(d, n) }]
+  })
+  const measures = cells(def.measures)
+  if (!measures.length) return null
+  return { measures, parts: cells(def.parts), note: def.note }
+}
+
+export interface DrillMeasureTrend {
+  label: string
+  /** Oldest first, at most the last 10 runs that measured it. */
+  values: number[]
+  /** The same values with their unit ("2.15°", "64%"). */
+  texts: string[]
+}
+
+export const DRILL_MEASURE_TREND_RUNS = 10
+
+/** Per-measure trend over these runs (any order): the last 10 measured values, oldest first. */
+export function drillMeasureTrends(
+  scenario: string,
+  runs: ReadonlyArray<{ completed_at: string; metadata?: Record<string, unknown> }>,
+): DrillMeasureTrend[] {
+  const def = DRILL_MEASURES[scenario]
+  if (!def) return []
+  const ordered = [...runs].sort((a, b) => trainingTimestamp(a.completed_at) - trainingTimestamp(b.completed_at))
+  return def.measures.flatMap((d) => {
+    const values = ordered.map(r => measureValue(d, r.metadata ?? {}))
+      .filter((n): n is number => n !== null).slice(-DRILL_MEASURE_TREND_RUNS)
+    return values.length ? [{ label: d.label, values, texts: values.map(n => measureText(d, n)) }] : []
+  })
+}
+
+/** SVG path for a small trend line (w × h), scaled to the values' own range; '' under two values. */
+export function measureSparkPath(values: readonly number[], w: number, h: number): string {
+  if (values.length < 2) return ''
+  const lo = Math.min(...values), hi = Math.max(...values)
+  const span = hi - lo || 1
+  return 'M ' + values.map((v, i) => {
+    const x = (i / (values.length - 1)) * w
+    const y = hi === lo ? h / 2 : h - ((v - lo) / span) * h
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' L ')
+}

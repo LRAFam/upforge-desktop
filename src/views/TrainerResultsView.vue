@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useLifetime } from '../composables/useLifetime'
-import { priorTrainingSessions, reactionMetricScore, isTrackingScenario, trainingComparisonRequest, resultCountCells, reactionMetricLabel, isTimeToHitMetric, accuracyMetricLabel, drillDetailCells, isConsistencyMeasured } from '../lib/training-result-metrics'
+import { priorTrainingSessions, reactionMetricScore, isTrackingScenario, trainingComparisonRequest, resultCountCells, reactionMetricLabel, isTimeToHitMetric, accuracyMetricLabel, drillDetailCells, isConsistencyMeasured, drillMeasure, drillMeasureTrends, measureSparkPath } from '../lib/training-result-metrics'
 import { TRAINER_SCENARIOS, isBetaScenario, trainerScenarioDef, type TrainerUiGroup } from '../lib/trainer-scenarios'
 import { asSessionEnded, drillHasLesson, launchConfigFromInfo, launchTrainer, sessionEndedMessage } from '../lib/trainer-launch'
 import upforgeLogo from '../assets/upforge-logo.webp'
@@ -149,6 +149,16 @@ const chartScores = computed<number[]>(() => {
   return [...hist, result.value.score]
 })
 const trendMessage = computed(() => runTrendMessage(historyState.value, chartScores.value.length))
+
+// The drill's own measure (Head Height placement error, Strafe Aim clean stops, 3D Duel moving / still
+// accuracy) and its last 10 values on these settings (earlier matching runs + this one).
+const measure = computed(() => drillMeasure(result.value))
+const measureTrends = computed(() => (measure.value
+  ? drillMeasureTrends(result.value.scenario, [...priorSessions.value, result.value])
+  : []))
+// Older Head Height runs without the total keep the vertical-only block below.
+const showVerticalBlock = computed(() => ['head_height', 'angle_clearing', 'distance_switching', 'clear_site'].includes(result.value.scenario)
+  && !(result.value.scenario === 'head_height' && measure.value))
 const showTrendChart = computed(() => historyState.value === 'ok' && chartScores.value.length >= 2)
 
 // ── SVG chart ─────────────────────────────────────────────────────────────────
@@ -392,6 +402,10 @@ onMounted(async () => {
 
       <!-- Numbers inline -->
       <dl class="uf-tr-stats uf-rise uf-d2s">
+        <div v-for="cell in measure?.measures ?? []" :key="`m-${cell.label}`">
+          <dt class="uf-t4">{{ cell.label }}</dt>
+          <dd class="uf-d4">{{ cell.value }}</dd>
+        </div>
         <div>
           <dt class="uf-t4">{{ accuracyLabel }}</dt>
           <dd class="uf-d4">{{ result.accuracy_pct.toFixed(1) }}%</dd>
@@ -436,7 +450,25 @@ onMounted(async () => {
             </svg>
           </section>
 
-          <section v-if="['head_height', 'angle_clearing', 'distance_switching', 'clear_site'].includes(result.scenario)" class="uf-tr-block uf-rise uf-d3s">
+          <section v-if="measure" class="uf-tr-block uf-rise uf-d3s" aria-label="Drill measure">
+            <span class="uf-label">{{ measure.measures.map(c => c.label).join(' · ') }}</span>
+            <span class="uf-t4">{{ measure.note }}</span>
+            <dl class="uf-tr-measure">
+              <div v-for="cell in [...measure.measures, ...measure.parts]" :key="cell.label">
+                <dt class="uf-t4">{{ cell.label }}</dt>
+                <dd class="uf-d3">{{ cell.value }}</dd>
+              </div>
+            </dl>
+            <div v-for="t in measureTrends" :key="`t-${t.label}`" class="uf-tr-measure-trend">
+              <span class="uf-t4">{{ t.label }} · last {{ t.values.length }} {{ t.values.length === 1 ? 'run' : 'runs' }}, oldest first</span>
+              <svg v-if="t.values.length >= 2" width="160" height="28" viewBox="-2 -2 164 32" aria-hidden="true">
+                <path :d="measureSparkPath(t.values, 160, 28)" fill="none" stroke="var(--uf-bone)" stroke-width="1.5" stroke-linejoin="round" />
+              </svg>
+              <span class="uf-t4 uf-num">{{ t.texts.join(' · ') }}</span>
+            </div>
+          </section>
+
+          <section v-if="showVerticalBlock" class="uf-tr-block uf-rise uf-d3s">
             <span class="uf-label">Crosshair placement</span>
             <span class="uf-t4">Average vertical correction when the head first became visible</span>
             <span class="uf-d3">{{ typeof result.metadata?.mean_vertical_error_deg === 'number' ? `${result.metadata.mean_vertical_error_deg.toFixed(2)}°` : 'No visible targets measured' }}</span>
@@ -545,6 +577,10 @@ onMounted(async () => {
             <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">Duration</div>
             <div class="text-sm font-semibold text-white/80">{{ result.duration_seconds }}s</div>
           </div>
+          <div v-for="cell in [...(measure?.measures ?? []), ...(measure?.parts ?? [])]" :key="`m-${cell.label}`">
+            <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">{{ cell.label }}</div>
+            <div class="text-sm font-semibold text-white/80">{{ cell.value }}</div>
+          </div>
           <div v-for="cell in countCells" :key="cell.label">
             <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">{{ cell.label }}</div>
             <div class="text-sm font-semibold text-white/80">{{ cell.value }}</div>
@@ -631,7 +667,14 @@ onMounted(async () => {
           </svg>
         </div>
 
-        <div v-if="['head_height', 'angle_clearing', 'distance_switching', 'clear_site'].includes(result.scenario)" class="border border-white/10 rounded-lg p-4 space-y-2 text-sm">
+        <div v-if="measureTrends.length" class="border border-white/10 rounded-lg p-4 space-y-2 text-sm">
+          <p class="text-white/60">{{ measure?.note }}</p>
+          <p v-for="t in measureTrends" :key="`t-${t.label}`" class="text-xs tabular-nums text-white/70">
+            {{ t.label }}, last {{ t.values.length }} {{ t.values.length === 1 ? 'run' : 'runs' }} (oldest first): {{ t.texts.join(' · ') }}
+          </p>
+        </div>
+
+        <div v-if="showVerticalBlock" class="border border-white/10 rounded-lg p-4 space-y-2 text-sm">
           <p class="font-semibold text-white">Crosshair placement</p>
           <p class="text-white/60">Average vertical correction when the head first became visible:</p>
           <p class="text-lg tabular-nums text-teal-400">
@@ -862,6 +905,10 @@ onMounted(async () => {
 .uf-tr-main { display: flex; flex-direction: column; gap: 32px; min-width: 0; }
 .uf-tr-chart { width: 100%; height: 140px; }
 .uf-tr-block { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.uf-tr-measure { display: flex; flex-wrap: wrap; gap: 24px; margin: 0; }
+.uf-tr-measure > div { display: flex; flex-direction: column-reverse; gap: 2px; }
+.uf-tr-measure dd { margin: 0; }
+.uf-tr-measure-trend { display: flex; flex-direction: column; gap: 4px; }
 .uf-tr-heat { position: relative; width: 100%; aspect-ratio: 16 / 9; background: var(--uf-raised); border: 1px solid var(--uf-line); }
 .uf-tr-heat canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .uf-tr-heat-key { position: absolute; right: 10px; bottom: 8px; display: flex; gap: 8px; align-items: center; }

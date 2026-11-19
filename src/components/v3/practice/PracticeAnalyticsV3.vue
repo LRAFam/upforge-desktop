@@ -10,6 +10,7 @@ import UfButton from '../UfButton.vue'
 import EmptyArt from '../empty/EmptyArt.vue'
 import PracticeRecentRunsV3 from './PracticeRecentRunsV3.vue'
 import { scenarioIconUrl } from '../../../lib/training-icons'
+import { drillMeasureTrends, measureSparkPath } from '../../../lib/training-result-metrics'
 import type { TrainingBenchmark, TrainingHistory } from '../../../env.d.ts'
 import { bestGroup, settingsLabel } from './best-settings'
 import { benchmarkMeta, benchmarkVisible, pct, recentScores, skillShapeEmptyCopy, toneColor, trendSummary } from './practice-session-v3'
@@ -69,6 +70,8 @@ const rows = computed(() => props.drills.map(d => {
     recent: recentScores(stats?.sessions),
     spark: props.sparkline(d.key),
     bench: benchmarkVisible(bench) ? bench : null,
+    // The drill's own measure (placement error, clean stops, moving / still accuracy), last 10 values.
+    measures: drillMeasureTrends(d.key, stats?.sessions ?? []),
   }
 }))
 const radarLabel = (k: string) => props.drills.find(d => d.key === k)?.label ?? k
@@ -146,6 +149,14 @@ const labelAnchor = (x: number) => (x < 64 ? 'end' : x > 76 ? 'start' : 'middle'
                 <span class="uf-t4">{{ r.best != null && r.bestSettings ? `best · ${r.bestSettings}` : 'best' }}</span>
               </span>
             </div>
+            <div v-for="t in r.measures" :key="`m-${t.label}`" class="uf-an-measure">
+              <span class="uf-t4" style="width: 120px">{{ t.label }}</span>
+              <span class="uf-d4 uf-num">{{ t.texts[t.texts.length - 1] }}</span>
+              <svg v-if="t.values.length >= 2" width="80" height="20" viewBox="-2 -2 84 24" class="uf-an-spark" aria-hidden="true">
+                <path :d="measureSparkPath(t.values, 80, 20)" fill="none" stroke="var(--uf-muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <span class="uf-t4 uf-num">Last {{ t.values.length }}, oldest first: {{ t.texts.join(' · ') }}</span>
+            </div>
             <div v-if="r.bench" class="uf-an-bench">
               <span class="uf-t4" style="width: 96px">vs all players</span>
               <span class="uf-an-benchbar" :title="`You ${r.bench.user_best ?? '—'} · average ${r.bench.global_avg ?? '—'}`">
@@ -211,6 +222,7 @@ const labelAnchor = (x: number) => (x < 64 ? 'end' : x > 76 ? 'start' : 'middle'
 .uf-an-runs > span:last-child:not(.uf-t4) { background: var(--uf-bone); }
 .uf-an-spark { flex: none; overflow: visible; }
 .uf-an-best { min-width: 56px; flex: none; white-space: nowrap; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.uf-an-measure { display: flex; align-items: center; gap: 14px; padding-left: 54px; flex-wrap: wrap; }
 .uf-an-bench { display: flex; align-items: center; gap: 14px; padding-left: 54px; flex-wrap: wrap; }
 .uf-an-bench b { color: var(--uf-bone); font-weight: 600; }
 .uf-an-benchbar { position: relative; width: 160px; height: 3px; background: var(--uf-line); flex: none; }
