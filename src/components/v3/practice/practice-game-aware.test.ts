@@ -13,8 +13,8 @@ describe('Practice follows the primary game', () => {
     expect(view).toMatch(/planForGame\(plan, game\)/)
     expect(view).toMatch(/drillsForGame\(/)
     const ipc = read('electron/main/ipc/gaming-ipc.ts')
-    expect(ipc).toMatch(/get\('\/api\/training\/plan', drillGameParams\(game\)\)/)
-    expect(ipc).toMatch(/get\('\/api\/drills', drillGameParams\(game\)\)/)
+    expect(ipc).toMatch(/get\('\/api\/training\/plan', drillReadConfig\(game\)\)/)
+    expect(ipc).toMatch(/get\('\/api\/drills', drillReadConfig\(game\)\)/)
   })
 
   it('hides the session, drill library, daily challenge and quick play without the aim trainer (League)', () => {

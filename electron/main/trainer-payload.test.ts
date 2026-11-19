@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest, drillGameParams, withLaunchGame } from './trainer-payload'
+import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest, drillGameParams, drillReadConfig, withLaunchGame } from './trainer-payload'
 import type { DrillConfig } from './trainer-bridge'
 import { DEFAULT_CROSSHAIR_SETTINGS, DEFAULT_TRAINER_MOUSE } from './trainer-settings'
 
@@ -82,6 +82,17 @@ describe('drillGameParams', () => {
     expect(drillGameParams(undefined)).toEqual({})
     expect(drillGameParams('apex')).toEqual({})
     expect(drillGameParams(3)).toEqual({})
+  })
+})
+
+describe('drillReadConfig', () => {
+  it('sends every drill key this build can launch so the API never plans one it lacks', async () => {
+    const { DRILL_COPY } = await import('../../src/lib/trainer-scenarios')
+    const config = drillReadConfig('cs2')
+    expect(config.params).toEqual({ game: 'cs2' })
+    const keys = config.headers['X-Trainer-Scenarios'].split(',')
+    expect(keys.sort()).toEqual(Object.keys(DRILL_COPY).sort())
+    expect(drillReadConfig('apex').params).toBeUndefined()
   })
 })
 
