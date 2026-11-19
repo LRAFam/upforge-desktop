@@ -15,7 +15,7 @@ import { SettingsManager } from '../settings-manager'
 import { openExternalSafe, openPathSafe } from '../shell-open'
 import { PerformanceManager } from '../performance-manager'
 import { TrainerBridge, trainerLaunchErrorMessage } from '../trainer-bridge'
-import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest, drillGameParams } from '../trainer-payload'
+import { buildTrainingSessionPayload, correlationInsightsFrom, drillConfigFromRequest, drillReadConfig } from '../trainer-payload'
 import { trainerSpawnOptions } from '../trainer-settings'
 import { sendOverlayData } from '../overlay-window'
 import { APP_VERSION } from '../app-version'
@@ -188,11 +188,11 @@ export function setupGamingHandlers(
       return res.data ?? null
     },
     plan: async (game?: unknown) => {
-      const res = await auth.getApi().get('/api/training/plan', drillGameParams(game))
+      const res = await auth.getApi().get('/api/training/plan', drillReadConfig(game))
       return res.data?.plan ?? null
     },
     drills: async (game?: unknown) => {
-      const res = await auth.getApi().get('/api/drills', drillGameParams(game))
+      const res = await auth.getApi().get('/api/drills', drillReadConfig(game))
       const data = res.data
       if (Array.isArray(data)) return data
       if (data && typeof data === 'object') return (data as Record<string, unknown>).active ?? []
@@ -253,7 +253,7 @@ export function setupGamingHandlers(
     const token = auth.getToken()
     if (!token) return null
     try {
-      const res = await auth.getApi().get('/api/drills/rulebook', { params: { game: typeof game === 'string' ? game : 'valorant' } })
+      const res = await auth.getApi().get('/api/drills/rulebook', { ...drillReadConfig(undefined), params: { game: typeof game === 'string' ? game : 'valorant' } })
       const metrics = (res.data as { metrics?: unknown } | null)?.metrics
       return metrics && typeof metrics === 'object' ? metrics : null
     } catch (err: any) {

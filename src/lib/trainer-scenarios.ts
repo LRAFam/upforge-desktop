@@ -39,6 +39,8 @@ export interface TrainerScenarioDef {
   beta?: boolean
   /** Primary games this drill is for (omitted = every game). Hidden from drill pickers for other games. */
   games?: string[]
+  /** Retired drill: kept for history and saved runs, never offered in a drill picker. */
+  retired?: boolean
 }
 
 /** One row of GET /api/training/scenarios (API resources/trainer-scenarios.json). */
@@ -50,6 +52,8 @@ export interface TrainerManifestScenario {
   radar: boolean
   beta: boolean
   games: string[] | null
+  /** Only present (true) on retired drills. */
+  retired?: boolean
 }
 
 /**
@@ -157,6 +161,7 @@ export const TRAINER_SCENARIOS: TrainerScenarioDef[] = TRAINER_MANIFEST.scenario
     vodCategories: s.categories,
     ...(s.beta ? { beta: true } : {}),
     ...(s.games ? { games: s.games } : {}),
+    ...(s.retired ? { retired: true } : {}),
   }))
 
 export const TRAINER_SCENARIO_KEYS = TRAINER_SCENARIOS.map(s => s.key)
@@ -175,10 +180,16 @@ export function isScenarioForGame(key: string, game: string | null | undefined):
   return !games || (!!game && games.includes(game))
 }
 
-/** Drill picker list for a primary game. Results/history still look drills up by key regardless of game. */
+/** Drill picker list for a primary game (no retired drills). Results/history still look drills up by key regardless of game. */
 export function trainerScenariosForGame(game: string | null | undefined): TrainerScenarioDef[] {
-  return TRAINER_SCENARIOS.filter(def => isScenarioForGame(def.key, game))
+  return TRAINER_SCENARIOS.filter(def => !def.retired && isScenarioForGame(def.key, game))
 }
+
+/**
+ * Every drill key this build's trainer can launch (retired ones included). Sent to the API as the
+ * X-Trainer-Scenarios header so plans, drill lists and the rulebook never name a drill this build lacks.
+ */
+export const LAUNCHABLE_SCENARIO_KEYS: readonly TrainerScenarioKey[] = Object.keys(DRILL_COPY) as TrainerScenarioKey[]
 
 const scenarioByKey = Object.fromEntries(TRAINER_SCENARIOS.map(s => [s.key, s])) as Record<
   TrainerScenarioKey,

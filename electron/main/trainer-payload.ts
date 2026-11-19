@@ -6,6 +6,7 @@
 import type { AppSettings } from './settings-manager'
 import type { DrillConfig, SessionResult, TrainerLaunchInfo } from './trainer-bridge'
 import { crosshairSettingsToGodot, trainerMouseToGodot } from './trainer-settings'
+import { LAUNCHABLE_SCENARIO_KEYS } from '../../src/lib/trainer-scenarios'
 
 /** Which app and bundled trainer produced a run (stored in metadata so support can tell builds apart). */
 export interface RunVersions {
@@ -101,4 +102,12 @@ const DRILL_GAMES = ['valorant', 'cs2', 'deadlock', 'lol']
 /** Axios config for `?game=`: only a known game key is sent; anything else asks for every game (older behaviour). */
 export function drillGameParams(game: unknown): { params?: { game: string } } {
   return typeof game === 'string' && DRILL_GAMES.includes(game) ? { params: { game } } : {}
+}
+
+/** Header the API reads to plan only drills this build's trainer can launch (older builds send none). */
+export const TRAINER_SCENARIOS_HEADER = 'X-Trainer-Scenarios'
+
+/** Axios config for GET /api/training/plan, /api/drills and /api/drills/rulebook: `?game=` plus the launchable drill keys. */
+export function drillReadConfig(game: unknown): { params?: { game: string }, headers: Record<string, string> } {
+  return { ...drillGameParams(game), headers: { [TRAINER_SCENARIOS_HEADER]: LAUNCHABLE_SCENARIO_KEYS.join(',') } }
 }

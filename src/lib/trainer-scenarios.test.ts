@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { isNonTrainerCategory, resolveTrainerScenario } from './trainer-scenarios'
 
 describe('resolveTrainerScenario', () => {
@@ -66,6 +66,31 @@ describe('beta drills', () => {
       expect(isScenarioForGame(key, 'deadlock')).toBe(false)
     }
     expect(isScenarioForGame('strafe_track', 'deadlock')).toBe(true)
+  })
+})
+
+describe('retired drills', () => {
+  it('stay launchable and resolvable for history but leave the drill pickers', async () => {
+    const real = (await import('./trainer-scenarios.manifest.json')).default
+    vi.resetModules()
+    vi.doMock('./trainer-scenarios.manifest.json', () => ({
+      default: { ...real, scenarios: real.scenarios.map(s => (s.key === 'microflick' ? { ...s, retired: true } : s)) },
+    }))
+    try {
+      const lib = await import('./trainer-scenarios')
+      expect(lib.trainerScenarioDef('microflick')?.retired).toBe(true)
+      expect(lib.LAUNCHABLE_SCENARIO_KEYS).toContain('microflick')
+      expect(lib.trainerScenariosForGame('valorant').map(s => s.key)).not.toContain('microflick')
+      expect(lib.trainerScenariosForGame('valorant').map(s => s.key)).toContain('flick')
+    } finally {
+      vi.doUnmock('./trainer-scenarios.manifest.json')
+      vi.resetModules()
+    }
+  })
+
+  it('none are retired in the bundled list', async () => {
+    const { TRAINER_SCENARIOS } = await import('./trainer-scenarios')
+    expect(TRAINER_SCENARIOS.filter(s => s.retired)).toEqual([])
   })
 })
 
