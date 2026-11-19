@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   linkReviewTimeline, parseReviewStatus, pollDeadlockReplayReview, reviewPollDelayMs,
-  startDeadlockReplayReview, REVIEW_MAX_POLLS, type DeadlockReviewRecording,
+  startDeadlockReplayReview, REVIEW_MAX_POLLS, type DeadlockReviewRecording, type ReviewDetail,
 } from './deadlock-review'
+import type { MatchData } from './riot-types'
+import scoreboardFixture from './__fixtures__/deadlock-scoreboard-vs-feed.json'
 
 const rec = (over: Partial<DeadlockReviewRecording> = {}): DeadlockReviewRecording => ({
   id: 'r1', game: 'deadlock', recordedAt: 1_000_000, timeline: null, ...over,
@@ -104,5 +106,36 @@ describe('helpers', () => {
     expect(parseReviewStatus('completed')).toBe('completed')
     expect(parseReviewStatus('weird')).toBe('unknown')
     expect(parseReviewStatus(null)).toBe('unknown')
+  })
+})
+
+describe('linkReviewTimeline final stats (real replay, every player)', () => {
+  // AI reviews of one real ranked replay, one per player, next to Valve's own numbers for that match.
+  // The kill feed lists an extra assist for 5 of the 12 players (Abrams: 2 in the feed, Valve 1).
+  const players = scoreboardFixture.players as Array<{
+    hero: string
+    valve: { kills: number; deaths: number; assists: number; net_worth: number }
+    review: ReviewDetail
+  }>
+
+  it.each(players.map(p => [p.hero, p] as const))('%s: K/D/A and end souls equal Valve', async (_hero, p) => {
+    let saved: MatchData | null = null
+    const out = await linkReviewTimeline({
+      getDetail: async () => p.review,
+      updateTimeline: (_id, t) => { saved = t; return true },
+      notify: () => {},
+    }, rec(), 'job-12345678')
+    expect(out).toBe('linked')
+    expect(saved!.finalStats).toMatchObject({
+      kills: p.valve.kills, deaths: p.valve.deaths, assists: p.valve.assists, endSouls: p.valve.net_worth,
+    })
+    // The timeline keeps every feed row.
+    expect(saved!.killEvents).toHaveLength(p.review.match_stats!.kill_events!.length)
+  })
+
+  it('covers the feed-vs-scoreboard gap (Abrams: feed 2 assists, scoreboard 1)', () => {
+    const abrams = players.find(p => p.hero === 'Abrams')!
+    expect(abrams.review.match_stats!.kill_events!.filter(e => e.type === 'assist')).toHaveLength(2)
+    expect(abrams.valve.assists).toBe(1)
   })
 })

@@ -8,7 +8,7 @@
  * All I/O is injected so the logic is testable without network or Electron.
  */
 import type { MatchData } from './riot-types'
-import { deadlockTimelineFromCloud, type DeadlockCloudKillEvent } from './deadlock-cloud-timeline'
+import { deadlockTimelineFromCloud, type DeadlockCloudKillEvent, type DeadlockCloudScoreboard } from './deadlock-cloud-timeline'
 
 export interface DeadlockReviewRecording {
   id: string
@@ -50,7 +50,11 @@ export interface ReviewDetail {
   hero?: string | null
   duration_minutes?: number | null
   match_result?: string | null
-  match_stats?: { kill_events?: DeadlockCloudKillEvent[] | null } | null
+  match_stats?: {
+    kill_events?: DeadlockCloudKillEvent[] | null
+    player_stats?: DeadlockCloudScoreboard | null
+    economy?: { final_souls?: number | null } | null
+  } | null
 }
 
 export interface PollReviewDeps {
@@ -102,6 +106,8 @@ export async function linkReviewTimeline(
   if (!detail) return 'failed'
   const built = deadlockTimelineFromCloud({
     events: detail.match_stats?.kill_events,
+    scoreboard: detail.match_stats?.player_stats ?? null,
+    finalSouls: detail.match_stats?.economy?.final_souls ?? null,
     hero: detail.hero ?? null,
     jobId,
     recordingStartTime: rec.timeline?.recordingStartTime ?? rec.recordedAt,

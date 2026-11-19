@@ -32,3 +32,24 @@ describe('deadlockTimelineFromCloud', () => {
     expect(deadlockTimelineFromCloud({ ...base, events })!.killEvents).toHaveLength(200)
   })
 })
+
+describe('deadlockTimelineFromCloud final stats', () => {
+  // The feed lists an assist Valve does not count; the review's scoreboard has Valve's number.
+  const events = [
+    { type: 'kill' as const, time_seconds: 300, attacker_hero: 'Abrams', victim_hero: 'Haze' },
+    { type: 'assist' as const, time_seconds: 500, attacker_hero: 'Seven', victim_hero: 'Haze' },
+    { type: 'assist' as const, time_seconds: 980, attacker_hero: 'Seven', victim_hero: 'Mirage' },
+  ]
+
+  it('takes K/D/A and end souls from the scoreboard and keeps every feed row on the timeline', () => {
+    const t = deadlockTimelineFromCloud({ ...base, events, scoreboard: { kills: 1, deaths: 0, assists: 1 }, finalSouls: 12_466 })!
+    expect(t.finalStats).toMatchObject({ kills: 1, deaths: 0, assists: 1, endSouls: 12_466 })
+    expect(t.killEvents).toHaveLength(3)
+  })
+
+  it('falls back to counting the feed for older reviews without a usable scoreboard', () => {
+    expect(deadlockTimelineFromCloud({ ...base, events })!.finalStats).toMatchObject({ kills: 1, deaths: 0, assists: 2, endSouls: null })
+    expect(deadlockTimelineFromCloud({ ...base, events, scoreboard: { kills: 1, deaths: null, assists: 1 } })!.finalStats)
+      .toMatchObject({ kills: 1, deaths: 0, assists: 2 })
+  })
+})
