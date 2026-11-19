@@ -484,6 +484,8 @@ const api = {
     getPlan: (game?: string) => ipcRenderer.invoke('trainer:get-plan', game),
     getCoachingDrills: (game?: string) => ipcRenderer.invoke('trainer:get-coaching-drills', game),
     dismissCoachingDrill: (id: number) => ipcRenderer.invoke('trainer:dismiss-coaching-drill', id),
+    /** DELETE /api/training/sessions/{id}: removes one of your runs (history, bests, leaderboards). */
+    removeRun: (id: number) => ipcRenderer.invoke('trainer:remove-run', id),
     getCorrelation: () => ipcRenderer.invoke('trainer:get-correlation'),
     getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),
     /** Practice's history, plan, drills, insights and benchmark, each "ok" or "failed" (null when signed out). */

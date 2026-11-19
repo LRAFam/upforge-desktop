@@ -2,12 +2,13 @@
 import UfSkeleton from '../UfSkeleton.vue'
 /**
  * UI v3 Practice → Analytics tab. Presentational only: TrainingHubView passes the real training-API
- * history, benchmark and achievements in and owns the "share week" export.
+ * history, benchmark and achievements in and owns the "share week" export and the reload after a run is removed.
  * Hero = skill shape from personal bests; then one row per drill with trend, last runs and benchmark inline.
  */
 import { computed } from 'vue'
 import UfButton from '../UfButton.vue'
 import EmptyArt from '../empty/EmptyArt.vue'
+import PracticeRecentRunsV3 from './PracticeRecentRunsV3.vue'
 import { scenarioIconUrl } from '../../../lib/training-icons'
 import type { TrainingBenchmark, TrainingHistory } from '../../../env.d.ts'
 import { bestGroup, settingsLabel } from './best-settings'
@@ -51,7 +52,7 @@ const props = defineProps<{
   scoringNote?: string | null
 }>()
 
-const emit = defineEmits<{ 'share-week': [] }>()
+const emit = defineEmits<{ 'share-week': []; 'run-removed': [id: number] }>()
 
 const hasHistory = computed(() => !!props.history && !!props.history.total)
 const shapeEmpty = computed(() => skillShapeEmptyCopy(props.history?.by_scenario, props.radarKeys))
@@ -158,6 +159,9 @@ const labelAnchor = (x: number) => (x < 64 ? 'end' : x > 76 ? 'start' : 'middle'
           </li>
         </ul>
       </section>
+
+      <!-- Recent runs, each with Remove (confirmed; the parent reloads history after) -->
+      <PracticeRecentRunsV3 v-if="!loading" :sessions="history?.sessions" :label-for="radarLabel" @removed="(id) => emit('run-removed', id)" />
     </div>
 
     <aside class="uf-an-aside uf-rise uf-d3s">

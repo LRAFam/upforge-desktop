@@ -23,6 +23,7 @@ import { TRAINER_VERSION } from '../trainer-version'
 import { apiPost } from './api-helpers'
 import { TrainerSessionQueue, trainerRunKey } from '../trainer-session-queue'
 import { dismissCoachingDrill } from '../coaching-drill-dismiss'
+import { removeTrainingRun } from '../training-run-remove'
 import { collectPracticeData, historyTimeZoneParams } from '../../../src/lib/practice-trainer-data'
 import { listRecentDemosInDir } from '../demo-finder'
 import { SourceReplayUploader } from '../source-replay-uploader'
@@ -265,6 +266,12 @@ export function setupGamingHandlers(
   ipcMain.handle('trainer:dismiss-coaching-drill', async (_e, id: unknown) => {
     const result = await dismissCoachingDrill(auth.getApi(), auth.getToken(), id)
     if (!result.ok) log.warn('[Trainer] Failed to dismiss coaching drill:', id, result.error)
+    return result
+  })
+
+  ipcMain.handle('trainer:remove-run', async (_e, id: unknown) => {
+    const result = await removeTrainingRun(auth.getApi(), auth.getToken(), id)
+    if (!result.ok) log.warn('[Trainer] Failed to remove run:', id)
     return result
   })
 

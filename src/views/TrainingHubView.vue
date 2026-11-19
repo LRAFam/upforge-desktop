@@ -2067,6 +2067,7 @@ const CATEGORY_ICON: Record<string, string> = {
         :week-exporting="weekCardExporting"
         :week-done="weekCardDone"
         @share-week="exportWeeklyCard"
+        @run-removed="retryTrainerRefresh"
       />
 
       <template v-if="!uiV3">

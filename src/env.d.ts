@@ -1809,6 +1809,8 @@ declare global {
         getCoachingDrills: (game?: string) => Promise<CoachingDrill[]>
         /** POST /api/drills/{id}/dismiss ("Not now"). */
         dismissCoachingDrill: (id: number) => Promise<{ ok: true } | { ok: false; error: string }>
+        /** DELETE /api/training/sessions/{id} (owner only, can't be undone). A run already gone counts as removed. */
+        removeRun: (id: number) => Promise<{ ok: true } | { ok: false; error: string }>
         getCorrelation: () => Promise<string[]>
         getBenchmark: () => Promise<TrainingBenchmark | null>
         /** Practice's trainer data, each part "ok" or "failed" (offline) apart from empty; null when signed out. */
