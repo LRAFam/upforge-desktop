@@ -42,6 +42,8 @@ export interface RetentionSummary {
   keep_days: number | null
   kept_while_subscribed: boolean
   grace_days: number | null
+  /** Free plan keep time from the API (older APIs leave it out). */
+  free_keep_days: number | null
   included_bytes: number | null
   addon_bytes: number
   capacity_bytes: number | null
@@ -191,6 +193,7 @@ export function parseRetentionSummary(raw: unknown): RetentionSummary {
     keep_days: count(s.keep_days) && s.keep_days > 0 ? s.keep_days : null,
     kept_while_subscribed: s.kept_while_subscribed === true,
     grace_days: count(s.grace_days) ? s.grace_days : null,
+    free_keep_days: count(s.free_keep_days) && s.free_keep_days > 0 ? s.free_keep_days : null,
     included_bytes: count(s.included_bytes) ? s.included_bytes : null,
     addon_bytes: count(s.addon_bytes) ? s.addon_bytes : 0,
     capacity_bytes: count(s.capacity_bytes) ? s.capacity_bytes : null,

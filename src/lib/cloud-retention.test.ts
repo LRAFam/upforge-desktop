@@ -143,3 +143,12 @@ describe('keep_time (removal dates switched off)', () => {
     expect(expiringSoonLine(parseRetentionSummary({ ...base, removal_dates_shown: false, expiring_soon: items }), NOW)).toBeNull()
   })
 })
+
+describe('parseRetentionSummary free_keep_days', () => {
+  // The Cloud storage page shows "Free keeps each full video for N days" from this, not a literal.
+  it('keeps the API value and is null on an older API', () => {
+    expect(parseRetentionSummary({ started: true, free_keep_days: 21 }).free_keep_days).toBe(21)
+    expect(parseRetentionSummary({ started: true }).free_keep_days).toBeNull()
+    expect(parseRetentionSummary({ started: true, free_keep_days: -1 }).free_keep_days).toBeNull()
+  })
+})
