@@ -130,6 +130,8 @@ export interface AppSettings {
   discordRichPresence: boolean
   /** Switch the game tab when a game's in-game process starts and nothing is recording (default on). */
   autoSwitchGameTab: boolean
+  /** Offer a short trainer warm-up when Valorant, CS2 or Deadlock opens (default on; warmup-prompt.ts). */
+  warmupPrompt: boolean
   /**
    * How in-game hotkey feedback is delivered.
    * - notifications: Windows toasts + beep (works in Valorant fullscreen)
@@ -272,6 +274,7 @@ const DEFAULTS: AppSettings = {
   notificationSound: true,
   discordRichPresence: true,
   autoSwitchGameTab: true,
+  warmupPrompt: true,
   inGameFeedback: 'notifications',
   cachedEncoder: null,
   cachedUseDdagrab: null,

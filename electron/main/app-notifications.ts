@@ -6,6 +6,9 @@ export interface AppNotificationOptions {
   body: string
   silent?: boolean
   onClick?: () => void
+  /** Toast buttons (Windows and macOS). `onAction` gets the pressed button's index. */
+  actions?: readonly string[]
+  onAction?: (index: number) => void
   /** Allow during an active match recording (default: block automated toasts). */
   allowDuringRecording?: boolean
   /**
@@ -86,6 +89,7 @@ export function showAppNotification(opts: AppNotificationOptions): void {
     body,
     silent,
     icon: APP_ICON,
+    ...(opts.actions?.length ? { actions: opts.actions.map(text => ({ type: 'button' as const, text })) } : {}),
   })
   const remove = () => {
     activeToasts = activeToasts.filter((n) => n !== notification)
@@ -95,6 +99,13 @@ export function showAppNotification(opts: AppNotificationOptions): void {
   if (onClick) {
     notification.on('click', () => {
       onClick()
+      notification.close()
+    })
+  }
+  const onAction = opts.onAction
+  if (onAction && opts.actions?.length) {
+    notification.on('action', (details) => {
+      onAction(details.actionIndex)
       notification.close()
     })
   }

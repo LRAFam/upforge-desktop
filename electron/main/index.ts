@@ -238,7 +238,10 @@ import {
   trackAnalysisDegraded,
   trackPostgameOpened,
   trackFirstMatchSynced,
+  trackFunnelEvent,
 } from './funnel-events'
+import { WarmupPrompt, fileWarmupStore, shouldCloseTrainerOnGameStart } from './warmup-prompt'
+import { clearTrainerLaunchGame, launchTrainerDrill, loadWarmupData, onTrainerRunFinished, trainerLaunchedWhileGameOpen } from './ipc/gaming-ipc'
 import { collectMachineProfile } from './machine-profile'
 import { MatchTelemetrySession, type SectorName } from './match-telemetry'
 import { startObsStatsSampler } from './obs-stats-sampler'
@@ -834,6 +837,32 @@ function captureOwnerId(): number | null {
 const hotkeyManager = new HotkeyManager()
 const trainerBridge = new TrainerBridge(() => mainWindow)
 let settingsManager: SettingsManager
+let warmupStore: ReturnType<typeof fileWarmupStore> | null = null
+const warmupState = () => (warmupStore ??= fileWarmupStore(join(app.getPath('userData'), 'warmup-prompt.json')))
+/** "Warm up first?" toast when a shooter opens (card 882). Never during a match; once a day per game. */
+const warmupPrompt = new WarmupPrompt({
+  isEnabled: () => settingsManager?.get()?.warmupPrompt !== false,
+  isSignedIn: () => !!authManager?.getToken(),
+  currentGame: () => gameDetector.currentGame(),
+  isMatchLive: () => matchPriorityDeps().isRecording() || obsRecorder.isRecording(),
+  isTrainerRunning: () => trainerBridge.isRunning,
+  loadData: (game) => loadWarmupData(game),
+  launch: (drill) => launchTrainerDrill({
+    scenario: drill.scenario,
+    duration_seconds: drill.duration_seconds,
+    difficulty: drill.difficulty,
+    ...(drill.context ? { context: drill.context } : {}),
+    ...(drill.user_drill_id != null ? { user_drill_id: drill.user_drill_id } : {}),
+  }),
+  // An OS toast: never takes focus from the game, and is dropped while a match records.
+  notify: (n) => showAppNotification({ title: n.title, body: n.body, silent: true, actions: n.actions, onAction: n.onAction, onClick: n.onClick }),
+  notifyError: (message) => showAppNotification({ title: 'Warm-up', body: message }),
+  track: (event, props) => { void trackFunnelEvent(event, props) },
+  readState: () => warmupState().read(),
+  writeState: (state) => warmupState().write(state),
+  log: (msg) => log.info(msg),
+})
+onTrainerRunFinished(() => warmupPrompt.markRunFinished())
 let trackedPrimaryGame: GameId = 'valorant'
 const discordRPC = new DiscordRPC(
   () => settingsManager?.get()?.discordRichPresence !== false,
@@ -1375,9 +1404,13 @@ function interruptBackgroundWorkForMatch(): void {
   trainerBridge.kill('match_started')
 }
 
-function abortBackgroundWorkOnGameStart(): void {
+function abortBackgroundWorkOnGameStart(game: string): void {
   backgroundWork.pause()
-  trainerBridge.kill('game_started')
+  // A drill started while this game was already open (e.g. from the warm-up offer) stays open when the
+  // match watch re-arms; a match starting still closes it (interruptBackgroundWorkForMatch).
+  if (shouldCloseTrainerOnGameStart({ trainerRunning: trainerBridge.isRunning, launchedWhileGameOpen: trainerLaunchedWhileGameOpen(), game })) {
+    trainerBridge.kill('game_started')
+  }
 }
 
 function beginMatchPerformanceMode(opts?: { holdPostMatch?: boolean }): void {
@@ -5043,7 +5076,7 @@ function setupGameDetection(): void {
     if (game === 'valorant' || game === 'lol') backgroundMatchState.observe(true)
     // game:status-changed {active:true} is sent only after ownership resolves: the renderer's
     // game-tab auto-switch must not run while an old recording may still own OBS.
-    abortBackgroundWorkOnGameStart()
+    abortBackgroundWorkOnGameStart(game)
     // A different game starting while another game's recording is still owned saves the old
     // session first; a finalise already in flight is awaited (card 232 same-poll race).
     const ownership = await resolveGameStartOwnership({
@@ -5080,6 +5113,7 @@ function setupGameDetection(): void {
     ignoredStartRearm.cancel()
     mainWindow?.webContents.send('game:status-changed', { game, active: true })
     syncPrimaryGameFromDetection(game)
+    warmupPrompt.onGameStarted(game)
 
     activeCapture = { ownerId: captureOwnership.get() }
     replayCaptureOwnerId = activeCapture.ownerId
@@ -6233,6 +6267,8 @@ function setupGameDetection(): void {
       return
     }
     mainWindow?.webContents.send('game:status-changed', { game, active: false })
+    warmupPrompt.onGameStopped(game)
+    clearTrainerLaunchGame(game)
     // A late stop for a game the flow already left (e.g. League exit after Valorant took over)
     // must not clear the new game's match hooks or finalise its recording as this game.
     if (isSupersededGameStop({

@@ -507,6 +507,7 @@ function createSettings() {
     notificationSound: true,
     discordRichPresence: true,
     autoSwitchGameTab: true,
+    warmupPrompt: true,
     inGameFeedback: 'notifications',
     cachedEncoder: null,
     cachedUseDdagrab: null,
