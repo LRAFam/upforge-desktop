@@ -68,10 +68,10 @@ function openSettings() {
           class="relative h-16 w-16 rounded-xl border border-white/[0.10] bg-[#1a1a1a] flex items-center justify-center overflow-hidden"
         >
           <span
-            class="absolute rounded-full"
+            class="absolute"
             :style="{
-              width: `${Math.max(4, crosshair.dotRadius * 2)}px`,
-              height: `${Math.max(4, crosshair.dotRadius * 2)}px`,
+              width: `${Math.max(4, crosshair.dotSize)}px`,
+              height: `${Math.max(4, crosshair.dotSize)}px`,
               backgroundColor: resolveColor(crosshair),
               opacity: crosshair.dotOpacity,
             }"

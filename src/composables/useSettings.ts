@@ -21,6 +21,7 @@ import { usePrimaryGame } from './usePrimaryGame'
 import { cs2AccountHint, cs2SteamNameToShow, followSelectedGame } from '../components/settings/settings-game'
 import { isTrainerGame, switchTrainerGame } from '../lib/trainer-games'
 import { TRAINER_MAX_FPS_DEFAULT } from '../lib/trainer-display'
+import { DEFAULT_CROSSHAIR } from '../lib/crosshair'
 
 export type RiotAccountRow = {
   id: number
@@ -534,24 +535,7 @@ function createSettings() {
       maxFps: TRAINER_MAX_FPS_DEFAULT,
     },
     autoOpenBrowser: false,
-    crosshairSettings: {
-      colorIndex: 1,
-      customColor: '00FF6B',
-      dotShow: true,
-      dotRadius: 1.5,
-      dotOpacity: 1.0,
-      innerShow: true,
-      innerThickness: 2,
-      innerLength: 10,
-      innerOffset: 4,
-      innerOpacity: 1.0,
-      outerShow: false,
-      outerThickness: 2,
-      outerLength: 5,
-      outerOffset: 10,
-      outerOpacity: 1.0,
-      shadowShow: true,
-    },
+    crosshairSettings: { ...DEFAULT_CROSSHAIR },
   })
   
   const GAME_MODES_BY_GAME: Record<PrimaryGame, Array<{ value: string; label: string; hint: string }>> = {

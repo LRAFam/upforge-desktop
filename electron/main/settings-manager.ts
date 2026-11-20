@@ -202,22 +202,25 @@ export interface AppSettings {
   }
   /** Crosshair appearance for the aim trainer */
   crosshairSettings: {
+    version: number     // 2: sizes in screen px, both offsets from the centre (src/lib/crosshair.ts)
     colorIndex: number  // 0=white, 1=green, 2=yellow, 3=cyan, 4=pink, 5=red, 6=custom
     customColor: string // hex without '#', e.g. '00FF6B'
     dotShow: boolean
-    dotRadius: number   // 0.5–6
+    dotSize: number     // square dot width, 1–6 px
     dotOpacity: number  // 0–1
     innerShow: boolean
-    innerThickness: number // 0.5–8
-    innerLength: number    // 0–30
-    innerOffset: number    // 0–20
+    innerThickness: number // 0–10 px
+    innerLength: number    // 0–20 px
+    innerOffset: number    // 0–20 px from the centre
     innerOpacity: number   // 0–1
     outerShow: boolean
-    outerThickness: number
-    outerLength: number
-    outerOffset: number
+    outerThickness: number // 0–10 px
+    outerLength: number    // 0–10 px
+    outerOffset: number    // 0–40 px from the centre
     outerOpacity: number
-    shadowShow: boolean
+    shadowShow: boolean  // the outline
+    outlineThickness: number
+    outlineOpacity: number
   }
   /** Auto-open the results page in the browser when analysis completes */
   autoOpenBrowser: boolean

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Live crosshair render from the trainer settings (colour, inner/outer lines, thickness, length,
- * gap, opacity, centre dot, outline). Reusable: Practice › Loadouts uses it, and Settings › Trainer
+ * gap, opacity, square centre dot, outline): the trainer's rectangles, magnified. Reusable: Practice › Loadouts uses it, and Settings › Trainer
  * can import it next to the sliders. `background` is an optional image URL (e.g. a map splash) so the
  * player can judge contrast; without it the preview sits on the raised surface.
  */
@@ -34,7 +34,6 @@ const label = computed(() => {
     <img v-if="background" :src="background" alt="" class="uf-xhair-bg">
     <svg :viewBox="viewBox" :width="size" :height="size" aria-hidden="true" shape-rendering="crispEdges">
       <rect v-for="(r, i) in shapes.rects" :key="`r${i}`" :x="r.x" :y="r.y" :width="r.w" :height="r.h" :fill="r.fill" :fill-opacity="r.opacity" />
-      <circle v-for="(d, i) in shapes.dots" :key="`d${i}`" cx="0" cy="0" :r="d.r" :fill="d.fill" :fill-opacity="d.opacity" shape-rendering="geometricPrecision" />
     </svg>
   </div>
 </template>

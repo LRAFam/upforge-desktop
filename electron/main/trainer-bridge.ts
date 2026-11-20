@@ -63,10 +63,14 @@ export interface DrillConfig {
     max_fps?: number
   }
   crosshair_settings?: {
+    /** 2: outer_offset from the centre, dot_size / outline_* read (trainer CrosshairConfig.VERSION). */
+    version: number
     color: [number, number, number]
-    shadow_show: boolean
+    outline_show: boolean
+    outline_thickness: number
+    outline_opacity: number
     dot_show: boolean
-    dot_radius: number
+    dot_size: number
     dot_opacity: number
     inner_show: boolean
     inner_thickness: number

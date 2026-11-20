@@ -2,7 +2,7 @@
 /**
  * v3 trainer crosshair editor: live preview on the left (sticky), controls on the right, so every
  * slider change is visible without scrolling. Same data and ranges as the classic
- * CrosshairSettingsPanel (lib/crosshair.ts); switches use SettingsToggle (.uf-switch).
+ * CrosshairSettingsPanel (lib/crosshair.ts), Valorant's ranges; switches use SettingsToggle (.uf-switch).
  */
 import { reactive, ref, watch } from 'vue'
 import {
@@ -32,7 +32,7 @@ function setNumber(key: CrosshairNumberKey, e: Event) {
   local[key] = Number((e.target as HTMLInputElement).value)
   commit()
 }
-function flip(key: CrosshairBoolKey | 'shadowShow') {
+function flip(key: CrosshairBoolKey) {
   local[key] = !local[key]
   commit()
 }
@@ -92,10 +92,6 @@ function applyImport() {
             />
             <input type="color" class="uf-xh-swatch" :value="'#' + local.customColor" aria-label="Custom colour" :class="{ 'is-on': local.colorIndex === 6 }" @input="onCustomColor">
           </div>
-        </div>
-        <div class="uf-set-row">
-          <span class="uf-t3">Outline</span>
-          <SettingsToggle label="Outline" :on="local.shadowShow" @click="flip('shadowShow')" />
         </div>
       </div>
 
