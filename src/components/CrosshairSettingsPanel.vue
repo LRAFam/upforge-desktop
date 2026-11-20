@@ -61,6 +61,16 @@
       <label class="setting-label">Shadow / Outline</label>
       <toggle-switch :value="localSettings.shadowShow" @change="set('shadowShow', $event)" />
     </div>
+    <template v-if="localSettings.shadowShow">
+      <div class="setting-row">
+        <label class="setting-label">Outline thickness</label>
+        <slider-control :value="localSettings.outlineThickness" :min="1" :max="6" :step="1" @change="set('outlineThickness', $event)" />
+      </div>
+      <div class="setting-row">
+        <label class="setting-label">Outline opacity</label>
+        <slider-control :value="localSettings.outlineOpacity" :min="0" :max="1" :step="0.05" :format="pct" @change="set('outlineOpacity', $event)" />
+      </div>
+    </template>
 
     <!-- Centre dot -->
     <div class="setting-section-header">Centre Dot</div>
@@ -72,7 +82,7 @@
     <template v-if="localSettings.dotShow">
       <div class="setting-row">
         <label class="setting-label">Size</label>
-        <slider-control :value="localSettings.dotRadius" :min="0.5" :max="6" :step="0.5" @change="set('dotRadius', $event)" />
+        <slider-control :value="localSettings.dotSize" :min="1" :max="6" :step="1" @change="set('dotSize', $event)" />
       </div>
       <div class="setting-row">
         <label class="setting-label">Opacity</label>
@@ -90,15 +100,15 @@
     <template v-if="localSettings.innerShow">
       <div class="setting-row">
         <label class="setting-label">Thickness</label>
-        <slider-control :value="localSettings.innerThickness" :min="0.5" :max="8" :step="0.5" @change="set('innerThickness', $event)" />
+        <slider-control :value="localSettings.innerThickness" :min="0" :max="10" :step="1" @change="set('innerThickness', $event)" />
       </div>
       <div class="setting-row">
         <label class="setting-label">Length</label>
-        <slider-control :value="localSettings.innerLength" :min="0" :max="30" :step="1" @change="set('innerLength', $event)" />
+        <slider-control :value="localSettings.innerLength" :min="0" :max="20" :step="1" @change="set('innerLength', $event)" />
       </div>
       <div class="setting-row">
         <label class="setting-label">Gap</label>
-        <slider-control :value="localSettings.innerOffset" :min="0" :max="20" :step="0.5" @change="set('innerOffset', $event)" />
+        <slider-control :value="localSettings.innerOffset" :min="0" :max="20" :step="1" @change="set('innerOffset', $event)" />
       </div>
       <div class="setting-row">
         <label class="setting-label">Opacity</label>
@@ -116,15 +126,15 @@
     <template v-if="localSettings.outerShow">
       <div class="setting-row">
         <label class="setting-label">Thickness</label>
-        <slider-control :value="localSettings.outerThickness" :min="0.5" :max="8" :step="0.5" @change="set('outerThickness', $event)" />
+        <slider-control :value="localSettings.outerThickness" :min="0" :max="10" :step="1" @change="set('outerThickness', $event)" />
       </div>
       <div class="setting-row">
         <label class="setting-label">Length</label>
-        <slider-control :value="localSettings.outerLength" :min="0" :max="30" :step="1" @change="set('outerLength', $event)" />
+        <slider-control :value="localSettings.outerLength" :min="0" :max="10" :step="1" @change="set('outerLength', $event)" />
       </div>
       <div class="setting-row">
         <label class="setting-label">Offset</label>
-        <slider-control :value="localSettings.outerOffset" :min="0" :max="20" :step="0.5" @change="set('outerOffset', $event)" />
+        <slider-control :value="localSettings.outerOffset" :min="0" :max="40" :step="1" @change="set('outerOffset', $event)" />
       </div>
       <div class="setting-row">
         <label class="setting-label">Opacity</label>

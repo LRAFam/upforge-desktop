@@ -126,7 +126,7 @@ describe('crosshairSettingsToGodot', () => {
     expect(crosshairSettingsToGodot(null).color).toEqual([0.0, 1.0, 0.42])
   })
   it('drops wrong-typed saved values', () => {
-    expect(normalizeCrosshairSettings({ dotRadius: null, innerLength: 'x', outerShow: true })).toMatchObject({ dotRadius: 1.5, innerLength: 10, outerShow: true })
+    expect(normalizeCrosshairSettings({ version: 2, dotSize: null, innerLength: 'x', outerShow: true })).toMatchObject({ dotSize: 2, innerLength: 10, outerShow: true })
   })
 })
 
