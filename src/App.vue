@@ -315,7 +315,7 @@ import type { ClipRecord, ProfileData, ValorantStats } from './env.d.ts'
 import { playerIdentity } from './lib/player-identity'
 import { asTrainerResult, launchConfigFromInfo, shellOpensTrainerResult } from './lib/trainer-launch'
 import { checkRunAchievements } from './lib/trainer-achievements'
-import { useAchievements } from './composables/useAchievements'
+import { setAchievementsAccount, useAchievements } from './composables/useAchievements'
 import { useTrainerResultStore } from './stores/trainerResult'
 
 const route = useRoute()
@@ -615,6 +615,7 @@ async function consumeDeepLink(): Promise<void> {
 async function applySessionUser(userId: number | null) {
   sessionUserKey.value = userId != null ? `user-${userId}` : 'guest'
   setCacheScope(userId)
+  setAchievementsAccount(userId)
   if (userId == null) {
     riotId.value = null
     userName.value = null
@@ -708,6 +709,7 @@ onMounted(async () => {
   const initialUserId = (status.value as { user?: { id?: number } }).user?.id
   sessionUserKey.value = initialUserId != null ? `user-${initialUserId}` : 'guest'
   setCacheScope(initialUserId ?? null)
+  setAchievementsAccount(initialUserId ?? null)
   if (initialUserId != null) void consumeDeepLink()
 
   try {
