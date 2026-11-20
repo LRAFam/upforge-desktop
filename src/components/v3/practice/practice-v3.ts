@@ -6,15 +6,22 @@ import { isBetaScenario, type TrainerScenarioKey } from '../../../lib/trainer-sc
 import { coachingStatLine, isMatchStatsDrill, type CoachingDrillSourceFields, type CoachingStatLine } from '../../../lib/coaching-drill-stat'
 import { isCurrentScoringRun } from '../../../lib/training-result-metrics'
 
-export type PracticeTab = 'train' | 'analytics' | 'leaderboards' | 'loadouts'
+export type PracticeTab = 'train' | 'drills' | 'analytics' | 'leaderboards' | 'loadouts'
 export type PracticeCategory = 'all' | 'aim' | 'reaction' | 'precision' | 'duel'
 
+/** Tab ids are kept (other code switches on them); the labels say what the player gets. */
 export const PRACTICE_TABS: Array<{ id: PracticeTab; label: string }> = [
-  { id: 'train', label: 'Train' },
-  { id: 'analytics', label: 'Analytics' },
+  { id: 'train', label: 'Today' },
+  { id: 'drills', label: 'Drills' },
+  { id: 'analytics', label: 'Results' },
   { id: 'leaderboards', label: 'Leaderboards' },
-  { id: 'loadouts', label: 'Loadouts' },
+  { id: 'loadouts', label: 'Setup' },
 ]
+
+/** Today and Drills are drawn by the Practice screen itself; the other tab bodies stay in the view. */
+export function practiceOwnsTab(tab: PracticeTab): boolean {
+  return tab === 'train' || tab === 'drills'
+}
 
 export interface PracticeStats {
   streak: number
@@ -324,5 +331,111 @@ export function pickNextDrill(
     goal: top.goal,
     scenario: top.trainerScenario,
     matchDrillId: top.id,
+  }
+}
+
+// ── Today's routine: the steps drawn along one line in the hero ───────────────
+export interface RoutineStep {
+  scenario: string
+  /** "Warm-up · 1 min" */
+  caption: string
+  label: string
+  /** The step the session is built around: drawn in the focus colour. */
+  focus: boolean
+}
+
+/** Steps of the guided session (training plan), in order. The plan's own phase names are used. */
+export function routineFromSession(
+  steps: ReadonlyArray<SessionStepLike & { phase?: string }>,
+  scenarioLabel: (key: string) => string,
+): RoutineStep[] {
+  return steps.map(s => ({
+    scenario: String(s.scenario),
+    caption: [s.phaseLabel, durationLabel(s.duration_seconds)].filter(Boolean).join(' · '),
+    label: scenarioLabel(String(s.scenario)),
+    focus: s.phase === 'focus',
+  }))
+}
+
+/** Steps for a focus with no session plan: its drills, the first one being the point. */
+export function routineFromDrills(
+  drills: ReadonlyArray<{ scenario: string; label: string; durationSeconds: number }>,
+): RoutineStep[] {
+  return drills.map((d, i) => ({
+    scenario: d.scenario,
+    caption: durationLabel(d.durationSeconds),
+    label: d.label,
+    focus: i === 0,
+  }))
+}
+
+// ── Drills, grouped by what they are for ──────────────────────────────────────
+export type DrillGroupId = 'yours' | 'warmup' | 'beta' | 'more'
+
+/** The loosen-up drills (training-suite review, Nov 2026). */
+export const WARM_UP_SCENARIOS: readonly string[] = ['microflick', 'strafe_track', 'gridshot']
+
+export interface DrillGroup<T> {
+  id: DrillGroupId
+  drills: T[]
+}
+
+/**
+ * One group per job, in reading order, each drill in exactly one group:
+ * yours (picked from the player's matches or focus) → warm-up → beta → everything else.
+ * Empty groups are left out, except `yours`, which the screen explains when it is empty.
+ */
+export function groupDrills<T extends { scenario: string; beta?: boolean }>(
+  drills: readonly T[],
+  yours: readonly string[],
+): Array<DrillGroup<T>> {
+  const mine = new Set(yours)
+  const groups: Record<DrillGroupId, T[]> = { yours: [], warmup: [], beta: [], more: [] }
+  for (const d of drills) {
+    if (mine.has(d.scenario)) groups.yours.push(d)
+    else if (WARM_UP_SCENARIOS.includes(d.scenario)) groups.warmup.push(d)
+    else if (d.beta) groups.beta.push(d)
+    else groups.more.push(d)
+  }
+  groups.yours.sort((a, b) => yours.indexOf(a.scenario) - yours.indexOf(b.scenario))
+  groups.warmup.sort((a, b) => WARM_UP_SCENARIOS.indexOf(a.scenario) - WARM_UP_SCENARIOS.indexOf(b.scenario))
+  return (['yours', 'warmup', 'beta', 'more'] as const)
+    .map(id => ({ id, drills: groups[id] }))
+    .filter(g => g.id === 'yours' || g.drills.length > 0)
+}
+
+// ── In your matches: one bar per match checked against the focus (measured, no claim of cause) ──
+export interface FocusBar {
+  /** Bar height, 0–1 of the tallest value shown. */
+  height: number
+  /** The match met the focus target. */
+  hit: boolean
+  value: number
+}
+
+export interface FocusBars {
+  bars: FocusBar[]
+  /** Where the starting point and the target sit on the same scale, 0–1. */
+  baseline: number
+  target: number
+}
+
+interface FocusLike {
+  baseline: number
+  target: number
+  checks: ReadonlyArray<{ value: number; hit: boolean }>
+}
+
+/** The matches checked since the focus was set, oldest first, on one scale with baseline and target. */
+export function focusBars(focus: FocusLike | null | undefined, max = 12): FocusBars | null {
+  const checks = (focus?.checks ?? []).filter(c => typeof c.value === 'number' && Number.isFinite(c.value)).slice(-max)
+  if (!focus || !checks.length || !Number.isFinite(focus.baseline)) return null
+  const target = Number.isFinite(focus.target) ? focus.target : focus.baseline
+  const top = Math.max(focus.baseline, target, ...checks.map(c => c.value))
+  if (!(top > 0)) return null
+  return {
+    bars: checks.map(c => ({ height: Math.max(0, c.value) / top, hit: c.hit === true, value: c.value })),
+    baseline: focus.baseline / top,
+    target: target / top,
   }
 }

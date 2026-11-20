@@ -19,6 +19,8 @@ export function usePracticeFocus(api: FocusApi | undefined) {
   // Last known focus draws the focus session at once, so the hero doesn't swap when the request lands.
   const cached = readCache<Focus | null>(FOCUS_CACHE_KEY)
   const focus = ref<Focus | null>(cached && (cached.value === null || cached.value.progress?.status === 'active') ? cached.value : null)
+  /** The focus is known: remembered from last time, or the first request has answered (or cannot be made). */
+  const ready = ref(!!cached || !api?.getFocus)
   let off: (() => void) | null = null
   let disposed = false
 
@@ -33,6 +35,8 @@ export function usePracticeFocus(api: FocusApi | undefined) {
       }
     } catch {
       // No focus shown: Practice falls back to its normal session hero.
+    } finally {
+      if (!disposed) ready.value = true
     }
   }
 
@@ -48,5 +52,5 @@ export function usePracticeFocus(api: FocusApi | undefined) {
     off?.()
   })
 
-  return { focus }
+  return { focus, ready }
 }
