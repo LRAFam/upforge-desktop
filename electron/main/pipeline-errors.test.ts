@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest'
-import { shouldReportAnalysisPipelineError } from './pipeline-errors'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { reportPipelineError, shouldReportAnalysisPipelineError } from './pipeline-errors'
+import { reportError } from './error-reporter'
+import { reportRecordingError } from './recording-errors'
+import { classifyAnalysisFailure } from '../../src/lib/analysis-failure-messages'
+
+vi.mock('./error-reporter', () => ({ reportError: vi.fn() }))
+vi.mock('electron-log', () => ({ default: { warn: vi.fn() } }))
 
 describe('shouldReportAnalysisPipelineError', () => {
   it('skips the expected already-claimed bonus denial, but keeps unexpected bonus failures', () => {
@@ -35,5 +41,55 @@ describe('shouldReportAnalysisPipelineError', () => {
       'You have used your free analysis. Upgrade to Plus or Pro for ongoing coaching, or pay per analysis on the web.',
     )).toBe(false)
     expect(shouldReportAnalysisPipelineError('refunded_data', 'match data missing')).toBe(false)
+  })
+})
+
+// Expected outcomes (plan limits, cancellations, user setup) are shown in the app and must not
+// reach the error log; real failures must still be reported.
+describe('reportPipelineError: expected outcomes vs real failures', () => {
+  beforeEach(() => vi.mocked(reportError).mockClear())
+
+  it.each([
+    ['duel-clips', 'Duel clip upload failed during complete(): upload_aborted_by_user: Upload cancelled'],
+    ['upload', 'upload_aborted_by_user: Upload cancelled'],
+    ['upload', 'Upload was cancelled'],
+    ['analysis', 'You have used your free analysis. Upgrade to Plus or Pro for ongoing coaching, or pay per analysis on the web.'],
+    ['upload', 'analysis.limit.reached'],
+  ] as const)('does not report %s: %s', (phase, message) => {
+    reportPipelineError(phase, message)
+    expect(reportError).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['upload', 'Presign failed: signature mismatch xyz'],
+    ['duel-clips', 'Duel clip upload failed during complete(): ffmpeg exited with code 1'],
+    ['analysis', "Cannot read properties of undefined (reading 'jobId')"],
+    ['upload', 'Upload complete failed (HTTP 400): invalid recording metadata'],
+    // The duplicate guard also refuses a second upload in the same session after a refunded
+    // analysis, so it can hide a real retry problem: it stays reported.
+    ['upload', 'This recording was already uploaded recently'],
+  ] as const)('reports %s: %s', (phase, message) => {
+    reportPipelineError(phase, message)
+    expect(reportError).toHaveBeenCalledTimes(1)
+    expect(reportError).toHaveBeenCalledWith(expect.objectContaining({
+      message: `[Pipeline:${phase}] ${message}`,
+      component: `desktop:Pipeline:${phase}`,
+    }))
+  })
+
+  it('does not report an analysis with no reviewable moments (refunded, shown as such)', () => {
+    const presented = classifyAnalysisFailure('duel_moments manifest missing')
+    expect(presented.title).toBe('No reviewable moments')
+    expect(shouldReportAnalysisPipelineError(presented.kind, '')).toBe(false)
+  })
+
+  it('does not report OBS already recording, but reports an OBS start failure', () => {
+    reportRecordingError(
+      'start',
+      new Error('OBS is already recording — stop the current OBS recording before a match capture starts.'),
+    )
+    expect(reportError).not.toHaveBeenCalled()
+    reportRecordingError('start', new Error('OBS failed to start the recording output'))
+    expect(reportError).toHaveBeenCalledTimes(1)
   })
 })

@@ -4,6 +4,7 @@
  */
 
 import log from 'electron-log'
+import { wasBackgroundWorkInterrupted } from './background-interrupt'
 import { reportError } from './error-reporter'
 import { isExpectedRecordingConfigError } from './recording-errors'
 import type { AnalysisFailureKind } from '../../src/lib/analysis-failure-messages'
@@ -28,6 +29,7 @@ const SKIP_PATTERNS = [
   /upgrade\.required/i,
   /archive\.limit\.reached/i,
   /quota/i,
+  /you have used your free analys/i,
   /upload aborted/i,
   /compression cancelled/i,
   /recording too large/i,
@@ -62,6 +64,8 @@ const SKIP_PATTERNS = [
 
 function isExpectedPipelineError(message: string): boolean {
   if (isExpectedRecordingConfigError(message)) return true
+  // The user (or a new match) cancelled the upload: `upload_aborted_by_user`, "Upload cancelled".
+  if (wasBackgroundWorkInterrupted(message)) return true
   return SKIP_PATTERNS.some((re) => re.test(message))
 }
 
