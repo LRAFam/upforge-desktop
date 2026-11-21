@@ -9083,7 +9083,8 @@ async function startApp(): Promise<void> {
 
   // Register global shortcut to show/focus window
   globalShortcut.register('CommandOrControl+Shift+U', () => {
-    if (mainWindow) {
+    // The updater destroys windows before it installs; shortcuts stay registered until before-quit.
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.show()
       mainWindow.focus()
     }
@@ -9093,7 +9094,7 @@ async function startApp(): Promise<void> {
 // Re-show window when clicking dock icon on Mac
 app.on('activate', () => {
   if (!ipcHandlersReady) return
-  if (!mainWindow) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
     mainWindow = createMainWindow()
   } else {
     mainWindow.show()

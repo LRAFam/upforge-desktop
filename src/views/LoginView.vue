@@ -110,6 +110,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { resolvePostAuthRoute } from '../lib/onboarding-gate'
+import { getDesktopApi } from '../lib/desktop-api'
 import { uiV3 } from '../lib/ui-v3'
 import LoginV3 from './v3/LoginV3.vue'
 import { useVerificationResend } from '../composables/useVerificationResend'
@@ -154,8 +155,9 @@ async function handleLogin() {
   }
 }
 
-function windowMinimize() { window.api.window.minimize() }
-function windowClose() { window.api.window.close() }
+// The window controls need the Electron preload; a plain browser preview of the renderer has none.
+function windowMinimize() { getDesktopApi()?.window?.minimize() }
+function windowClose() { getDesktopApi()?.window?.close() }
 
 function openHelp() { window.open('https://upforge.gg/help', '_blank') }
 function openPrivacy() { window.open('https://upforge.gg/privacy', '_blank') }
