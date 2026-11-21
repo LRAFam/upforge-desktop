@@ -34,6 +34,37 @@ import { validateReplayUploadPath } from '../replay-upload-path'
 import { isTrustedRendererUrl } from '../renderer-trust'
 import { normalizeTrainingHistory } from '../../../src/lib/training-result-metrics'
 
+// ── Main-process trainer access ───────────────────────────────────────────────
+
+let launchTrainerDrillRef: ((config: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; launchId?: number }>) | null = null
+/** Game that was open when the current/last drill was launched (null = none). */
+let trainerLaunchGame: string | null = null
+let trainerRunFinishedListener: (() => void) | null = null
+let loadWarmupDataRef: ((game: string) => Promise<import('../warmup-prompt').WarmupData>) | null = null
+
+/** Drills, plan and history for the warm-up offer (null parts when signed out or offline). */
+export function loadWarmupData(game: string): Promise<import('../warmup-prompt').WarmupData> {
+  return loadWarmupDataRef ? loadWarmupDataRef(game) : Promise.resolve({ drills: null, plan: null, history: null })
+}
+
+/** Launch a drill from the main process exactly as Practice's `trainer:launch` does. */
+export function launchTrainerDrill(config: Record<string, unknown>): Promise<{ ok: boolean; error?: string; launchId?: number }> {
+  return launchTrainerDrillRef ? launchTrainerDrillRef(config) : Promise.resolve({ ok: false, error: 'Trainer not available' })
+}
+
+export function trainerLaunchedWhileGameOpen(): string | null {
+  return trainerLaunchGame
+}
+
+/** The game closed: a drill started while it was open no longer counts as "started with the game open". */
+export function clearTrainerLaunchGame(game: string): void {
+  if (trainerLaunchGame === game) trainerLaunchGame = null
+}
+
+export function onTrainerRunFinished(fn: (() => void) | null): void {
+  trainerRunFinishedListener = fn
+}
+
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
 export function setupGamingHandlers(
@@ -121,6 +152,7 @@ export function setupGamingHandlers(
   // The account that started each trainer launch owns its result, even if the login changes mid-run.
   const launchOwners = new Map<number, number | null>()
   trainerBridge?.setResultCallback((result, launch) => {
+    trainerRunFinishedListener?.()
     sendOverlayData('overlay:trainer-result', result)
     void trainerQueue.flush() // earlier runs first, e.g. after signing back in
     const owner = launch && launchOwners.has(launch.launchId)
@@ -148,12 +180,15 @@ export function setupGamingHandlers(
     if (ended.reason !== 'completed') sendOverlayData('overlay:trainer-ended', ended)
   })
 
-  ipcMain.handle('trainer:launch', async (_e, config: Record<string, unknown>) => {
+  // One launch path for Practice (IPC) and the main process (the warm-up offer when a game opens).
+  async function launchDrill(config: Record<string, unknown>): Promise<{ ok: boolean; error?: string; launchId?: number }> {
     if (!trainerBridge) return { ok: false, error: 'Trainer not available' }
     try {
       const saved = settingsManager.get()
       const enrichedConfig = drillConfigFromRequest(config ?? {}, saved)
       const ownerAtLaunch = auth.getUser()?.id ?? null
+      // Before the await: a game-started during the launch must already see it.
+      trainerLaunchGame = gameDetector.currentGame()
       await trainerBridge.launch(enrichedConfig, trainerSpawnOptions(saved.trainerMouse))
       const launchId = trainerBridge.lastLaunch?.launchId
       if (launchId != null) {
@@ -171,7 +206,10 @@ export function setupGamingHandlers(
       // Plain text with one action; paths and developer steps stay in the log.
       return { ok: false, error: trainerLaunchErrorMessage(err) }
     }
-  })
+  }
+  launchTrainerDrillRef = launchDrill
+
+  ipcMain.handle('trainer:launch', (_e, config: Record<string, unknown>) => launchDrill(config))
 
   ipcMain.handle('trainer:get-last-launch', () => trainerBridge?.lastLaunch ?? null)
 
@@ -201,6 +239,24 @@ export function setupGamingHandlers(
     },
     insights: async () => correlationInsightsFrom((await auth.getApi().get('/api/training/correlation')).data),
     benchmark: async () => (await auth.getApi().get('/api/training/benchmark')).data?.benchmark ?? null,
+  }
+
+  // Warm-up offer (warmup-prompt.ts): the same reads as Practice; a part that fails is null.
+  loadWarmupDataRef = async (game: string) => {
+    const part = <T>(name: string, p: Promise<T>) => p.catch((err: any) => {
+      log.warn(`[Warmup] Failed to fetch ${name}:`, err?.message)
+      return null
+    })
+    const [history, plan, drills] = await Promise.all([
+      part('history', trainerReads.history().then(h => normalizeTrainingHistory(h))),
+      part('plan', trainerReads.plan(game)),
+      part('drills', trainerReads.drills(game)),
+    ])
+    return {
+      history: history as import('../../../src/env').TrainingHistory | null,
+      plan: plan as import('../../../src/env').SharedTrainingPlan | null,
+      drills: Array.isArray(drills) ? drills as import('../../../src/env').CoachingDrill[] : null,
+    }
   }
 
   ipcMain.handle('trainer:get-practice-data', async (_e, game?: unknown) => {

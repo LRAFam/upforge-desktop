@@ -53,6 +53,10 @@ export type FunnelEventName =
   // Free match report → video (kept apart from `report_opened`, which means the video coaching report)
   | 'match_report_opened'
   | 'match_report_video_clicked'
+  // Warm-up offer when a game opens (warmup-prompt.ts): how often it is shown, started and declined
+  | 'warmup_prompt_shown'
+  | 'warmup_prompt_started'
+  | 'warmup_prompt_declined'
 
 export async function trackFunnelEvent(
   event: FunnelEventName,

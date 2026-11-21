@@ -266,6 +266,8 @@ export interface AppSettings {
   discordRichPresence: boolean
   /** Switch the game tab when a game starts and nothing is recording (default on) */
   autoSwitchGameTab: boolean
+  /** Offer a short trainer warm-up when a shooter opens (default on) */
+  warmupPrompt: boolean
   /** In-game hotkey feedback: notifications (default), overlay, or both */
   inGameFeedback: 'notifications' | 'overlay' | 'all'
   /** Auto-open the results page in the browser when analysis completes */

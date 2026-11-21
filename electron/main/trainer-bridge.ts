@@ -293,6 +293,11 @@ export class TrainerBridge {
     return this._lastLaunch
   }
 
+  /** True while a drill is starting or running. */
+  get isRunning(): boolean {
+    return this._launch !== null
+  }
+
   /** Resolve path to the bundled Godot trainer binary */
   private _trainerPath(): string {
     const base = app.isPackaged

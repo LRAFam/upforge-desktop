@@ -114,6 +114,12 @@ const HOTKEY_ROWS = [
       </SettingsRow>
     </SettingsSection>
 
+    <SettingsSection title="Warm-up" hint="A notification when Valorant, CS2 or Deadlock opens. Never during a match.">
+      <SettingsRow label="Offer a warm-up when a game opens" hint="Shows your drill once a day, only if you have not trained yet today.">
+        <SettingsToggle label="Offer a warm-up when a game opens" :on="settings.warmupPrompt !== false" @click="settings.warmupPrompt = settings.warmupPrompt === false; debouncedSave()" />
+      </SettingsRow>
+    </SettingsSection>
+
     <SettingsSection title="Crosshair" hint="Preview and edit your trainer crosshair">
       <CrosshairEditorV3 v-model="settings.crosshairSettings" @update:model-value="debouncedSave()" />
     </SettingsSection>
@@ -252,6 +258,19 @@ const HOTKEY_ROWS = [
           @change="debouncedSave"
         />
         <p class="mt-1 text-xs text-gray-600">Match your in-game Scoped Sensitivity Multiplier</p>
+      </div>
+    </SettingsSection>
+
+    <SettingsSection
+      title="Warm-up"
+      hint="A notification when Valorant, CS2 or Deadlock opens. Never during a match."
+    >
+      <div class="flex items-center justify-between gap-3 rounded-2xl border border-white/[0.10] bg-black/20 p-4">
+        <div>
+          <p class="text-sm font-semibold text-white">Offer a warm-up when a game opens</p>
+          <p class="mt-1 text-xs text-gray-500">Shows your drill once a day, only if you have not trained yet today.</p>
+        </div>
+        <SettingsToggle label="Offer a warm-up when a game opens" :on="settings.warmupPrompt !== false" @click="settings.warmupPrompt = settings.warmupPrompt === false; debouncedSave()" />
       </div>
     </SettingsSection>
 
