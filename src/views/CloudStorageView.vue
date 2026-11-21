@@ -331,7 +331,7 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
           <span class="uf-label">How storage works</span>
           <p class="uf-t4" style="margin: 0">One shared GB allowance for cloud clips and recordings across all games. Local files do not count. Cloud storage is used until files are removed; it does not reset each month.</p>
           <template v-if="retentionSummary?.started">
-            <p class="uf-t4" style="margin: 0">Free keeps each full video for 14 days. A paid plan or a storage pack keeps them while you're subscribed. If it ends, you have {{ retentionSummary.grace_days ?? 30 }} days before free rules apply. You get a warning 7 days and 1 day before anything is removed.</p>
+            <p class="uf-t4" style="margin: 0">Free keeps each full video for {{ retentionSummary.free_keep_days ?? 14 }} days. A paid plan or a storage pack keeps them while you're subscribed. If it ends, you have {{ retentionSummary.grace_days ?? 30 }} days before free rules apply. You get a warning 7 days and 1 day before anything is removed.</p>
             <p class="uf-t4" style="margin: 0">Only the full video is removed. Clips, notes, stats and analysis stay, and a copy on this PC still plays. Analysis always works, even when your space is full.</p>
           </template>
           <p v-else class="uf-t4" style="margin: 0">Files past their retention date may be removed during cleanup. Your saved notes and comparisons stay in your notebook even when footage is unavailable.</p>
