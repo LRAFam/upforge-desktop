@@ -283,8 +283,10 @@ export interface AppSettings {
   valorantReplayUpload?: boolean
   /** Set to true once the first-run onboarding wizard has been completed */
   onboardingComplete?: boolean
-  /** Unlocked achievement IDs mapped to ISO date strings */
+  /** Older builds: one PC-wide list of unlocked achievement IDs → ISO dates (taken over by the first account) */
   achievements?: Record<string, string>
+  /** Unlocked achievement IDs → ISO dates, per signed-in user id */
+  achievementsByUser?: Record<string, Record<string, string>>
   /** OBS WebSocket recording — required for match capture */
   obsEnabled: boolean
   /** OBS WebSocket host */

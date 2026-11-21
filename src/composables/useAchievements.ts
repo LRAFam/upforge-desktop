@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { measuredReactionMs } from '../lib/training-result-metrics'
+import { accountAchievementsSave, readAccountAchievements } from '../lib/account-achievements'
 
 export interface AchievementDef {
   id: string
@@ -38,16 +39,45 @@ export const ACHIEVEMENTS: AchievementDef[] = [
 ]
 
 // One list for the whole window: the app shell checks after every trainer run, and the screens that
-// show achievements see those unlocks without reloading. id → ISO date string.
+// show achievements see those unlocks without reloading. id → ISO date string. The list belongs to
+// the signed-in account (settings.achievementsByUser[userId]); a second account never sees it.
 const unlocked = ref<Record<string, string>>({})
+/** Signed-in user id; undefined until known, null when signed out. */
+let account: number | null | undefined
 let loaded: Promise<void> | null = null
+
+/** The app shell calls this on start and on every sign-in / sign-out / account switch (undefined = not known yet). */
+export function setAchievementsAccount(userId: number | null | undefined): void {
+  if (account === userId) return
+  account = userId
+  unlocked.value = {}
+  loaded = null
+}
+
+async function currentAccount(): Promise<number | null> {
+  if (account !== undefined) return account
+  const status = await window.api.app.getStatus().catch(() => null)
+  const id = (status as { user?: { id?: unknown } } | null)?.user?.id
+  if (status && account === undefined) account = typeof id === 'number' ? id : null
+  return account ?? null
+}
+
+async function persist(userId: number, list: Record<string, string>): Promise<void> {
+  const s = await window.api.settings.get().catch(() => null)
+  if (!s) return
+  await window.api.settings.save(accountAchievementsSave(s, userId, list)).catch(() => {})
+}
 
 export function useAchievements() {
   async function load() {
+    const userId = await currentAccount()
+    if (userId === null) return
     const s = await window.api.settings.get().catch(() => null)
-    const saved = (s as { achievements?: Record<string, string> } | null)?.achievements ?? {}
+    if (!s || account !== userId) return
+    const { list, claimedLegacy } = readAccountAchievements(s, userId)
     // Keep unlocks made while this read was in flight.
-    unlocked.value = { ...saved, ...unlocked.value }
+    unlocked.value = { ...list, ...unlocked.value }
+    if (claimedLegacy) await persist(userId, { ...unlocked.value })
   }
 
   function ensureLoaded(): Promise<void> {
@@ -57,11 +87,13 @@ export function useAchievements() {
 
   async function unlock(id: string): Promise<boolean> {
     await ensureLoaded()
+    const userId = account
+    if (userId == null) return false
     if (unlocked.value[id]) return false
     unlocked.value[id] = new Date().toISOString()
     // Spread to a plain object — Vue reactive proxies can't be serialized by
     // Electron's structured clone algorithm and will throw "object could not be cloned".
-    await window.api.settings.save({ achievements: { ...unlocked.value } }).catch(() => {})
+    await persist(userId, { ...unlocked.value })
     return true
   }
 
