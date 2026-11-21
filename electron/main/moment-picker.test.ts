@@ -191,6 +191,22 @@ it('selects recorded events before ranking so unavailable high-value moments do 
   expect(timeline.playerDeaths).toHaveLength(16)
 })
 
+it.each(['cs2', 'deadlock', 'valorant'] as const)('skips %s events clamped to frame zero (before the recording) but keeps them in the match stats', (game) => {
+  const timeline = {
+    game, recordingDurationMs: 1_239_800,
+    playerDeaths: [death(1, 0, true), death(2, 95_000, true)],
+    playerKills: [kill(1, 0, 'Vandal', 'Mid'), kill(3, 140_000, 'Vandal', 'Mid')],
+  } as unknown as MatchData
+  const moments = duelMomentsForUpload(timeline)
+  // Before: death-r2-0 and kill-r2-0 @ 0-2000ms were requested and cut from the first two seconds of the file.
+  expect(moments.map((m) => [m.moment_id, m.window_start_ms, m.window_end_ms])).toEqual([
+    ['death-r3-95000', 87_000, 97_000],
+    ['kill-r4-140000', 132_000, 142_000],
+  ])
+  expect(timeline.playerDeaths).toHaveLength(2)
+  expect(timeline.playerKills).toHaveLength(2)
+})
+
 it('clips the window at the file end and excludes events outside the recording', () => {
   const timeline = {
     game: 'valorant', recordingDurationMs: 1_766_570,
