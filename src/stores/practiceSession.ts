@@ -16,6 +16,14 @@ export interface GuidedSessionState {
   results: Array<SessionResult & { scenario: TrainerScenarioKey }>
 }
 
+interface RecentRun {
+  scenario: string
+  completed_at: string
+  score?: number
+  duration_seconds?: number
+  metadata?: Record<string, unknown>
+}
+
 /** Local calendar day (the player's "today"), e.g. 2026-11-18. */
 export function localDayKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -36,15 +44,27 @@ export function scenariosPlayedToday(
 }
 
 export const usePracticeSessionStore = defineStore('practiceSession', () => {
+  let accountId: number | null | undefined
   /** The guided session (warm-up → focus → cool-down) in progress, or null. */
   const guided = ref<GuidedSessionState | null>(null)
   /** Runs this app has seen, so "Played today" shows before the history refresh includes them. */
-  const recentRuns = ref<Array<{ scenario: string; completed_at: string }>>([])
+  const recentRuns = ref<RecentRun[]>([])
 
-  function recordRun(run: { scenario: string; completed_at?: string | null }) {
-    recentRuns.value.push({ scenario: run.scenario, completed_at: run.completed_at || new Date().toISOString() })
+  /** Account changes replace Practice's local history and in-progress session; repeated status events do not. */
+  function setAccount(userId: number | null) {
+    if (accountId === userId) return
+    accountId = userId
+    guided.value = null
+    recentRuns.value = []
+  }
+
+  function recordRun(run: Omit<RecentRun, 'completed_at'> & { completed_at?: string | null }) {
+    recentRuns.value.push({
+      scenario: run.scenario, completed_at: run.completed_at || new Date().toISOString(),
+      score: run.score, duration_seconds: run.duration_seconds, metadata: run.metadata,
+    })
     if (recentRuns.value.length > 50) recentRuns.value.splice(0, recentRuns.value.length - 50)
   }
 
-  return { guided, recentRuns, recordRun }
+  return { guided, recentRuns, recordRun, setAccount }
 })

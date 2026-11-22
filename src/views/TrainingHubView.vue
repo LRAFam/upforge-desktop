@@ -55,6 +55,7 @@ import { scenariosPlayedToday, usePracticeSessionStore } from '../stores/practic
 import { mergePracticeData, practiceRefreshNotice, shouldCachePracticeData, type PracticeDataReply, type TrainerData } from '../lib/practice-trainer-data'
 import { storeToRefs } from 'pinia'
 import { practiceActivity } from '../lib/trainer-achievements'
+import { DAILY_CHALLENGE_SETTINGS, dailyChallengeDone, dailyChallengeFor } from '../lib/daily-challenge'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SessionResult {
@@ -799,6 +800,7 @@ watch(primaryGame, async (game) => {
 const life = useLifetime() // listeners registered after an await stop with this view
 
 onMounted(async () => {
+  life.interval(() => { dailyChallengeNow.value = new Date() }, 60_000)
   life.own(window.api.on('session:user-changed', cancelManualDrill))
   life.own(window.api.on('auth:session-expired', cancelManualDrill))
   life.own(window.api.on('trainer:session-synced', (raw: unknown) => noteRunOutcome(raw)))
@@ -1314,19 +1316,20 @@ const trainingStats = computed(() => {
 })
 
 // ── Daily challenge (deterministic from date) ─────────────────────────────────
+const dailyChallengeNow = ref(new Date())
 const dailyChallenge = computed(() => {
-  const now = new Date()
-  const seed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate()
-  const scenario = RADAR_SCENARIOS[seed % RADAR_SCENARIOS.length] as AssignedDrill['scenario']
-  const targets = [60, 65, 70, 75, 80] as const
-  const target = targets[Math.floor(seed / 10) % targets.length]
-  const todayStr = now.toISOString().slice(0, 10)
-  const completed =
-    (apiHistory.value?.sessions ?? []).some(
-      s => s.scenario === scenario && s.score >= target && s.completed_at.startsWith(todayStr)
-    ) || sessionHistory.value.some(s => s.scenario === scenario && s.score >= target)
-  return { scenario, target, completed }
+  const challenge = dailyChallengeFor(dailyChallengeNow.value, RADAR_SCENARIOS)
+  return {
+    ...challenge,
+    completed: dailyChallengeDone(challenge, [...(apiHistory.value?.sessions ?? []), ...practiceSession.recentRuns]),
+  }
 })
+
+function launchDailyChallenge() {
+  dailyChallengeNow.value = new Date()
+  const challenge = dailyChallenge.value
+  launchDrill({ scenario: challenge.scenario as ScenarioKey, ...DAILY_CHALLENGE_SETTINGS, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${challenge.target}+` })
+}
 
 // ── Guided session (warmup → focus → cooldown) ───────────────────────────────
 const { guided: structuredSession } = storeToRefs(practiceSession)
@@ -1906,7 +1909,7 @@ const CATEGORY_ICON: Record<string, string> = {
       @dismiss-match-drill="dismissCoachingDrill"
       @play-drill="(k: string) => launchScenarioCard(k as ScenarioKey)"
       @play-manual-drill="openManualDrill"
-      @play-daily="launchDrill({ scenario: dailyChallenge.scenario, difficulty: 'medium', duration_seconds: 60, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${dailyChallenge.target}+` })"
+      @play-daily="launchDailyChallenge"
       @launch-free="launchFreePlay"
     />
 
@@ -2095,7 +2098,7 @@ const CATEGORY_ICON: Record<string, string> = {
                     type="button"
                     :disabled="launching || drillRunning"
                     class="text-xs font-bold text-red-400 border border-red-500/30 rounded-lg px-2.5 py-1 disabled:opacity-40"
-                    @click="launchDrill({ scenario: dailyChallenge.scenario, difficulty: 'medium', duration_seconds: 60, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${dailyChallenge.target}+` })"
+                    @click="launchDailyChallenge"
                   >Play</button>
                 </div>
               </div>

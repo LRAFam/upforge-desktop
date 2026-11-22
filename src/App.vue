@@ -317,10 +317,12 @@ import { asTrainerResult, launchConfigFromInfo, shellOpensTrainerResult } from '
 import { checkRunAchievements } from './lib/trainer-achievements'
 import { setAchievementsAccount, useAchievements } from './composables/useAchievements'
 import { useTrainerResultStore } from './stores/trainerResult'
+import { usePracticeSessionStore } from './stores/practiceSession'
 
 const route = useRoute()
 const router = useRouter()
 const trainerResultStore = useTrainerResultStore()
+const practiceSession = usePracticeSessionStore()
 const runAchievements = useAchievements()
 const { primaryGame, isValorant, loadFromSettings, applyFromSettings } = usePrimaryGame()
 const { theme, cssVars } = useGameTheme()
@@ -613,6 +615,7 @@ async function consumeDeepLink(): Promise<void> {
 }
 
 async function applySessionUser(userId: number | null) {
+  practiceSession.setAccount(userId)
   sessionUserKey.value = userId != null ? `user-${userId}` : 'guest'
   setCacheScope(userId)
   setAchievementsAccount(userId)
@@ -707,6 +710,7 @@ onMounted(async () => {
   await Promise.all([loadClipSummary(), loadUserProfile(), loadFromSettings()])
   void loadGameIdentity()
   const initialUserId = (status.value as { user?: { id?: number } }).user?.id
+  practiceSession.setAccount(initialUserId ?? null)
   sessionUserKey.value = initialUserId != null ? `user-${initialUserId}` : 'guest'
   setCacheScope(initialUserId ?? null)
   setAchievementsAccount(initialUserId ?? null)
