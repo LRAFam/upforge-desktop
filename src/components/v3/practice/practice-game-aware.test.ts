@@ -17,12 +17,17 @@ describe('Practice follows the primary game', () => {
     expect(ipc).toMatch(/get\('\/api\/drills', drillReadConfig\(game\)\)/)
   })
 
-  it('hides the session, drill library, daily challenge and quick play without the aim trainer (League)', () => {
+  it('hides the session, the single drills, the daily challenge and the drill groups without the aim trainer (League)', () => {
     const practice = read('src/views/v3/PracticeV3.vue')
     expect(practice).toMatch(/<section v-if="!aimTrainer" class="uf-noplan/)
-    expect(practice).toMatch(/<section v-else class="uf-session/)
-    expect(practice).toMatch(/<section v-if="showTrainerDrills" class="uf-rise uf-d3s">\s*<div class="uf-library-head">/)
-    expect(practice).toMatch(/<aside v-if="showTrainerDrills"/)
+    // The hero (the session and the one red action) only draws with the aim trainer.
+    expect(practice).toMatch(/<div v-else-if="heroPending" class="uf-hero-wait"/)
+    expect(practice).toMatch(/<PracticeHeroV3 v-else /)
+    // Today's single drills, with the daily challenge tile among them.
+    expect(practice).toMatch(/<section v-if="showTrainerDrills" class="uf-rise uf-d3s">\s*<div class="uf-section-head">\s*<span class="uf-label">Play one on its own<\/span>/)
+    expect(practice).toMatch(/Daily challenge/)
+    // The Drills tab keeps its groups behind the same link.
+    expect(practice).toMatch(/<template v-if="showTrainerDrills">\s*<p v-if="scoringNote"/)
     expect(practice).toMatch(/Open the aim drill library anyway/)
   })
 })
