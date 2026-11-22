@@ -337,6 +337,8 @@ export interface AppSettings {
     vsync: boolean
     /** 0 = no cap. */
     maxFps: number
+    /** Colour of targets and enemy heads (trainers 1.14.0 and later). */
+    targetPalette: import('./lib/trainer-display').TrainerTargetPalette
   }
   /** Crosshair appearance for the aim trainer */
   crosshairSettings: {

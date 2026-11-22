@@ -534,6 +534,7 @@ function createSettings() {
       windowMode: 'fullscreen',
       vsync: false,
       maxFps: TRAINER_MAX_FPS_DEFAULT,
+      targetPalette: 'default',
     },
     autoOpenBrowser: false,
     crosshairSettings: { ...DEFAULT_CROSSHAIR },

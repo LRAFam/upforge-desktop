@@ -4,7 +4,7 @@ import path from 'path'
 import { recordingDirectoryProblem } from './recording-save-safety'
 import { DEFAULT_CROSSHAIR_SETTINGS, mergeTrainerMouse, normalizeCrosshairSettings, normalizeTrainerMouse } from './trainer-settings'
 import type { TrainerAimByGame, TrainerGame } from '../../src/lib/trainer-games'
-import type { TrainerWindowMode } from '../../src/lib/trainer-display'
+import type { TrainerTargetPalette, TrainerWindowMode } from '../../src/lib/trainer-display'
 import {
   migrateOnboardingFlags,
   withOnboardingComplete,
@@ -201,6 +201,8 @@ export interface AppSettings {
     vsync: boolean
     /** Frame cap: 0 = no cap, else 30–1000 (trainer default 360). */
     maxFps: number
+    /** Colour of targets and enemy heads (`target_palette`; trainers 1.14.0 and later). */
+    targetPalette: TrainerTargetPalette
   }
   /** Crosshair appearance for the aim trainer */
   crosshairSettings: {

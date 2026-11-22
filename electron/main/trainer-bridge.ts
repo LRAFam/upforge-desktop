@@ -17,6 +17,7 @@ import fs from 'fs'
 import log from 'electron-log'
 import type { AuthManager } from './auth-manager'
 import { withLaunchGame } from './trainer-payload'
+import type { TrainerTargetPalette } from '../../src/lib/trainer-display'
 
 /** Legacy fixed port (trainer builds before the per-launch port). Not used for new launches. */
 export const LEGACY_TRAINER_PORT = 7891
@@ -43,6 +44,8 @@ export interface DrillConfig {
    * Left out, the trainer shows a lesson the first time only. Drills without a lesson ignore it.
    */
   lesson?: boolean
+  /** Colour of targets and enemy heads. Left out = each drill's own colours; sent only to trainers 1.14.0 and later. */
+  target_palette?: TrainerTargetPalette
   context?: {
     weakness?: string
     score?: number

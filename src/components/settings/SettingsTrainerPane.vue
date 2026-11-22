@@ -10,7 +10,8 @@ import CrosshairEditorV3 from '../v3/settings/CrosshairEditorV3.vue'
 import { shortcutKeyParts } from '../v3/settings/settings-display'
 import { clampTrainerMouseInput } from '../../lib/trainer-mouse-limits'
 import { TRAINER_GAMES, TRAINER_GAME_LABELS } from '../../lib/trainer-games'
-import { TRAINER_FRAME_CAPS, frameCapLabel, type TrainerWindowMode } from '../../lib/trainer-display'
+import { TRAINER_FRAME_CAPS, TRAINER_TARGET_PALETTES, frameCapLabel, trainerReadsTargetPalette, type TrainerWindowMode } from '../../lib/trainer-display'
+import trainerPin from '../../../trainer-version.json'
 
 const {
   conflictResults,
@@ -41,6 +42,8 @@ const WINDOW_MODES: Array<{ value: TrainerWindowMode; label: string }> = [{ valu
 const frameCaps = computed(() => TRAINER_FRAME_CAPS.includes(settings.trainerMouse.maxFps)
   ? TRAINER_FRAME_CAPS
   : [...TRAINER_FRAME_CAPS, settings.trainerMouse.maxFps])
+/** Target colour: only when the bundled trainer reads it (the launch sends it only then too). */
+const targetPaletteOffered = trainerReadsTargetPalette(trainerPin.version)
 
 const HOTKEY_ROWS = [
   { id: 'save-clip', label: 'Bookmark clip moment', hint: 'Press during a match to save a clip', fallback: 'F9', overlayOnly: false },
@@ -111,6 +114,11 @@ const HOTKEY_ROWS = [
         <select :value="settings.trainerMouse.maxFps" aria-label="Frame cap" class="uf-select is-inline" @change="settings.trainerMouse.maxFps = Number(($event.target as HTMLSelectElement).value); debouncedSave()">
           <option v-for="fps in frameCaps" :key="fps" :value="fps">{{ frameCapLabel(fps) }}</option>
         </select>
+      </SettingsRow>
+      <SettingsRow v-if="targetPaletteOffered" label="Target colour" hint="If red and green are hard to tell apart, pick one colour for targets and enemy heads in every drill.">
+        <div class="uf-seg" role="group" aria-label="Target colour">
+          <button v-for="palette in TRAINER_TARGET_PALETTES" :key="palette.value" type="button" :aria-pressed="settings.trainerMouse.targetPalette === palette.value" @click="settings.trainerMouse.targetPalette = palette.value; debouncedSave()">{{ palette.label }}</button>
+        </div>
       </SettingsRow>
     </SettingsSection>
 

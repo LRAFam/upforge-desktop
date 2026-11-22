@@ -7,7 +7,7 @@ import type { AppSettings } from './settings-manager'
 import type { DrillConfig, TrainerSpawnOptions } from './trainer-bridge'
 import { trainerFovInRange, trainerSensitivityInRange } from '../../src/lib/trainer-mouse-limits'
 import { DEFAULT_TRAINER_FOV, defaultTrainerFov, isTrainerGame, switchTrainerGame, TRAINER_GAMES, type TrainerAimByGame } from '../../src/lib/trainer-games'
-import { TRAINER_MAX_FPS_DEFAULT, trainerMaxFpsInRange } from '../../src/lib/trainer-display'
+import { TRAINER_MAX_FPS_DEFAULT, isTrainerTargetPalette, trainerMaxFpsInRange, trainerReadsTargetPalette } from '../../src/lib/trainer-display'
 import { DEFAULT_CROSSHAIR, migrateCrosshairSettings } from '../../src/lib/crosshair'
 
 export { CS2_DEFAULT_FOV, DEFAULT_TRAINER_FOV, defaultTrainerFov } from '../../src/lib/trainer-games'
@@ -35,6 +35,7 @@ export const DEFAULT_TRAINER_MOUSE: TrainerMouse = {
   windowMode: 'fullscreen',
   vsync: false,
   maxFps: TRAINER_MAX_FPS_DEFAULT,
+  targetPalette: 'default',
 }
 
 /** The same defaults as the renderer's editor (src/lib/crosshair.ts). */
@@ -91,6 +92,7 @@ export function normalizeTrainerMouse(saved: unknown): TrainerMouse {
   merged.scopedMultiplier = Math.min(SCOPED_MULTIPLIER_MAX, Math.max(SCOPED_MULTIPLIER_MIN, merged.scopedMultiplier))
   merged.windowMode = merged.windowMode === 'windowed' ? 'windowed' : 'fullscreen'
   merged.maxFps = trainerMaxFpsInRange(merged.maxFps)
+  if (!isTrainerTargetPalette(merged.targetPalette)) merged.targetPalette = 'default'
   merged.perGame = { ...normalizePerGame(merged.perGame), [merged.game]: { sensitivity: merged.sensitivity, fov: merged.fov } }
   return merged
 }
@@ -190,6 +192,15 @@ export function trainerMouseToGodot(input: unknown): NonNullable<DrillConfig['mo
     vsync: ms.vsync,
     max_fps: ms.maxFps,
   }
+}
+
+/**
+ * The saved target colour as the trainer's top-level `target_palette` key. Sent only to a trainer build that reads
+ * it (1.14.0 and later), and only when it is not "default": an older trainer gets the same message as before.
+ */
+export function targetPaletteToGodot(input: unknown, trainerVersion: string): Pick<DrillConfig, 'target_palette'> {
+  const palette = normalizeTrainerMouse(input).targetPalette
+  return palette !== 'default' && trainerReadsTargetPalette(trainerVersion) ? { target_palette: palette } : {}
 }
 
 /** How to start the trainer process: the window mode is read from its command line, before any drill arrives. */

@@ -5,7 +5,8 @@
  */
 import type { AppSettings } from './settings-manager'
 import type { DrillConfig, SessionResult, TrainerLaunchInfo } from './trainer-bridge'
-import { crosshairSettingsToGodot, trainerMouseToGodot } from './trainer-settings'
+import { crosshairSettingsToGodot, targetPaletteToGodot, trainerMouseToGodot } from './trainer-settings'
+import { TRAINER_VERSION } from './trainer-version'
 import { LAUNCHABLE_SCENARIO_KEYS } from '../../src/lib/trainer-scenarios'
 
 /** Which app and bundled trainer produced a run (stored in metadata so support can tell builds apart). */
@@ -64,10 +65,12 @@ export function withLaunchGame(result: SessionResult, config: Pick<DrillConfig, 
  * Renderer launch request → DrillConfig. Mouse and crosshair settings always come from the saved
  * settings in main (source of truth), so any renderer-sent copies are ignored. `lesson: true` ("Show the
  * lesson") is passed on; anything else is left out so the trainer shows a lesson the first time only.
+ * `trainerVersion` is the trainer build the drill runs on (the bundled one): it decides which keys it reads.
  */
 export function drillConfigFromRequest(
   req: Record<string, unknown>,
   settings: Pick<AppSettings, 'trainerMouse' | 'crosshairSettings'>,
+  trainerVersion: string = TRAINER_VERSION,
 ): DrillConfig {
   const duration = typeof req.duration_seconds === 'number' ? req.duration_seconds
     : typeof req.duration === 'number' ? req.duration : 60
@@ -83,6 +86,7 @@ export function drillConfigFromRequest(
     ...(req.context && typeof req.context === 'object' ? { context: req.context as DrillConfig['context'] } : {}),
     ...(userDrillId ? { user_drill_id: userDrillId } : {}),
     ...(req.lesson === true ? { lesson: true } : {}),
+    ...targetPaletteToGodot(settings.trainerMouse, trainerVersion),
     mouse_settings: trainerMouseToGodot(settings.trainerMouse),
     crosshair_settings: crosshairSettingsToGodot(settings.crosshairSettings),
   }
