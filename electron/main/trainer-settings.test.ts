@@ -1,7 +1,30 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { crosshairSettingsToGodot, mergeTrainerMouse, normalizeCrosshairSettings, normalizeTrainerMouse, trainerMouseToGodot, trainerSpawnOptions } from './trainer-settings'
+import { crosshairSettingsToGodot, mergeTrainerMouse, normalizeCrosshairSettings, normalizeTrainerMouse, targetPaletteToGodot, trainerMouseToGodot, trainerSpawnOptions } from './trainer-settings'
+import { TRAINER_VERSION } from './trainer-version'
+
+describe('target colour (target_palette)', () => {
+  it('an older save has the default colour; a saved palette is kept; anything else is the default', () => {
+    expect(normalizeTrainerMouse({ dpi: 1600 }).targetPalette).toBe('default')
+    expect(normalizeTrainerMouse({ targetPalette: 'magenta' }).targetPalette).toBe('magenta')
+    for (const bad of ['red', 'Cyan', 3, null, '']) expect(normalizeTrainerMouse({ targetPalette: bad }).targetPalette, String(bad)).toBe('default')
+  })
+  it('keeps the colour across a game switch and a partial save', () => {
+    const cyan = normalizeTrainerMouse({ targetPalette: 'cyan' })
+    expect(mergeTrainerMouse(cyan, { game: 'cs2' }).targetPalette).toBe('cyan')
+    expect(mergeTrainerMouse(cyan, { sensitivity: 0.4 }).targetPalette).toBe('cyan')
+  })
+  it('is sent as target_palette only to trainers that read it (1.14.0 and later), and never as "default"', () => {
+    expect(targetPaletteToGodot({ targetPalette: 'yellow' }, '1.14.0')).toEqual({ target_palette: 'yellow' })
+    expect(targetPaletteToGodot({ targetPalette: 'cyan' }, '1.15.2')).toEqual({ target_palette: 'cyan' })
+    expect(targetPaletteToGodot({ targetPalette: 'magenta' }, '1.13.0')).toEqual({})
+    expect(targetPaletteToGodot({ targetPalette: 'magenta' }, 'dev')).toEqual({})
+    expect(targetPaletteToGodot({ targetPalette: 'default' }, '1.14.0')).toEqual({})
+    expect(targetPaletteToGodot({ targetPalette: 'red' }, '1.14.0')).toEqual({})
+    expect(targetPaletteToGodot(null, '1.14.0')).toEqual({})
+  })
+})
 
 describe('trainer mouse settings', () => {
   it('fills a partial legacy save from defaults', () => {
@@ -136,10 +159,12 @@ describe('trainer settings pane only offers settings the trainer uses', () => {
   const changed: Record<string, unknown> = {
     dpi: 1600, game: 'cs2', sensitivity: 0.9, fov: 95, movementSpeed: 4.4,
     trainerVolume: 40, scopedMultiplier: 1.5, rawInput: false, pollingRate: 125,
-    vsync: true, maxFps: 144, windowMode: 'windowed',
+    vsync: true, maxFps: 144, windowMode: 'windowed', targetPalette: 'cyan',
   }
-  /** What a launch sends: the message's mouse settings and the trainer's start options. */
-  const launchOf = (saved: Record<string, unknown>) => ({ mouse: trainerMouseToGodot(saved), spawn: trainerSpawnOptions(saved) })
+  /** What a launch sends: the message's mouse settings and target colour (bundled trainer), and the trainer's start options. */
+  const launchOf = (saved: Record<string, unknown>) => ({
+    mouse: trainerMouseToGodot(saved), palette: targetPaletteToGodot(saved, TRAINER_VERSION), spawn: trainerSpawnOptions(saved),
+  })
 
   it('finds the bound fields', () => {
     expect(bound).toContain('dpi')
@@ -159,6 +184,15 @@ describe('trainer settings pane only offers settings the trainer uses', () => {
 
   it('offers window mode, V-Sync and the frame cap', () => {
     expect(bound).toEqual(expect.arrayContaining(['windowMode', 'vsync', 'maxFps']))
+  })
+
+  it('offers the target colour (one row, every palette the trainer reads), only when the bundled trainer reads it', () => {
+    expect(bound).toContain('targetPalette')
+    expect(pane).toMatch(/const targetPaletteOffered = trainerReadsTargetPalette\(trainerPin\.version\)/)
+    expect(pane).toMatch(/import trainerPin from '\.\.\/\.\.\/\.\.\/trainer-version\.json'/)
+    const rows = pane.match(/<SettingsRow v-if="targetPaletteOffered" label="Target colour"[\s\S]*?<\/SettingsRow>/g) ?? []
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatch(/v-for="palette in TRAINER_TARGET_PALETTES"[^>]*:aria-pressed="settings\.trainerMouse\.targetPalette === palette\.value"[^>]*@click="settings\.trainerMouse\.targetPalette = palette\.value; debouncedSave\(\)"/)
   })
 
   it('offers only games the trainer has a scale for (no "Custom")', () => {

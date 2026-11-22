@@ -105,4 +105,13 @@ describe('SettingsManager trainer sensitivity per game', () => {
     manager.save({ primaryGame: 'lol', trainerMouse: { ...manager.get().trainerMouse, game: 'lol' as never } })
     expect(manager.get().trainerMouse).toMatchObject({ game: 'cs2', sensitivity: 1.2, fov: 90 })
   })
+
+  it('an existing install starts on the default target colour; a chosen one survives a restart', () => {
+    fs.writeFileSync(settingsFile(), JSON.stringify({ primaryGame: 'valorant', trainerMouse: oldTrainerMouse }))
+    const manager = new SettingsManager()
+    expect(manager.get().trainerMouse.targetPalette).toBe('default')
+    // Settings › Trainer saves the whole trainerMouse it shows.
+    manager.save({ trainerMouse: { ...manager.get().trainerMouse, targetPalette: 'magenta' } })
+    expect(new SettingsManager().get().trainerMouse).toMatchObject({ targetPalette: 'magenta', sensitivity: 0.35, dpi: 1600 })
+  })
 })

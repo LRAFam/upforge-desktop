@@ -57,6 +57,21 @@ describe('drillConfigFromRequest', () => {
     expect(cfg.mouse_settings).toMatchObject({ vsync: true, max_fps: 144 })
     expect(drillConfigFromRequest({ scenario: 'flick' }, settings).mouse_settings).toMatchObject({ vsync: false, max_fps: 360 })
   })
+  it('sends the saved target colour at the top level to the bundled trainer (1.14.0 reads target_palette)', () => {
+    const cyan = { ...settings, trainerMouse: { ...DEFAULT_TRAINER_MOUSE, targetPalette: 'cyan' as const } }
+    const cfg = drillConfigFromRequest({ scenario: 'gridshot' }, cyan)
+    expect(cfg.target_palette).toBe('cyan')
+    expect(cfg.mouse_settings).not.toHaveProperty('target_palette')
+    expect(cfg.mouse_settings).not.toHaveProperty('targetPalette')
+  })
+  it('never sends target_palette to a trainer that does not read it, for "default", or from a renderer copy', () => {
+    const magenta = { ...settings, trainerMouse: { ...DEFAULT_TRAINER_MOUSE, targetPalette: 'magenta' as const } }
+    expect('target_palette' in drillConfigFromRequest({ scenario: 'gridshot' }, magenta, '1.13.0')).toBe(false)
+    expect(drillConfigFromRequest({ scenario: 'gridshot' }, magenta, '1.14.0').target_palette).toBe('magenta')
+    // The default colour leaves the message as it was before the setting existed.
+    expect('target_palette' in drillConfigFromRequest({ scenario: 'gridshot' }, settings)).toBe(false)
+    expect('target_palette' in drillConfigFromRequest({ scenario: 'gridshot', target_palette: 'yellow' }, settings)).toBe(false)
+  })
   it('asks for the drill’s guided lesson only when the player asked to see it again', () => {
     expect(drillConfigFromRequest({ scenario: 'hold_angle', lesson: true }, settings).lesson).toBe(true)
     // Anything else leaves it to the trainer (a lesson runs the first time on this PC).
