@@ -56,6 +56,17 @@ export interface TrainerLaunchInfo {
   difficulty: 'easy' | 'medium' | 'hard' | 'pro'
   user_drill_id?: number
   context?: { weakness?: string; score?: number; user_rank?: string }
+  /** The trainer stays open on its end card after this run's result (R again, N next drill, Esc back to UpForge). */
+  keep_open?: boolean
+  /** A run the trainer started itself from its end card (R), also sent as `trainer:run-started`: the launch it repeats. */
+  repeat_of?: number
+}
+
+/** `trainer:next-drill`: the player pressed N on the trainer's end card; the app launches the next drill. */
+export interface TrainerNextDrillRequest {
+  launchId: number
+  scenario: string | null
+  next: string | null
 }
 
 /** game_started / match_started: UpForge closed the trainer because a game opened or a match began. */

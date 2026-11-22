@@ -8,6 +8,7 @@ import type { DrillConfig, SessionResult, TrainerLaunchInfo } from './trainer-br
 import { crosshairSettingsToGodot, targetPaletteToGodot, trainerMouseToGodot } from './trainer-settings'
 import { TRAINER_VERSION } from './trainer-version'
 import { LAUNCHABLE_SCENARIO_KEYS } from '../../src/lib/trainer-scenarios'
+import { trainerStaysOpen } from '../../src/lib/trainer-display'
 
 /** Which app and bundled trainer produced a run (stored in metadata so support can tell builds apart). */
 export interface RunVersions {
@@ -66,11 +67,14 @@ export function withLaunchGame(result: SessionResult, config: Pick<DrillConfig, 
  * settings in main (source of truth), so any renderer-sent copies are ignored. `lesson: true` ("Show the
  * lesson") is passed on; anything else is left out so the trainer shows a lesson the first time only.
  * `trainerVersion` is the trainer build the drill runs on (the bundled one): it decides which keys it reads.
+ * `keepOpen`: the trainer stays open on its end card after the result (only a trainer that reads it gets
+ * `keep_open`); the request's `next_scenario` (a guided session's next step) rides along only then.
  */
 export function drillConfigFromRequest(
   req: Record<string, unknown>,
   settings: Pick<AppSettings, 'trainerMouse' | 'crosshairSettings'>,
   trainerVersion: string = TRAINER_VERSION,
+  opts: { keepOpen?: boolean } = {},
 ): DrillConfig {
   const duration = typeof req.duration_seconds === 'number' ? req.duration_seconds
     : typeof req.duration === 'number' ? req.duration : 60
@@ -78,6 +82,9 @@ export function drillConfigFromRequest(
     ? req.difficulty as DrillConfig['difficulty'] : 'medium'
   const userDrillId = typeof req.user_drill_id === 'number' && Number.isInteger(req.user_drill_id) && req.user_drill_id > 0
     ? req.user_drill_id : undefined
+  const keepOpen = opts.keepOpen === true && trainerStaysOpen(trainerVersion)
+  const next = keepOpen && typeof req.next_scenario === 'string' && (LAUNCHABLE_SCENARIO_KEYS as readonly string[]).includes(req.next_scenario)
+    ? req.next_scenario as DrillConfig['scenario'] : undefined
   return {
     scenario: String(req.scenario ?? 'flick') as DrillConfig['scenario'],
     duration_seconds: duration,
@@ -86,6 +93,8 @@ export function drillConfigFromRequest(
     ...(req.context && typeof req.context === 'object' ? { context: req.context as DrillConfig['context'] } : {}),
     ...(userDrillId ? { user_drill_id: userDrillId } : {}),
     ...(req.lesson === true ? { lesson: true } : {}),
+    ...(keepOpen ? { keep_open: true } : {}),
+    ...(next ? { next_scenario: next } : {}),
     ...targetPaletteToGodot(settings.trainerMouse, trainerVersion),
     mouse_settings: trainerMouseToGodot(settings.trainerMouse),
     crosshair_settings: crosshairSettingsToGodot(settings.crosshairSettings),

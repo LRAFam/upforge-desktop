@@ -7,6 +7,8 @@ import { ERROR_REPORTING_KEY } from './error-reporting-key'
  * - Connects to its TCP socket (IPC)
  * - Sends drill config, receives session results and lifecycle events
  * - Forwards results to the renderer via IPC, plus exactly one `trainer:session-ended` per launch
+ * - Trainers that stay open between runs (`keep_open`): a run the trainer starts itself (R) is a new launch
+ *   (`trainer:run-started`), and the next drill it asks for (N, `trainer:next-drill`) goes on the same socket
  */
 
 import { spawn as nodeSpawn, ChildProcess } from 'child_process'
@@ -25,6 +27,11 @@ const TRAINER_HOST = '127.0.0.1'
 const CONNECT_RETRY_MS = 300
 /** ~20s: a cold Godot start or a Windows Defender scan can take well over 6s. */
 const CONNECT_TIMEOUT_MS = 20_000
+/**
+ * After N on the trainer's end card, the next launch goes to that open window for this long (the trainer waits
+ * 10 s too). Any other launch starts a fresh trainer: an open window behind UpForge may not come forward by itself.
+ */
+const NEXT_DRILL_REUSE_MS = 10_000
 
 export type TrainerScenario =
   | 'flick' | 'tracking' | 'microadjust' | 'switching' | 'duel'
@@ -46,6 +53,13 @@ export interface DrillConfig {
   lesson?: boolean
   /** Colour of targets and enemy heads. Left out = each drill's own colours; sent only to trainers 1.14.0 and later. */
   target_palette?: TrainerTargetPalette
+  /**
+   * `true`: after the result the trainer stays open on its end card (R again, N next drill, Esc back to UpForge)
+   * instead of closing. Sent only to trainers that read it (trainerStaysOpen).
+   */
+  keep_open?: boolean
+  /** The drill the end card offers next (a guided session's next step). Sent only with `keep_open`. */
+  next_scenario?: TrainerScenario
   context?: {
     weakness?: string
     score?: number
@@ -114,6 +128,18 @@ export interface TrainerLaunchInfo {
   difficulty: DrillConfig['difficulty']
   user_drill_id?: number
   context?: DrillConfig['context']
+  /** The trainer stays open after this run's result (it was sent `keep_open`). */
+  keep_open?: boolean
+  /** Set on a run the trainer started itself from its end card (R): the launchId of the run it repeats. */
+  repeat_of?: number
+}
+
+/** `trainer:next-drill`: the player pressed N on the trainer's end card. The app sends the next drill (a launch). */
+export interface TrainerNextDrillRequest {
+  /** The run whose end card asked. */
+  launchId: number
+  scenario: string | null
+  next: string | null
 }
 
 /** game_started / match_started: UpForge closed the trainer because a game opened or a match began. */
@@ -133,7 +159,7 @@ const ABORT_REASONS = new Set(['user_exit', 'unknown_scenario', 'invalid_config'
 
 /** Parse one line from Godot: lifecycle event, session result, or garbage. */
 export function parseTrainerLine(line: string):
-  | { kind: 'event'; event: string; reason: string; scenario: string | null; message?: string }
+  | { kind: 'event'; event: string; reason: string; scenario: string | null; message?: string; next?: string }
   | { kind: 'result'; result: SessionResult }
   | null {
   let parsed: unknown
@@ -147,6 +173,7 @@ export function parseTrainerLine(line: string):
       reason: typeof obj.reason === 'string' ? obj.reason : 'error',
       scenario: typeof obj.scenario === 'string' ? obj.scenario : null,
       ...(typeof obj.message === 'string' ? { message: obj.message } : {}),
+      ...(typeof obj.next === 'string' ? { next: obj.next } : {}),
     }
   }
   return { kind: 'result', result: obj as unknown as SessionResult }
@@ -255,6 +282,8 @@ interface LaunchState {
   connected: boolean
   /** Set when the pre-connect phase must stop (spawn error, early exit, superseded). */
   connectAbort: ((err: Error) => void) | null
+  /** When the trainer, open on its end card, asked for the next drill (N); null when it has not. */
+  nextAskedAt: number | null
 }
 
 export interface TrainerBridgeOptions {
@@ -263,6 +292,8 @@ export interface TrainerBridgeOptions {
   getPort?: () => Promise<number>
   connectTimeoutMs?: number
   connectRetryMs?: number
+  nextDrillReuseMs?: number
+  now?: () => number
 }
 
 export class TrainerBridge {
@@ -276,6 +307,7 @@ export class TrainerBridge {
 
   private _onResultCallback?: (result: SessionResult, launch: TrainerLaunchInfo | null) => void
   private _onEndedCallback?: (ended: TrainerSessionEnded) => void
+  private _onRunStartedCallback?: (launch: TrainerLaunchInfo) => void
 
   constructor(getMainWindow: () => BrowserWindow | null, authManager?: AuthManager, opts: TrainerBridgeOptions = {}) {
     this._mainWindow = getMainWindow
@@ -291,6 +323,11 @@ export class TrainerBridge {
     this._onEndedCallback = cb
   }
 
+  /** A run the trainer started itself from its end card (R): a new launch with the same drill (`repeat_of` set). */
+  setRunStartedCallback(cb: (launch: TrainerLaunchInfo) => void): void {
+    this._onRunStartedCallback = cb
+  }
+
   setAuthManager(authManager: AuthManager): void {
     this._authManager = authManager
   }
@@ -300,7 +337,7 @@ export class TrainerBridge {
     return this._lastLaunch
   }
 
-  /** True while a drill is starting or running. */
+  /** True while the trainer is open: starting, running a drill, or on its end card between runs. */
   get isRunning(): boolean {
     return this._launch !== null
   }
@@ -346,9 +383,18 @@ export class TrainerBridge {
    * Launch a drill: kills any previous trainer, spawns a fresh one on its own port and sends the config.
    * Resolves once the config is sent; rejects (after killing the process) when it cannot connect.
    * Every launch ends with exactly one `trainer:session-ended`.
+   * The one exception to a fresh trainer: the next drill a trainer asked for from its end card (N) is sent to that
+   * open window, on the same socket, as a new launch.
    */
   async launch(config: DrillConfig, spawnOpts: TrainerSpawnOptions = {}): Promise<void> {
-    // Always kill any lingering process before spawning a fresh one (a previous drill may be in its
+    const open = this._launch
+    if (open && config.keep_open === true && this._waitsForNextDrill(open)) {
+      this._beginRun(open, config)
+      log.info('[TrainerBridge] Sending the next drill to the open trainer:', config.scenario)
+      this._sendConfig(open.socket!, config)
+      return
+    }
+    // Otherwise always kill any lingering process before spawning a fresh one (a previous drill may be in its
     // post-completion quit delay, and a new config sent to a dying process would end mid-countdown).
     if (this._launch) {
       log.info('[TrainerBridge] Killing previous trainer before new drill')
@@ -356,16 +402,9 @@ export class TrainerBridge {
     }
 
     const id = ++this._generation
-    const info: TrainerLaunchInfo = {
-      launchId: id,
-      scenario: config.scenario,
-      duration_seconds: config.duration_seconds,
-      difficulty: config.difficulty,
-      ...(config.user_drill_id ? { user_drill_id: config.user_drill_id } : {}),
-      ...(config.context ? { context: config.context } : {}),
-    }
+    const info = launchInfo(id, config)
     const state: LaunchState = {
-      id, config, info, port: 0, proc: null, socket: null, ended: false, connected: false, connectAbort: null,
+      id, config, info, port: 0, proc: null, socket: null, ended: false, connected: false, connectAbort: null, nextAskedAt: null,
     }
     this._launch = state
     this._lastLaunch = info
@@ -507,6 +546,12 @@ export class TrainerBridge {
         if (msg.event === 'aborted') {
           const reason = (ABORT_REASONS.has(msg.reason) ? msg.reason : 'error') as TrainerEndReason
           this._end(state, { reason, scenario: msg.scenario, message: msg.message })
+        } else if (msg.event === 'run_started') {
+          this._onRunStarted(state)
+        } else if (msg.event === 'next_drill') {
+          this._onNextDrillAsked(state, msg.scenario, msg.next ?? null)
+        } else if (msg.event === 'back_to_app') {
+          this._showMainWindow()
         }
         continue
       }
@@ -517,6 +562,60 @@ export class TrainerBridge {
       this._onResultCallback?.(result, state.info)
       this._end(state, { reason: 'completed' })
     }
+  }
+
+  /**
+   * The trainer started a run by itself (R). Mid-run it is the same launch, still waiting for its one result. After a
+   * result it is a new launch of the same drill, so that run's result is sent and saved once, as its own run.
+   */
+  private _onRunStarted(state: LaunchState): void {
+    if (!state.ended) return
+    if (state.config.keep_open !== true) return // a trainer that closes after its result cannot start another run
+    const repeatOf = state.id
+    this._beginRun(state, state.config, repeatOf)
+    log.info('[TrainerBridge] Trainer started the drill again:', state.config.scenario, 'launch', state.id)
+    try { this._mainWindow()?.webContents.send('trainer:run-started', state.info) } catch { /* window gone */ }
+    this._onRunStartedCallback?.(state.info)
+  }
+
+  /** N on the end card: the next launch goes to this window (see launch()). The app decides what the next drill is. */
+  private _onNextDrillAsked(state: LaunchState, scenario: string | null, next: string | null): void {
+    if (!state.ended || state.config.keep_open !== true) return
+    state.nextAskedAt = this._now()
+    const request: TrainerNextDrillRequest = { launchId: state.id, scenario, next }
+    try { this._mainWindow()?.webContents.send('trainer:next-drill', request) } catch { /* window gone */ }
+  }
+
+  /** The trainer is open on its end card, connected, and asked for the next drill moments ago. */
+  private _waitsForNextDrill(state: LaunchState): boolean {
+    const reuseMs = this._opts.nextDrillReuseMs ?? NEXT_DRILL_REUSE_MS
+    return state.ended && state.connected && !!state.proc && !!state.socket && !state.socket.destroyed
+      && state.config.keep_open === true && state.nextAskedAt !== null && this._now() - state.nextAskedAt <= reuseMs
+  }
+
+  /** A new run in the trainer that is already open: a fresh launch id, its own config, one session-ended to come. */
+  private _beginRun(state: LaunchState, config: DrillConfig, repeatOf?: number): void {
+    state.id = ++this._generation
+    state.config = config
+    state.info = { ...launchInfo(state.id, config), ...(repeatOf !== undefined ? { repeat_of: repeatOf } : {}) }
+    state.ended = false
+    state.nextAskedAt = null
+    this._lastLaunch = state.info
+  }
+
+  /** Esc on the trainer's end card: bring UpForge forward (the trainer closes itself). */
+  private _showMainWindow(): void {
+    const win = this._mainWindow()
+    if (!win || win.isDestroyed?.()) return
+    try {
+      if (win.isMinimized?.()) win.restore()
+      win.show?.()
+      win.focus?.()
+    } catch { /* window gone */ }
+  }
+
+  private _now(): number {
+    return this._opts.now ? this._opts.now() : Date.now()
   }
 
   /** Emit `trainer:session-ended` once per launch. */
@@ -549,6 +648,19 @@ export class TrainerBridge {
     if (!state) return
     this._end(state, { reason })
     this._teardown(state)
+  }
+}
+
+/** What the renderer gets with each result of a launch (no mouse or crosshair settings). */
+function launchInfo(id: number, config: DrillConfig): TrainerLaunchInfo {
+  return {
+    launchId: id,
+    scenario: config.scenario,
+    duration_seconds: config.duration_seconds,
+    difficulty: config.difficulty,
+    ...(config.user_drill_id ? { user_drill_id: config.user_drill_id } : {}),
+    ...(config.context ? { context: config.context } : {}),
+    ...(config.keep_open === true ? { keep_open: true } : {}),
   }
 }
 

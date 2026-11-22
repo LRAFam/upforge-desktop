@@ -282,6 +282,34 @@ export function buildSessionSummary(
 
 export const SESSION_AUTO_ADVANCE_SEC = 4
 
+/**
+ * What a guided session does with a trainer result:
+ * - `other`: not this step's run (another drill, or a run the trainer started again from its end card with R):
+ *   history only, and the session stays where it is;
+ * - `finish`: the last step is done;
+ * - `next_in_trainer`: the step is done and the trainer is still open on its end card, offering the next step (N).
+ *   Nothing starts by itself; N there, or Start now here, opens it;
+ * - `next_countdown`: the step is done and the trainer closed after its result: the next step starts after the countdown.
+ */
+export type GuidedResultStep = 'other' | 'finish' | 'next_in_trainer' | 'next_countdown'
+
+export function guidedResultStep(input: {
+  stepScenario: string | null | undefined
+  resultScenario: string
+  launch: { keep_open?: boolean; repeat_of?: number } | null | undefined
+  isLastStep: boolean
+}): GuidedResultStep {
+  if (!input.stepScenario || input.stepScenario !== input.resultScenario) return 'other'
+  if (input.launch?.repeat_of != null) return 'other'
+  if (input.isLastStep) return 'finish'
+  return input.launch?.keep_open === true ? 'next_in_trainer' : 'next_countdown'
+}
+
+/** The drill the trainer's end card offers after step `stepIndex`, or undefined on the last step. */
+export function guidedNextScenario(plan: ReadonlyArray<{ scenario: string }> | null | undefined, stepIndex: number): string | undefined {
+  return plan?.[stepIndex + 1]?.scenario
+}
+
 export const SESSION_PHASE_COLORS: Record<SessionPhase, string> = {
   warmup: 'amber',
   focus: 'red',

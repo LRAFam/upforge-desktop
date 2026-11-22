@@ -36,7 +36,7 @@ import { normalizeTrainingHistory } from '../../../src/lib/training-result-metri
 
 // ── Main-process trainer access ───────────────────────────────────────────────
 
-let launchTrainerDrillRef: ((config: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; launchId?: number }>) | null = null
+let launchTrainerDrillRef: ((config: Record<string, unknown>, opts?: TrainerLaunchOptions) => Promise<{ ok: boolean; error?: string; launchId?: number }>) | null = null
 /** Game that was open when the current/last drill was launched (null = none). */
 let trainerLaunchGame: string | null = null
 let trainerRunFinishedListener: (() => void) | null = null
@@ -47,9 +47,18 @@ export function loadWarmupData(game: string): Promise<import('../warmup-prompt')
   return loadWarmupDataRef ? loadWarmupDataRef(game) : Promise.resolve({ drills: null, plan: null, history: null })
 }
 
-/** Launch a drill from the main process exactly as Practice's `trainer:launch` does. */
+/**
+ * `keepOpen`: the trainer stays open on its end card after the result (trainers that read it). Practice launches keep
+ * it open; a drill started from the main process (the warm-up offer, with a game open) closes after its result, so the
+ * player is back in their game.
+ */
+export interface TrainerLaunchOptions {
+  keepOpen?: boolean
+}
+
+/** Launch a drill from the main process as Practice's `trainer:launch` does, except it closes after its result. */
 export function launchTrainerDrill(config: Record<string, unknown>): Promise<{ ok: boolean; error?: string; launchId?: number }> {
-  return launchTrainerDrillRef ? launchTrainerDrillRef(config) : Promise.resolve({ ok: false, error: 'Trainer not available' })
+  return launchTrainerDrillRef ? launchTrainerDrillRef(config, { keepOpen: false }) : Promise.resolve({ ok: false, error: 'Trainer not available' })
 }
 
 export function trainerLaunchedWhileGameOpen(): string | null {
@@ -150,7 +159,12 @@ export function setupGamingHandlers(
   void trainerQueue.flush()
 
   // The account that started each trainer launch owns its result, even if the login changes mid-run.
+  // A run the trainer starts again from its end card (R) belongs to the account of the run it repeats.
   const launchOwners = new Map<number, number | null>()
+  const setLaunchOwner = (launchId: number, owner: number | null) => {
+    launchOwners.set(launchId, owner)
+    if (launchOwners.size > 20) launchOwners.delete(launchOwners.keys().next().value as number)
+  }
   trainerBridge?.setResultCallback((result, launch) => {
     trainerRunFinishedListener?.()
     sendOverlayData('overlay:trainer-result', result)
@@ -158,8 +172,20 @@ export function setupGamingHandlers(
     const owner = launch && launchOwners.has(launch.launchId)
       ? launchOwners.get(launch.launchId) ?? null
       : auth.getUser()?.id ?? null
-    if (launch) launchOwners.delete(launch.launchId)
+    // Kept while the trainer stays open: a run started again from its end card takes this owner.
+    if (launch && !launch.keep_open) launchOwners.delete(launch.launchId)
     void trainerQueue.submit(buildTrainingSessionPayload(result, launch, { app_version: APP_VERSION, trainer_version: TRAINER_VERSION }), owner)
+  })
+  trainerBridge?.setRunStartedCallback((launch) => {
+    const repeated = launch.repeat_of
+    setLaunchOwner(launch.launchId, repeated !== undefined && launchOwners.has(repeated)
+      ? launchOwners.get(repeated) ?? null
+      : auth.getUser()?.id ?? null)
+    sendOverlayData('overlay:trainer-started', {
+      scenario: launch.scenario,
+      difficulty: launch.difficulty,
+      duration_seconds: launch.duration_seconds,
+    })
   })
 
   ipcMain.handle('trainer:get-sync-status', (_e, scenario: unknown, completedAt: unknown) =>
@@ -181,20 +207,17 @@ export function setupGamingHandlers(
   })
 
   // One launch path for Practice (IPC) and the main process (the warm-up offer when a game opens).
-  async function launchDrill(config: Record<string, unknown>): Promise<{ ok: boolean; error?: string; launchId?: number }> {
+  async function launchDrill(config: Record<string, unknown>, opts: TrainerLaunchOptions = {}): Promise<{ ok: boolean; error?: string; launchId?: number }> {
     if (!trainerBridge) return { ok: false, error: 'Trainer not available' }
     try {
       const saved = settingsManager.get()
-      const enrichedConfig = drillConfigFromRequest(config ?? {}, saved)
+      const enrichedConfig = drillConfigFromRequest(config ?? {}, saved, TRAINER_VERSION, { keepOpen: opts.keepOpen !== false })
       const ownerAtLaunch = auth.getUser()?.id ?? null
       // Before the await: a game-started during the launch must already see it.
       trainerLaunchGame = gameDetector.currentGame()
       await trainerBridge.launch(enrichedConfig, trainerSpawnOptions(saved.trainerMouse))
       const launchId = trainerBridge.lastLaunch?.launchId
-      if (launchId != null) {
-        launchOwners.set(launchId, ownerAtLaunch)
-        if (launchOwners.size > 20) launchOwners.delete(launchOwners.keys().next().value as number)
-      }
+      if (launchId != null) setLaunchOwner(launchId, ownerAtLaunch)
       sendOverlayData('overlay:trainer-started', {
         scenario: enrichedConfig.scenario,
         difficulty: enrichedConfig.difficulty,

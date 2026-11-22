@@ -50,11 +50,27 @@ export function isTrainerTargetPalette(value: unknown): value is TrainerTargetPa
 /** The first trainer build that reads `target_palette`. */
 const TARGET_PALETTE_SINCE: readonly [number, number, number] = [1, 14, 0]
 
-/** True when a trainer build ("1.14.0") reads `target_palette`. A version that cannot be read counts as older. */
-export function trainerReadsTargetPalette(trainerVersion: string): boolean {
+/**
+ * The first trainer build that stays open between runs: it reads `keep_open` and `next_scenario`, shows its end
+ * card (R again, N next drill, Esc back to UpForge) and sends `run_started` / `next_drill` / `back_to_app`.
+ */
+export const TRAINER_KEEP_OPEN_SINCE: readonly [number, number, number] = [1, 16, 0]
+
+/** True when a trainer build ("1.14.0", "v1.14.2") is `since` or newer. A version that cannot be read counts as older. */
+function trainerVersionAtLeast(trainerVersion: string, since: readonly [number, number, number]): boolean {
   const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(String(trainerVersion).trim())
   if (!m) return false
   const parts = [Number(m[1]), Number(m[2]), Number(m[3])]
-  const at = parts.findIndex((n, i) => n !== TARGET_PALETTE_SINCE[i])
-  return at === -1 || parts[at] > TARGET_PALETTE_SINCE[at]
+  const at = parts.findIndex((n, i) => n !== since[i])
+  return at === -1 || parts[at] > since[at]
+}
+
+/** True when a trainer build ("1.14.0") reads `target_palette`. A version that cannot be read counts as older. */
+export function trainerReadsTargetPalette(trainerVersion: string): boolean {
+  return trainerVersionAtLeast(trainerVersion, TARGET_PALETTE_SINCE)
+}
+
+/** True when a trainer build stays open between runs (TRAINER_KEEP_OPEN_SINCE). Older builds close after each result. */
+export function trainerStaysOpen(trainerVersion: string): boolean {
+  return trainerVersionAtLeast(trainerVersion, TRAINER_KEEP_OPEN_SINCE)
 }
