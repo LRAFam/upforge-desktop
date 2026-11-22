@@ -142,6 +142,17 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
     }
   }
 
+  if (/recording file (?:was )?not created\b/i.test(lower)) {
+    return {
+      kind: 'preparation',
+      title: 'Recording file was not created',
+      message: 'No recording file is available to analyse.',
+      hint: 'Open Settings → Advanced and run Test recording before your next match.',
+      creditRefunded: false,
+      canRetry: false,
+    }
+  }
+
   if (/moov atom|invalid data found when processing|error opening input file|recording file is incomplete|recording is incomplete|cannot extract duel clips/i.test(lower)) {
     return {
       kind: 'upload',

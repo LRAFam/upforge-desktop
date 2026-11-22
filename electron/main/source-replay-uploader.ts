@@ -75,12 +75,15 @@ export class SourceReplayUploader {
       presignBody.player_steam_id = opts.steamId
     }
     const presignResult = await this._apiPost(`${apiUrl}${prefix}/presign`, JSON.stringify(presignBody), token)
-    const jobId = presignResult['job_id'] as string
+    const jobId = presignResult['job_id']
+    if (typeof jobId !== 'string' || jobId === 'undefined' || !/^[A-Za-z0-9-]{8,64}$/.test(jobId)) {
+      throw new Error('Invalid replay job ID in presign response')
+    }
     const uploadUrl = presignResult['upload_url'] as string
-    if (typeof jobId === 'string') noteAnalysisJob({ jobId, game: opts.game })
+    noteAnalysisJob({ jobId, game: opts.game })
 
     // The API returns the first analysis for a match that was already analysed (no charge): treat it as done.
-    if (presignResult['already_analysed'] === true && typeof jobId === 'string' && jobId) {
+    if (presignResult['already_analysed'] === true) {
       opts.onProgress(100)
       return { jobId, alreadyAnalysed: true }
     }

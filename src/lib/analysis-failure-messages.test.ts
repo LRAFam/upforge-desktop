@@ -119,6 +119,27 @@ describe('formatAnalysisFailureMessage', () => {
 })
 
 describe('buildAnalysisErrorPayload', () => {
+  it.each([
+    'Recording file was not created — OBS may have stopped recording or disconnected.',
+    'The recording file was not created. OBS may have stopped early — check Settings → Recording.',
+  ])('gives recording setup guidance without offering analysis retry for missing output: %s', (raw) => {
+    const payload = buildAnalysisErrorPayload(raw, { failureCode: 'recording_file_missing' })
+    expect(payload.kind).toBe('preparation')
+    expect(payload.title).toBe('Recording file was not created')
+    expect(payload.canRetry).toBe(false)
+    expect(payload.creditRefunded).toBe(false)
+    // The Test recording button lives in Settings → Advanced (OBS section).
+    expect(payload.hint).toMatch(/Settings → Advanced.*Test recording/)
+    expect(payload.hint).not.toMatch(/try again|retry/i)
+    expect(payload.failureCode).toBe('recording_file_missing')
+  })
+
+  it('keeps retry available while an existing recording is still finalizing', () => {
+    const payload = buildAnalysisErrorPayload('Recording is still finalizing. Try again when it is ready.')
+    expect(payload.canRetry).toBe(true)
+    expect(payload.title).not.toBe('Recording file was not created')
+  })
+
   it('links every failure to the troubleshooting help', () => {
     for (const raw of ['Server error', 'quota exceeded', 'timed out', 'match data not ready', '']) {
       expect(buildAnalysisErrorPayload(raw).helpUrl).toBe('https://upforge.gg/help#troubleshooting')
