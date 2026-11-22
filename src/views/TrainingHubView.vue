@@ -533,10 +533,12 @@ const pickerScenarioMeta = computed(() => Object.entries(SCENARIO_META).filter((
 // "Played today": today's runs from saved history plus runs this app has seen (history can lag a run).
 const playedToday = computed(() => scenariosPlayedToday([...(apiHistory.value?.sessions ?? []), ...practiceSession.recentRuns]))
 
-const scenarioCards = computed(() =>
+// Every drill the trainer can run for this game. Practice builds its hero ("Do this next", the
+// focus session), today's drills and the Drills groups from this whole list, so a category can
+// never hide or change the recommended drill. Only the classic library below filters by category.
+const availableScenarioCards = computed(() =>
   TRAINER_SCENARIOS
     .filter(def => isScenarioForGame(def.key, primaryGame.value))
-    .filter(def => matchesScenarioCategory(def.key, activeDrillCategory.value))
     .map(def => {
       const scenario = def.key
       const drill = drillForScenario(scenario)
@@ -557,6 +559,21 @@ const scenarioCards = computed(() =>
       }
     }),
 )
+
+const scenarioCards = computed(() => availableScenarioCards.value
+  .filter(card => matchesScenarioCategory(card.scenario, activeDrillCategory.value)))
+const practiceDrills = computed(() => availableScenarioCards.value.map(c => ({
+  scenario: c.scenario,
+  label: SCENARIO_META[c.scenario]?.label ?? c.scenario,
+  description: SCENARIO_META[c.scenario]?.description ?? '',
+  beta: isBetaScenario(c.scenario),
+  difficulty: c.drill.difficulty,
+  durationSeconds: c.drill.duration_seconds,
+  personalBest: c.pb,
+  oldBest: oldBests.value[c.scenario] ?? null,
+  globalRank: c.rank,
+  completed: c.completed,
+})))
 
 function launchScenarioCard(scenario: ScenarioKey) {
   void launchDrill(drillForScenario(scenario))
@@ -1832,7 +1849,7 @@ const CATEGORY_ICON: Record<string, string> = {
       :scoring-note="scoringNote"
       :show-calibration="isAdmin"
       :categories="DRILL_CATEGORY_FILTERS"
-      :drills="scenarioCards.map(c => ({ scenario: c.scenario, label: SCENARIO_META[c.scenario]?.label ?? c.scenario, description: SCENARIO_META[c.scenario]?.description ?? '', beta: isBetaScenario(c.scenario), difficulty: c.drill.difficulty, durationSeconds: c.drill.duration_seconds, personalBest: c.pb, oldBest: oldBests[c.scenario] ?? null, globalRank: c.rank, completed: c.completed }))"
+      :drills="practiceDrills"
       :running-scenario="drillRunning ? activeDrill?.scenario ?? null : null"
       :busy="launching || drillRunning || structuredSessionActive"
       :daily="{ scenarioLabel: SCENARIO_META[dailyChallenge.scenario]?.label ?? dailyChallenge.scenario, target: dailyChallenge.target, completed: dailyChallenge.completed }"
