@@ -642,6 +642,8 @@ const api = {
       'obs:status',
       'trainer:session-result',
       'trainer:session-ended',
+      'trainer:run-started',
+      'trainer:next-drill',
       'trainer:session-synced',
       'trainer:upload-status',
       'post-game:demo-status',

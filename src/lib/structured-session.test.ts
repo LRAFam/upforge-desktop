@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyProgressionToDrill, buildStructuredSessionPlan, coachingDrillToSessionDrill, type CoachingDrillLike, type SessionDrill } from './structured-session'
+import { applyProgressionToDrill, buildStructuredSessionPlan, coachingDrillToSessionDrill, guidedNextScenario, guidedResultStep, type CoachingDrillLike, type SessionDrill } from './structured-session'
 import { buildWeeklyFocusPlan } from './weekly-focus'
 import { currentScoringVersion } from './training-result-metrics'
 
@@ -70,5 +70,43 @@ describe('weekly focus', () => {
       expect(plan?.goal).toBe(text)
       expect(plan).not.toHaveProperty('drill')
     }
+  })
+})
+
+describe('guided session with a trainer that stays open between runs', () => {
+  const step = (over: Partial<Parameters<typeof guidedResultStep>[0]> = {}) => guidedResultStep({
+    stepScenario: 'gridshot', resultScenario: 'gridshot', launch: { keep_open: true }, isLastStep: false, ...over,
+  })
+
+  it('the trainer offers the next step on its end card: nothing starts by itself', () => {
+    expect(step()).toBe('next_in_trainer')
+  })
+
+  it('a trainer that closed after its result: the next step starts after the countdown, as before', () => {
+    expect(step({ launch: {} })).toBe('next_countdown')
+    expect(step({ launch: null })).toBe('next_countdown')
+    expect(step({ launch: { keep_open: false } })).toBe('next_countdown')
+  })
+
+  it('the last step finishes the session either way', () => {
+    expect(step({ isLastStep: true })).toBe('finish')
+    expect(step({ isLastStep: true, launch: null })).toBe('finish')
+  })
+
+  it('a run the trainer started again (R after the step) or another drill is history only', () => {
+    expect(step({ launch: { keep_open: true, repeat_of: 7 } })).toBe('other')
+    expect(step({ launch: { keep_open: true, repeat_of: 0 } })).toBe('other')
+    // R again on the last step too: the session is already finished or waiting, never finished twice.
+    expect(step({ launch: { keep_open: true, repeat_of: 7 }, isLastStep: true })).toBe('other')
+    expect(step({ resultScenario: 'flick' })).toBe('other')
+    expect(step({ stepScenario: undefined })).toBe('other')
+  })
+
+  it('names the drill after each step for the trainer’s end card, and none after the last', () => {
+    const plan = [{ scenario: 'gridshot' }, { scenario: 'head_height' }, { scenario: 'tracking' }]
+    expect(guidedNextScenario(plan, 0)).toBe('head_height')
+    expect(guidedNextScenario(plan, 1)).toBe('tracking')
+    expect(guidedNextScenario(plan, 2)).toBeUndefined()
+    expect(guidedNextScenario(null, 0)).toBeUndefined()
   })
 })

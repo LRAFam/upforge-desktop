@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { asTrainerResult, drillHasLesson, launchConfigFromInfo, launchTrainer, sessionEndedMessage, shellOpensTrainerResult, trainerLaunchConfig } from './trainer-launch'
+import { asLaunchInfo, asNextDrillRequest, asTrainerResult, drillHasLesson, launchConfigFromInfo, launchTrainer, sessionEndedMessage, shellOpensTrainerResult, trainerLaunchConfig } from './trainer-launch'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
@@ -29,6 +29,22 @@ describe('trainer launch helper', () => {
     expect(res.config).toEqual({ scenario: 'hold_angle', duration_seconds: 60, difficulty: 'hard' })
     await launchTrainer(res.config)
     expect(launch).toHaveBeenLastCalledWith({ scenario: 'hold_angle', duration_seconds: 60, difficulty: 'hard' })
+  })
+  it('names the next drill for the trainer’s end card on that launch only; "Play again" is a single run', async () => {
+    const launch = vi.fn().mockResolvedValue({ ok: true, launchId: 6 })
+    vi.stubGlobal('window', { api: { trainer: { launch } } })
+    const res = await launchTrainer({ scenario: 'gridshot', duration_seconds: 30, next_scenario: 'strafe_aim' })
+    expect(launch).toHaveBeenLastCalledWith({ scenario: 'gridshot', duration_seconds: 30, difficulty: 'medium', next_scenario: 'strafe_aim' })
+    expect(res.config).toEqual({ scenario: 'gridshot', duration_seconds: 30, difficulty: 'medium' })
+    await launchTrainer({ scenario: 'gridshot', next_scenario: '' })
+    expect(launch.mock.lastCall?.[0]).not.toHaveProperty('next_scenario')
+  })
+  it('reads the launch sent with trainer:run-started and the trainer’s next-drill request', () => {
+    const info = { launchId: 4, scenario: 'gridshot', duration_seconds: 30, difficulty: 'medium', keep_open: true, repeat_of: 3 }
+    expect(asLaunchInfo(info)).toEqual(info)
+    for (const bad of [null, undefined, 'x', { scenario: 'gridshot' }, { launchId: 'x', scenario: 'gridshot' }]) expect(asLaunchInfo(bad)).toBeNull()
+    expect(asNextDrillRequest({ launchId: 4, scenario: 'gridshot', next: 'strafe_aim' })).toEqual({ launchId: 4, scenario: 'gridshot', next: 'strafe_aim' })
+    for (const bad of [null, 7, {}, { launchId: '4' }]) expect(asNextDrillRequest(bad)).toBeNull()
   })
   it('offers "Show the lesson" only on drills that have a guided lesson in the bundled trainer', () => {
     for (const scenario of ['head_height', 'angle_clearing', 'hold_angle', 'jiggle_peek', 'strafe_aim']) expect(drillHasLesson(scenario), scenario).toBe(true)

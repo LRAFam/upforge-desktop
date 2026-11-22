@@ -5,7 +5,7 @@
  * - `user_drill_id` only when the run counts towards an assigned/user drill (never for free play)
  * Mouse and crosshair settings are added by the main process from saved settings.
  */
-import type { TrainerLaunchInfo, TrainerSessionEnded } from '../env'
+import type { TrainerLaunchInfo, TrainerNextDrillRequest, TrainerSessionEnded } from '../env'
 import type { LaunchConfig } from '../stores/trainerResult'
 
 export interface TrainerLaunchRequest {
@@ -16,6 +16,11 @@ export interface TrainerLaunchRequest {
   user_drill_id?: number | null
   /** Run the drill's guided lesson first even when this PC has seen it (sent as `lesson: true`, this launch only). */
   lesson?: boolean
+  /**
+   * The drill the trainer's end card offers next (N), this launch only: a guided session's next step. Main sends it
+   * only to a trainer that stays open between runs.
+   */
+  next_scenario?: string
 }
 
 /**
@@ -55,11 +60,15 @@ export function trainerLaunchConfig(req: TrainerLaunchRequest): LaunchConfig {
 
 export const TRAINER_LAUNCH_FAILED_MESSAGE = 'The aim trainer did not start. Try again, or restart UpForge.'
 
-/** The returned `config` never asks for the lesson, so "Play again" after "Show the lesson" is a normal run. */
+/** The returned `config` never asks for the lesson or names a next drill, so "Play again" is a normal single run. */
 export async function launchTrainer(req: TrainerLaunchRequest): Promise<TrainerLaunchOutcome> {
   const config = trainerLaunchConfig(req)
   try {
-    const res = await window.api.trainer.launch({ ...config, ...(req.lesson === true ? { lesson: true } : {}) })
+    const res = await window.api.trainer.launch({
+      ...config,
+      ...(req.lesson === true ? { lesson: true } : {}),
+      ...(typeof req.next_scenario === 'string' && req.next_scenario ? { next_scenario: req.next_scenario } : {}),
+    })
     if (res?.ok) return { ok: true, launchId: res.launchId, config }
     return { ok: false, error: res?.error || TRAINER_LAUNCH_FAILED_MESSAGE, config }
   } catch (e) {
@@ -97,6 +106,20 @@ export function asTrainerResult(raw: unknown): import('../stores/trainerResult')
   return typeof r.scenario === 'string' && typeof r.score === 'number' && typeof r.completed_at === 'string'
     ? (raw as import('../stores/trainerResult').SessionResult)
     : null
+}
+
+/** The launch sent with a result or with `trainer:run-started`, or null. */
+export function asLaunchInfo(raw: unknown): TrainerLaunchInfo | null {
+  if (!raw || typeof raw !== 'object') return null
+  const i = raw as Partial<TrainerLaunchInfo>
+  return typeof i.launchId === 'number' && typeof i.scenario === 'string' ? (raw as TrainerLaunchInfo) : null
+}
+
+/** `trainer:next-drill` (N on the trainer's end card), or null. */
+export function asNextDrillRequest(raw: unknown): TrainerNextDrillRequest | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Partial<TrainerNextDrillRequest>
+  return typeof r.launchId === 'number' ? (raw as TrainerNextDrillRequest) : null
 }
 
 export function asSessionEnded(raw: unknown): TrainerSessionEnded | null {

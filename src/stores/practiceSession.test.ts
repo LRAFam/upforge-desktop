@@ -45,6 +45,6 @@ describe('Practice remembers what you did after leaving the screen', () => {
     const src = view()
     expect(src).toMatch(/:busy="launching \|\| drillRunning \|\| structuredSessionActive"/)
     expect(src).toMatch(/if \(structuredSessionActive\.value && !opts\.guidedStep\)/)
-    expect(src).toMatch(/\}, \{ guidedStep: true \}\)/)
+    expect(src).toMatch(/\}, \{ guidedStep: true(?:, nextScenario: [^}]+)? \}\)/)
   })
 })

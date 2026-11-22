@@ -72,6 +72,25 @@ describe('drillConfigFromRequest', () => {
     expect('target_palette' in drillConfigFromRequest({ scenario: 'gridshot' }, settings)).toBe(false)
     expect('target_palette' in drillConfigFromRequest({ scenario: 'gridshot', target_palette: 'yellow' }, settings)).toBe(false)
   })
+  it('asks a trainer that stays open (1.16.0 and later) to keep its window open after the result', () => {
+    const open = drillConfigFromRequest({ scenario: 'gridshot' }, settings, '1.16.0', { keepOpen: true })
+    expect(open.keep_open).toBe(true)
+    // An older trainer closes after its result whatever it is sent: it gets the message it always got.
+    expect('keep_open' in drillConfigFromRequest({ scenario: 'gridshot' }, settings, '1.15.0', { keepOpen: true })).toBe(false)
+    // The warm-up offer (a game is open) and callers that do not ask keep the trainer closing after the result.
+    expect('keep_open' in drillConfigFromRequest({ scenario: 'gridshot' }, settings, '1.16.0', { keepOpen: false })).toBe(false)
+    expect('keep_open' in drillConfigFromRequest({ scenario: 'gridshot' }, settings, '1.16.0')).toBe(false)
+    // A renderer copy of the key is never passed through.
+    expect('keep_open' in drillConfigFromRequest({ scenario: 'gridshot', keep_open: true }, settings, '1.15.0', { keepOpen: true })).toBe(false)
+  })
+  it('names the next drill on the end card only for a launchable drill, and only when the trainer stays open', () => {
+    expect(drillConfigFromRequest({ scenario: 'gridshot', next_scenario: 'strafe_aim' }, settings, '1.16.0', { keepOpen: true }).next_scenario).toBe('strafe_aim')
+    for (const next of ['no_such_drill', 7, null, '']) {
+      expect('next_scenario' in drillConfigFromRequest({ scenario: 'gridshot', next_scenario: next }, settings, '1.16.0', { keepOpen: true }), String(next)).toBe(false)
+    }
+    expect('next_scenario' in drillConfigFromRequest({ scenario: 'gridshot', next_scenario: 'strafe_aim' }, settings, '1.15.0', { keepOpen: true })).toBe(false)
+    expect('next_scenario' in drillConfigFromRequest({ scenario: 'gridshot', next_scenario: 'strafe_aim' }, settings, '1.16.0', { keepOpen: false })).toBe(false)
+  })
   it('asks for the drill’s guided lesson only when the player asked to see it again', () => {
     expect(drillConfigFromRequest({ scenario: 'hold_angle', lesson: true }, settings).lesson).toBe(true)
     // Anything else leaves it to the trainer (a lesson runs the first time on this PC).

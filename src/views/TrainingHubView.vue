@@ -6,7 +6,7 @@ import { useLifetime } from '../composables/useLifetime'
 import { useRouter } from 'vue-router'
 import type { TrainingHistory, CoachingDrill, TrainingBenchmark, SharedTrainingPlan } from '../env'
 import { ACHIEVEMENTS, useAchievements } from '../composables/useAchievements'
-import { asSessionEnded, launchConfigFromInfo, launchTrainer, sessionEndedMessage, trainerLaunchConfig } from '../lib/trainer-launch'
+import { asLaunchInfo, asNextDrillRequest, asSessionEnded, launchConfigFromInfo, launchTrainer, sessionEndedMessage, trainerLaunchConfig } from '../lib/trainer-launch'
 import { asTrainerSyncOutcome, trainerRunSavedLabels, trainerUploadStatusLine, type TrainerSyncOutcome } from '../lib/trainer-sync'
 import {
   type TrainerScenarioKey,
@@ -21,6 +21,8 @@ import {
   buildSessionSummary,
   sessionStepSettings,
   applyProgressionToDrill,
+  guidedNextScenario,
+  guidedResultStep,
   SESSION_AUTO_ADVANCE_SEC,
   type SessionDrill,
   type SessionStep,
@@ -686,7 +688,8 @@ function assignedLaunchRequest(drill: AssignedDrill) {
   }
 }
 
-async function launchDrill(drill: AssignedDrill, opts: { guidedStep?: boolean } = {}) {
+/** `nextScenario`: the drill the trainer's end card offers next (a guided step that has a next step). */
+async function launchDrill(drill: AssignedDrill, opts: { guidedStep?: boolean; nextScenario?: string } = {}) {
   if (launching.value || drillRunning.value) return
   // A single drill during a guided session would be counted as the session's step (same drill) or
   // never reach the result screen: finish or cancel the session first.
@@ -698,7 +701,7 @@ async function launchDrill(drill: AssignedDrill, opts: { guidedStep?: boolean } 
   launching.value = true
   trainerNotice.value = null
   try {
-    const result = await launchTrainer(assignedLaunchRequest(drill))
+    const result = await launchTrainer({ ...assignedLaunchRequest(drill), ...(opts.nextScenario ? { next_scenario: opts.nextScenario } : {}) })
     if (result.ok) {
       drillRunning.value = true
       activeLaunchId = result.launchId ?? null
@@ -819,6 +822,23 @@ onMounted(async () => {
     trainerNotice.value = sessionEndedMessage(ended)
   }))
 
+  // The trainer stays open between runs (newer trainers). R on its end card starts the same drill again: a new launch
+  // this view did not start, running now.
+  life.own(window.api.on('trainer:run-started', (raw: unknown) => {
+    const info = asLaunchInfo(raw)
+    if (!info) return
+    clearSessionTimer()
+    activeLaunchId = info.launchId
+    drillRunning.value = true
+    trainerNotice.value = null
+  }))
+
+  // N on the trainer's end card during a guided session: open the step that is waiting, in the same window.
+  life.own(window.api.on('trainer:next-drill', (raw: unknown) => {
+    if (!asNextDrillRequest(raw) || !structuredSessionWaiting.value || launching.value) return
+    void launchStructuredStep(structuredSessionStepIndex.value)
+  }))
+
   life.own(window.api.on('trainer:session-result', async (result: unknown, launch?: unknown) => {
     const r = result as SessionResult
     lastResult.value = r
@@ -836,21 +856,27 @@ onMounted(async () => {
     activeDrill.value = null
     drillRunning.value = false
 
-    const guidedStep = structuredSession.value?.active
-      ? structuredSession.value.plan[structuredSession.value.stepIndex]
-      : undefined
-    if (structuredSession.value?.active && (!guidedStep || guidedStep.scenario !== r.scenario)) {
-      // Not this guided step's drill (e.g. started from another screen): keep it in history only.
-      console.warn('[TrainingHub] Result for', r.scenario, 'does not match guided step', guidedStep?.scenario)
-    } else if (structuredSession.value?.active) {
-      structuredSession.value.results.push(r)
-      const nextStep = structuredSession.value.stepIndex + 1
-      structuredSession.value.stepIndex = nextStep
-      if (nextStep < structuredSession.value.plan.length) {
-        startSessionCountdown(nextStep)
-      } else {
-        finishStructuredSession()
-      }
+    const guided = structuredSession.value?.active ? structuredSession.value : null
+    const step = guided
+      ? guidedResultStep({
+        stepScenario: guided.plan[guided.stepIndex]?.scenario,
+        resultScenario: r.scenario,
+        launch: asLaunchInfo(launch),
+        isLastStep: guided.stepIndex + 1 >= guided.plan.length,
+      })
+      : null
+    if (guided && step === 'other') {
+      // Not this guided step's run (another drill, or the trainer's R after the step): keep it in history only.
+      console.warn('[TrainingHub] Result for', r.scenario, 'is not guided step', guided.plan[guided.stepIndex]?.scenario)
+    } else if (guided) {
+      guided.results.push(r)
+      const nextStep = guided.stepIndex + 1
+      guided.stepIndex = nextStep
+      if (step === 'finish') finishStructuredSession()
+      // The trainer stayed open and offers the next step on its end card (N); Start now here opens it too.
+      else if (step === 'next_countdown') startSessionCountdown(nextStep)
+    } else if (showSessionSummary.value && asLaunchInfo(launch)?.repeat_of != null) {
+      // R in the trainer after the last step: an extra run, kept in history. The session summary stays open.
     } else {
       trainerResultStore.setResult(r, currentLaunchConfig, null)
       router.push('/trainer-results')
@@ -1391,7 +1417,7 @@ async function launchStructuredStep(stepIndex: number) {
     weakness_score: step.weakness_score,
     reason: step.reason,
     user_drill_id: step.user_drill_id,
-  }, { guidedStep: true })
+  }, { guidedStep: true, nextScenario: guidedNextScenario(structuredSession.value?.plan, stepIndex) })
 }
 
 async function startStructuredSession() {

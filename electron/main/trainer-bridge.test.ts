@@ -24,14 +24,18 @@ const config: DrillConfig = { scenario: 'flick', duration_seconds: 60, difficult
 const servers: net.Server[] = []
 afterEach(() => { for (const s of servers.splice(0)) s.close() })
 
-function setup(opts: { godot?: (port: number, proc: FakeProc) => void; connectTimeoutMs?: number } = {}) {
+function setup(opts: { godot?: (port: number, proc: FakeProc) => void; connectTimeoutMs?: number; nextDrillReuseMs?: number } = {}) {
   const sent: Array<{ channel: string; args: unknown[] }> = []
   const procs: Array<{ proc: FakeProc; args: string[] }> = []
-  const win = { webContents: { send: (channel: string, ...args: unknown[]) => sent.push({ channel, args }) } }
+  const win = {
+    webContents: { send: (channel: string, ...args: unknown[]) => sent.push({ channel, args }) },
+    isDestroyed: () => false, isMinimized: () => true, restore: vi.fn(), show: vi.fn(), focus: vi.fn(),
+  }
   const bridge = new TrainerBridge(() => win as never, undefined, {
     resolveSpawnArgs: () => ({ cmd: 'godot', args: ['--path', '/p'] }),
     connectTimeoutMs: opts.connectTimeoutMs ?? 2000,
     connectRetryMs: 20,
+    ...(opts.nextDrillReuseMs !== undefined ? { nextDrillReuseMs: opts.nextDrillReuseMs } : {}),
     spawn: ((_cmd: string, args: string[]) => {
       const proc = new FakeProc()
       procs.push({ proc, args })
@@ -42,7 +46,8 @@ function setup(opts: { godot?: (port: number, proc: FakeProc) => void; connectTi
   })
   const ended = () => sent.filter(s => s.channel === 'trainer:session-ended').map(s => s.args[0] as TrainerSessionEnded)
   const results = () => sent.filter(s => s.channel === 'trainer:session-result')
-  return { bridge, sent, procs, ended, results }
+  const on = (channel: string) => sent.filter(s => s.channel === channel).map(s => s.args[0])
+  return { bridge, sent, procs, ended, results, on, win }
 }
 
 /** A fake Godot: listens on the given port, records the config it gets, lets the test write lines. */
@@ -181,6 +186,182 @@ describe('TrainerBridge', () => {
     await bridge.launch(config)
     bridge.kill('game_started')
     expect(ended().map(e => e.reason)).toEqual(['match_started', 'game_started'])
+  })
+})
+
+describe('a trainer that stays open between runs (keep_open)', () => {
+  const open: DrillConfig = { ...config, keep_open: true, next_scenario: 'tracking' }
+  const result = (scenario: string, score: number) => `{"scenario":"${scenario}","score":${score},"completed_at":"2026-11-22T19:00:${String(score).padStart(2, '0')}"}\n`
+  /** Each launch message the fake trainer got, parsed (TCP may join or split them). */
+  const configsOf = (godot: ReturnType<typeof fakeGodot>) => godot.configs.join('').split('\n').filter(Boolean).map(l => JSON.parse(l))
+  const pause = (ms = 40) => new Promise(r => setTimeout(r, ms))
+
+  it('a result ends its launch once and the window stays open; a launch the trainer did not ask for starts a fresh one', async () => {
+    let godot: ReturnType<typeof fakeGodot> | null = null
+    const { bridge, ended, results, procs } = setup({ godot: p => { godot = fakeGodot(p) } })
+    await bridge.launch(open)
+    await until(() => !!godot!.socket)
+    godot!.socket!.write(result('flick', 61))
+    await until(() => results().length === 1)
+    expect(results()[0].args[1]).toMatchObject({ launchId: 1, keep_open: true, user_drill_id: 7 })
+    expect(ended()).toEqual([expect.objectContaining({ launchId: 1, reason: 'completed' })])
+    expect(procs[0].proc.killed).toBe(false)
+    expect(bridge.isRunning).toBe(true) // open on its end card: the warm-up offer and game start still see it
+    // A second result with no run started for it is never forwarded.
+    godot!.socket!.write(result('flick', 62))
+    await pause()
+    expect(results()).toHaveLength(1)
+    // Play again in the app while the trainer waits on its end card (it did not ask): a fresh trainer, no extra end.
+    await bridge.launch(open)
+    expect(procs).toHaveLength(2)
+    expect(procs[0].proc.killed).toBe(true)
+    expect(ended()).toHaveLength(1)
+    bridge.kill()
+  })
+
+  it('R on the end card is a new launch of the same drill: trainer:run-started, then its own result, saved once', async () => {
+    let godot: ReturnType<typeof fakeGodot> | null = null
+    const { bridge, ended, results, procs, on } = setup({ godot: p => { godot = fakeGodot(p) } })
+    const onResult = vi.fn()
+    const onRunStarted = vi.fn()
+    bridge.setResultCallback(onResult)
+    bridge.setRunStartedCallback(onRunStarted)
+    await bridge.launch(open)
+    await until(() => !!godot!.socket)
+    godot!.socket!.write(result('flick', 61))
+    await until(() => results().length === 1)
+    godot!.socket!.write('{"event":"run_started","reason":"restart","scenario":"flick"}\n')
+    await until(() => on('trainer:run-started').length === 1)
+    const again = on('trainer:run-started')[0]
+    expect(again).toMatchObject({ launchId: 2, repeat_of: 1, scenario: 'flick', keep_open: true, user_drill_id: 7, difficulty: 'medium', duration_seconds: 60 })
+    expect(onRunStarted).toHaveBeenCalledWith(again)
+    expect(bridge.lastLaunch).toEqual(again)
+    godot!.socket!.write(result('flick', 70))
+    await until(() => results().length === 2)
+    expect(results()[1].args[1]).toEqual(again)
+    expect(onResult).toHaveBeenCalledTimes(2)
+    expect(onResult.mock.calls.map(([r, l]) => [r.score, l.launchId])).toEqual([[61, 1], [70, 2]])
+    expect(ended().map(e => [e.launchId, e.reason])).toEqual([[1, 'completed'], [2, 'completed']])
+    expect(procs).toHaveLength(1)
+    expect(configsOf(godot!)).toHaveLength(1) // the trainer started it itself: nothing was sent
+    bridge.kill()
+  })
+
+  it('R in the middle of a run is the same launch: no new launch, one result', async () => {
+    let godot: ReturnType<typeof fakeGodot> | null = null
+    const { bridge, ended, results, on } = setup({ godot: p => { godot = fakeGodot(p) } })
+    await bridge.launch(open)
+    await until(() => !!godot!.socket)
+    godot!.socket!.write('{"event":"run_started","reason":"restart","scenario":"flick"}\n')
+    await pause()
+    expect(on('trainer:run-started')).toHaveLength(0)
+    godot!.socket!.write(result('flick', 55))
+    await until(() => results().length === 1)
+    expect(results()[0].args[1]).toMatchObject({ launchId: 1 })
+    expect(ended().map(e => [e.launchId, e.reason])).toEqual([[1, 'completed']])
+    bridge.kill()
+  })
+
+  it('N on the end card: the next drill goes to the same window on the same socket, as a new launch', async () => {
+    let godot: ReturnType<typeof fakeGodot> | null = null
+    const { bridge, ended, results, procs, on } = setup({ godot: p => { godot = fakeGodot(p) } })
+    await bridge.launch(open)
+    await until(() => !!godot!.socket)
+    godot!.socket!.write(result('flick', 61))
+    await until(() => results().length === 1)
+    godot!.socket!.write('{"event":"next_drill","scenario":"flick","next":"tracking"}\n')
+    await until(() => on('trainer:next-drill').length === 1)
+    expect(on('trainer:next-drill')[0]).toEqual({ launchId: 1, scenario: 'flick', next: 'tracking' })
+    const next: DrillConfig = { scenario: 'tracking', duration_seconds: 30, difficulty: 'easy', keep_open: true }
+    await bridge.launch(next)
+    expect(procs).toHaveLength(1)
+    expect(procs[0].proc.killed).toBe(false)
+    await until(() => configsOf(godot!).length === 2)
+    expect(configsOf(godot!)[1]).toMatchObject({ scenario: 'tracking', duration_seconds: 30, keep_open: true, _upforge_meta: expect.any(Object) })
+    expect(bridge.lastLaunch).toMatchObject({ launchId: 2, scenario: 'tracking', keep_open: true })
+    expect(bridge.lastLaunch).not.toHaveProperty('repeat_of')
+    godot!.socket!.write(result('tracking', 48))
+    await until(() => results().length === 2)
+    expect(results()[1].args[1]).toMatchObject({ launchId: 2, scenario: 'tracking' })
+    expect(ended().map(e => [e.launchId, e.reason])).toEqual([[1, 'completed'], [2, 'completed']])
+    // Each N is good for one launch: the one after it starts a fresh trainer.
+    await bridge.launch(next)
+    expect(procs).toHaveLength(2)
+    bridge.kill()
+  })
+
+  it('the open window is used only right after N, and only after a result', async () => {
+    let godot: ReturnType<typeof fakeGodot> | null = null
+    const { bridge, results, procs, ended } = setup({ nextDrillReuseMs: 30, godot: p => { godot = fakeGodot(p) } })
+    await bridge.launch(open)
+    await until(() => !!godot!.socket)
+    // N in the middle of a run (the trainer never sends it there) counts for nothing.
+    godot!.socket!.write('{"event":"next_drill","scenario":"flick","next":"tracking"}\n')
+    await pause()
+    await bridge.launch(open)
+    expect(procs).toHaveLength(2)
+    expect(ended().map(e => e.reason)).toEqual(['user_exit'])
+    await until(() => !!godot!.socket && configsOf(godot!).length > 0)
+    godot!.socket!.write(result('flick', 61))
+    await until(() => results().length === 1)
+    godot!.socket!.write('{"event":"next_drill","scenario":"flick","next":"tracking"}\n')
+    await pause(80) // longer than the reuse window: the player may have gone back to UpForge meanwhile
+    await bridge.launch(open)
+    expect(procs).toHaveLength(3)
+    bridge.kill()
+  })
+
+  it('Esc on the end card brings UpForge forward, and the trainer closing then is not a crash', async () => {
+    let godot: ReturnType<typeof fakeGodot> | null = null
+    const { bridge, ended, results, procs, win } = setup({ godot: p => { godot = fakeGodot(p) } })
+    await bridge.launch(open)
+    await until(() => !!godot!.socket)
+    godot!.socket!.write(result('flick', 61))
+    await until(() => results().length === 1)
+    godot!.socket!.write('{"event":"back_to_app","scenario":"flick"}\n')
+    await until(() => win.focus.mock.calls.length === 1)
+    expect(win.restore).toHaveBeenCalled()
+    expect(win.show).toHaveBeenCalled()
+    procs[0].proc.emit('exit', 0)
+    await pause()
+    expect(ended().map(e => e.reason)).toEqual(['completed'])
+    expect(bridge.isRunning).toBe(false)
+  })
+
+  it('a crash on the end card ends nothing more; a crash in a run started with R ends that run', async () => {
+    let godot: ReturnType<typeof fakeGodot> | null = null
+    const { bridge, ended, results, procs, on } = setup({ godot: p => { godot = fakeGodot(p) } })
+    await bridge.launch(open)
+    await until(() => !!godot!.socket)
+    godot!.socket!.write(result('flick', 61))
+    await until(() => results().length === 1)
+    godot!.socket!.write('{"event":"run_started","reason":"restart","scenario":"flick"}\n')
+    await until(() => on('trainer:run-started').length === 1)
+    procs[0].proc.emit('exit', 1)
+    await until(() => ended().length === 2)
+    expect(ended().map(e => [e.launchId, e.reason])).toEqual([[1, 'completed'], [2, 'crashed']])
+    bridge.kill()
+  })
+
+  it('a trainer launched without keep_open gets no second run and no next drill (the warm-up offer, older trainers)', async () => {
+    let godot: ReturnType<typeof fakeGodot> | null = null
+    const { bridge, results, procs, on, ended } = setup({ godot: p => { godot = fakeGodot(p) } })
+    await bridge.launch(config)
+    await until(() => !!godot!.socket)
+    godot!.socket!.write(result('flick', 61))
+    await until(() => results().length === 1)
+    expect(results()[0].args[1]).not.toHaveProperty('keep_open')
+    godot!.socket!.write('{"event":"run_started","reason":"restart","scenario":"flick"}\n{"event":"next_drill","scenario":"flick"}\n')
+    await pause()
+    expect(on('trainer:run-started')).toHaveLength(0)
+    expect(on('trainer:next-drill')).toHaveLength(0)
+    godot!.socket!.write(result('flick', 62))
+    await pause()
+    expect(results()).toHaveLength(1)
+    await bridge.launch({ ...config, keep_open: true })
+    expect(procs).toHaveLength(2)
+    expect(ended().map(e => e.reason)).toEqual(['completed'])
+    bridge.kill()
   })
 })
 
