@@ -1,6 +1,7 @@
 /**
- * Turn one captured match into answers for the open questions in
- * docs/research/cs2-deadlock-data-sources-2026-11-03.md §5 (keyed by question number).
+ * Turn one captured match into answers for the open questions in §5 of the CS2/Deadlock data
+ * sources research note of 3 Nov 2026 (keyed by question number). The note is kept in the API
+ * repo: upforge-api docs/research/cs2-deadlock-data-sources-2026-11-03.md.
  * Pure functions: no fs, no network. Used by game-data-capture.ts.
  */
 

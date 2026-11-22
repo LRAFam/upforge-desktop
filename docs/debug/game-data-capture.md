@@ -1,8 +1,9 @@
 # Game data capture (diagnostics)
 
 Purpose: record the **raw** live data UpForge receives during one real CS2 or Deadlock match, so the
-CS2/Deadlock rebuild is based on evidence, not guesses. Answers the open questions in
-`upforge-wt/data-research/docs/research/cs2-deadlock-data-sources-2026-11-03.md` §5.
+CS2/Deadlock rebuild is based on evidence, not guesses. Answers the open questions in §5 of the
+CS2/Deadlock data sources research note of 3 Nov 2026, kept in the API repo
+(`upforge-api` `docs/research/cs2-deadlock-data-sources-2026-11-03.md`).
 
 Off by default. Hidden in **Settings › Advanced › Game data diagnostics**, or set
 `UPFORGE_CAPTURE_GAME_DATA=1` before launching the app. It captures the **next** CS2 or Deadlock match,
