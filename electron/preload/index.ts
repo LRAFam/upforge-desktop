@@ -483,6 +483,7 @@ const api = {
     getHistory: (comparison?: import('../../src/lib/training-result-metrics').TrainingComparisonRequest) => ipcRenderer.invoke('trainer:get-history', comparison),
     getPlan: (game?: string) => ipcRenderer.invoke('trainer:get-plan', game),
     getCoachingDrills: (game?: string) => ipcRenderer.invoke('trainer:get-coaching-drills', game),
+    getDrillMoments: (id: number) => ipcRenderer.invoke('trainer:get-drill-moments', id),
     dismissCoachingDrill: (id: number) => ipcRenderer.invoke('trainer:dismiss-coaching-drill', id),
     /** DELETE /api/training/sessions/{id}: removes one of your runs (history, bests, leaderboards). */
     removeRun: (id: number) => ipcRenderer.invoke('trainer:remove-run', id),

@@ -18,6 +18,7 @@ import FocusesV3 from '../../components/v3/focus/FocusesV3.vue'
 import { hasFocusLoop } from '../../lib/focuses'
 import PracticeHeroV3 from '../../components/v3/practice/PracticeHeroV3.vue'
 import PracticeDrillTileV3 from '../../components/v3/practice/PracticeDrillTileV3.vue'
+import TrainingDrillMoments from '../../components/training/TrainingDrillMoments.vue'
 import { drillFrame, frameLayout } from '../../components/v3/practice/drill-frames'
 import {
   PRACTICE_TABS,
@@ -381,12 +382,13 @@ function thumb(scenario: string | null | undefined) {
                   <img v-if="thumb(r.trainerScenario)" :src="thumb(r.trainerScenario)!.url" alt="" :style="thumb(r.trainerScenario)!.style">
                   <span v-else class="uf-t4 uf-thumb-say">In game</span>
                 </span>
-                <span class="uf-mrow-what">
+                <div class="uf-mrow-what">
                   <span class="uf-t3">{{ r.title }}<span v-if="r.beta" class="uf-mrow-tag">Beta</span></span>
                   <span class="uf-t4">{{ r.fromMatches ? `From your match stats · ${r.meta}` : r.meta }}</span>
                   <span v-if="r.why" class="uf-t4" style="color: var(--uf-bone)">{{ r.why }}</span>
                   <span v-if="r.stat" class="uf-t4 uf-mrow-stat" :style="r.stat.trend === 'better' ? 'color: var(--uf-win)' : undefined">{{ r.stat.text }}</span>
-                </span>
+                  <TrainingDrillMoments v-if="r.hasMoments" :drill-id="r.id" />
+                </div>
                 <UfButton v-if="r.steps || r.goal" variant="link" :aria-expanded="openSteps === r.id"
                   @click="openSteps = openSteps === r.id ? null : r.id">{{ openSteps === r.id ? 'Hide steps' : 'Steps' }}</UfButton>
                 <UfButton v-if="r.trainerScenario" variant="link" :disabled="busy" @click="emit('play-match-drill', r.id)">Play</UfButton>
