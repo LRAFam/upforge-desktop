@@ -150,11 +150,11 @@ export function trainerRunSavedLabels(
 }
 
 /**
- * One line under the score: did this run count, and what happens to the drill next.
- * `scoreScale` matches how the screen shows scores (10 where scores read "/ 1000").
+ * One line under the score: did this run count, and what happens to the drill next. Pass scores are 0–100,
+ * like the run's own score.
  */
-export function trainerSyncLine(outcome: TrainerSyncOutcome | null, hasAssignedDrill: boolean, scoreScale = 1): TrainerSyncLine {
-  const pass = (n: number) => String(n * scoreScale)
+export function trainerSyncLine(outcome: TrainerSyncOutcome | null, hasAssignedDrill: boolean): TrainerSyncLine {
+  const pass = (n: number) => String(n)
   if (!outcome) return { text: 'Saving this run…', tone: 'muted' }
   if (outcome.state === 'pending') {
     if (outcome.stored === false) {
