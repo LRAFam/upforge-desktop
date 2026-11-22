@@ -213,7 +213,9 @@ export class UploadManager {
   private _abortGeneration = 0
   private _s3PartRequests = new Set<ClientRequest>()
   private _uploadAborted = false
-  /** Recently completed upload hashes (videoPath hash) to detect double-submits */
+  /** Analysis submissions are protected only while their transfer is running. */
+  private _activeUploads = new Set<string>()
+  /** Recently completed cloud saves. */
   private _recentUploads = new Set<string>()
   private _apiCooldowns = new Map<string, number>()
 
@@ -280,17 +282,20 @@ export class UploadManager {
    *   3. POST /complete → confirm upload and queue analysis (tiny JSON request)
    */
   async upload(opts: UploadOptions): Promise<UploadResult> {
-    if (this._recentUploads.has(opts.videoPath)) {
-      throw new Error('This recording was already uploaded recently')
+    if (this._activeUploads.has(opts.videoPath)) {
+      throw new ActivationPipelineError(
+        'upload_already_in_progress',
+        activationPipelineMessage('upload_already_in_progress', 'This recording is already uploading'),
+      )
     }
-    const result = await this._doUpload(opts)
-    this._recentUploads.add(opts.videoPath)
-    // Keep the set small — only remember the last 20 uploads
-    if (this._recentUploads.size > 20) {
-      const [first] = this._recentUploads
-      this._recentUploads.delete(first)
+    this._activeUploads.add(opts.videoPath)
+    try {
+      return await this._doUpload(opts)
+    } finally {
+      // A completed upload may later be refunded/failed by analysis. The persisted
+      // recording/job state governs retries; a process-lifetime path cache must not.
+      this._activeUploads.delete(opts.videoPath)
     }
-    return result
   }
 
   /** Save a recording to cloud without queuing analysis (archive quota, not analysis quota). */

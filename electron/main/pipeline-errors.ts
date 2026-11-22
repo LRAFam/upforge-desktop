@@ -24,6 +24,7 @@ const USER_RECOVERABLE_ANALYSIS_KINDS = new Set<AnalysisFailureKind>([
 ])
 
 const SKIP_PATTERNS = [
+  /^upload_already_in_progress(?::|$)/i,
   /^onboarding_bonus_unavailable$/i,
   /analysis\.limit\.reached/i,
   /upgrade\.required/i,

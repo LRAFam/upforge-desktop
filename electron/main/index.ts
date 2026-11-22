@@ -2377,6 +2377,9 @@ function dispatchAnalysisFailure(
       : {}),
   })
 
+  // A duplicate caller does not own the active pipeline or its progress UI.
+  if (classified.code === 'upload_already_in_progress') return payload
+
   if (opts.recordingId) {
     const existing = recordingsStore.getById(opts.recordingId)
     // Skip duplicate dispatches when this recording already failed (reconciler / poll retries).
@@ -2476,6 +2479,9 @@ function sendUploadFailure(
     preparationDiagnostics?: RecordingPreparationError['diagnostics']
   } = {},
 ): AnalysisErrorPayload {
+  if (classifyActivationError(rawError).code === 'upload_already_in_progress') {
+    return dispatchAnalysisFailure(rawError, opts)
+  }
   if (opts.game === 'valorant') {
     trackUploadFailed(rawError, 'valorant')
   }
@@ -8676,6 +8682,9 @@ async function startApp(): Promise<void> {
     if (!recording) {
       return { error: 'Recording not found', code: 'not_found' }
     }
+    if (activeUploadRecordingIds.has(id)) {
+      return { error: 'This recording is already uploading. Check its progress on the dashboard.', code: 'upload_already_in_progress' }
+    }
     try {
       const focus = submissionFocusAreas(focusAreas)
       if (focus) {
@@ -8689,17 +8698,29 @@ async function startApp(): Promise<void> {
       return { error: error instanceof Error ? error.message : 'Invalid focus area', code: 'invalid_focus' }
     }
 
-    // Failed analysis with VOD already on S3 — retry without re-upload.
-    // Upload-cancelled / interrupted jobs often never finished S3; fall through to re-upload.
-    if (recording.jobId && recording.lastAnalysisError) {
+    // Reconcile every saved job before another request can reserve a credit.
+    // A missing local error does not prove the previous analysis has finished.
+    if (recording.jobId) {
+      const statusOwner = getActiveUserId()
+      const savedJobId = recording.jobId
       const abortLike = /upload.?cancel|upload.?abort|upload_aborted/i.test(
         `${recording.lastAnalysisError} ${recording.lastFailureCode ?? ''}`,
       )
       let serverStatus: Awaited<ReturnType<typeof uploadManager.pollStatus>> | null = null
+      // pollStatus rejects with exactly this on HTTP 404: this account has no such job (stale
+      // uploads are deleted and refunded server-side), so a new upload cannot charge twice.
+      let jobMissing = false
       try {
         serverStatus = await uploadManager.pollStatus(recording.jobId)
-      } catch {
+      } catch (err) {
         serverStatus = null
+        jobMissing = err instanceof Error && err.message === 'Job not found'
+      }
+      if (getActiveUserId() !== statusOwner) {
+        return { error: 'Your account changed. Open the recording again.', code: 'session_changed' }
+      }
+      if (recordingsStore.getById(id)?.jobId !== savedJobId) {
+        return { error: 'This recording changed while checking its analysis. Open it again.', code: 'recording_changed' }
       }
 
       if (serverStatus && (serverStatus.status === 'completed' || isTerminalPollSuccess(serverStatus))) {
@@ -8728,9 +8749,16 @@ async function startApp(): Promise<void> {
         return { ok: true }
       }
 
+      if (!jobMissing && (!serverStatus || !['uploading', 'failed'].includes(serverStatus.status))) {
+        return {
+          error: 'Could not check the earlier analysis of this recording. Your recording is saved. Try again in a moment.',
+          code: 'upload_status_unconfirmed',
+        }
+      }
+
       const canCloudRetry = serverStatus?.status === 'failed' && !abortLike
       if (!canCloudRetry) {
-        // Incomplete upload or cancel — re-upload from local/cloud archive below.
+        // Incomplete upload, cancel, or a job the server no longer has — re-upload from local/cloud archive below.
         recordingsStore.clearAnalysisFailure(id)
       } else {
       dismissMatchWaitUi()

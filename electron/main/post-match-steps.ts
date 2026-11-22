@@ -25,10 +25,14 @@ export interface PostMatchStepInput {
  */
 export function canAutoEnqueueRecording(recording: {
   autoAnalyseRequested?: boolean
+  analysed?: boolean
   lastAnalysisError?: string | null
   game?: string | null
   gameMode?: string | null
 }): boolean {
+  // Upload completion persists this flag before the analysis result arrives. Repeated
+  // match/reconnect events must not reserve another credit for that same recording.
+  if (recording.analysed) return false
   if (recording.game === 'deadlock' && !deadlockAllowsAutoAnalyse(recording.gameMode)) return false
   return recording.autoAnalyseRequested === true && !recording.lastAnalysisError
 }
