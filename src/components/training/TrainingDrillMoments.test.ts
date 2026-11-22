@@ -5,22 +5,27 @@ import ts from 'typescript'
 import * as vue from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as moments from '../../lib/drill-moments'
+import { openAnalysisInApp as actualOpenAnalysisInApp } from '../../lib/open-analysis-in-app'
+import { pendingTimeline } from '../../stores/pendingTimeline'
 
 const { descriptor } = parse(readFileSync(new URL('./TrainingDrillMoments.vue', import.meta.url), 'utf8'))
 const code = ts.transpileModule(compileScript(descriptor, { id: 'drill-moments-test' }).content, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText
 
-function setup(reply: () => Promise<unknown>) {
+function setup(reply: () => Promise<unknown>, timelineReply?: () => Promise<unknown>) {
   const getDrillMoments = vi.fn(reply)
-  const openAnalysisInApp = vi.fn(async () => 'reviews')
+  const getTimeline = vi.fn(timelineReply)
+  const openAnalysisInApp = vi.fn<typeof actualOpenAnalysisInApp>(timelineReply ? actualOpenAnalysisInApp : async () => 'reviews')
   const listeners: Record<string, () => void> = {}
   const mounts: (() => void)[] = []
   const life = { ended: false, own: vi.fn() }
-  const router = { push: vi.fn() }
+  const router = { push: vi.fn(async () => undefined) }
+  const browserWindow = { api: { trainer: { getDrillMoments }, analyses: { getTimeline }, on: (name: string, fn: () => void) => { listeners[name] = fn; return () => {} } } }
+  if (timelineReply) vi.stubGlobal('window', browserWindow)
   const exports: any = {}
   vm.runInNewContext(code, {
-    exports, window: { api: { trainer: { getDrillMoments }, on: (name: string, fn: () => void) => { listeners[name] = fn; return () => {} } } },
+    exports, window: browserWindow,
     require: (id: string) => {
       if (id === 'vue') return { ...vue, onMounted: (fn: () => void) => mounts.push(fn) }
       if (id === 'vue-router') return { useRouter: () => router, RouterLink: {} }
@@ -34,18 +39,22 @@ function setup(reply: () => Promise<unknown>) {
   const scope = vue.effectScope()
   const state = scope.run(() => exports.default.setup(props, { expose() {} }))
   mounts.forEach(fn => fn())
-  return { state, props, getDrillMoments, openAnalysisInApp, listeners, stop: () => scope.stop(), router }
+  return { state, props, getDrillMoments, getTimeline, openAnalysisInApp, listeners, life, stop: () => scope.stop(), router }
 }
 
 const stops: (() => void)[] = []
-afterEach(() => stops.splice(0).forEach(stop => stop()))
+afterEach(() => {
+  stops.splice(0).forEach(stop => stop())
+  pendingTimeline.value = null
+  vi.unstubAllGlobals()
+})
 
 describe('See it in your matches', () => {
   it('opens a video drill’s source review in the app after one click', async () => {
     const s = setup(async () => ({ drill_id: 7, review: { analysis_id: 42 }, matches: [] })); stops.push(s.stop)
     await s.state.load()
     expect(s.getDrillMoments).toHaveBeenCalledExactlyOnceWith(7)
-    expect(s.openAnalysisInApp).toHaveBeenCalledExactlyOnceWith(s.router, 42, { source: 'desktop_drill_moments' })
+    expect(s.openAnalysisInApp).toHaveBeenCalledExactlyOnceWith(s.router, 42, { source: 'desktop_drill_moments', isCurrent: expect.any(Function) })
     expect(s.state.opened.value).toBe(false)
   })
 
@@ -89,5 +98,47 @@ describe('See it in your matches', () => {
     resolve({ drill_id: 7, review: { analysis_id: 42 }, matches: [] })
     await pending
     expect(s.openAnalysisInApp).not.toHaveBeenCalled()
+  })
+
+  it.each(['session:user-changed', 'auth:session-expired', 'close', 'unmount', 'drill-change'])('cancels the actual review navigation when %s happens during timeline loading', async action => {
+    let resolve!: (value: unknown) => void
+    const timeline = new Promise(r => { resolve = r })
+    const s = setup(async () => ({ drill_id: 7, review: { analysis_id: 42 }, matches: [] }), () => timeline); stops.push(s.stop)
+    const pending = s.state.load()
+    await vi.waitFor(() => expect(s.getTimeline).toHaveBeenCalledWith(42))
+    if (action === 'close') s.state.toggle()
+    else if (action === 'unmount') s.life.ended = true
+    else if (action === 'drill-change') { s.props.drillId = 8; await vue.nextTick() }
+    else s.listeners[action]()
+    resolve({ game: 'valorant' })
+    await pending
+    expect(s.router.push).not.toHaveBeenCalled()
+    expect(pendingTimeline.value).toBeNull()
+  })
+
+  it.each([true, false])('allows the actual navigation while the request is current (timeline available: %s)', async hasTimeline => {
+    const data = hasTimeline ? { game: 'valorant' } : null
+    const s = setup(async () => ({ drill_id: 7, review: { analysis_id: 42 }, matches: [] }), async () => data); stops.push(s.stop)
+    await s.state.load()
+    expect(s.router.push).toHaveBeenCalledExactlyOnceWith(hasTimeline
+      ? { path: '/vod-review', query: { timelineId: '42' } }
+      : { path: '/recordings', query: { analysis: '42', view: 'coaching' } })
+    expect(pendingTimeline.value).toEqual(data)
+    expect(s.state.opened.value).toBe(false)
+  })
+
+  it.each(['missing', 'failed'])('does not fall back to a review after a cancelled timeline lookup returns %s', async outcome => {
+    let resolve!: (value: unknown) => void
+    let reject!: (reason: Error) => void
+    const timeline = new Promise((res, rej) => { resolve = res; reject = rej })
+    const s = setup(async () => ({ drill_id: 7, review: { analysis_id: 42 }, matches: [] }), () => timeline); stops.push(s.stop)
+    const pending = s.state.load()
+    await vi.waitFor(() => expect(s.getTimeline).toHaveBeenCalledWith(42))
+    s.state.toggle()
+    if (outcome === 'missing') resolve(null)
+    else reject(new Error('offline'))
+    await pending
+    expect(s.router.push).not.toHaveBeenCalled()
+    expect(pendingTimeline.value).toBeNull()
   })
 })

@@ -36,7 +36,10 @@ async function load() {
     if (!parsed) throw new Error('Drill source unavailable')
     moments.value = parsed
     if (parsed.reviewId) {
-      await openAnalysisInApp(router, parsed.reviewId, { source: 'desktop_drill_moments' })
+      await openAnalysisInApp(router, parsed.reviewId, {
+        source: 'desktop_drill_moments',
+        isCurrent: () => !life.ended && request === revision && id === props.drillId && opened.value,
+      })
       if (!life.ended && request === revision) opened.value = false
     }
   } catch {
