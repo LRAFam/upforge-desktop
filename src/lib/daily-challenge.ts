@@ -22,7 +22,7 @@ export interface DailyChallenge {
 
 interface RunLike {
   scenario: string
-  score: number
+  score?: number
   completed_at: string
   duration_seconds?: number
   metadata?: Record<string, unknown>
@@ -47,7 +47,7 @@ export function dailyChallengeFor(now: Date, scenarios: readonly string[]): Dail
 /** True when one of `runs` is the run the challenge asked for: same drill and settings, on target, today. */
 export function dailyChallengeDone(challenge: DailyChallenge, runs: readonly RunLike[]): boolean {
   return runs.some(r => {
-    if (r.scenario !== challenge.scenario || !(r.score >= challenge.target)) return false
+    if (r.scenario !== challenge.scenario || typeof r.score !== 'number' || !Number.isFinite(r.score) || r.score < challenge.target) return false
     if (r.metadata?.difficulty !== challenge.difficulty || r.duration_seconds !== challenge.duration_seconds) return false
     const t = trainingTimestamp(r.completed_at)
     return Number.isFinite(t) && localDayKey(new Date(t)) === challenge.day
