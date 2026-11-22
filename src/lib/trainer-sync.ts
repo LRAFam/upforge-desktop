@@ -1,8 +1,13 @@
 /**
  * Upload state of a finished trainer run and what it did to the assigned drill, as plain copy for the
- * result screens. Shared with electron/main/trainer-session-queue.ts (types only there).
+ * result screens. Shared with electron/main/trainer-session-queue.ts (types and the run key there).
  */
 export type TrainerSyncState = 'saved' | 'pending' | 'failed'
+
+/** One run = one scenario + finish time: the upload queue's key, and how screens find a run's outcome. */
+export function trainerRunKey(scenario: unknown, completedAt: unknown): string {
+  return `${String(scenario ?? '')}|${String(completedAt ?? '')}`
+}
 
 /** What the API said about the assigned drill (POST /api/training/sessions → `drill`). */
 export interface TrainerDrillState {
@@ -65,6 +70,15 @@ export interface TrainerUploadStatus {
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
+/** An outcome from the main process (`trainer:session-synced`, `trainer:get-sync-status`), or null. */
+export function asTrainerSyncOutcome(raw: unknown): TrainerSyncOutcome | null {
+  const o = raw as Partial<TrainerSyncOutcome> | null
+  return o && typeof o === 'object' && typeof o.key === 'string'
+    && (o.state === 'saved' || o.state === 'pending' || o.state === 'failed')
+    ? o as TrainerSyncOutcome
+    : null
+}
+
 export function asTrainerUploadStatus(raw: unknown): TrainerUploadStatus | null {
   const s = raw as Partial<TrainerUploadStatus> | null
   return s && typeof s.waiting === 'number' && typeof s.unsaved === 'number' ? { waiting: s.waiting, unsaved: s.unsaved } : null
@@ -122,6 +136,17 @@ export function trainerRunSavedLabel(outcome: TrainerSyncOutcome | null): Traine
   if (outcome.state === 'saved') return { text: 'Saved', tone: 'muted' }
   if (outcome.state === 'pending') return { text: 'Waiting to upload', tone: 'muted' }
   return { text: 'Not saved', tone: 'loss' }
+}
+
+/**
+ * Save state of each run in a list (the steps of a guided session), from the latest outcome per run key.
+ * A step without a run gets null.
+ */
+export function trainerRunSavedLabels(
+  runs: ReadonlyArray<{ scenario: string; completed_at?: string | null } | null | undefined>,
+  outcomes: Readonly<Record<string, TrainerSyncOutcome>>,
+): Array<TrainerSyncLine | null> {
+  return runs.map(run => (run ? trainerRunSavedLabel(outcomes[trainerRunKey(run.scenario, run.completed_at)] ?? null) : null))
 }
 
 /**

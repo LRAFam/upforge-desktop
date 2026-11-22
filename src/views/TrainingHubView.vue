@@ -53,6 +53,8 @@ import { scenariosPlayedToday, usePracticeSessionStore } from '../stores/practic
 import { mergePracticeData, practiceRefreshNotice, shouldCachePracticeData, type PracticeDataReply, type TrainerData } from '../lib/practice-trainer-data'
 import { storeToRefs } from 'pinia'
 import { practiceActivity } from '../lib/trainer-achievements'
+import { asTrainerSyncOutcome, trainerRunSavedLabels, trainerUploadStatusLine, type TrainerSyncOutcome } from '../lib/trainer-sync'
+import { useTrainerUploadStatus } from '../composables/useTrainerUploadStatus'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SessionResult {
@@ -799,6 +801,7 @@ const life = useLifetime() // listeners registered after an await stop with this
 onMounted(async () => {
   life.own(window.api.on('session:user-changed', cancelManualDrill))
   life.own(window.api.on('auth:session-expired', cancelManualDrill))
+  life.own(window.api.on('trainer:session-synced', (raw: unknown) => noteRunOutcome(raw)))
   await achievements.load()
 
   life.own(window.api.on('trainer:session-ended', (raw: unknown) => {
@@ -1333,6 +1336,19 @@ const showSessionSummary = ref(false)
 const sessionSummary = ref<SessionSummary | null>(null)
 let sessionAdvanceTimer: ReturnType<typeof setInterval> | null = null
 
+// Upload state of each run, pushed on trainer:session-synced (again when a waiting run lands later):
+// the summary marks each step saved or waiting, and Practice says how many runs wait to upload.
+const runOutcomes = ref<Record<string, TrainerSyncOutcome>>({})
+/** `ifUnknown`: an outcome asked for never replaces one pushed meanwhile (the push is newer). */
+function noteRunOutcome(raw: unknown, ifUnknown = false) {
+  const o = asTrainerSyncOutcome(raw)
+  if (!o || (ifUnknown && runOutcomes.value[o.key])) return
+  runOutcomes.value = { ...runOutcomes.value, [o.key]: o }
+}
+const sessionStepSaved = computed(() => trainerRunSavedLabels(sessionSummary.value?.results ?? [], runOutcomes.value))
+const { status: uploadStatus, unsavedRuns, retrying: retryingUnsaved, retry: retryUnsaved } = useTrainerUploadStatus()
+const uploadLine = computed(() => trainerUploadStatusLine(uploadStatus.value))
+
 const structuredSessionActive = computed(() => structuredSession.value?.active === true)
 const structuredSessionPlan = computed(() => structuredSession.value?.plan ?? [])
 const structuredSessionStepIndex = computed(() => structuredSession.value?.stepIndex ?? 0)
@@ -1414,6 +1430,10 @@ function finishStructuredSession() {
   structuredSession.value = null
   showSessionSummary.value = true
   clearSessionTimer()
+  // A step's push can arrive while Practice is closed (the player left between steps): ask for it.
+  for (const r of results) {
+    void window.api.trainer.getSyncStatus?.(r.scenario, r.completed_at).then(o => noteRunOutcome(o, true)).catch(() => {})
+  }
 }
 
 function cancelStructuredSession() {
@@ -1493,6 +1513,11 @@ const CATEGORY_ICON: Record<string, string> = {
       <div v-if="trainerNotice" class="uf-insession uf-rise" role="status">
         <span class="uf-t3">{{ trainerNotice }}</span>
         <UfButton variant="link" class="uf-insession-end" @click="trainerNotice = null">Dismiss</UfButton>
+      </div>
+
+      <div v-if="uploadLine" class="uf-insession uf-rise" role="status">
+        <span class="uf-t3" :style="uploadLine.tone === 'loss' ? 'color: var(--uf-loss)' : undefined">{{ uploadLine.text }}</span>
+        <UfButton v-if="unsavedRuns.length" variant="link" class="uf-insession-end" :disabled="retryingUnsaved" @click="retryUnsaved">{{ retryingUnsaved ? 'Retrying…' : 'Retry' }}</UfButton>
       </div>
 
       <div v-if="structuredSessionWaiting" class="uf-insession uf-rise" role="status">
@@ -1580,9 +1605,11 @@ const CATEGORY_ICON: Record<string, string> = {
             <li v-for="(step, i) in sessionSummary.steps" :key="i">
               <span class="uf-t4" style="width: 90px">{{ step.phaseLabel }}</span>
               <span class="uf-t3" style="flex: 1">{{ SCENARIO_META[step.scenario]?.label }} <span class="uf-t4">· {{ sessionStepSettings(step) }}</span></span>
+              <span v-if="sessionStepSaved[i]" class="uf-t4" :style="sessionStepSaved[i]?.tone === 'loss' ? 'color: var(--uf-loss)' : undefined">{{ sessionStepSaved[i]?.text }}</span>
               <span class="uf-d4">{{ sessionSummary.results[i]?.score ?? '—' }}</span>
             </li>
           </ol>
+          <p v-if="uploadLine" class="uf-t4" role="status" :style="{ margin: 0, color: uploadLine.tone === 'loss' ? 'var(--uf-loss)' : undefined }">{{ uploadLine.text }}</p>
           <p v-if="sessionSummary.aimBias" class="uf-t2" style="margin: 0">{{ sessionSummary.aimBias }}</p>
         </template>
         <template #actions>

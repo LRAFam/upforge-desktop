@@ -15,9 +15,11 @@ import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 
-import type { TrainerDrillState, TrainerSyncOutcome, TrainerUnsavedRun, TrainerUploadStatus } from '../../src/lib/trainer-sync'
+import { trainerRunKey, type TrainerDrillState, type TrainerSyncOutcome, type TrainerUnsavedRun, type TrainerUploadStatus } from '../../src/lib/trainer-sync'
 
 export type { TrainerDrillState, TrainerSyncOutcome, TrainerUnsavedRun, TrainerUploadStatus } from '../../src/lib/trainer-sync'
+// The same key the screens use to find a run's outcome (Practice's guided steps, the result screen).
+export { trainerRunKey }
 
 interface PendingRun {
   clientRunId: string
@@ -90,11 +92,6 @@ export function isRetryableUploadError(err: unknown): boolean {
   const status = (err as { status?: unknown } | null)?.status
   if (typeof status !== 'number') return true
   return status === 401 || status === 408 || status === 429 || status >= 500
-}
-
-/** One run = one scenario + finish time (what the result screen shows). */
-export function trainerRunKey(scenario: unknown, completedAt: unknown): string {
-  return `${String(scenario ?? '')}|${String(completedAt ?? '')}`
 }
 
 export function drillStateFrom(response: unknown): TrainerDrillState | null {

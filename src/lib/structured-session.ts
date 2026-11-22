@@ -34,6 +34,8 @@ export interface SessionHistoryRow {
   score: number
   /** Run length; rows from GET /api/training/sessions always have it. */
   duration_seconds?: number
+  /** When the run finished (the trainer's stamp). A guided step's run has it; with the scenario it finds the run's upload state. */
+  completed_at?: string
   metadata?: Record<string, unknown> | null
   accuracy_pct?: number
   avg_reaction_ms?: number
