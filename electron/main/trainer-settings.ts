@@ -8,6 +8,7 @@ import type { DrillConfig, TrainerSpawnOptions } from './trainer-bridge'
 import { trainerFovInRange, trainerSensitivityInRange } from '../../src/lib/trainer-mouse-limits'
 import { DEFAULT_TRAINER_FOV, defaultTrainerFov, isTrainerGame, switchTrainerGame, TRAINER_GAMES, type TrainerAimByGame } from '../../src/lib/trainer-games'
 import { TRAINER_MAX_FPS_DEFAULT, trainerMaxFpsInRange } from '../../src/lib/trainer-display'
+import { DEFAULT_CROSSHAIR, migrateCrosshairSettings } from '../../src/lib/crosshair'
 
 export { CS2_DEFAULT_FOV, DEFAULT_TRAINER_FOV, defaultTrainerFov } from '../../src/lib/trainer-games'
 
@@ -36,24 +37,8 @@ export const DEFAULT_TRAINER_MOUSE: TrainerMouse = {
   maxFps: TRAINER_MAX_FPS_DEFAULT,
 }
 
-export const DEFAULT_CROSSHAIR_SETTINGS: CrosshairSettings = {
-  colorIndex: 1,        // Valorant green default
-  customColor: '00FF6B',
-  dotShow: true,
-  dotRadius: 1.5,
-  dotOpacity: 1.0,
-  innerShow: true,
-  innerThickness: 2,
-  innerLength: 10,
-  innerOffset: 4,
-  innerOpacity: 1.0,
-  outerShow: false,
-  outerThickness: 2,
-  outerLength: 5,
-  outerOffset: 10,
-  outerOpacity: 1.0,
-  shadowShow: true,
-}
+/** The same defaults as the renderer's editor (src/lib/crosshair.ts). */
+export const DEFAULT_CROSSHAIR_SETTINGS: CrosshairSettings = { ...DEFAULT_CROSSHAIR }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v)
@@ -131,8 +116,9 @@ export function mergeTrainerMouse(prev: unknown, patch: unknown): TrainerMouse {
   return normalizeTrainerMouse({ ...before, ...change, game, sensitivity: typed('sensitivity'), fov: typed('fov'), perGame: moved.perGame })
 }
 
+/** A saved crosshair with defaults for missing / wrong-typed values; saves before version 2 are moved to it first. */
 export function normalizeCrosshairSettings(saved: unknown): CrosshairSettings {
-  return mergeTyped(DEFAULT_CROSSHAIR_SETTINGS, saved)
+  return mergeTyped(DEFAULT_CROSSHAIR_SETTINGS, migrateCrosshairSettings(saved))
 }
 
 /** Valorant colour palette — indices match CrosshairConfig.gd VALORANT_COLORS */
@@ -164,11 +150,15 @@ export function crosshairSettingsToGodot(input: Partial<CrosshairSettings> | nul
   const color = Number.isInteger(idx) && idx >= 0 && idx < CROSSHAIR_PALETTE.length
     ? CROSSHAIR_PALETTE[idx]
     : hexToRgb(cs.customColor) ?? hexToRgb(DEFAULT_CROSSHAIR_SETTINGS.customColor)!
+  // version 2: outer_offset is from the centre, the dot is dot_size px square, the outline has its own size.
   return {
+    version:          cs.version,
     color,
-    shadow_show:      cs.shadowShow,
+    outline_show:     cs.shadowShow,
+    outline_thickness: cs.outlineThickness,
+    outline_opacity:  cs.outlineOpacity,
     dot_show:         cs.dotShow,
-    dot_radius:       cs.dotRadius,
+    dot_size:         cs.dotSize,
     dot_opacity:      cs.dotOpacity,
     inner_show:       cs.innerShow,
     inner_thickness:  cs.innerThickness,

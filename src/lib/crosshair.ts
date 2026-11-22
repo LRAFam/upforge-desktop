@@ -6,24 +6,34 @@
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Sizes are screen pixels, as in Valorant (the trainer draws them 1:1 at every resolution).
+ * Both offsets are measured from the centre. Version 2 is this meaning; older saves are moved to it by
+ * migrateCrosshairSettings (outer offset was measured from the inner lines' end, the dot sized by a radius).
+ */
 export interface CrosshairSettings {
+  version: number       // CROSSHAIR_SETTINGS_VERSION
   colorIndex: number    // 0=white 1=green 2=yellow 3=cyan 4=pink 5=red 6=custom (UpForge swatches, not Valorant's slots)
   customColor: string   // hex without '#', e.g. '00FF6B'
   dotShow: boolean
-  dotRadius: number     // 0.5–6
+  dotSize: number       // width of the square dot, 1–6 px
   dotOpacity: number    // 0–1
   innerShow: boolean
-  innerThickness: number // 0.5–8
-  innerLength: number    // 0–30
-  innerOffset: number    // 0–20
+  innerThickness: number // 0–10 px
+  innerLength: number    // 0–20 px
+  innerOffset: number    // 0–20 px from the centre
   innerOpacity: number   // 0–1
   outerShow: boolean
-  outerThickness: number
-  outerLength: number
-  outerOffset: number
+  outerThickness: number // 0–10 px
+  outerLength: number    // 0–10 px
+  outerOffset: number    // 0–40 px from the centre
   outerOpacity: number
-  shadowShow: boolean
+  shadowShow: boolean    // the outline
+  outlineThickness: number // 1–6 px on every side
+  outlineOpacity: number   // 0–1
 }
+
+export const CROSSHAIR_SETTINGS_VERSION = 2
 
 // ── Color palette (matches Godot CrosshairConfig.gd VALORANT_COLORS) ──────────
 
@@ -43,10 +53,11 @@ export const CROSSHAIR_PALETTE_NAMES: string[] = [
 // ── Defaults (mirror DEFAULTS in settings-manager.ts) ─────────────────────────
 
 export const DEFAULT_CROSSHAIR: CrosshairSettings = {
+  version: CROSSHAIR_SETTINGS_VERSION,
   colorIndex: 1,
   customColor: '00FF6B',
   dotShow: true,
-  dotRadius: 1.5,
+  dotSize: 2,
   dotOpacity: 1.0,
   innerShow: true,
   innerThickness: 2,
@@ -56,9 +67,35 @@ export const DEFAULT_CROSSHAIR: CrosshairSettings = {
   outerShow: false,
   outerThickness: 2,
   outerLength: 5,
-  outerOffset: 10,
+  outerOffset: 24,
   outerOpacity: 1.0,
   shadowShow: true,
+  outlineThickness: 1,
+  outlineOpacity: 0.5,
+}
+
+/** Before version 2 (no `version`): the outer offset counted from the inner lines' end and the dot had a radius. */
+const LEGACY = { innerOffset: 4, innerLength: 10 }
+
+/**
+ * Move a saved crosshair to version 2, keeping how it looked: the outer lines stay where they were drawn
+ * (inner offset + inner length + outer offset from the centre) and the dot keeps its width (radius × 2).
+ * Version 2 saves and non-objects are returned as they are. Wrong-typed values are left for the caller to drop.
+ */
+export function migrateCrosshairSettings(saved: unknown): unknown {
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return saved
+  const s = { ...(saved as Record<string, unknown>) }
+  if (typeof s.version === 'number' && s.version >= CROSSHAIR_SETTINGS_VERSION) return s
+  const n = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
+  if (typeof s.outerOffset === 'number' && Number.isFinite(s.outerOffset)) {
+    s.outerOffset = n(s.innerOffset, LEGACY.innerOffset) + n(s.innerLength, LEGACY.innerLength) + s.outerOffset
+  }
+  if (typeof s.dotSize !== 'number' && typeof s.dotRadius === 'number' && Number.isFinite(s.dotRadius)) {
+    s.dotSize = s.dotRadius * 2
+  }
+  delete s.dotRadius
+  s.version = CROSSHAIR_SETTINGS_VERSION
+  return s
 }
 
 // ── Valorant code parser ───────────────────────────────────────────────────────
@@ -69,12 +106,12 @@ export const DEFAULT_CROSSHAIR: CrosshairSettings = {
 // Primary keys: c colour slot (0 white, 1 green, 2 yellow green, 3 green yellow, 4 yellow, 5 cyan,
 // 6 pink, 7 red, 8 custom), u custom colour as RRGGBBAA, h outlines on, o outline opacity,
 // d centre dot on, z dot width (px), a dot opacity, 0b / 1b inner / outer lines on, then
-// 0t 0l 0o 0a / 1t 1l 1o 1a = thickness, length, offset, opacity. A missing key is Valorant's default.
-// Both offsets (0o, 1o) are measured from the centre; UpForge measures the outer one from the inner lines' end
-// (see placeOuterLines).
+// 0t 0l 0o 0a / 1t 1l 1o 1a = thickness, length, offset, opacity, t outline thickness. A missing key is
+// Valorant's default. Both offsets (0o, 1o) are measured from the centre, as UpForge's are.
+// Not read: separate vertical lengths (0g/0v, 1g/1v), movement and firing error.
 
 const VALORANT_DEFAULTS = {
-  c: 0, h: 1, o: 0.5, d: 0, z: 2, a: 1,
+  c: 0, h: 1, t: 1, o: 0.5, d: 0, z: 2, a: 1,
   '0b': 1, '0t': 2, '0l': 6, '0o': 3, '0a': 0.8,
   '1b': 1, '1t': 2, '1l': 2, '1o': 10, '1a': 0.35,
 } as const
@@ -129,50 +166,91 @@ export function parseValorantCode(code: string): CrosshairSettings {
     }
   }
 
-  // Outlines (drawn as the trainer's shadow)
+  // Outlines: a frame t px wide on every side of each line and the dot
   s.shadowShow = on('h') && num('o') > 0
+  s.outlineThickness = clamp(num('t'), 1, 6)
+  s.outlineOpacity = clamp(num('o'), 0, 1)
 
-  // Centre dot: z is its width in px, the same unit as line thickness
+  // Centre dot: a square z px wide
   s.dotShow = on('d')
-  s.dotRadius = clamp(num('z') / 2, 0.5, 6)
+  s.dotSize = clamp(num('z'), 1, 6)
   s.dotOpacity = clamp(num('a'), 0, 1)
 
-  // Inner and outer lines (a 0-thickness line is invisible in game)
+  // Inner and outer lines (a 0-thickness line is invisible in game); both offsets from the centre
   s.innerShow = on('0b') && num('0t') > 0
-  s.innerThickness = clamp(num('0t'), 0.5, 8)
-  s.innerLength = clamp(num('0l'), 0, 30)
+  s.innerThickness = clamp(num('0t'), 0, 10)
+  s.innerLength = clamp(num('0l'), 0, 20)
   s.innerOffset = clamp(num('0o'), 0, 20)
   s.innerOpacity = clamp(num('0a'), 0, 1)
 
   s.outerShow = on('1b') && num('1t') > 0
-  s.outerThickness = clamp(num('1t'), 0.5, 8)
+  s.outerThickness = clamp(num('1t'), 0, 10)
+  s.outerLength = clamp(num('1l'), 0, 10)
+  s.outerOffset = clamp(num('1o'), 0, 40)
   s.outerOpacity = clamp(num('1a'), 0, 1)
-  placeOuterLines(s, Math.max(0, num('1o')), Math.max(0, num('1l')))
 
   return s
 }
 
+// ── Geometry (the trainer's CrosshairConfig.rects(), number for number) ───────
+
+export interface CrosshairRect { x: number; y: number; w: number; h: number; fill: string; opacity: number }
+
+const OUTLINE_FILL = '#000000'
+/** floor(v + 0.5), as the trainer snaps (Math.round differs from Godot's round at -0.5). */
+const snap = (v: number) => Math.floor(v + 0.5)
+
+/** Four arms around (0, 0): each starts `gap` px from the centre and runs `length` px outward, `thick` wide. */
+function arms(gap: number, length: number, thick: number): Array<[number, number, number, number]> {
+  const h = thick / 2
+  return [
+    [-h, -gap - length, thick, length], // up
+    [-h, gap, thick, length],           // down
+    [-gap - length, -h, length, thick], // left
+    [gap, -h, length, thick],           // right
+  ]
+}
+
 /**
- * Valorant draws outer lines from `start` to `start + length` px from the centre. UpForge's previews and the
- * trainer draw them from innerOffset + innerLength + outerOffset, even when the inner lines are hidden, so the
- * offset is converted here (saved settings keep UpForge's meaning).
+ * The crosshair as filled rectangles in screen pixels around a centre at (0, 0), in drawing order: every outline
+ * frame first (top, bottom, left, right of each part), then the outer lines, inner lines and the square dot.
+ * Edges snap to whole pixels. This is what the trainer draws (upforge-trainer scripts/CrosshairConfig.gd), in
+ * 2D and 3D drills, at every resolution.
  */
-function placeOuterLines(s: CrosshairSettings, start: number, length: number): void {
-  // Hidden inner lines only push the outer lines out: shrink them to end where the outer lines start.
-  if (s.outerShow && (!s.innerShow || s.innerLength <= 0)) {
-    s.innerOffset = Math.min(s.innerOffset, start)
-    s.innerLength = Math.min(s.innerLength, start - s.innerOffset)
+export function crosshairRects(s: CrosshairSettings): CrosshairRect[] {
+  const color = resolveColor(s)
+  const parts: Array<{ r: [number, number, number, number]; opacity: number }> = []
+  if (s.outerShow && s.outerLength > 0 && s.outerThickness > 0) {
+    for (const r of arms(s.outerOffset, s.outerLength, s.outerThickness)) parts.push({ r, opacity: s.outerOpacity })
   }
-  const innerEnd = s.innerOffset + s.innerLength
-  if (start >= innerEnd) {
-    s.outerOffset = clamp(start - innerEnd, 0, 20)
-    s.outerLength = clamp(length, 0, 30)
-    return
+  if (s.innerShow && s.innerLength > 0 && s.innerThickness > 0) {
+    for (const r of arms(s.innerOffset, s.innerLength, s.innerThickness)) parts.push({ r, opacity: s.innerOpacity })
   }
-  // Outer lines that start under the inner lines can only start where those end. They keep their outer end, so the
-  // crosshair reaches as far as in Valorant (length 0 when they lie wholly under the inner lines).
-  s.outerOffset = 0
-  s.outerLength = clamp(start + length - innerEnd, 0, 30)
+  if (s.dotShow && s.dotSize > 0) parts.push({ r: [-s.dotSize / 2, -s.dotSize / 2, s.dotSize, s.dotSize], opacity: s.dotOpacity })
+  const snapped = parts.map(p => ({ x: snap(p.r[0]), y: snap(p.r[1]), w: snap(p.r[2]), h: snap(p.r[3]), opacity: p.opacity }))
+
+  const out: CrosshairRect[] = []
+  const t = snap(s.outlineThickness)
+  if (s.shadowShow && t > 0 && s.outlineOpacity > 0) {
+    const o = s.outlineOpacity
+    for (const r of snapped) {
+      out.push(
+        { x: r.x - t, y: r.y - t, w: r.w + 2 * t, h: t, fill: OUTLINE_FILL, opacity: o },
+        { x: r.x - t, y: r.y + r.h, w: r.w + 2 * t, h: t, fill: OUTLINE_FILL, opacity: o },
+        { x: r.x - t, y: r.y, w: t, h: r.h, fill: OUTLINE_FILL, opacity: o },
+        { x: r.x + r.w, y: r.y, w: t, h: r.h, fill: OUTLINE_FILL, opacity: o },
+      )
+    }
+  }
+  for (const r of snapped) out.push({ x: r.x, y: r.y, w: r.w, h: r.h, fill: color, opacity: r.opacity })
+  return out
+}
+
+/** Half the size of the drawn crosshair in px, outline included. */
+export function crosshairRectsExtent(s: CrosshairSettings): number {
+  let e = 0
+  for (const r of crosshairRects(s)) e = Math.max(e, -r.x, r.x + r.w, -r.y, r.y + r.h)
+  return e
 }
 
 // ── Canvas preview renderer ────────────────────────────────────────────────────
@@ -196,64 +274,11 @@ export function renderCrosshairPreview(
   const cx = w / 2
   const cy = h / 2
 
-  const color = resolveColor(s)
-  const shadowColor = 'rgba(0,0,0,0.55)'
-
-  // Scale factor: preview canvas is small so scale crosshair to fit nicely
-  const scale = Math.min(w, h) / 80
-
-  const innerGap   = s.innerOffset  * scale
-  const innerLen   = s.innerLength  * scale
-  const innerThick = s.innerThickness * scale
-  const outerGap   = innerGap + innerLen + s.outerOffset * scale
-  const outerLen   = s.outerLength  * scale
-  const outerThick = s.outerThickness * scale
-  const dotR       = s.dotRadius    * scale
-
-  function drawArms(gap: number, len: number, thick: number, col: string) {
-    ctx!.strokeStyle = col
-    ctx!.lineWidth = thick
-    // Butt caps: a square cap adds half the thickness at each end (longer lines, smaller gap than the trainer).
-    ctx!.lineCap = 'butt'
-    ctx!.beginPath()
-    ctx!.moveTo(cx,        cy - gap)
-    ctx!.lineTo(cx,        cy - gap - len)
-    ctx!.moveTo(cx,        cy + gap)
-    ctx!.lineTo(cx,        cy + gap + len)
-    ctx!.moveTo(cx - gap,  cy)
-    ctx!.lineTo(cx - gap - len, cy)
-    ctx!.moveTo(cx + gap,  cy)
-    ctx!.lineTo(cx + gap + len, cy)
-    ctx!.stroke()
-  }
-
-  // Outer lines
-  if (s.outerShow && outerLen > 0) {
-    const outerCol = colorWithOpacity(color, s.outerOpacity)
-    if (s.shadowShow) drawArms(outerGap, outerLen, outerThick + 2 * scale, shadowColor)
-    drawArms(outerGap, outerLen, outerThick, outerCol)
-  }
-
-  // Inner lines
-  if (s.innerShow && innerLen > 0) {
-    const innerCol = colorWithOpacity(color, s.innerOpacity)
-    if (s.shadowShow) drawArms(innerGap, innerLen, innerThick + 2 * scale, shadowColor)
-    drawArms(innerGap, innerLen, innerThick, innerCol)
-  }
-
-  // Center dot
-  if (s.dotShow && dotR > 0) {
-    const dotCol = colorWithOpacity(color, s.dotOpacity)
-    if (s.shadowShow) {
-      ctx.beginPath()
-      ctx.arc(cx, cy, dotR + scale, 0, Math.PI * 2)
-      ctx.fillStyle = shadowColor
-      ctx.fill()
-    }
-    ctx.beginPath()
-    ctx.arc(cx, cy, dotR, 0, Math.PI * 2)
-    ctx.fillStyle = dotCol
-    ctx.fill()
+  // Same rectangles as the trainer, magnified so the preview fills the canvas (whole screen px per trainer px).
+  const scale = Math.max(1, Math.floor(Math.min(w, h) / 80))
+  for (const r of crosshairRects(s)) {
+    ctx.fillStyle = colorWithOpacity(r.fill, r.opacity)
+    ctx.fillRect(Math.round(cx) + r.x * scale, Math.round(cy) + r.y * scale, r.w * scale, r.h * scale)
   }
 }
 

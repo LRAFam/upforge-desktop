@@ -96,9 +96,14 @@ describe('crosshair editor', () => {
     expect(sliderValueLabel(0.85, true)).toBe('85%')
     expect(sliderValueLabel(2.5)).toBe('2.5')
   })
-  it('covers dot, inner and outer lines with the classic ranges', () => {
-    expect(CROSSHAIR_GROUPS.map(g => g.show)).toEqual(['dotShow', 'innerShow', 'outerShow'])
-    expect(CROSSHAIR_GROUPS[1].sliders.find(s => s.key === 'innerLength')).toMatchObject({ min: 0, max: 30, step: 1 })
+  it('covers outline, dot, inner and outer lines with Valorant\'s ranges', () => {
+    expect(CROSSHAIR_GROUPS.map(g => g.show)).toEqual(['shadowShow', 'dotShow', 'innerShow', 'outerShow'])
+    const slider = (key: string) => CROSSHAIR_GROUPS.flatMap(g => g.sliders).find(s => s.key === key)
+    expect(slider('outlineThickness')).toMatchObject({ min: 1, max: 6, step: 1 })
+    expect(slider('dotSize')).toMatchObject({ min: 1, max: 6, step: 1 })
+    expect(slider('innerLength')).toMatchObject({ min: 0, max: 20, step: 1 })
+    expect(slider('outerLength')).toMatchObject({ min: 0, max: 10, step: 1 })
+    expect(slider('outerOffset')).toMatchObject({ min: 0, max: 40, step: 1 })
   })
 })
 

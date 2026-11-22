@@ -340,10 +340,11 @@ export interface AppSettings {
   }
   /** Crosshair appearance for the aim trainer */
   crosshairSettings: {
+    version: number     // 2: sizes in screen px, both offsets from the centre (src/lib/crosshair.ts)
     colorIndex: number
     customColor: string
     dotShow: boolean
-    dotRadius: number
+    dotSize: number     // square dot width, 1–6 px
     dotOpacity: number
     innerShow: boolean
     innerThickness: number
@@ -355,7 +356,9 @@ export interface AppSettings {
     outerLength: number
     outerOffset: number
     outerOpacity: number
-    shadowShow: boolean
+    shadowShow: boolean  // the outline
+    outlineThickness: number
+    outlineOpacity: number
   }
   /** Rolling RPG-style skill scores (desktop, updated after each analysis) */
   skillProfile?: import('./lib/skill-profile').SkillProfileSnapshot | null
