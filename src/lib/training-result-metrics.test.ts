@@ -9,6 +9,7 @@ import trainerPin from '../../trainer-version.json'
 describe('scoring versions: a run is only compared with runs scored by the same rules', () => {
   const CHANGED_AFTER_1_13 = ['gridshot', 'sixshot', 'tracking', 'strafe_aim', 'defuse_decision']
   const CHANGED_AFTER_1_14 = ['defuse_decision', 'trade_window', 'retake_crossfire', 'duel', 'distance_switching', 'head_height', 'angle_clearing']
+  const CHANGED_AFTER_1_15 = ['head_height', 'angle_clearing', 'retake_crossfire', 'flash_swing']
   const run = (scenario: string, stamp: Record<string, unknown>, completed_at = '2026-11-22T12:00:00Z', score = 50) =>
     ({ scenario, duration_seconds: 60, score, completed_at, metadata: { difficulty: 'medium', game: 'valorant', ...stamp } })
   const v4 = { scoring_version: 4 }
@@ -24,18 +25,25 @@ describe('scoring versions: a run is only compared with runs scored by the same 
   })
 
   it('knows what each trainer build stamps on every drill', () => {
-    for (const drill of ['flick', ...CHANGED_AFTER_1_13, ...CHANGED_AFTER_1_14]) {
+    for (const drill of ['flick', ...CHANGED_AFTER_1_13, ...CHANGED_AFTER_1_14, ...CHANGED_AFTER_1_15]) {
       expect(scoringVersionForTrainer('1.12.0', drill)).toBe(3)
       expect(scoringVersionForTrainer('1.13.0', drill)).toBe(4)
       const next = CHANGED_AFTER_1_13.includes(drill) ? 5 : 4
       for (const later of ['1.13.1', '1.14.0', '1.14.3']) expect(scoringVersionForTrainer(later, drill)).toBe(next)
-      const newest = CHANGED_AFTER_1_14.includes(drill) ? 6 : next
-      for (const later of ['1.15.0', 'v1.15.0', '1.16.2', '2.0.0', 'not a version']) expect(scoringVersionForTrainer(later, drill)).toBe(newest)
+      const after114 = CHANGED_AFTER_1_14.includes(drill) ? 6 : next
+      for (const later of ['1.15.0', 'v1.15.0', '1.15.2']) expect(scoringVersionForTrainer(later, drill)).toBe(after114)
+      const newest = CHANGED_AFTER_1_15.includes(drill) ? 7 : after114
+      for (const later of ['1.16.0', 'v1.16.0', '1.17.2', '2.0.0', 'not a version']) expect(scoringVersionForTrainer(later, drill)).toBe(newest)
     }
-    // Defuse Decision changed after both: 5 on trainer 1.14.0, 6 from 1.15.0.
-    expect([scoringVersionForTrainer('1.14.0', 'defuse_decision'), scoringVersionForTrainer('1.15.0', 'defuse_decision')]).toEqual([5, 6])
+    // Defuse Decision changed after both 1.13 and 1.14: 5 on trainer 1.14.0, 6 from 1.15.0, and still 6 on 1.16.0.
+    expect(['1.14.0', '1.15.0', '1.16.0'].map((b) => scoringVersionForTrainer(b, 'defuse_decision'))).toEqual([5, 6, 6])
+    // Head Height changed after 1.14 and 1.15; Flash & Swing only after 1.15.
+    expect(['1.14.0', '1.15.0', '1.16.0'].map((b) => scoringVersionForTrainer(b, 'head_height'))).toEqual([4, 6, 7])
+    expect(['1.14.0', '1.15.0', '1.16.0'].map((b) => scoringVersionForTrainer(b, 'flash_swing'))).toEqual([4, 4, 7])
     expect(isComparableScoringRun(run('trade_window', { scoring_version: 6 }))).toBe(true)
     expect(trainingComparisonRequest(run('trade_window', { scoring_version: 6, movement: 'valorant_v1', run_speed_mps: 5.4 }))?.scoring_version).toBe(6)
+    expect(isComparableScoringRun(run('head_height', { scoring_version: 7 }))).toBe(true)
+    expect(trainingComparisonRequest(run('flash_swing', { scoring_version: 7, movement: 'valorant_v1', run_speed_mps: 5.4 }))?.scoring_version).toBe(7)
     // "Current" follows the trainer this app bundles.
     for (const drill of ['flick', 'strafe_aim']) {
       expect(currentScoringVersion(drill)).toBe(scoringVersionForTrainer(trainerPin.version, drill))
@@ -118,8 +126,9 @@ describe('training result measurements', () => {
     expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, window: 'exclusive' } })?.scoring_version).toBe(4)
     expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, scoring_version: 5, window: 'exclusive' } })?.scoring_version).toBe(5)
     expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, scoring_version: 6, window: 'exclusive' } })?.scoring_version).toBe(6)
+    expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, scoring_version: 7, window: 'exclusive' } })?.scoring_version).toBe(7)
     expect(trainingComparisonRequest({ ...run, metadata: { difficulty: 'medium', scoring_version: 2 } })).toBeNull()
-    expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, scoring_version: 7 } })).toBeNull()
+    expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, scoring_version: 8 } })).toBeNull()
   })
   it('shows time on target, not hits, for tracking drills', () => {
     const tracking = { scenario: 'tracking', duration_seconds: 60, accuracy_pct: 40, targets_hit: 0, targets_missed: 0,

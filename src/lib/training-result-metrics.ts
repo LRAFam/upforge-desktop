@@ -25,8 +25,9 @@ export interface TrainingComparisonRequest {
  *      drills whose rules have not changed since
  *   5  trainers after 1.13.0 on the drills whose rules changed after it (CHANGED_AFTER_1_13)
  *   6  trainer 1.15.0 and later on the drills whose rules changed after 1.14.0 (CHANGED_AFTER_1_14)
+ *   7  trainer 1.16.0 and later on the drills whose rules changed after 1.15.0 (CHANGED_AFTER_1_15)
  */
-export const COMPARED_SCORING_VERSIONS: readonly number[] = [3, 4, 5, 6]
+export const COMPARED_SCORING_VERSIONS: readonly number[] = [3, 4, 5, 6, 7]
 
 /**
  * Gridshot and Sixshot time to hit (and consistency), Tracking's turns below 360 fps, Strafe Aim's lane-edge
@@ -40,6 +41,12 @@ const CHANGED_AFTER_1_13: ReadonlySet<string> = new Set(['gridshot', 'sixshot', 
  */
 const CHANGED_AFTER_1_14: ReadonlySet<string> = new Set(['defuse_decision', 'trade_window', 'retake_crossfire', 'duel',
   'distance_switching', 'head_height', 'angle_clearing'])
+
+/**
+ * Changed after trainer 1.15.0, from 1.16.0: the Head Height drills' time limit to find a head and share of heads shot,
+ * Retake Crossfire's isolation and defender spots, and Flash & Swing's dodges (only from a corner).
+ */
+const CHANGED_AFTER_1_15: ReadonlySet<string> = new Set(['head_height', 'angle_clearing', 'retake_crossfire', 'flash_swing'])
 
 function versionParts(version: string): [number, number, number] | null {
   const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim())
@@ -55,12 +62,14 @@ function compareVersion(v: [number, number, number], than: [number, number, numb
 export function scoringVersionForTrainer(trainerVersion: string, scenario: string): number {
   const v = versionParts(trainerVersion)
   const after113 = CHANGED_AFTER_1_13.has(scenario) ? 5 : 4
-  const newest = CHANGED_AFTER_1_14.has(scenario) ? 6 : after113
+  const after114 = CHANGED_AFTER_1_14.has(scenario) ? 6 : after113
+  const newest = CHANGED_AFTER_1_15.has(scenario) ? 7 : after114
   if (!v) return newest
   const vs113 = compareVersion(v, [1, 13, 0])
   if (vs113 < 0) return 3
   if (vs113 === 0) return 4
-  return compareVersion(v, [1, 15, 0]) < 0 ? after113 : newest
+  if (compareVersion(v, [1, 15, 0]) < 0) return after113
+  return compareVersion(v, [1, 16, 0]) < 0 ? after114 : newest
 }
 
 /**
