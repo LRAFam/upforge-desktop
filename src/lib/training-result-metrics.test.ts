@@ -1,13 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { comparableTrainingRuns, currentScoringVersion, isCurrentRulesGroup, isCurrentScoringRun, normalizeTrainingHistory, priorTrainingSessions, reactionMetricScore, resultCountCells, resultHitsCell, scoringVersionForTrainer, scoringVersionOf, trackingTimes, trainingTimestamp, trainingComparisonRequest, trainingComparisonModel, withCurrentRulesBenchmark, withCurrentRulesBests } from './training-result-metrics'
+import { comparableTrainingRuns, currentScoringVersion, isComparableScoringRun, isCurrentRulesGroup, isCurrentScoringRun, normalizeTrainingHistory, priorTrainingSessions, reactionMetricScore, resultCountCells, resultHitsCell, scoringVersionForTrainer, scoringVersionOf, trackingTimes, trainingTimestamp, trainingComparisonRequest, trainingComparisonModel, withCurrentRulesBenchmark, withCurrentRulesBests } from './training-result-metrics'
 import { trainerRunSummary } from './trainer-run-summary'
 import type { TrainingHistory } from '../env'
 import trainerPin from '../../trainer-version.json'
 
 describe('scoring versions: a run is only compared with runs scored by the same rules', () => {
   const CHANGED_AFTER_1_13 = ['gridshot', 'sixshot', 'tracking', 'strafe_aim', 'defuse_decision']
+  const CHANGED_AFTER_1_14 = ['defuse_decision', 'trade_window', 'retake_crossfire', 'duel', 'distance_switching', 'head_height', 'angle_clearing']
   const run = (scenario: string, stamp: Record<string, unknown>, completed_at = '2026-11-22T12:00:00Z', score = 50) =>
     ({ scenario, duration_seconds: 60, score, completed_at, metadata: { difficulty: 'medium', game: 'valorant', ...stamp } })
   const v4 = { scoring_version: 4 }
@@ -23,12 +24,18 @@ describe('scoring versions: a run is only compared with runs scored by the same 
   })
 
   it('knows what each trainer build stamps on every drill', () => {
-    for (const drill of ['flick', ...CHANGED_AFTER_1_13]) {
+    for (const drill of ['flick', ...CHANGED_AFTER_1_13, ...CHANGED_AFTER_1_14]) {
       expect(scoringVersionForTrainer('1.12.0', drill)).toBe(3)
       expect(scoringVersionForTrainer('1.13.0', drill)).toBe(4)
       const next = CHANGED_AFTER_1_13.includes(drill) ? 5 : 4
-      for (const later of ['1.13.1', '1.14.0', '2.0.0']) expect(scoringVersionForTrainer(later, drill)).toBe(next)
+      for (const later of ['1.13.1', '1.14.0', '1.14.3']) expect(scoringVersionForTrainer(later, drill)).toBe(next)
+      const newest = CHANGED_AFTER_1_14.includes(drill) ? 6 : next
+      for (const later of ['1.15.0', 'v1.15.0', '1.16.2', '2.0.0', 'not a version']) expect(scoringVersionForTrainer(later, drill)).toBe(newest)
     }
+    // Defuse Decision changed after both: 5 on trainer 1.14.0, 6 from 1.15.0.
+    expect([scoringVersionForTrainer('1.14.0', 'defuse_decision'), scoringVersionForTrainer('1.15.0', 'defuse_decision')]).toEqual([5, 6])
+    expect(isComparableScoringRun(run('trade_window', { scoring_version: 6 }))).toBe(true)
+    expect(trainingComparisonRequest(run('trade_window', { scoring_version: 6, movement: 'valorant_v1', run_speed_mps: 5.4 }))?.scoring_version).toBe(6)
     // "Current" follows the trainer this app bundles.
     for (const drill of ['flick', 'strafe_aim']) {
       expect(currentScoringVersion(drill)).toBe(scoringVersionForTrainer(trainerPin.version, drill))
@@ -110,8 +117,9 @@ describe('training result measurements', () => {
     // Trainer 1.13.0 stamped 3 on its own rules (version 4); it is the first to send metadata.window.
     expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, window: 'exclusive' } })?.scoring_version).toBe(4)
     expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, scoring_version: 5, window: 'exclusive' } })?.scoring_version).toBe(5)
+    expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, scoring_version: 6, window: 'exclusive' } })?.scoring_version).toBe(6)
     expect(trainingComparisonRequest({ ...run, metadata: { difficulty: 'medium', scoring_version: 2 } })).toBeNull()
-    expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, scoring_version: 6 } })).toBeNull()
+    expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, scoring_version: 7 } })).toBeNull()
   })
   it('shows time on target, not hits, for tracking drills', () => {
     const tracking = { scenario: 'tracking', duration_seconds: 60, accuracy_pct: 40, targets_hit: 0, targets_missed: 0,
