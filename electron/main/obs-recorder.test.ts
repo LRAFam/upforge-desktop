@@ -1127,3 +1127,34 @@ describe('CS2 recording startup failure', () => {
     expect(rec.getRecordingDiagnostics()).toMatchObject({ game: 'valorant', stage: 'preflight', output_active: null, output_bytes: null })
   })
 })
+
+describe('disk exhaustion at recording startup', () => {
+  it('refuses a critically full destination before StartRecord and keeps existing footage', async () => {
+    const video = path.join(mock.root, 'existing.mkv')
+    fs.writeFileSync(video, 'saved match bytes')
+    vi.mocked(getFreeDiskSpace).mockResolvedValue(0)
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    try {
+      await expect(rec.start('valorant', { quality: '720p', bitrate: 5, audioEnabled: true, savePath: mock.root, captureMonitor: 'auto' })).rejects.toThrow(/Disk full.*Free up disk space/)
+      expect(mock.call).not.toHaveBeenCalledWith('StartRecord')
+      expect(fs.readFileSync(video, 'utf8')).toBe('saved match bytes')
+      expect(rec.onStatusChange).toHaveBeenCalledWith(false, expect.stringContaining('Disk full'), 'start')
+    } finally { vi.mocked(getFreeDiskSpace).mockResolvedValue(Infinity) }
+  })
+
+  it('refuses ENOSPC during directory creation before StartRecord without deleting old footage', async () => {
+    const video = path.join(mock.root, 'existing.mkv')
+    fs.writeFileSync(video, 'saved match bytes')
+    mock.call.mockResolvedValue({ outputActive: false })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    const mkdir = vi.spyOn(fs, 'mkdirSync').mockImplementationOnce(() => { throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' }) })
+    try {
+      await expect(rec.start('valorant', { quality: '720p', bitrate: 5, audioEnabled: true, savePath: mock.root, captureMonitor: 'auto' })).rejects.toThrow('Could not prepare recording folder')
+      expect(mock.call).not.toHaveBeenCalledWith('StartRecord')
+      expect(fs.readFileSync(video, 'utf8')).toBe('saved match bytes')
+    } finally { mkdir.mockRestore() }
+  })
+})

@@ -15,7 +15,7 @@ beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'upforge-obs-output-'))
   savePath = path.join(root, 'users', '3', 'recordings')
 })
-afterEach(() => { fs.rmSync(root, { recursive: true, force: true }) })
+afterEach(() => { vi.restoreAllMocks(); fs.rmSync(root, { recursive: true, force: true }) })
 
 describe('applyObsRecordingSettings replay configuration', () => {
   it('writes RecRB as a boolean and never as bitrate', async () => {
@@ -213,3 +213,22 @@ describe('applyObsRecordingSettings replay configuration', () => {
   })
 })
 
+
+
+describe('recording destination permissions', () => {
+  it.each(['EACCES', 'EPERM'])('blocks output configuration on %s and preserves existing footage', async (code) => {
+    const existingVideo = path.join(root, 'saved-match.mkv')
+    fs.writeFileSync(existingVideo, 'saved match bytes')
+    vi.spyOn(fs, 'mkdirSync').mockImplementationOnce(() => {
+      throw Object.assign(new Error(`${code}: recording directory is not writable`), { code })
+    })
+    const call = vi.fn(async () => ({ parameterValue: 'Simple' }))
+    const result = await applyObsRecordingSettings({ call } as never, {
+      quality: '720p', bitrate: 5, audioEnabled: true, savePath, captureMonitor: 'auto', manageObsVideo: false,
+    })
+    expect(result).toMatchObject({ ok: false, blocking: true, errors: ['recording_directory'] })
+    expect(result.warnings[0]).toContain('folder is writable')
+    expect(call).not.toHaveBeenCalled()
+    expect(fs.readFileSync(existingVideo, 'utf8')).toBe('saved match bytes')
+  })
+})

@@ -426,7 +426,10 @@ export function setupGamingHandlers(
     return openExternalSafe(`${getFrontendBaseUrl()}/deadlock/analyze`)
   })
 
-  ipcMain.handle('deadlock:open-results', (_event, jobId: string) => {
+  ipcMain.handle('deadlock:open-results', (_event, jobId: unknown) => {
+    if (typeof jobId !== 'string' || jobId === 'undefined' || !/^[A-Za-z0-9-]{8,64}$/.test(jobId)) {
+      return { ok: false }
+    }
     return openExternalSafe(`${getFrontendBaseUrl()}/deadlock/results/${jobId}`)
   })
 
