@@ -74,6 +74,17 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
   const lower = err.toLowerCase()
   const xml = extractXmlErrorParts(err)
 
+  if (/^upload_already_in_progress(?::|$)/i.test(lower)) {
+    return {
+      kind: 'upload',
+      title: 'Upload already in progress',
+      message: 'This recording is already uploading.',
+      hint: 'Check its progress on the dashboard.',
+      creditRefunded: false,
+      canRetry: false,
+    }
+  }
+
   if (lower === 'onboarding_bonus_unavailable') {
     return {
       kind: 'upload',

@@ -4,6 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { PostMatchJobStore, type PostMatchJob } from './post-match-job-store'
 import { PostMatchDeferredError, PostMatchWorker } from './post-match-worker'
+import { canAutoEnqueueRecording } from './post-match-steps'
 
 function job(id: string, createdAt: number): PostMatchJob {
   return {
@@ -27,6 +28,33 @@ function job(id: string, createdAt: number): PostMatchJob {
 }
 
 describe('PostMatchWorker', () => {
+  it('does not resubmit an uploaded recording on a repeated automatic event but allows explicit recovery', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'upforge-worker-'))
+    try {
+      const store = new PostMatchJobStore(join(dir, 'jobs.json'))
+      const recording = { autoAnalyseRequested: true, analysed: false, lastAnalysisError: null as string | null }
+      const runJob = vi.fn(async () => { recording.analysed = true })
+      const worker = new PostMatchWorker({
+        store, isRecording: () => false, isJobReady: () => true,
+        canRunJob: (candidate) => candidate.requestKind === 'manual' || canAutoEnqueueRecording(recording),
+        runJob,
+      })
+      worker.enqueue(job('already-uploaded', 1))
+      await vi.waitFor(() => expect(store.get('already-uploaded')?.stage).toBe('done'))
+
+      worker.enqueue(job('already-uploaded', 1))
+      expect(runJob).toHaveBeenCalledTimes(1)
+
+      // An explicit retry remains allowed after the caller reconciles the failed server job.
+      recording.lastAnalysisError = 'Analysis failed and the credit was refunded'
+      worker.enqueue({ ...job('already-uploaded', 1), requestKind: 'manual' })
+      await vi.waitFor(() => expect(store.get('already-uploaded')?.stage).toBe('done'))
+      expect(runJob).toHaveBeenCalledTimes(2)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('stops on the displayed quota error, drains the next job, and permits an explicit retry', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'upforge-worker-'))
     try {

@@ -299,6 +299,15 @@ export const ACTIVATION_ERRORS: Record<string, ActivationErrorDefinition> = {
     userMessage: 'The server timed out during upload. Your recording is safe — tap Retry Upload.',
     recoveryAction: 'retry_upload',
   },
+  upload_already_in_progress: {
+    code: 'upload_already_in_progress',
+    category: 'upload',
+    stage: 'uploading',
+    retryable: false,
+    userActionRequired: false,
+    userMessage: 'This recording is already uploading. Check its progress on the dashboard.',
+    recoveryAction: 'open_dashboard',
+  },
   upload_retry_invalid_state: {
     code: 'upload_retry_invalid_state',
     category: 'upload',
@@ -458,6 +467,7 @@ export function classifyActivationError(raw: string | Error): ClassifiedActivati
 function matchActivationErrorCode(lower: string, raw: string): ActivationErrorCode {
   if (!lower) return 'unknown'
   if (lower === 'onboarding_bonus_unavailable') return 'onboarding_bonus_unavailable'
+  if (/^upload_already_in_progress(?::|$)/i.test(lower)) return 'upload_already_in_progress'
 
   // Quota first — commercial, not upload
   if (

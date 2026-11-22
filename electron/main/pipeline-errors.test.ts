@@ -55,6 +55,8 @@ describe('reportPipelineError: expected outcomes vs real failures', () => {
     ['upload', 'Upload was cancelled'],
     ['analysis', 'You have used your free analysis. Upgrade to Plus or Pro for ongoing coaching, or pay per analysis on the web.'],
     ['upload', 'analysis.limit.reached'],
+    // A second submission while the same file is still uploading is refused and shown as such.
+    ['upload', 'upload_already_in_progress: This recording is already uploading'],
   ] as const)('does not report %s: %s', (phase, message) => {
     reportPipelineError(phase, message)
     expect(reportError).not.toHaveBeenCalled()
@@ -65,9 +67,6 @@ describe('reportPipelineError: expected outcomes vs real failures', () => {
     ['duel-clips', 'Duel clip upload failed during complete(): ffmpeg exited with code 1'],
     ['analysis', "Cannot read properties of undefined (reading 'jobId')"],
     ['upload', 'Upload complete failed (HTTP 400): invalid recording metadata'],
-    // The duplicate guard also refuses a second upload in the same session after a refunded
-    // analysis, so it can hide a real retry problem: it stays reported.
-    ['upload', 'This recording was already uploaded recently'],
   ] as const)('reports %s: %s', (phase, message) => {
     reportPipelineError(phase, message)
     expect(reportError).toHaveBeenCalledTimes(1)
