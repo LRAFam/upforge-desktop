@@ -66,7 +66,7 @@ const props = defineProps<{
   sessionFocusReason: string | null
   sessionDisabled: boolean
   matchDrills: MatchDrillRow[]
-  /** "Your 29 runs from before … used the old scoring" or null. */
+  /** "Your 29 runs from older trainer versions were scored differently…" or null. */
   scoringNote: string | null
   /** Valorant calibration is an admin measuring tool; the link shows only for admins. */
   showCalibration: boolean

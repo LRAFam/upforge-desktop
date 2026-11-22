@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { weeklyShareCardData, type WeeklyCardRun } from './weekly-share-card'
+import { currentScoringVersion } from './training-result-metrics'
 
 const LABELS: Record<string, string> = { head_height: 'Head Height', gridshot: 'Gridshot', microflick: 'Micro Flick', strafe_track: 'Strafe Track' }
 const label = (s: string) => LABELS[s] ?? s
-const meta = { scoring_version: 3, difficulty: 'medium', game: 'valorant' }
-const run = (scenario: string, score: number, daysAgo: number, now: Date, difficulty = 'medium'): WeeklyCardRun => ({
-  scenario, score, duration_seconds: 60, metadata: { ...meta, difficulty },
+const meta = { difficulty: 'medium', game: 'valorant' }
+// Runs on the rules this app's trainer uses for each drill, unless a test says otherwise.
+const run = (scenario: string, score: number, daysAgo: number, now: Date, difficulty = 'medium', scoring_version = currentScoringVersion(scenario)): WeeklyCardRun => ({
+  scenario, score, duration_seconds: 60, metadata: { ...meta, difficulty, scoring_version },
   completed_at: new Date(now.getTime() - daysAgo * 86400000).toISOString(),
 })
 
@@ -40,6 +42,14 @@ describe('weekly share card data', () => {
     expect(card.avg).toEqual({ value: 63, covers: 'Head Height · medium · 60s' })
     expect(card.vsPrevious).toEqual({ value: 13, covers: 'Head Height · medium · 60s' })
     expect(card.best).toEqual({ value: 81, covers: 'Gridshot' })
+  })
+
+  it('never counts a run scored by older rules as the best, nor in the drill’s average', () => {
+    const older = run('head_height', 95, 0.5, now, 'medium', 3)
+    const withOlder = weeklyShareCardData([older, ...sessions], now, label)
+    expect(withOlder.best).toEqual({ value: 81, covers: 'Gridshot' })
+    expect(withOlder.avg).toEqual(card.avg)
+    expect(withOlder.runCount).toBe(10)
   })
 
   it('is empty without runs in the window', () => {

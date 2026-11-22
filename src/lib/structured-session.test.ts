@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyProgressionToDrill, buildStructuredSessionPlan, coachingDrillToSessionDrill, type CoachingDrillLike, type SessionDrill } from './structured-session'
 import { buildWeeklyFocusPlan } from './weekly-focus'
+import { currentScoringVersion } from './training-result-metrics'
 
 const drill = (over: Partial<CoachingDrillLike>): CoachingDrillLike => ({
   id: 1, category: 'mechanics', title: 'Drill', baseline_score: 5, ...over,
@@ -8,8 +9,8 @@ const drill = (over: Partial<CoachingDrillLike>): CoachingDrillLike => ({
 
 describe('step-up from recent runs', () => {
   // GET /api/training/sessions rows, newest first.
-  const run = (score: number, difficulty: string, duration_seconds = 60) =>
-    ({ scenario: 'head_height', score, duration_seconds, metadata: { difficulty, scoring_version: 3 } })
+  const run = (score: number, difficulty: string, duration_seconds = 60, scoring_version = currentScoringVersion('head_height')) =>
+    ({ scenario: 'head_height', score, duration_seconds, metadata: { difficulty, scoring_version } })
   // The /api/drills row the API assigns after three Medium runs below the drill's pass mark: the same drill one step easier.
   const easyCopy = coachingDrillToSessionDrill(drill({ id: 2, category: 'crosshair_placement', title: 'Test where your crosshair sits (Easy)',
     trainer_scenario: 'head_height', trainer_difficulty: 'easy', trainer_duration_seconds: 60 })) as SessionDrill
@@ -27,6 +28,9 @@ describe('step-up from recent runs', () => {
     expect(applyProgressionToDrill(easyCopy, [run(40, 'medium'), run(70, 'easy'), run(66, 'easy'), run(80, 'easy')]).difficulty).toBe('medium')
     // Fewer than three runs at this tier: no step-up.
     expect(applyProgressionToDrill(easyCopy, [run(90, 'easy'), run(90, 'easy'), run(90, 'medium')]).difficulty).toBe('easy')
+    // Runs scored by older rules than this app's trainer uses say nothing about the level today.
+    expect(applyProgressionToDrill(easyCopy, [run(90, 'easy', 60, 3), run(90, 'easy', 60, 3), run(90, 'easy', 60, 3)]).difficulty).toBe('easy')
+    expect(applyProgressionToDrill(easyCopy, [run(90, 'easy'), run(90, 'easy', 60, 3), run(90, 'easy'), run(90, 'easy')]).difficulty).toBe('medium')
   })
 
   it('an assigned drill starts at its own difficulty, like the API plan, even when its review score is high', () => {

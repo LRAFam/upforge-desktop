@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { weeklyShareCardData } from '../lib/weekly-share-card'
-import { priorTrainingSessions, comparableTrainingRuns, trainingComparisonRequest, resultHitsCell, isTrackingScenario } from '../lib/training-result-metrics'
+import { priorTrainingSessions, comparableTrainingRuns, trainingComparisonRequest, resultHitsCell, isTrackingScenario, currentScoringVersion, withCurrentRulesBenchmark, withCurrentRulesBests } from '../lib/training-result-metrics'
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useLifetime } from '../composables/useLifetime'
 import { useRouter } from 'vue-router'
@@ -490,7 +490,7 @@ function drillForScenario(scenario: ScenarioKey): AssignedDrill {
   }
 }
 
-// UI v3: runs from before the scoring update (desktop 2.12.12, 24 Sep 2026) have no personal best
+// UI v3: runs on older scoring than this app's trainer uses for the drill have no personal best
 // in the API; show their old best and say why instead of "Not played".
 const oldBests = computed(() => oldScoringBests(apiHistory.value?.sessions))
 const scoringNote = computed(() => oldScoringNote(apiHistory.value?.sessions, apiHistory.value?.total ?? 0))
@@ -548,7 +548,8 @@ const availableScenarioCards = computed(() =>
         benchmarkData.value?.[scenario]?.user_best ?? apiHistory.value?.by_scenario[scenario]?.best_score ?? null,
         benchmarkData.value?.[scenario]?.global_rank ?? null,
         apiHistory.value?.sessions,
-        benchmarkData.value?.[scenario]?.comparison?.scoring_version ?? apiHistory.value?.by_scenario?.[scenario]?.comparison?.scoring_version ?? null,
+        // A best at other settings counts only on this app's rules for the drill.
+        currentScoringVersion(scenario),
       )
       return {
         scenario,
@@ -750,14 +751,15 @@ async function retryTrainerRefresh() {
 }
 
 function applyTrainerData([history, plan, drills, insights, benchmark]: TrainerData, game: string = primaryGame.value) {
-  apiHistory.value = history
+  // A drill's best and rank only from runs on this app's trainer rules; an older group's best shows as an old best.
+  apiHistory.value = withCurrentRulesBests(history)
   // League has no plan (API: plan null + unsupported_game); an older API's Valorant plan is dropped too.
   sharedTrainingPlan.value = planForGame(plan, game)
   // Older APIs ignore ?game= and omit `game` on rows: those rows are kept (nothing to filter on).
   const drillList = drillsForGame(Array.isArray(drills) ? drills : [], game)
   coachingDrills.value = drillList
   correlationInsights.value = Array.isArray(insights) ? insights : []
-  benchmarkData.value = benchmark
+  benchmarkData.value = withCurrentRulesBenchmark(benchmark)
   // Today's Drills: only the API's coaching drills that map to a trainer scenario (none → none shown).
   const sessions = history?.sessions ?? []
   assignedDrills.value = drillList
@@ -850,7 +852,7 @@ onMounted(async () => {
     }
     // Achievements are checked by the app shell for every run (src/App.vue).
     // Offline answers null: keep the history on screen rather than blanking it.
-    window.api.trainer.getHistory().then(h => { if (h) apiHistory.value = h })
+    window.api.trainer.getHistory().then(h => { if (h) apiHistory.value = withCurrentRulesBests(h) })
   }))
 
   // Fetch training history + coaching drills from API

@@ -1,3 +1,5 @@
+import trainerPin from '../../trainer-version.json'
+
 export interface ComparableTrainingRun {
   scenario: string
   duration_seconds: number
@@ -13,20 +15,91 @@ export interface TrainingComparisonRequest {
   /** Same game + movement model only (API ≥ Nov 2026). Omitted = no model filter (older callers). */
   comparison_model?: string
 }
-/**
- * Trainer scoring version this desktop understands as "current" (trainer sends metadata.scoring_version).
- * v3 (Nov 2026) fixed scoring; v2 and older runs are legacy relative to it and are never compared with v3:
- * personal bests, comparisons and leaderboards only use runs of this version.
- */
-export const CURRENT_SCORING_VERSION = 3
 
-export function scoringVersionOf(run: { metadata?: Record<string, unknown> } | null | undefined): number | null {
-  const v = run?.metadata?.scoring_version
-  return typeof v === 'number' && Number.isInteger(v) ? v : null
+/**
+ * Scoring versions: each names the rules a score was made under, and a run is only compared with runs of the
+ * same drill on the same version (the API's TrainingComparison holds the same table):
+ *   2  trainer 1.11 and older: legacy, never compared
+ *   3  trainer 1.12
+ *   4  trainer 1.13.0, every drill (it stamped 3; its runs carry metadata.window), and later trainers on the
+ *      drills whose rules have not changed since
+ *   5  trainers after 1.13.0 on the drills whose rules changed after it (CHANGED_AFTER_1_13)
+ */
+export const COMPARED_SCORING_VERSIONS: readonly number[] = [3, 4, 5]
+
+/**
+ * Gridshot and Sixshot time to hit (and consistency), Tracking's turns below 360 fps, Strafe Aim's lane-edge
+ * shots and Defuse Decision's consistency changed after trainer 1.13.0.
+ */
+const CHANGED_AFTER_1_13: ReadonlySet<string> = new Set(['gridshot', 'sixshot', 'tracking', 'strafe_aim', 'defuse_decision'])
+
+function versionParts(version: string): [number, number, number] | null {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim())
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
 }
 
-export function isCurrentScoringRun(run: { metadata?: Record<string, unknown> } | null | undefined): boolean {
-  return scoringVersionOf(run) === CURRENT_SCORING_VERSION
+/** The scoring version a trainer build's run of this drill has (scoringVersionOf), from the build's version. */
+export function scoringVersionForTrainer(trainerVersion: string, scenario: string): number {
+  const v = versionParts(trainerVersion)
+  const newest = CHANGED_AFTER_1_13.has(scenario) ? 5 : 4
+  if (!v) return newest
+  const [major, minor, patch] = v
+  const vs113 = major !== 1 ? major - 1 : minor !== 13 ? minor - 13 : patch
+  return vs113 < 0 ? 3 : vs113 === 0 ? 4 : newest
+}
+
+/**
+ * The version this app's bundled trainer (trainer-version.json) gives a drill's runs: its runs are "current",
+ * other versions are older scoring. Set by the pin, so an app on either side of a trainer update agrees with it.
+ */
+export function currentScoringVersion(scenario: string): number {
+  return scoringVersionForTrainer(trainerPin.version, scenario)
+}
+
+/**
+ * The rules a run was scored by. Trainer 1.13.0 stamped 3 on rules that are version 4; it is the first trainer
+ * that sends metadata.window, so a 3 with a window is a 4 (the API saves such runs as 4).
+ */
+export function scoringVersionOf(run: { metadata?: Record<string, unknown> } | null | undefined): number | null {
+  const v = run?.metadata?.scoring_version
+  if (typeof v !== 'number' || !Number.isInteger(v)) return null
+  const window = run?.metadata?.window
+  return v === 3 && typeof window === 'string' && window !== '' ? 4 : v
+}
+
+/** On a version the app compares (each only with itself); older runs stay in history uncompared. */
+export function isComparableScoringRun(run: { metadata?: Record<string, unknown> } | null | undefined): boolean {
+  const v = scoringVersionOf(run)
+  return v !== null && COMPARED_SCORING_VERSIONS.includes(v)
+}
+
+/** On the rules this app's trainer scores the drill by: only these runs make personal bests. */
+export function isCurrentScoringRun(run: { scenario: string; metadata?: Record<string, unknown> } | null | undefined): boolean {
+  return !!run && scoringVersionOf(run) === currentScoringVersion(run.scenario)
+}
+
+/** A drill's best or rank group (history by_scenario, benchmark) is on this app's rules for that drill. */
+export function isCurrentRulesGroup(scenario: string, group: unknown): boolean {
+  const comparison = isRecord(group) ? group.comparison : null
+  return isRecord(comparison) && comparison.scoring_version === currentScoringVersion(scenario)
+}
+
+/**
+ * The API groups a drill by the player's newest run, which can come from an older trainer. Practice shows such a
+ * group's runs but not its best: that best is from older rules (Practice shows it as an old best).
+ */
+export function withCurrentRulesBests<T>(history: T): T {
+  if (!isRecord(history) || !isRecord(history.by_scenario)) return history
+  const groups = Object.entries(history.by_scenario).map(([scenario, group]) =>
+    [scenario, isRecord(group) && isRecord(group.comparison) && !isCurrentRulesGroup(scenario, group) ? { ...group, best_score: null } : group])
+  return { ...history, by_scenario: Object.fromEntries(groups) } as T
+}
+
+/** Benchmark rows (best, rank against other players) only for drills whose group is on this app's rules. */
+export function withCurrentRulesBenchmark<T>(benchmark: T): T {
+  if (!isRecord(benchmark)) return benchmark
+  return Object.fromEntries(Object.entries(benchmark)
+    .filter(([scenario, row]) => !isRecord(row) || !isRecord(row.comparison) || isCurrentRulesGroup(scenario, row))) as T
 }
 
 /** 2 decimals without trailing zeros (6.75, 5.4, 6) — same as the API's TrainingComparison::number. */
@@ -52,22 +125,25 @@ export function trainingComparisonModel(metadata: Record<string, unknown> | null
   return parts.join(';')
 }
 
+/** The like-with-like group of a run: its drill, settings, game model and its own scoring version. */
 export function trainingComparisonRequest(run: ComparableTrainingRun): TrainingComparisonRequest | null {
   const difficulty = run.metadata?.difficulty
   const model = trainingComparisonModel(run.metadata)
-  if (!isCurrentScoringRun(run) || !model || typeof difficulty !== 'string'
+  const version = scoringVersionOf(run)
+  if (version === null || !isComparableScoringRun(run) || !model || typeof difficulty !== 'string'
     || !['easy', 'medium', 'hard', 'pro'].includes(difficulty)
     || !Number.isInteger(run.duration_seconds) || run.duration_seconds < 10
     || !Number.isFinite(trainingTimestamp(run.completed_at))) return null
   return { scenario: run.scenario, duration_seconds: run.duration_seconds, difficulty,
-    scoring_version: CURRENT_SCORING_VERSION, before: new Date(trainingTimestamp(run.completed_at)).toISOString(),
+    scoring_version: version, before: new Date(trainingTimestamp(run.completed_at)).toISOString(),
     comparison_model: model }
 }
+/** Same drill, settings, game model and scoring rules: never a run scored by other rules. */
 export function comparableTrainingRuns(a: ComparableTrainingRun, b: ComparableTrainingRun): boolean {
   const left = trainingComparisonRequest(a), right = trainingComparisonRequest(b)
   return !!left && !!right && left.scenario === right.scenario
     && left.duration_seconds === right.duration_seconds && left.difficulty === right.difficulty
-    && left.comparison_model === right.comparison_model
+    && left.comparison_model === right.comparison_model && left.scoring_version === right.scoring_version
 }
 
 /** Godot timestamps without an offset are UTC, matching its UTC clock call. */

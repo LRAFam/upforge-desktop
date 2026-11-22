@@ -86,13 +86,14 @@ export function sessionMinutes(steps: SessionStepLike[]): number | null {
   return total > 0 ? Math.max(1, Math.ceil(total / 60)) : null
 }
 
-// ── Scoring update ────────────────────────────────────────────────────────────
+// ── Scoring updates ───────────────────────────────────────────────────────────
 /**
- * Trainer 1.11 (Nov 2026) sends `metadata.scoring_version = 3` (scoring fixed; tracking drills score time on
- * target). Personal bests, comparisons and leaderboards only count runs of CURRENT_SCORING_VERSION; v2 and
- * older runs stay in history but have no best. Say so instead of "Not played".
+ * Every trainer run says which scoring rules made it (`metadata.scoring_version`, see training-result-metrics).
+ * Personal bests and leaderboards only count runs on the rules this app's trainer uses for that drill; runs from
+ * older trainers stay in history but have no best. Say so instead of "Not played". Rules change per drill, so
+ * the copy names no date.
  */
-export const SCORING_UPDATE_LABEL = 'Nov 2026'
+export const CURRENT_SCORING_ONLY = 'Only runs on each drill’s current scoring count. Older runs stay in your history.'
 
 interface RunLike { scenario: string; score: number; metadata?: Record<string, unknown> }
 
@@ -100,7 +101,7 @@ export function isOldScoringRun(run: RunLike): boolean {
   return !isCurrentScoringRun(run)
 }
 
-/** Best score per drill among runs from before the scoring update (they don't count as personal bests). */
+/** Best score per drill among runs on older scoring (they don't count as personal bests). */
 export function oldScoringBests(runs: readonly RunLike[] | null | undefined): Record<string, number> {
   const out: Record<string, number> = {}
   for (const r of runs ?? []) {
@@ -111,7 +112,7 @@ export function oldScoringBests(runs: readonly RunLike[] | null | undefined): Re
 }
 
 /**
- * One honest line when the player has runs from before the scoring update, or null when they don't.
+ * One honest line when the player has runs on older scoring, or null when they don't.
  * `runs` is the history page (newest first, capped by the API), `total` the full count.
  */
 export function oldScoringNote(runs: readonly RunLike[] | null | undefined, total: number): string | null {
@@ -119,8 +120,9 @@ export function oldScoringNote(runs: readonly RunLike[] | null | undefined, tota
   const old = list.filter(isOldScoringRun).length
   if (!old) return null
   const exact = list.length >= total
-  const what = exact ? `Your ${old} ${old === 1 ? 'run' : 'runs'} from before ${SCORING_UPDATE_LABEL}` : `Runs from before ${SCORING_UPDATE_LABEL}`
-  return `${what} used the old scoring, so ${old === 1 && exact ? 'it doesn’t' : 'they don’t'} count towards personal bests. They stay in your history.`
+  const what = exact ? `Your ${old} ${old === 1 ? 'run' : 'runs'} from older trainer versions` : 'Runs from older trainer versions'
+  const one = old === 1 && exact
+  return `${what} ${one ? 'was' : 'were'} scored differently, so ${one ? 'it doesn’t' : 'they don’t'} count towards personal bests. ${one ? 'It stays' : 'They stay'} in your history.`
 }
 
 /** Short caption for a drill with no current best: "Old best 53" or "Not played". */

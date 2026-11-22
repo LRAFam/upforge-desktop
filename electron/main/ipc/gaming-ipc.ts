@@ -353,12 +353,13 @@ export function setupGamingHandlers(
     }
   })
 
-  ipcMain.handle('trainer:get-leaderboard', async (_e, scenario: string, period = 'week', difficulty = 'medium', durationSeconds = 60) => {
+  ipcMain.handle('trainer:get-leaderboard', async (_e, scenario: string, period = 'week', difficulty = 'medium', durationSeconds = 60, scoringVersion?: unknown) => {
     const token = auth.getToken()
     if (!token) return []
     try {
       const res = await auth.getApi().get('/api/leaderboard/trainer', {
-        params: { scenario, period, difficulty, duration_seconds: durationSeconds, limit: 50 },
+        params: { scenario, period, difficulty, duration_seconds: durationSeconds, limit: 50,
+          ...(Number.isInteger(scoringVersion) ? { scoring_version: scoringVersion } : {}) },
       })
       return Array.isArray(res.data?.leaderboard) ? res.data.leaderboard : []
     } catch (err: any) {

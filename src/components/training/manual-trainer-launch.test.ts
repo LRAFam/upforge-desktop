@@ -108,11 +108,11 @@ describe('manual run start and leaderboard contract', () => {
       accuracy_pct: 75, avg_reaction_ms: 200, consistency_score: 80, targets_hit: 30, targets_missed: 10,
       heatmap: [],
       completed_at: '2026-11-20T16:00:00Z',
-      metadata: { difficulty: config.difficulty, scoring_version: metrics.CURRENT_SCORING_VERSION, user_drill_id: 99 },
+      metadata: { difficulty: config.difficulty, scoring_version: metrics.currentScoringVersion('gridshot'), user_drill_id: 99 },
     }, config), config)
     expect(payload.metadata).not.toHaveProperty('user_drill_id')
     const comparison = metrics.trainingComparisonRequest(payload as unknown as metrics.ComparableTrainingRun)
-    expect(comparison).toMatchObject({ scenario: 'gridshot', difficulty: 'hard', duration_seconds: 30, scoring_version: metrics.CURRENT_SCORING_VERSION, comparison_model: 'game=valorant' })
+    expect(comparison).toMatchObject({ scenario: 'gridshot', difficulty: 'hard', duration_seconds: 30, scoring_version: metrics.currentScoringVersion('gridshot'), comparison_model: 'game=valorant' })
 
     const board = component('./TrainingLeaderboardsTab.vue', {}, () => {}, {
       '/ui-v3': { uiV3: vue.ref(true) }, '/player-identity': { playerIdentity: () => ({}) },
@@ -124,7 +124,8 @@ describe('manual run start and leaderboard contract', () => {
     selects[1].props['onUpdate:modelValue']('hard')
     selects[2].props['onUpdate:modelValue'](30)
     await vue.nextTick()
-    expect(getLeaderboard).toHaveBeenLastCalledWith(comparison!.scenario, 'week', comparison!.difficulty, comparison!.duration_seconds)
+    // The board is asked for on the same scoring rules as the run it is compared with.
+    expect(getLeaderboard).toHaveBeenLastCalledWith(comparison!.scenario, 'week', comparison!.difficulty, comparison!.duration_seconds, comparison!.scoring_version)
     expect(nodes(selects[2]).filter(node => node.type === 'option').map(node => node.props.value)).toEqual(options.TRAINER_BOARD_DURATIONS)
     await flow.open('gridshot')
     expect(flow.request.value?.options).toEqual({ difficulty: 'hard', duration_seconds: 30 })

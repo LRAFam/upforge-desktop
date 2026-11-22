@@ -10,6 +10,7 @@ import {
   resolveTrainerDuration,
   trainerScenarioDef,
 } from './trainer-scenarios'
+import { isCurrentScoringRun } from './training-result-metrics'
 
 export type SessionPhase = 'warmup' | 'focus' | 'cooldown'
 
@@ -95,7 +96,8 @@ export function nextDifficulty(current: TrainerDifficulty): TrainerDifficulty | 
  * Bump difficulty when the player has scored well enough at the current tier for enough recent runs.
  * Only runs at the drill's own settings count: this scenario at this difficulty and (when known) length,
  * like the API's plan. Runs at other tiers never count, so three near misses at Medium do not launch the
- * easier drill that replaced that drill at Medium again. `recentSessions` is newest first.
+ * easier drill that replaced that drill at Medium again. Nor do runs scored by older rules than this app's
+ * trainer uses for the drill. `recentSessions` is newest first.
  */
 export function bumpDifficultyForProgression(
   scenario: TrainerScenarioKey,
@@ -105,7 +107,8 @@ export function bumpDifficultyForProgression(
 ): TrainerDifficulty {
   const atTier = recentSessions
     .filter(s => s.scenario === scenario && s.metadata?.difficulty === current
-      && (durationSeconds === undefined || s.duration_seconds === undefined || s.duration_seconds === durationSeconds))
+      && (durationSeconds === undefined || s.duration_seconds === undefined || s.duration_seconds === durationSeconds)
+      && isCurrentScoringRun({ scenario: s.scenario, metadata: s.metadata ?? undefined }))
     .slice(0, PROGRESSION_SESSIONS_REQUIRED)
 
   if (
