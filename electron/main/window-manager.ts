@@ -257,8 +257,15 @@ export function createTray(deps: TrayDeps): TrayResult {
   const icon = nativeImage.createFromPath(join(__dirname, '../../resources/tray-icon.png'))
   const tray = new Tray(icon.resize({ width: 16, height: 16 }))
 
-  const focusOrCreate = () => {
+  // The updater destroys every window before it installs, but the tray lives until before-quit.
+  // A destroyed window throws on any call, so treat it like no window.
+  const liveMainWindow = (): BrowserWindow | null => {
     const win = deps.getMainWindow()
+    return win && !win.isDestroyed() ? win : null
+  }
+
+  const focusOrCreate = () => {
+    const win = liveMainWindow()
     if (!win) {
       deps.setMainWindow(deps.createMainWindowFn())
     } else {
@@ -322,7 +329,7 @@ export function createTray(deps: TrayDeps): TrayResult {
   updateMenu()
 
   tray.on('click', () => {
-    const win = deps.getMainWindow()
+    const win = liveMainWindow()
     if (!win) {
       deps.setMainWindow(deps.createMainWindowFn())
     } else if (win.isVisible()) {
