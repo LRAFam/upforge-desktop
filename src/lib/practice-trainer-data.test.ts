@@ -122,6 +122,6 @@ describe('Practice keeps its data when UpForge cannot be reached', () => {
     const view = readFileSync(resolve(__dirname, '../views/TrainingHubView.vue'), 'utf8')
     expect(view).toMatch(/window\.api\.trainer\.getPracticeData\(game\)/)
     expect(view).toMatch(/shouldCachePracticeData\(fetched\.failed, fetched\.hadSaved\)/)
-    expect(view).toMatch(/getHistory\(\)\.then\(h => \{ if \(h\) apiHistory\.value = h \}\)/)
+    expect(view).toMatch(/getHistory\(\)\.then\(h => \{ if \(h\) apiHistory\.value = withCurrentRulesBests\(h\) \}\)/)
   })
 })

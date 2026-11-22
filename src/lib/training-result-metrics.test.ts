@@ -1,9 +1,83 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { CURRENT_SCORING_VERSION, normalizeTrainingHistory, priorTrainingSessions, reactionMetricScore, resultCountCells, resultHitsCell, trackingTimes, trainingTimestamp, trainingComparisonRequest, trainingComparisonModel } from './training-result-metrics'
+import { comparableTrainingRuns, currentScoringVersion, isCurrentRulesGroup, isCurrentScoringRun, normalizeTrainingHistory, priorTrainingSessions, reactionMetricScore, resultCountCells, resultHitsCell, scoringVersionForTrainer, scoringVersionOf, trackingTimes, trainingTimestamp, trainingComparisonRequest, trainingComparisonModel, withCurrentRulesBenchmark, withCurrentRulesBests } from './training-result-metrics'
 import { trainerRunSummary } from './trainer-run-summary'
 import type { TrainingHistory } from '../env'
+import trainerPin from '../../trainer-version.json'
+
+describe('scoring versions: a run is only compared with runs scored by the same rules', () => {
+  const CHANGED_AFTER_1_13 = ['gridshot', 'sixshot', 'tracking', 'strafe_aim', 'defuse_decision']
+  const run = (scenario: string, stamp: Record<string, unknown>, completed_at = '2026-11-22T12:00:00Z', score = 50) =>
+    ({ scenario, duration_seconds: 60, score, completed_at, metadata: { difficulty: 'medium', game: 'valorant', ...stamp } })
+  const v4 = { scoring_version: 4 }
+  const v5 = { scoring_version: 5, window: 'exclusive' }
+  const trainer113 = { scoring_version: 3, window: 'window_fallback' }
+
+  it('reads trainer 1.13.0 runs (stamped 3, with a window) as version 4', () => {
+    expect(scoringVersionOf(run('flick', trainer113))).toBe(4)
+    expect(scoringVersionOf(run('flick', { scoring_version: 3 }))).toBe(3)
+    expect(scoringVersionOf(run('flick', { scoring_version: 3, window: '' }))).toBe(3)
+    expect(scoringVersionOf(run('strafe_aim', v5))).toBe(5)
+    expect(scoringVersionOf(run('flick', {}))).toBeNull()
+  })
+
+  it('knows what each trainer build stamps on every drill', () => {
+    for (const drill of ['flick', ...CHANGED_AFTER_1_13]) {
+      expect(scoringVersionForTrainer('1.12.0', drill)).toBe(3)
+      expect(scoringVersionForTrainer('1.13.0', drill)).toBe(4)
+      const next = CHANGED_AFTER_1_13.includes(drill) ? 5 : 4
+      for (const later of ['1.13.1', '1.14.0', '2.0.0']) expect(scoringVersionForTrainer(later, drill)).toBe(next)
+    }
+    // "Current" follows the trainer this app bundles.
+    for (const drill of ['flick', 'strafe_aim']) {
+      expect(currentScoringVersion(drill)).toBe(scoringVersionForTrainer(trainerPin.version, drill))
+      expect(isCurrentScoringRun(run(drill, { scoring_version: currentScoringVersion(drill) }))).toBe(true)
+      expect(isCurrentScoringRun(run(drill, { scoring_version: 3 }))).toBe(false)
+    }
+  })
+
+  it('a run from the new trainer is never compared with a run scored by older rules', () => {
+    const newRun = run('strafe_aim', v5, '2026-11-23T12:00:00Z', 40)
+    const older = [run('strafe_aim', trainer113, '2026-11-20T12:00:00Z', 70), run('strafe_aim', v4, '2026-11-21T12:00:00Z', 72),
+      run('strafe_aim', { scoring_version: 3 }, '2026-11-10T12:00:00Z', 89)]
+    const sameRules = run('strafe_aim', v5, '2026-11-22T12:00:00Z', 35)
+    for (const r of older) expect(comparableTrainingRuns(newRun, r)).toBe(false)
+    expect(priorTrainingSessions([...older, sameRules], newRun)).toEqual([sameRules])
+    // A drill whose rules did not change after 1.13.0 keeps comparing with its 1.13.0 runs, never with 1.12.0 ones.
+    const flick = run('flick', v4, '2026-11-23T12:00:00Z')
+    const flick113 = run('flick', trainer113, '2026-11-20T12:00:00Z')
+    expect(priorTrainingSessions([flick113, run('flick', { scoring_version: 3 }, '2026-11-10T12:00:00Z')], flick)).toEqual([flick113])
+  })
+
+  it('Practice keeps a best and a rank only when they are on this app’s rules for the drill', () => {
+    const group = (scenario: string, version: number) => ({ best_score: 80, trend: 2, sessions: [],
+      comparison: { difficulty: 'medium', duration_seconds: 60, scoring_version: version } })
+    const flickNow = currentScoringVersion('flick'), strafeNow = currentScoringVersion('strafe_aim')
+    const history = { sessions: [], total: 3, by_scenario: {
+      flick: group('flick', flickNow), strafe_aim: group('strafe_aim', strafeNow - 1), gridshot: { best_score: null, comparison: null, trend: null, sessions: [] },
+    } }
+    expect(isCurrentRulesGroup('flick', history.by_scenario.flick)).toBe(true)
+    const shown = withCurrentRulesBests(history)
+    expect(shown.by_scenario.flick.best_score).toBe(80)
+    // An older group's runs stay; its best does not.
+    expect(shown.by_scenario.strafe_aim).toEqual({ ...history.by_scenario.strafe_aim, best_score: null })
+    expect(shown.by_scenario.gridshot).toEqual(history.by_scenario.gridshot)
+    expect(withCurrentRulesBests(null)).toBeNull()
+
+    const row = (version: number) => ({ comparison: { difficulty: 'medium', duration_seconds: 60, scoring_version: version }, user_best: 80, global_rank: 2 })
+    expect(Object.keys(withCurrentRulesBenchmark({ flick: row(flickNow), strafe_aim: row(strafeNow - 1) }))).toEqual(['flick'])
+  })
+
+  it('Practice applies that to every history and benchmark it shows', () => {
+    const view = readFileSync(resolve(__dirname, '../views/TrainingHubView.vue'), 'utf8')
+    expect(view).toMatch(/apiHistory\.value = withCurrentRulesBests\(history\)/)
+    expect(view).toMatch(/benchmarkData\.value = withCurrentRulesBenchmark\(benchmark\)/)
+    expect(view).not.toMatch(/apiHistory\.value = h\b/)
+    // A best at settings other than the API's group is looked up on this app's rules too.
+    expect(view).toMatch(/currentScoringVersion\(scenario\),\n\s*\)/)
+  })
+})
 describe('training result measurements', () => {
   it('compares the last completed run whether the current run has synced or not', () => {
     const current = { scenario: 'flick', duration_seconds: 60, metadata: { difficulty: 'medium', scoring_version: 3, game: 'valorant' }, completed_at: '2026-09-24T12:00:00', score: 39 }
@@ -30,11 +104,14 @@ describe('training result measurements', () => {
   it('interprets Godot UTC times independently of local timezone', () => {
     expect(trainingTimestamp('2026-09-24T12:00:00')).toBe(Date.parse('2026-09-24T12:00:00Z'))
   })
-  it('asks the API for current-scoring comparisons only', () => {
-    expect(CURRENT_SCORING_VERSION).toBe(3)
+  it('asks the API for runs on the same scoring rules as the run, never legacy ones', () => {
     const run = { scenario: 'flick', duration_seconds: 60, metadata: { difficulty: 'medium', scoring_version: 3, game: 'valorant' }, completed_at: '2026-11-04T12:00:00Z' }
     expect(trainingComparisonRequest(run)?.scoring_version).toBe(3)
+    // Trainer 1.13.0 stamped 3 on its own rules (version 4); it is the first to send metadata.window.
+    expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, window: 'exclusive' } })?.scoring_version).toBe(4)
+    expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, scoring_version: 5, window: 'exclusive' } })?.scoring_version).toBe(5)
     expect(trainingComparisonRequest({ ...run, metadata: { difficulty: 'medium', scoring_version: 2 } })).toBeNull()
+    expect(trainingComparisonRequest({ ...run, metadata: { ...run.metadata, scoring_version: 6 } })).toBeNull()
   })
   it('shows time on target, not hits, for tracking drills', () => {
     const tracking = { scenario: 'tracking', duration_seconds: 60, accuracy_pct: 40, targets_hit: 0, targets_missed: 0,

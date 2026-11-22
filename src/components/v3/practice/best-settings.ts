@@ -1,9 +1,10 @@
 /**
- * The API's personal best and rank for a drill come from one comparison group: the difficulty and
- * length of the player's latest current-scoring run of that drill. These helpers keep the settings a
- * row prints (and what "Play" launches) matched with the runs that best and rank came from.
+ * The API's personal best and rank for a drill come from one comparison group: the difficulty, length and
+ * scoring version of the player's latest run of that drill. These helpers keep the settings a row prints
+ * (and what "Play" launches) matched with the runs that best and rank came from.
  */
 import { difficultyLabel, durationLabel } from './practice-v3'
+import { scoringVersionOf } from '../../../lib/training-result-metrics'
 
 type Difficulty = 'easy' | 'medium' | 'hard' | 'pro'
 const DIFFICULTIES: readonly string[] = ['easy', 'medium', 'hard', 'pro']
@@ -33,8 +34,8 @@ export function settingsLabel(s: BestGroup | null | undefined): string {
 
 /**
  * Best and rank for a row that launches `settings`. When the API's group matches, its best and rank
- * stand. Otherwise the best is the highest current-scoring run at exactly these settings on the
- * history page (no rank: ranks are per group), or none.
+ * stand. Otherwise the best is the highest run at exactly these settings and the group's scoring version on
+ * the history page (no rank: ranks are per group), or none.
  */
 export function bestForSettings(
   scenario: string,
@@ -50,7 +51,7 @@ export function bestForSettings(
   for (const r of recentRuns ?? []) {
     if (r.scenario !== scenario || r.duration_seconds !== settings.duration_seconds || !Number.isFinite(r.score)) continue
     if (r.metadata?.difficulty !== settings.difficulty) continue
-    if (scoringVersion == null || r.metadata?.scoring_version !== scoringVersion) continue
+    if (scoringVersion == null || scoringVersionOf(r) !== scoringVersion) continue
     best = best === null ? r.score : Math.max(best, r.score)
   }
   return { best, rank: null }

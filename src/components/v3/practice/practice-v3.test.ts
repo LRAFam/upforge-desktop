@@ -15,6 +15,7 @@ import {
   practiceStatItems,
   sessionMinutes,
 } from './practice-v3'
+import { currentScoringVersion } from '../../../lib/training-result-metrics'
 
 describe('practiceStatItems', () => {
   it('shows 0 for no streak (like the other counts) and hides the weekly comparison when there is none', () => {
@@ -54,17 +55,22 @@ describe('scoring update', () => {
   const runs = [
     { scenario: 'flick', score: 48, metadata: { difficulty: 'medium' } },
     { scenario: 'flick', score: 53 },
-    { scenario: 'duel', score: 41, metadata: { scoring_version: 3, difficulty: 'medium' } },
+    { scenario: 'duel', score: 41, metadata: { scoring_version: currentScoringVersion('duel'), difficulty: 'medium' } },
   ]
   it('keeps old-scoring bests apart from current runs', () => {
     expect(oldScoringBests(runs)).toEqual({ flick: 53 })
-    // v2 runs are legacy relative to scoring v3
+    // v2 runs, and trainer 1.12 runs (v3), are older than this app's trainer rules for every drill
     expect(oldScoringBests([...runs, { scenario: 'duel', score: 70, metadata: { scoring_version: 2, difficulty: 'medium' } }])).toEqual({ flick: 53, duel: 70 })
+    expect(oldScoringBests([...runs, { scenario: 'duel', score: 66, metadata: { scoring_version: 3, difficulty: 'medium' } }])).toEqual({ flick: 53, duel: 66 })
+    // Current is per drill: Strafe Aim's rules changed after trainer 1.13.0, Flick's did not.
+    expect(oldScoringBests([{ scenario: 'strafe_aim', score: 30, metadata: { scoring_version: currentScoringVersion('strafe_aim') } },
+      { scenario: 'flick', score: 60, metadata: { scoring_version: currentScoringVersion('flick') } }])).toEqual({})
     expect(oldScoringBests(null)).toEqual({})
   })
   it('explains why old runs have no personal best', () => {
-    expect(oldScoringNote(runs, 3)).toBe('Your 2 runs from before Nov 2026 used the old scoring, so they don’t count towards personal bests. They stay in your history.')
-    expect(oldScoringNote(runs, 80)).toMatch(/^Runs from before Nov 2026/)
+    expect(oldScoringNote(runs, 3)).toBe('Your 2 runs from older trainer versions were scored differently, so they don’t count towards personal bests. They stay in your history.')
+    expect(oldScoringNote(runs, 80)).toMatch(/^Runs from older trainer versions were scored differently/)
+    expect(oldScoringNote([runs[0]], 1)).toBe('Your 1 run from older trainer versions was scored differently, so it doesn’t count towards personal bests. It stays in your history.')
     expect(oldScoringNote([runs[2]], 1)).toBeNull()
   })
   it('captions a drill with no current best', () => {

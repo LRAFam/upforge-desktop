@@ -490,8 +490,8 @@ const api = {
     getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),
     /** Practice's history, plan, drills, insights and benchmark, each "ok" or "failed" (null when signed out). */
     getPracticeData: (game?: string) => ipcRenderer.invoke('trainer:get-practice-data', game),
-    getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all', difficulty?: string, durationSeconds?: number) =>
-      ipcRenderer.invoke('trainer:get-leaderboard', scenario, period, difficulty, durationSeconds),
+    getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all', difficulty?: string, durationSeconds?: number, scoringVersion?: number) =>
+      ipcRenderer.invoke('trainer:get-leaderboard', scenario, period, difficulty, durationSeconds, scoringVersion),
     getLeaderboardVisibility: () =>
       ipcRenderer.invoke('trainer:get-leaderboard-visibility') as Promise<{ ok: true; visible: boolean } | { ok: false; error: string }>,
     setLeaderboardVisibility: (visible: boolean) =>

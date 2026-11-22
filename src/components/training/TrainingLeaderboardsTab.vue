@@ -15,8 +15,8 @@ import UfTabs from '../v3/UfTabs.vue'
 import UfSkeleton from '../v3/UfSkeleton.vue'
 import EmptyArt from '../v3/empty/EmptyArt.vue'
 import { isBest, leaderboardYouRow, type LeaderboardYouRow } from '../v3/practice/practice-session-v3'
-import { SCORING_UPDATE_LABEL } from '../v3/practice/practice-v3'
-import { CURRENT_SCORING_VERSION, trainingTimestamp } from '../../lib/training-result-metrics'
+import { CURRENT_SCORING_ONLY } from '../v3/practice/practice-v3'
+import { currentScoringVersion, trainingTimestamp } from '../../lib/training-result-metrics'
 import '../v3/practice/practice-v3.css'
 
 const PERIOD_TABS = [{ key: 'week', label: 'This week' }, { key: 'month', label: 'This month' }, { key: 'all', label: 'All time' }]
@@ -37,7 +37,9 @@ async function load() {
   const seq = ++loadSeq
   loading.value = true
   try {
-    const rows = await window.api.trainer.getLeaderboard(activeScenario.value, activePeriod.value, difficulty.value, durationSeconds.value)
+    // The board on this app's trainer rules for the drill, so your own runs and the board's are scored alike.
+    const rows = await window.api.trainer.getLeaderboard(activeScenario.value, activePeriod.value, difficulty.value, durationSeconds.value,
+      currentScoringVersion(activeScenario.value))
     if (seq !== loadSeq) return
     entries.value = rows
     you.value = uiV3.value ? await loadYou(rows) : null
@@ -52,7 +54,7 @@ async function loadYou(rows: TrainerLeaderboardEntry[]): Promise<LeaderboardYouR
   try {
     const h = await window.api.trainer.getHistory({
       scenario: activeScenario.value, difficulty: difficulty.value, duration_seconds: durationSeconds.value,
-      scoring_version: CURRENT_SCORING_VERSION, before: new Date().toISOString(),
+      scoring_version: currentScoringVersion(activeScenario.value), before: new Date().toISOString(),
     })
     if (!h) return null
     return leaderboardYouRow(rows, h.sessions, activePeriod.value, Date.now(), 50, trainingTimestamp)
@@ -132,7 +134,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
       <UfTabs :items="PERIOD_TABS" :model-value="activePeriod" size="filter" label="Leaderboard period" class="uf-lb-period"
         @update:model-value="activePeriod = $event as 'week' | 'month' | 'all'" />
     </div>
-    <p class="uf-t4" style="margin: 0">Only runs since the scoring update in {{ SCORING_UPDATE_LABEL }} count. Older runs stay in your history.</p>
+    <p class="uf-t4" style="margin: 0">{{ CURRENT_SCORING_ONLY }}</p>
 
     <p v-if="boardVisibilityLine" class="uf-t4 uf-lb-visibility">
       {{ boardVisibilityLine }}
