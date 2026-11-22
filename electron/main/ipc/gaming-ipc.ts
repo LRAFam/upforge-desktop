@@ -319,6 +319,18 @@ export function setupGamingHandlers(
     }
   })
 
+  ipcMain.handle('trainer:get-drill-moments', async (_e, id: unknown) => {
+    const token = auth.getToken()
+    if (!token || typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0) return null
+    try {
+      const res = await auth.getApi().get(`/api/drills/${id}/moments`, drillReadConfig(undefined))
+      // A reply for the previous account must not reach the current renderer.
+      return auth.getToken() === token ? res.data : null
+    } catch {
+      return null
+    }
+  })
+
   ipcMain.handle('trainer:dismiss-coaching-drill', async (_e, id: unknown) => {
     const result = await dismissCoachingDrill(auth.getApi(), auth.getToken(), id)
     if (!result.ok) log.warn('[Trainer] Failed to dismiss coaching drill:', id, result.error)

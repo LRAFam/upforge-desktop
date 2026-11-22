@@ -6,6 +6,7 @@ import { TRAINER_SCENARIOS, isBetaScenario, trainerScenarioDef, type TrainerUiGr
 import { asSessionEnded, drillHasLesson, launchConfigFromInfo, launchTrainer, sessionEndedMessage } from '../lib/trainer-launch'
 import upforgeLogo from '../assets/upforge-logo.webp'
 import TrainingIcon from '../components/training/TrainingIcon.vue'
+import TrainingDrillMoments from '../components/training/TrainingDrillMoments.vue'
 import { useRouter } from 'vue-router'
 import { useTrainerResultStore } from '../stores/trainerResult'
 import type { CoachingDrill, TrainingHistory } from '../env'
@@ -493,6 +494,7 @@ onMounted(async () => {
               <span v-if="loop.why" class="uf-t4"><span class="uf-label">Why this drill</span> {{ loop.why }}</span>
               <span v-if="loop.stat" class="uf-t4 uf-num">{{ loop.stat }}</span>
               <span v-if="loop.next" class="uf-t4"><span class="uf-label">Next match</span> {{ loop.next }}</span>
+              <TrainingDrillMoments v-if="store.launchConfig?.user_drill_id" :key="store.launchConfig.user_drill_id" :drill-id="store.launchConfig.user_drill_id" />
             </section>
             <div class="uf-hair" />
           </template>
@@ -788,6 +790,7 @@ onMounted(async () => {
             <div v-if="loop.why" class="text-[11px] text-white/60 leading-relaxed mt-2"><span class="text-white/40">Why this drill:</span> {{ loop.why }}</div>
             <div v-if="loop.stat" class="text-[11px] text-white/60 tabular-nums mt-1">{{ loop.stat }}</div>
             <div v-if="loop.next" class="text-[11px] text-white/60 leading-relaxed mt-2"><span class="text-white/40">Next match:</span> {{ loop.next }}</div>
+            <TrainingDrillMoments v-if="store.launchConfig?.user_drill_id" :key="store.launchConfig.user_drill_id" :drill-id="store.launchConfig.user_drill_id" />
           </div>
         </div>
 

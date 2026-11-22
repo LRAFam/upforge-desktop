@@ -6,6 +6,8 @@ export interface OpenAnalysisVodReviewOpts {
   coachNotes?: boolean
   seekMs?: number
   source?: string
+  /** A caller can cancel while the timeline loads (account change, closed view, or unmount). */
+  isCurrent?: () => boolean
 }
 
 function trackDesktopReportOpened(analysisId: number, source: string): void {
@@ -21,8 +23,9 @@ export async function openAnalysisVodReview(
   analysisId: number,
   opts?: OpenAnalysisVodReviewOpts,
 ): Promise<boolean> {
+  if (opts?.isCurrent?.() === false) return false
   const data = await window.api.analyses.getTimeline(analysisId)
-  if (!data) return false
+  if (!data || opts?.isCurrent?.() === false) return false
   pendingTimeline.value = data
   const query: Record<string, string> = { timelineId: String(analysisId) }
   if (opts?.comparisonId) query.comparisonId = opts.comparisonId
@@ -31,6 +34,6 @@ export async function openAnalysisVodReview(
     query.seekMs = String(Math.round(opts.seekMs))
   }
   await router.push({ path: '/vod-review', query })
-  trackDesktopReportOpened(analysisId, opts?.source ?? 'desktop_vod_review')
+  if (opts?.isCurrent?.() !== false) trackDesktopReportOpened(analysisId, opts?.source ?? 'desktop_vod_review')
   return true
 }
