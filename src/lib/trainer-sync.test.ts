@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { asTrainerUnsavedRuns, asTrainerUploadStatus, trainerRunSavedLabel, trainerSyncLine, trainerUploadStatusLine, unsavedRunReasonText, type TrainerDrillState, type TrainerSyncOutcome } from './trainer-sync'
+import { trainerRunKey as queueRunKey } from '../../electron/main/trainer-session-queue'
+import { asTrainerSyncOutcome, asTrainerUnsavedRuns, asTrainerUploadStatus, trainerRunKey, trainerRunSavedLabel, trainerRunSavedLabels, trainerSyncLine, trainerUploadStatusLine, unsavedRunReasonText, type TrainerDrillState, type TrainerSyncOutcome } from './trainer-sync'
 
 const drill = (over: Partial<TrainerDrillState> = {}): TrainerDrillState => ({ id: 1, title: 'Head Height', status: 'active', completed: false, attempt_count: 1, attempts_allowed: 3, pass_score: 70, next: null, ...over })
 const saved = (d: TrainerDrillState | null) => ({ key: 'k', clientRunId: 'c', state: 'saved' as const, drill: d })
@@ -116,5 +117,50 @@ describe('runs waiting to upload', () => {
     expect(asTrainerUploadStatus({ waiting: 2, unsaved: 1 })).toEqual({ waiting: 2, unsaved: 1 })
     expect(asTrainerUploadStatus({ waiting: '2' })).toBeNull()
     expect(asTrainerUploadStatus(null)).toBeNull()
+  })
+})
+
+describe('guided-session steps: saved or waiting', () => {
+  const steps = [
+    { scenario: 'flick', completed_at: '2026-11-22T18:00:00.000Z' },
+    { scenario: 'tracking', completed_at: '2026-11-22T18:02:00.000Z' },
+    { scenario: 'microadjust', completed_at: '2026-11-22T18:04:00.000Z' },
+  ]
+  const pushed = (state: TrainerSyncOutcome['state']) => Object.fromEntries(steps.map((s, i) => {
+    const key = trainerRunKey(s.scenario, s.completed_at)
+    return [key, { key, clientRunId: `c${i}`, state, drill: null }]
+  })) as Record<string, TrainerSyncOutcome>
+
+  it('API unreachable: each step waits and the session ends with "3 runs waiting to upload"; both clear when they land', () => {
+    expect(trainerRunSavedLabels(steps, pushed('pending')).map(l => l?.text)).toEqual(['Waiting to upload', 'Waiting to upload', 'Waiting to upload'])
+    expect(trainerUploadStatusLine({ waiting: 3, unsaved: 0 })?.text).toBe('3 runs waiting to upload. UpForge retries automatically.')
+    // The retry lands: the queue pushes "saved" for each run and the counts drop to zero.
+    expect(trainerRunSavedLabels(steps, pushed('saved')).map(l => l?.text)).toEqual(['Saved', 'Saved', 'Saved'])
+    expect(trainerUploadStatusLine({ waiting: 0, unsaved: 0 })).toBeNull()
+  })
+
+  it('a refused run says "Not saved"; a step with no outcome yet is still saving; a step without a run has no label', () => {
+    const refused = { ...pushed('pending'), [trainerRunKey('tracking', steps[1].completed_at)]: { key: trainerRunKey('tracking', steps[1].completed_at), clientRunId: 'c1', state: 'failed' as const, drill: null } }
+    expect(trainerRunSavedLabels(steps, refused)[1]).toEqual({ text: 'Not saved', tone: 'loss' })
+    expect(trainerRunSavedLabels([steps[0], undefined], {})).toEqual([{ text: 'Saving…', tone: 'muted' }, null])
+  })
+
+  it('an outcome counts only for its own run (same drill, other finish time)', () => {
+    const other = trainerRunKey('flick', '2026-11-22T17:00:00.000Z')
+    expect(trainerRunSavedLabels([steps[0]], { [other]: { key: other, clientRunId: 'x', state: 'saved', drill: null } })[0]?.text).toBe('Saving…')
+  })
+
+  it('uses the upload queue’s own run key', () => {
+    expect(queueRunKey).toBe(trainerRunKey)
+    expect(trainerRunKey('flick', '2026-11-22T18:00:00.000Z')).toBe('flick|2026-11-22T18:00:00.000Z')
+  })
+
+  it('reads the outcomes the main process sends, and nothing else', () => {
+    const ok = { key: 'flick|t', clientRunId: 'c', state: 'pending', drill: null }
+    expect(asTrainerSyncOutcome(ok)).toEqual(ok)
+    expect(asTrainerSyncOutcome({ ...ok, state: 'lost' })).toBeNull()
+    expect(asTrainerSyncOutcome({ ...ok, key: 3 })).toBeNull()
+    expect(asTrainerSyncOutcome(null)).toBeNull()
+    expect(asTrainerSyncOutcome('flick|t')).toBeNull()
   })
 })
