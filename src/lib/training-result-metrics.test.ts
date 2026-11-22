@@ -75,7 +75,7 @@ describe('scoring versions: a run is only compared with runs scored by the same 
     expect(view).toMatch(/benchmarkData\.value = withCurrentRulesBenchmark\(benchmark\)/)
     expect(view).not.toMatch(/apiHistory\.value = h\b/)
     // A best at settings other than the API's group is looked up on this app's rules too.
-    expect(view).toMatch(/currentScoringVersion\(scenario\),\n\s*\)/)
+    expect(view).toMatch(/currentScoringVersion\(scenario\),\s*\)/)
   })
 })
 describe('training result measurements', () => {
