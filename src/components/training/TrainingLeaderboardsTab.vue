@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from 'vue'
 import { trainerScenariosForGame, type TrainerScenarioKey } from '../../lib/trainer-scenarios'
+import { TRAINER_BOARD_DIFFICULTIES, TRAINER_BOARD_DURATIONS } from '../../lib/manual-trainer-options'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
 import { TRAINING_ARTWORK } from '../../lib/training-icons'
 import type { ProfileData, TrainerLeaderboardEntry } from '../../env.d.ts'
@@ -120,12 +121,12 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
       </label>
       <label class="uf-lb-field"><span class="uf-t4">Difficulty</span>
         <select v-model="difficulty" class="uf-pselect uf-lb-select" style="text-transform: capitalize">
-          <option v-for="d in ['easy', 'medium', 'hard', 'pro']" :key="d" :value="d">{{ d }}</option>
+          <option v-for="d in TRAINER_BOARD_DIFFICULTIES" :key="d" :value="d">{{ d }}</option>
         </select>
       </label>
       <label class="uf-lb-field"><span class="uf-t4">Length</span>
         <select v-model="durationSeconds" class="uf-pselect uf-lb-select">
-          <option v-for="seconds in [30, 60, 90, 120, 180]" :key="seconds" :value="seconds">{{ seconds }}s</option>
+          <option v-for="seconds in TRAINER_BOARD_DURATIONS" :key="seconds" :value="seconds">{{ seconds }}s</option>
         </select>
       </label>
       <UfTabs :items="PERIOD_TABS" :model-value="activePeriod" size="filter" label="Leaderboard period" class="uf-lb-period"
@@ -179,10 +180,10 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
         <option v-for="s in pickerScenarios" :key="s.key" :value="s.key">{{ s.label }}</option>
       </select>
       <select v-model="difficulty" aria-label="Difficulty" class="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-white">
-        <option v-for="d in ['easy', 'medium', 'hard', 'pro']" :key="d" :value="d">{{ d }}</option>
+        <option v-for="d in TRAINER_BOARD_DIFFICULTIES" :key="d" :value="d">{{ d }}</option>
       </select>
       <select v-model="durationSeconds" aria-label="Drill duration" class="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-white">
-        <option v-for="seconds in [30, 60, 90, 120, 180]" :key="seconds" :value="seconds">{{ seconds }}s</option>
+        <option v-for="seconds in TRAINER_BOARD_DURATIONS" :key="seconds" :value="seconds">{{ seconds }}s</option>
       </select>
       <div class="flex rounded-lg border border-white/[0.10] overflow-hidden">
         <button

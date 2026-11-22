@@ -9,7 +9,6 @@ import { ACHIEVEMENTS, useAchievements } from '../composables/useAchievements'
 import { asSessionEnded, launchConfigFromInfo, launchTrainer, sessionEndedMessage, trainerLaunchConfig } from '../lib/trainer-launch'
 import {
   type TrainerScenarioKey,
-  type TrainerDifficulty,
   RADAR_SCENARIO_KEYS,
   isBetaScenario,
   isScenarioForGame,
@@ -33,6 +32,8 @@ import TrainingIcon from '../components/training/TrainingIcon.vue'
 import TrainingGuidedSessionHero from '../components/training/TrainingGuidedSessionHero.vue'
 import TrainingVodStrip, { type VodDrill } from '../components/training/TrainingVodStrip.vue'
 import TrainingScenarioCard from '../components/training/TrainingScenarioCard.vue'
+import TrainingManualLaunchDialog from '../components/training/TrainingManualLaunchDialog.vue'
+import { useManualTrainerLaunch } from '../composables/useManualTrainerLaunch'
 import TrainingLeaderboardsTab from '../components/training/TrainingLeaderboardsTab.vue'
 import TrainingLoadoutsTab from '../components/training/TrainingLoadoutsTab.vue'
 import PracticeV3 from './v3/PracticeV3.vue'
@@ -562,6 +563,26 @@ function launchScenarioCard(scenario: ScenarioKey) {
   void launchDrill(drillForScenario(scenario))
 }
 
+const {
+  request: manualLaunchRequest, open: openManualDrill, start: startManualDrill, cancel: cancelManualDrill,
+} = useManualTrainerLaunch({
+  game: () => primaryGame.value,
+  busy: () => launching.value || drillRunning.value || structuredSessionActive.value,
+  accountId: async () => {
+    const user = await window.api.auth.getUser() as { id?: unknown } | null
+    return typeof user?.id === 'number' && Number.isSafeInteger(user.id) && user.id > 0 ? user.id : null
+  },
+  defaults: scenarioBestGroup,
+  launch: async request => {
+    await launchDrill({
+      ...request, scenario: request.scenario as ScenarioKey,
+      weakness: 'free_play', weakness_score: 0, reason: 'Manual practice',
+    })
+  },
+})
+watch(primaryGame, cancelManualDrill)
+onUnmounted(cancelManualDrill)
+
 function improvementRoom(scenario: ScenarioKey): number {
   return 100 - scenarioProgress(scenario)
 }
@@ -757,6 +778,8 @@ watch(primaryGame, async (game) => {
 const life = useLifetime() // listeners registered after an await stop with this view
 
 onMounted(async () => {
+  life.own(window.api.on('session:user-changed', cancelManualDrill))
+  life.own(window.api.on('auth:session-expired', cancelManualDrill))
   await achievements.load()
 
   life.own(window.api.on('trainer:session-ended', (raw: unknown) => {
@@ -834,8 +857,6 @@ onUnmounted(() => {
 
 // ── Free play ──────────────────────────────────────────────────────────────────
 const freePlayScenario = ref<ScenarioKey>('flick')
-const freePlayDifficulty = ref<TrainerDifficulty>('medium')
-const freePlayDuration = ref(60)
 
 // PB Carousel
 const pbCarouselIndex = ref(0)
@@ -861,14 +882,7 @@ function stopPBCarousel() {
 }
 
 async function launchFreePlay() {
-  await launchDrill({
-    scenario: freePlayScenario.value,
-    difficulty: freePlayDifficulty.value,
-    duration_seconds: freePlayDuration.value,
-    weakness: 'free_play',
-    weakness_score: 0,
-    reason: 'Free play session',
-  })
+  await openManualDrill(freePlayScenario.value)
 }
 
 async function stopDrill() {
@@ -1439,6 +1453,8 @@ const CATEGORY_ICON: Record<string, string> = {
 
 <template>
   <div class="h-full text-white flex flex-col overflow-hidden relative" :class="uiV3 ? 'uf-practice-legacy' : 'bg-[#0a0a0a]'">
+    <TrainingManualLaunchDialog :request="manualLaunchRequest" :busy="launching || drillRunning || structuredSessionActive"
+      @close="cancelManualDrill" @start="startManualDrill" />
 
     <!-- ── UI v3: in-session strips + result / session dialogs (legacy markup below, unchanged) ── -->
     <template v-if="uiV3">
@@ -1843,6 +1859,7 @@ const CATEGORY_ICON: Record<string, string> = {
       @play-match-drill="launchMatchDrill"
       @dismiss-match-drill="dismissCoachingDrill"
       @play-drill="(k: string) => launchScenarioCard(k as ScenarioKey)"
+      @play-manual-drill="openManualDrill"
       @play-daily="launchDrill({ scenario: dailyChallenge.scenario, difficulty: 'medium', duration_seconds: 60, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${dailyChallenge.target}+` })"
       @launch-free="launchFreePlay"
     />
@@ -1993,7 +2010,7 @@ const CATEGORY_ICON: Record<string, string> = {
                   :completed="card.completed"
                   :running="drillRunning && activeDrill?.scenario === card.scenario"
                   :disabled="launching || drillRunning"
-                  @play="launchScenarioCard(card.scenario)"
+                  @play="openManualDrill(card.scenario)"
                 />
               </div>
             </div>

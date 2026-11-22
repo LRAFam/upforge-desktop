@@ -92,6 +92,8 @@ const emit = defineEmits<{
   'play-match-drill': [id: number]
   'dismiss-match-drill': [id: number]
   'play-drill': [scenario: string]
+  /** A drill started from the Drills tab: the player picks its difficulty and length first. */
+  'play-manual-drill': [scenario: string]
   'play-daily': []
   'launch-free': []
 }>()
@@ -438,7 +440,7 @@ function thumb(scenario: string | null | undefined) {
             </div>
             <ul v-if="g.drills.length" class="uf-tiles">
               <PracticeDrillTileV3 v-for="d in g.drills" :key="d.scenario" :drill="d" :focus="g.id === 'yours'"
-                :running="runningScenario === d.scenario" :busy="busy" @play="emit('play-drill', $event)" />
+                :running="runningScenario === d.scenario" :busy="busy" @play="emit('play-manual-drill', $event)" />
             </ul>
             <p v-else class="uf-t4 uf-group-empty">No drill picked yet. {{ VALORANT_FOCUS_DESKTOP_ONLY }}</p>
           </section>
