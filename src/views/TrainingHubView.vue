@@ -7,6 +7,7 @@ import { useRouter } from 'vue-router'
 import type { TrainingHistory, CoachingDrill, TrainingBenchmark, SharedTrainingPlan } from '../env'
 import { ACHIEVEMENTS, useAchievements } from '../composables/useAchievements'
 import { asSessionEnded, launchConfigFromInfo, launchTrainer, sessionEndedMessage, trainerLaunchConfig } from '../lib/trainer-launch'
+import { asTrainerSyncOutcome, trainerRunSavedLabels, trainerUploadStatusLine, type TrainerSyncOutcome } from '../lib/trainer-sync'
 import {
   type TrainerScenarioKey,
   RADAR_SCENARIO_KEYS,
@@ -34,6 +35,7 @@ import TrainingVodStrip, { type VodDrill } from '../components/training/Training
 import TrainingScenarioCard from '../components/training/TrainingScenarioCard.vue'
 import TrainingManualLaunchDialog from '../components/training/TrainingManualLaunchDialog.vue'
 import { useManualTrainerLaunch } from '../composables/useManualTrainerLaunch'
+import { useTrainerUploadStatus } from '../composables/useTrainerUploadStatus'
 import TrainingLeaderboardsTab from '../components/training/TrainingLeaderboardsTab.vue'
 import TrainingLoadoutsTab from '../components/training/TrainingLoadoutsTab.vue'
 import PracticeV3 from './v3/PracticeV3.vue'
@@ -53,8 +55,6 @@ import { scenariosPlayedToday, usePracticeSessionStore } from '../stores/practic
 import { mergePracticeData, practiceRefreshNotice, shouldCachePracticeData, type PracticeDataReply, type TrainerData } from '../lib/practice-trainer-data'
 import { storeToRefs } from 'pinia'
 import { practiceActivity } from '../lib/trainer-achievements'
-import { asTrainerSyncOutcome, trainerRunSavedLabels, trainerUploadStatusLine, type TrainerSyncOutcome } from '../lib/trainer-sync'
-import { useTrainerUploadStatus } from '../composables/useTrainerUploadStatus'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SessionResult {
