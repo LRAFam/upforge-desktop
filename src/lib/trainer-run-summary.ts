@@ -7,7 +7,7 @@ import { accuracyMetricLabel, consistencyTimingsLabel, isConsistencyMeasured, is
 
 export interface RunNumbers {
   scenario: string
-  /** 0–100; shown ×10 ("/ 1000"). */
+  /** 0–100, shown as it is on every Practice surface. */
   score: number
   accuracy_pct: number
   avg_reaction_ms: number
@@ -33,8 +33,6 @@ export interface RunSummary {
   headline: string
   details: string[]
 }
-
-const SCALE = 10
 
 function measured(r: RunNumbers) {
   const tracking = isTrackingScenario(r.scenario)
@@ -132,7 +130,7 @@ export function trainerRunSummary({ run, previous, best, history }: RunSummaryIn
   if (history === 'none') return { headline: 'Not compared with your other runs: this run used older scoring or incomplete settings.', details: notes }
   if (!previous) return { headline: 'First run at these settings.', details: notes }
 
-  const score = run.score * SCALE, prev = Number(previous.score) * SCALE
+  const score = run.score, prev = Number(previous.score)
   const delta = score - prev
   const headline = delta > 0
     ? `Up ${delta} from your last run at these settings (${prev} → ${score}).`
@@ -143,9 +141,9 @@ export function trainerRunSummary({ run, previous, best, history }: RunSummaryIn
   const details: string[] = []
   const bestScore = num(best)
   if (bestScore !== null) {
-    if (run.score > bestScore) details.push(`New best at these settings. Previous best: ${bestScore * SCALE}.`)
-    else if (run.score === bestScore) details.push(`Matches your best at these settings (${bestScore * SCALE}).`)
-    else details.push(`Best at these settings: ${bestScore * SCALE}.`)
+    if (run.score > bestScore) details.push(`New best at these settings. Previous best: ${bestScore}.`)
+    else if (run.score === bestScore) details.push(`Matches your best at these settings (${bestScore}).`)
+    else details.push(`Best at these settings: ${bestScore}.`)
   }
   const moved = movedNumbers(run, previous)
   if (moved.length) details.push(`Since your last run: ${moved.join(', ')}.`)

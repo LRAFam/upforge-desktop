@@ -9,23 +9,23 @@ const lines = (s: ReturnType<typeof trainerRunSummary>) => [s.headline, ...s.det
 describe('trainerRunSummary: measured facts only', () => {
   it('compares with the last run at these settings, names what moved and the best', () => {
     const s = trainerRunSummary({ run: run(), previous: run({ score: 60, accuracy_pct: 72, avg_reaction_ms: 340, consistency_score: 60 }), best: 72, history: 'ok' })
-    expect(s.headline).toBe('Up 40 from your last run at these settings (600 → 640).')
+    expect(s.headline).toBe('Up 4 from your last run at these settings (60 → 64).')
     expect(s.details).toEqual([
-      'Best at these settings: 720.',
+      'Best at these settings: 72.',
       'Since your last run: accuracy 72.0% → 81.0%, time to hit 340 → 310 ms, consistency 60 → 58.',
     ])
   })
 
   it('says when the score went down or stayed the same', () => {
     expect(trainerRunSummary({ run: run({ score: 50 }), previous: run({ score: 53 }), best: 70, history: 'ok' }).headline)
-      .toBe('Down 30 from your last run at these settings (530 → 500).')
+      .toBe('Down 3 from your last run at these settings (53 → 50).')
     const same = trainerRunSummary({ run: run(), previous: run(), best: 64, history: 'ok' })
-    expect(same.headline).toBe('Same score as your last run at these settings (640).')
-    expect(same.details).toEqual(['Matches your best at these settings (640).'])
+    expect(same.headline).toBe('Same score as your last run at these settings (64).')
+    expect(same.details).toEqual(['Matches your best at these settings (64).'])
   })
 
   it('a new best names the old one', () => {
-    expect(trainerRunSummary({ run: run({ score: 75 }), previous: run(), best: 70, history: 'ok' }).details[0]).toBe('New best at these settings. Previous best: 700.')
+    expect(trainerRunSummary({ run: run({ score: 75 }), previous: run(), best: 70, history: 'ok' }).details[0]).toBe('New best at these settings. Previous best: 70.')
   })
 
   it('first run at these settings: nothing to compare', () => {
@@ -75,14 +75,14 @@ describe('trainerRunSummary: measured facts only', () => {
     // GET /api/training/sessions row as the live API sends it: accuracy, reaction and consistency are strings.
     const apiRow = JSON.parse('{"scenario":"flick","score":60,"accuracy_pct":"72.50","avg_reaction_ms":"340.00","consistency_score":"60.00","targets_hit":38}') as RunNumbers
     const s = trainerRunSummary({ run: run(), previous: apiRow, best: 64, history: 'ok' })
-    expect(s.headline).toBe('Up 40 from your last run at these settings (600 → 640).')
+    expect(s.headline).toBe('Up 4 from your last run at these settings (60 → 64).')
     expect(s.details).toEqual([
-      'Matches your best at these settings (640).',
+      'Matches your best at these settings (64).',
       'Since your last run: accuracy 72.5% → 81.0%, time to hit 340 → 310 ms, consistency 60 → 58.',
     ])
     // A best that arrives as a string is still the same number.
     expect(trainerRunSummary({ run: run(), previous: apiRow, best: '64' as unknown as number, history: 'ok' }).details[0])
-      .toBe('Matches your best at these settings (640).')
+      .toBe('Matches your best at these settings (64).')
     // A number the API left out is skipped, never printed as "NaN".
     const partial = trainerRunSummary({ run: run(), previous: { ...apiRow, accuracy_pct: null as unknown as number }, best: 64, history: 'ok' })
     expect(partial.details).toContain('Since your last run: time to hit 340 → 310 ms, consistency 60 → 58.')

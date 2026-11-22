@@ -43,8 +43,6 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 export function drillLoop(
   drill: DrillLoopSource | null | undefined,
   state: TrainerDrillState | null | undefined,
-  /** Matches how the screen shows scores (10 where scores read "/ 1000"). */
-  scoreScale = 1,
 ): DrillLoop | null {
   if (!drill && !state) return null
   const fromMatches = isMatchStatsDrill(drill)
@@ -96,7 +94,7 @@ export function drillLoop(
     s = {
       key: 'practising',
       label: 'Practice target not hit yet',
-      text: passMark ? `Score ${passMark * scoreScale} or more to hit the practice target.` : 'Reach the drill’s pass score to hit the practice target.',
+      text: passMark ? `Score ${passMark} or more to hit the practice target.` : 'Reach the drill’s pass score to hit the practice target.',
     }
   }
   return { why, stat: statLine, state: s, next }

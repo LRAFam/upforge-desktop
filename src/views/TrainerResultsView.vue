@@ -56,7 +56,7 @@ const isPB = computed(() => !!trainingComparisonRequest(result.value) && store.i
 
 // Did this run reach the API, and what did it do to the assigned drill (attempt n of 3 / passed → next tier)?
 const syncOutcome = ref<TrainerSyncOutcome | null>(null)
-const syncLine = computed(() => trainerSyncLine(syncOutcome.value, !!store.launchConfig?.user_drill_id, 10))
+const syncLine = computed(() => trainerSyncLine(syncOutcome.value, !!store.launchConfig?.user_drill_id))
 async function loadSyncStatus() {
   const r = store.result
   syncOutcome.value = null
@@ -85,7 +85,7 @@ async function loadAssignedDrill() {
   assignedDrill.value = (Array.isArray(list) ? list : []).find(d => d.id === id) ?? null
 }
 const loop = computed(() => (store.launchConfig?.user_drill_id
-  ? drillLoop(assignedDrill.value, syncOutcome.value?.drill ?? null, 10)
+  ? drillLoop(assignedDrill.value, syncOutcome.value?.drill ?? null)
   : null))
 
 const scenarioMeta = computed(() =>
@@ -137,7 +137,7 @@ const trainerNotice = ref<string | null>(null)
 const priorSessions = computed(() => priorTrainingSessions(
   history.value?.by_scenario?.[result.value.scenario]?.sessions ?? [], result.value,
 ))
-const scoreDelta = computed(() => priorSessions.value.length ? (result.value.score - priorSessions.value[0].score) * 10 : null)
+const scoreDelta = computed(() => priorSessions.value.length ? result.value.score - priorSessions.value[0].score : null)
 
 // Top runs at these settings (this run included). Without earlier runs there is no rank or trend
 // ("★1" and "play another run" would be false): both stay hidden and the summary says why.
@@ -170,7 +170,7 @@ const chartH = H - PAD.top - PAD.bottom
 
 const gridLines = [25, 50, 75].map(v => ({
   y: PAD.top + chartH - (v / 100) * chartH,
-  label: String(v * 10),
+  label: String(v),
 }))
 
 const chartPath = computed(() => {
@@ -370,9 +370,9 @@ onMounted(async () => {
             <span class="uf-t3">{{ scenarioMeta.label }}<span v-if="isBeta" class="uf-picker-tag" style="color: var(--uf-gold)">Beta</span></span>
             <span class="uf-t4">{{ formatDate(result.completed_at) }}<span v-if="store.launchConfig" style="text-transform: capitalize"> · {{ store.launchConfig.difficulty }} · {{ store.launchConfig.duration_seconds }}s</span></span>
           </span>
-          <span class="uf-d1">{{ result.score * 10 }}</span>
+          <span class="uf-d1">{{ result.score }}</span>
           <span class="uf-tr-score-meta">
-            <span class="uf-t4">/ 1000 · {{ scoreLabel(result.score) }}</span>
+            <span class="uf-t4">/ 100 · {{ scoreLabel(result.score) }}</span>
             <span v-if="scoreDelta !== null" class="uf-t4 uf-num" :style="{ color: toneColor(deltaTone(scoreDelta)) }">{{ signed(scoreDelta) }} vs previous</span>
             <span v-else-if="history?.by_scenario?.[result.scenario]?.sessions?.length === 0" class="uf-t4">First run with these settings</span>
             <span v-if="isPB" class="uf-t4" style="color: var(--uf-gold)">★ New personal best</span>
@@ -505,7 +505,7 @@ onMounted(async () => {
               <ol class="uf-tr-top">
                 <li v-for="entry in leaderboard" :key="entry.rank" :class="{ current: entry.isCurrent }">
                   <span class="uf-t4 uf-num" :style="isBest(entry.rank) ? 'color: var(--uf-gold)' : undefined" style="width: 32px">{{ isBest(entry.rank) ? '★' : '' }}{{ entry.rank }}</span>
-                  <span class="uf-d4">{{ entry.score * 10 }}</span>
+                  <span class="uf-d4">{{ entry.score }}</span>
                   <span class="uf-t4" style="margin-left: auto">{{ entry.isCurrent ? 'This run' : formatDate(entry.completed_at) }}</span>
                 </li>
               </ol>
@@ -556,9 +556,9 @@ onMounted(async () => {
         <div class="results-score">
           <span class="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1">Score</span>
           <span :class="['text-[64px] font-bold leading-none tabular-nums', scoreColor(result.score)]">
-            {{ result.score * 10 }}
+            {{ result.score }}
           </span>
-          <span class="text-[11px] text-white/50 mt-1 font-medium">/ 1000 <span class="mx-2 text-white/20">|</span> {{ scoreLabel(result.score) }}</span>
+          <span class="text-[11px] text-white/50 mt-1 font-medium">/ 100 <span class="mx-2 text-white/20">|</span> {{ scoreLabel(result.score) }}</span>
 
           <div v-if="scoreDelta !== null" class="mt-2 flex items-center gap-1">
             <svg v-if="scoreDelta > 0" class="w-3 h-3 text-green-400" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
@@ -613,7 +613,7 @@ onMounted(async () => {
               <template v-else>#{{ entry.rank }}</template>
             </span>
             <span :class="['text-sm font-bold tabular-nums', scoreColor(entry.score)]">
-              {{ entry.score * 10 }}
+              {{ entry.score }}
             </span>
             <span class="flex-1 text-[10px] text-white/50">
               {{ entry.isCurrent ? 'this run' : formatDate(entry.completed_at) }}

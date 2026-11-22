@@ -15,22 +15,22 @@ describe('trainerSyncLine', () => {
     expect(trainerSyncLine({ key: 'k', clientRunId: 'c', state: 'failed', drill: null }, true)).toEqual({ text: 'This run could not be saved, so it did not count towards your drill.', tone: 'loss' })
   })
   it('names the next tier and its pass mark when the drill is passed', () => {
-    const line = trainerSyncLine(saved(drill({ completed: true, status: 'completed', next: { id: 2, title: 'Head Height (Hard)', trainer_difficulty: 'hard', pass_score: 70 } })), true, 10)
-    expect(line).toEqual({ text: 'Drill passed and recorded. Next: Hard, pass at 700.', tone: 'win' })
+    const line = trainerSyncLine(saved(drill({ completed: true, status: 'completed', next: { id: 2, title: 'Head Height (Hard)', trainer_difficulty: 'hard', pass_score: 70 } })), true)
+    expect(line).toEqual({ text: 'Drill passed and recorded. Next: Hard, pass at 70.', tone: 'win' })
     expect(trainerSyncLine(saved(drill({ completed: true, status: 'completed' })), true).text).toBe('Drill passed and recorded. That was the last tier.')
   })
   it('counts attempts towards an active drill and says when it is paused', () => {
     expect(trainerSyncLine(saved(drill({ attempt_count: 2 })), true).text).toBe('Recorded towards your drill: attempt 2 of 3. Pass at 70 (1 try left).')
     // No easier version (already at Easy, or an older API): matches can assign a new drill.
-    expect(trainerSyncLine(saved(drill({ attempt_count: 3, status: 'needs_reassignment' })), true, 10).text)
-      .toBe('Recorded. 3 runs below 700, so this drill is paused. Your next matches can assign a new one.')
+    expect(trainerSyncLine(saved(drill({ attempt_count: 3, status: 'needs_reassignment' })), true).text)
+      .toBe('Recorded. 3 runs below 70, so this drill is paused. Your next matches can assign a new one.')
   })
   it('a paused drill with an easier version says that version is ready, not that matches will assign one', () => {
     const paused = drill({ attempt_count: 3, status: 'needs_reassignment', next: { id: 2, title: 'Head Height (Easy)', trainer_difficulty: 'easy', pass_score: 70 } })
-    expect(trainerSyncLine(saved(paused), true, 10))
-      .toEqual({ text: 'Recorded. 3 runs below 700, so this drill is paused. An easier version is ready: Easy, pass at 700.', tone: 'muted' })
-    expect(trainerSyncLine(saved({ ...paused, next: { id: 2, title: null, trainer_difficulty: null, pass_score: 70 } }), true, 10).text)
-      .toBe('Recorded. 3 runs below 700, so this drill is paused. An easier version is ready: pass at 700.')
+    expect(trainerSyncLine(saved(paused), true))
+      .toEqual({ text: 'Recorded. 3 runs below 70, so this drill is paused. An easier version is ready: Easy, pass at 70.', tone: 'muted' })
+    expect(trainerSyncLine(saved({ ...paused, next: { id: 2, title: null, trainer_difficulty: null, pass_score: 70 } }), true).text)
+      .toBe('Recorded. 3 runs below 70, so this drill is paused. An easier version is ready: pass at 70.')
   })
   it('a trainer pass is "practice target hit", not a finished drill (newer API)', () => {
     const line = trainerSyncLine(saved(drill({ attempt_count: 2, practice_passed: true, practice_passed_at: '2026-11-16T10:00:00Z', verified: false })), true)

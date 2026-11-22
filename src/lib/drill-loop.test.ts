@@ -21,20 +21,20 @@ describe('drillLoop', () => {
   })
 
   it('shows why, the stat and what the next ranked games check', () => {
-    const loop = drillLoop(statDrill(), state(), 10)!
+    const loop = drillLoop(statDrill(), state())!
     expect(loop.why).toBe('Only 16% of your hits were headshots over your last 8 ranked games.')
     expect(loop.stat).toBe('HS 16% → target 19% · now 17%')
     expect(loop.next).toBe('Your next ranked games check HS 16% → target 19%.')
   })
 
-  it('practising: target not hit yet, with the pass mark on the screen scale', () => {
-    expect(drillLoop(statDrill(), state(), 10)!.state).toEqual({
-      key: 'practising', label: 'Practice target not hit yet', text: 'Score 700 or more to hit the practice target.',
+  it('practising: target not hit yet, with the pass mark on the 0–100 scale the run is shown on', () => {
+    expect(drillLoop(statDrill(), state())!.state).toEqual({
+      key: 'practising', label: 'Practice target not hit yet', text: 'Score 70 or more to hit the practice target.',
     })
   })
 
   it('practice target hit: still active, waiting for matches', () => {
-    const loop = drillLoop(statDrill(), state({ practice_passed: true, practice_passed_at: '2026-11-16T10:00:00Z', verified: false }), 10)!
+    const loop = drillLoop(statDrill(), state({ practice_passed: true, practice_passed_at: '2026-11-16T10:00:00Z', verified: false }))!
     expect(loop.state.key).toBe('practice_target_hit')
     expect(loop.state.label).toBe('Practice target hit · waiting for matches')
     expect(loop.next).toMatch(/^Your next ranked games check/)
