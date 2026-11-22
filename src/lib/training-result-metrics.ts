@@ -24,8 +24,9 @@ export interface TrainingComparisonRequest {
  *   4  trainer 1.13.0, every drill (it stamped 3; its runs carry metadata.window), and later trainers on the
  *      drills whose rules have not changed since
  *   5  trainers after 1.13.0 on the drills whose rules changed after it (CHANGED_AFTER_1_13)
+ *   6  trainer 1.15.0 and later on the drills whose rules changed after 1.14.0 (CHANGED_AFTER_1_14)
  */
-export const COMPARED_SCORING_VERSIONS: readonly number[] = [3, 4, 5]
+export const COMPARED_SCORING_VERSIONS: readonly number[] = [3, 4, 5, 6]
 
 /**
  * Gridshot and Sixshot time to hit (and consistency), Tracking's turns below 360 fps, Strafe Aim's lane-edge
@@ -33,19 +34,33 @@ export const COMPARED_SCORING_VERSIONS: readonly number[] = [3, 4, 5]
  */
 const CHANGED_AFTER_1_13: ReadonlySet<string> = new Set(['gridshot', 'sixshot', 'tracking', 'strafe_aim', 'defuse_decision'])
 
+/**
+ * Changed after trainer 1.14.0, from 1.15.0: shots fired on the move stray (Trade Window, Retake Crossfire, Defuse
+ * Decision), Trade Window's spacing, 3D Duel's share of peeks shot, and the Head Height drills' time limit.
+ */
+const CHANGED_AFTER_1_14: ReadonlySet<string> = new Set(['defuse_decision', 'trade_window', 'retake_crossfire', 'duel',
+  'distance_switching', 'head_height', 'angle_clearing'])
+
 function versionParts(version: string): [number, number, number] | null {
   const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim())
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
 }
 
+/** Below 0 when `v` is older than `than`, 0 when it is the same build, above 0 when newer. */
+function compareVersion(v: [number, number, number], than: [number, number, number]): number {
+  return v[0] !== than[0] ? v[0] - than[0] : v[1] !== than[1] ? v[1] - than[1] : v[2] - than[2]
+}
+
 /** The scoring version a trainer build's run of this drill has (scoringVersionOf), from the build's version. */
 export function scoringVersionForTrainer(trainerVersion: string, scenario: string): number {
   const v = versionParts(trainerVersion)
-  const newest = CHANGED_AFTER_1_13.has(scenario) ? 5 : 4
+  const after113 = CHANGED_AFTER_1_13.has(scenario) ? 5 : 4
+  const newest = CHANGED_AFTER_1_14.has(scenario) ? 6 : after113
   if (!v) return newest
-  const [major, minor, patch] = v
-  const vs113 = major !== 1 ? major - 1 : minor !== 13 ? minor - 13 : patch
-  return vs113 < 0 ? 3 : vs113 === 0 ? 4 : newest
+  const vs113 = compareVersion(v, [1, 13, 0])
+  if (vs113 < 0) return 3
+  if (vs113 === 0) return 4
+  return compareVersion(v, [1, 15, 0]) < 0 ? after113 : newest
 }
 
 /**
