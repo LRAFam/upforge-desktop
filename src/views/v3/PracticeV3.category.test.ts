@@ -14,6 +14,7 @@ import { parseDrillRulebook } from '../../lib/drill-rulebook'
 const Stub = { name: 'Stub' }
 const Hero = { name: 'PracticeHeroV3' }
 const Tile = { name: 'PracticeDrillTileV3' }
+const Moments = { name: 'TrainingDrillMoments' }
 const categories = ['all', 'aim', 'reaction', 'precision', 'duel'] as const
 const catalogue = [
   { scenario: 'head_height', label: 'Head Height' },
@@ -47,6 +48,7 @@ function setup(options: { focus?: focusHelpers.Focus | null; query?: Record<stri
       if (id === 'vue-router') return { RouterLink: Stub, useRoute: () => ({ query: options.query ?? {} }), useRouter: () => ({}) }
       if (id.endsWith('/PracticeHeroV3.vue')) return { default: Hero }
       if (id.endsWith('/PracticeDrillTileV3.vue')) return { default: Tile }
+      if (id.endsWith('/TrainingDrillMoments.vue')) return { default: Moments }
       if (id.endsWith('.vue')) return { default: Stub }
       if (id.endsWith('.css')) return {}
       if (id.endsWith('/practice-v3')) return practice
@@ -152,6 +154,15 @@ describe('Practice hero is the same under every drill category', () => {
       for (const category of categories) {
         expect(tiles(view.select(category, 'drills')).sort(), category).toEqual(catalogue.map(d => d.scenario).sort())
       }
+    } finally { view.stop() }
+  })
+
+  it('wires the source viewer only to drill rows with recorded evidence', () => {
+    const base = { title: 'Drill', meta: '', trainerScenario: 'head_height', steps: null, goal: null, fromMatches: true, why: null, stat: null, beta: false }
+    const view = setup({ matchDrills: [{ ...base, id: 7, hasMoments: true }, { ...base, id: 8 }] })
+    try {
+      const sources = findAll(view.select('all'), n => n.type === Moments)
+      expect(sources.map(n => n.props['drill-id'])).toEqual([7])
     } finally { view.stop() }
   })
 })

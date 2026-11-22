@@ -5,6 +5,7 @@
 import { isBetaScenario, type TrainerScenarioKey } from '../../../lib/trainer-scenarios'
 import { coachingStatLine, isMatchStatsDrill, type CoachingDrillSourceFields, type CoachingStatLine } from '../../../lib/coaching-drill-stat'
 import { isCurrentScoringRun } from '../../../lib/training-result-metrics'
+import { drillHasMoments } from '../../../lib/drill-moments'
 
 export type PracticeTab = 'train' | 'drills' | 'analytics' | 'leaderboards' | 'loadouts'
 export type PracticeCategory = 'all' | 'aim' | 'reaction' | 'precision' | 'duel'
@@ -140,10 +141,13 @@ export interface CoachingDrillLike extends CoachingDrillSourceFields {
   practice_mode: string | null
   trainer_scenario?: string | null
   godot_config?: { scenario?: string } | null
+  source_analysis_id?: number | null
+  moment_matches?: number | null
 }
 
 export interface MatchDrillRow {
   id: number
+  hasMoments?: boolean
   /** What the drill fixes, from the coaching drill's own title (difficulty tags removed). */
   title: string
   /** "Utility · Custom game" or "Mechanics · Trainer: Flick". */
@@ -202,6 +206,7 @@ export function matchDrillRows(
       trainerScenario,
       steps: d.instructions?.trim() || null,
       goal: d.success_metric?.trim() || null,
+      ...(drillHasMoments(d) ? { hasMoments: true } : {}),
       ...coachingDrillExtras(d, trainerScenario),
     }
   })

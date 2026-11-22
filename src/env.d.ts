@@ -151,6 +151,8 @@ export interface CoachingDrill {
   } | null
   /** 'vod' or 'match_stats' (coach drills from repeated match-stat problems). Absent on older APIs. */
   source?: import('./lib/coaching-drill-stat').CoachingDrillSource | null
+  source_analysis_id?: number | null
+  moment_matches?: number | null
   /** Coach's reason, quoting the player's own numbers (match_stats drills). */
   why?: string | null
   stat?: import('./lib/coaching-drill-stat').CoachingDrillStat | null
@@ -1814,6 +1816,8 @@ declare global {
         getPlan: (game?: string) => Promise<SharedTrainingPlan | null>
         /** `game` lists only that game's drills (newer API); without it, every game. */
         getCoachingDrills: (game?: string) => Promise<CoachingDrill[]>
+        /** The signed-in player's source review/matches; null when unavailable or signed out. */
+        getDrillMoments: (id: number) => Promise<unknown | null>
         /** POST /api/drills/{id}/dismiss ("Not now"). */
         dismissCoachingDrill: (id: number) => Promise<{ ok: true } | { ok: false; error: string }>
         /** DELETE /api/training/sessions/{id} (owner only, can't be undone). A run already gone counts as removed. */
