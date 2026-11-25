@@ -5,7 +5,7 @@ import UfSkeleton from '../UfSkeleton.vue'
  * history, benchmark and achievements in and owns the "share week" export and the reload after a run is removed.
  * Hero = skill shape from personal bests; then one row per drill with trend, last runs and benchmark inline.
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import UfButton from '../UfButton.vue'
 import PracticeRecentRunsV3 from './PracticeRecentRunsV3.vue'
 import { scenarioIconUrl } from '../../../lib/training-icons'
@@ -13,7 +13,7 @@ import { drillMeasureTrends, measureSparkPath } from '../../../lib/training-resu
 import type { TrainingBenchmark, TrainingHistory } from '../../../env.d.ts'
 import { bestGroup, settingsLabel } from './best-settings'
 import { benchmarkMeta, benchmarkVisible, pct, recentScores, toneColor, trendSummary } from './practice-session-v3'
-import { radarCoverage } from './practice-v3'
+import { activeDrillsFirst, isOldScoringRun, legacyRunsNote, noBestCaption, radarCoverage } from './practice-v3'
 
 export interface AnalyticsRadar {
   scores: number[]
@@ -57,22 +57,35 @@ const emit = defineEmits<{ 'share-week': []; 'run-removed': [id: number]; /** St
 
 const hasHistory = computed(() => !!props.history && !!props.history.total)
 const unlocked = computed(() => props.achievements.filter(a => a.unlocked).length)
-const rows = computed(() => props.drills.map(d => {
+const rows = computed(() => activeDrillsFirst(props.drills.map(d => {
   const stats = props.history?.by_scenario?.[d.key]
   const bench = props.benchmark?.[d.key]
+  // Current and old-scoring runs stay apart: bars show current runs only; old ones get their own note.
+  const sessions = stats?.sessions ?? []
+  const old = sessions.filter(isOldScoringRun)
+  const current = sessions.filter(r => !isOldScoringRun(r))
+  const best = stats?.best_score ?? null
   return {
     ...d,
-    best: stats?.best_score ?? null,
+    best,
+    hasActivity: sessions.length > 0 || best != null,
+    oldNote: legacyRunsNote(old.length),
+    oldBestCaption: best == null && old.length ? noBestCaption(Math.max(...old.map(r => r.score))) : null,
     // The best is from one difficulty and length (the latest run's); say which.
     bestSettings: settingsLabel(bestGroup(stats?.comparison)),
     trend: trendSummary(stats?.trend ?? null),
-    recent: recentScores(stats?.sessions),
+    recent: recentScores(current),
     spark: props.sparkline(d.key),
     bench: benchmarkVisible(bench) ? bench : null,
     // The drill's own measure (placement error, clean stops, moving / still accuracy), last 10 values.
     measures: drillMeasureTrends(d.key, stats?.sessions ?? []),
   }
-}))
+})))
+// Drills with runs first; never-played drills stay behind "Show all drills" once there is any activity.
+const showAllDrills = ref(false)
+const hiddenDrills = computed(() => rows.value.filter(r => !r.hasActivity).length)
+const visibleRows = computed(() =>
+  showAllDrills.value || hiddenDrills.value === rows.value.length ? rows.value : rows.value.filter(r => r.hasActivity))
 const radarLabel = (k: string) => props.drills.find(d => d.key === k)?.label ?? k
 // Which skills the shape is missing, why, and the drill that fills each one.
 const coverage = computed(() => radarCoverage(props.radarKeys, props.history?.by_scenario, radarLabel))
@@ -139,24 +152,25 @@ const labelAnchor = (x: number) => (x < 64 ? 'end' : x > 76 ? 'start' : 'middle'
         </ul>
         <p v-else-if="!hasHistory" class="uf-t2" style="margin: 12px 0 0">No training history yet. Play a few drills to see your progress.</p>
         <ul v-else class="uf-an-rows">
-          <li v-for="r in rows" :key="r.key">
+          <li v-for="r in visibleRows" :key="r.key">
             <div class="uf-an-row">
               <img :src="scenarioIconUrl(r.key)" alt="" class="uf-an-icon">
               <span class="uf-an-name">
                 <span class="uf-t3">{{ r.label }}</span>
                 <span class="uf-t4">{{ r.description }}</span>
+                <span v-if="r.oldNote" class="uf-t4" style="color: var(--uf-muted)">{{ r.oldNote }}</span>
               </span>
               <span class="uf-t4 uf-an-trend" :style="{ color: toneColor(r.trend?.tone) }">{{ r.trend?.text ?? '' }}</span>
               <span class="uf-an-runs" :aria-label="r.recent.length ? `Last ${r.recent.length} scores: ${r.recent.join(', ')}` : 'No runs yet'">
                 <span v-for="(sc, si) in r.recent" :key="si" class="uf-grow" :style="{ height: Math.max(2, pct(sc) * 0.28) + 'px' }" :title="String(sc)" />
-                <span v-if="!r.recent.length" class="uf-t4">No runs</span>
+                <span v-if="!r.recent.length" class="uf-t4">{{ r.oldNote ? 'No current runs' : 'No runs' }}</span>
               </span>
               <svg v-if="r.spark" width="80" height="28" class="uf-an-spark" aria-hidden="true">
                 <path :d="r.spark" fill="none" stroke="var(--uf-muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
               <span class="uf-an-best">
                 <span class="uf-d4" :style="r.best == null ? 'color: var(--uf-faint)' : undefined">{{ r.best ?? '—' }}</span>
-                <span class="uf-t4">{{ r.best != null && r.bestSettings ? `best · ${r.bestSettings}` : 'best' }}</span>
+                <span class="uf-t4">{{ r.best != null && r.bestSettings ? `best · ${r.bestSettings}` : r.oldBestCaption ?? 'best' }}</span>
               </span>
             </div>
             <div v-for="t in r.measures" :key="`m-${t.label}`" class="uf-an-measure">
@@ -179,6 +193,8 @@ const labelAnchor = (x: number) => (x < 64 ? 'end' : x > 76 ? 'start' : 'middle'
             </div>
           </li>
         </ul>
+        <button v-if="!loading && hasHistory && hiddenDrills && hiddenDrills < rows.length" type="button" class="uf-link" style="margin-top: 10px"
+          :aria-expanded="showAllDrills" @click="showAllDrills = !showAllDrills">{{ showAllDrills ? 'Show drills with runs only' : `Show all drills (${hiddenDrills} not played)` }}</button>
       </section>
 
       <!-- Recent runs, each with Remove (confirmed; the parent reloads history after) -->

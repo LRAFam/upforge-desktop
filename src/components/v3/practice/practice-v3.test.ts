@@ -335,3 +335,27 @@ describe('skill shape coverage (UX1124-20)', () => {
     expect(hub).toContain('@start="(k) => launchDrill(drillForScenario(k as ScenarioKey))"')
   })
 })
+
+describe('Results rows: legacy runs and order (UX1124-21)', () => {
+  it('labels old-scoring runs on the row', async () => {
+    const { legacyRunsNote } = await import('./practice-v3')
+    expect(legacyRunsNote(0)).toBeNull()
+    expect(legacyRunsNote(1)).toBe('1 run on old scoring, not counted for best')
+    expect(legacyRunsNote(3)).toBe('3 runs on old scoring, not counted for best')
+  })
+
+  it('puts drills with runs first, keeping catalogue order', async () => {
+    const { activeDrillsFirst } = await import('./practice-v3')
+    const rows = [{ k: 'a', hasActivity: false }, { k: 'b', hasActivity: true }, { k: 'c', hasActivity: false }, { k: 'd', hasActivity: true }]
+    expect(activeDrillsFirst(rows).map(r => r.k)).toEqual(['b', 'd', 'a', 'c'])
+  })
+
+  it('the Results view keeps old runs out of the bars, shows the old best and a Show all drills toggle', () => {
+    const view = readFileSync(join(__dirname, 'PracticeAnalyticsV3.vue'), 'utf8')
+    expect(view).toContain('recent: recentScores(current)')
+    expect(view).toContain('{{ r.oldNote }}')
+    expect(view).toContain('r.oldBestCaption')
+    expect(view).toMatch(/Show all drills \(\$\{hiddenDrills\} not played\)/)
+    expect(view).toContain('v-for="r in visibleRows"')
+  })
+})
