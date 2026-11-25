@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { capacityFacts, capacitySentence, libraryCountLabel } from './cloud-storage-v3'
+import { capacityFacts, capacitySentence, cloudFileDates, libraryCountLabel } from './cloud-storage-v3'
 
 const uncapped = { included_bytes: null, addon_bytes: 0, capacity_bytes: null, used_bytes: 36_100_000_000, reserved_bytes: 0, remaining_bytes: null, unknown_size_files: 0 }
 const capped = { included_bytes: 50_000_000_000, addon_bytes: 0, capacity_bytes: 50_000_000_000, used_bytes: 10_000_000_000, reserved_bytes: 2_000_000_000, remaining_bytes: 38_000_000_000, unknown_size_files: 0 }
@@ -17,5 +17,15 @@ describe('cloud storage copy', () => {
   it('names what the count covers', () => {
     expect(libraryCountLabel(51, 'all', null)).toBe('51 files (recordings and clips) · every game')
     expect(libraryCountLabel(1, 'clip', 'Valorant')).toBe('1 cloud clip · Valorant')
+  })
+})
+
+describe('cloudFileDates', () => {
+  const fmt = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+  it('labels played and uploaded dates', () => {
+    expect(cloudFileDates({ created_at: '2026-11-14T10:00:00Z', played_at: '2026-11-12T20:00:00Z' }, fmt)).toBe('Played 2026-11-12 · Uploaded 2026-11-14')
+  })
+  it('says only the upload date when the played date is unknown', () => {
+    expect(cloudFileDates({ created_at: '2026-11-14T10:00:00Z', played_at: null }, fmt)).toBe('Uploaded 2026-11-14')
   })
 })
