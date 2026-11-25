@@ -3,6 +3,8 @@ import {
   canBuyReports,
   defaultLolPlatform,
   defaultValorantRegion,
+  diskFreeDetail,
+  localBudgetStatus,
   localStorageLine,
   untrackedCountdownLine,
   regionFromTimeZone,
@@ -76,6 +78,27 @@ describe('localStorageLine', () => {
   it('says "on this PC" so it is not confused with cloud recordings', () => {
     expect(localStorageLine(0, '69.9 GB', fmt)).toBe('No recordings saved on this PC · 69.9 GB free')
     expect(localStorageLine(5, null, fmt)).toBe('5 B saved on this PC')
+  })
+})
+
+describe('localBudgetStatus', () => {
+  const GB = 1024 ** 3
+  const fmt = (n: number) => `${Math.round(n / GB)} GB`
+  it('is amber with text once recordings pass the budget', () => {
+    expect(localBudgetStatus(118 * GB, 50 * GB, fmt)).toEqual({ tone: 'warn', over: true, detail: 'Over budget · 118 GB of 50 GB', overBy: '68 GB' })
+  })
+  it('warns when nearly full and is fine below that', () => {
+    expect(localBudgetStatus(46 * GB, 50 * GB, fmt).tone).toBe('warn')
+    expect(localBudgetStatus(10 * GB, 50 * GB, fmt)).toMatchObject({ tone: 'ok', over: false, overBy: null })
+  })
+})
+
+describe('diskFreeDetail', () => {
+  it('names the free-space state in words', () => {
+    expect(diskFreeDetail('18 GB', false, false)).toBe('18 GB free')
+    expect(diskFreeDetail('1 GB', true, false)).toBe('Low · 1 GB free')
+    expect(diskFreeDetail('200 MB', true, true)).toBe('Critical · 200 MB free')
+    expect(diskFreeDetail(null, false, false)).toBe('Free space unknown')
   })
 })
 

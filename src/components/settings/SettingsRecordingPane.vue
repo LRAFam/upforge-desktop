@@ -9,7 +9,7 @@ import SettingsSection from './SettingsSection.vue'
 import SettingsStatusStrip from './SettingsStatusStrip.vue'
 import SettingsToggle from './SettingsToggle.vue'
 import type { StatusItem } from './SettingsStatusStrip.vue'
-import { localStorageLine, untrackedCountdownLine } from '../v3/settings/settings-display'
+import { diskFreeDetail, localBudgetStatus, localStorageLine, untrackedCountdownLine } from '../v3/settings/settings-display'
 
 const router = useRouter()
 
@@ -41,6 +41,7 @@ const {
   storageEstimateLabel,
   storageMessage,
   storageMessageError,
+  storageSoftLimitBytes,
   storageSoftLimitLabel,
   storageSummary,
   storageUploadProgress,
@@ -71,6 +72,8 @@ const clipCaptureOptions = [
   { key: 'objectives', label: 'Objectives', hint: 'Up to 4 per match: Baron, Dragon, Herald and towers (League)' },
 ] as const
 
+const budget = computed(() => localBudgetStatus(storageBytes.value, storageSoftLimitBytes, formatBytes))
+
 const statusItems = computed<StatusItem[]>(() => {
   const items: StatusItem[] = []
   const applied = obsStatus.value?.lastApplied
@@ -92,8 +95,14 @@ const statusItems = computed<StatusItem[]>(() => {
   items.push({
     id: 'disk',
     label: 'Disk',
-    detail: diskSpaceCritical.value ? 'Critical' : diskSpaceLow.value ? 'Low' : uiV3.value ? localStorageLine(storageBytes.value, freeDiskLabel.value, formatBytes) : storageSummary.value,
+    detail: diskFreeDetail(freeDiskLabel.value, diskSpaceLow.value, diskSpaceCritical.value),
     tone: diskSpaceCritical.value ? 'bad' : diskSpaceLow.value ? 'warn' : 'ok',
+  })
+  items.push({
+    id: 'budget',
+    label: 'Budget',
+    detail: budget.value.detail,
+    tone: budget.value.tone,
   })
   return items
 })
@@ -199,8 +208,12 @@ const statusItems = computed<StatusItem[]>(() => {
           </span>
         </div>
         <p class="uf-t3 uf-num" :class="diskSpaceCritical ? 'uf-tone-bad' : diskSpaceLow ? 'uf-tone-warn' : ''">{{ localStorageLine(storageBytes, freeDiskLabel, formatBytes) }}</p>
-        <div class="uf-meter" :class="diskSpaceCritical ? 'is-bad' : diskSpaceLow ? 'is-warn' : ''"><span class="uf-fill" :style="{ width: storageUsagePercent + '%' }" /></div>
-        <div class="uf-usage-head"><span class="uf-t4">Local budget</span><span class="uf-t4 uf-num">{{ storageSoftLimitLabel }}</span></div>
+        <div class="uf-meter" :class="diskSpaceCritical ? 'is-bad' : diskSpaceLow || budget.tone === 'warn' ? 'is-warn' : ''"><span class="uf-fill" :style="{ width: storageUsagePercent + '%' }" /></div>
+        <div class="uf-usage-head"><span class="uf-t4">Local budget</span><span class="uf-t4 uf-num" :class="budget.over ? 'uf-tone-warn' : ''">{{ budget.over ? `Over budget · ${storageSoftLimitLabel}` : storageSoftLimitLabel }}</span></div>
+        <div v-if="budget.over" class="uf-note is-warn" role="status">
+          <p style="margin: 0">Recordings on this PC are {{ budget.overBy }} over the {{ formatBytes(storageSoftLimitBytes) }} budget. Recording keeps going: the budget is a guide, and nothing is deleted just for going over it.</p>
+          <p style="margin: 0.25rem 0 0">To free space, save pending recordings to the cloud and then remove their local copies, remove untracked files, or turn on the auto-delete rules below. Those rules keep favourite clips, and the kill-clip rule removes routine 1K clips only.</p>
+        </div>
         <p v-if="storageEstimateLabel" class="uf-t4">{{ storageEstimateLabel }}</p>
         <p v-if="diskSpaceLow" class="uf-note is-warn">Low disk space can cut recordings short. Upload pending VODs to the cloud, then remove local copies you no longer need.</p>
         <p class="uf-t4">Only files on this PC count here. Recordings saved to the cloud are in Matches and Cloud storage, separate from this. After confirming a cloud upload, you can remove its local copy and keep reviewing from the cloud.</p>

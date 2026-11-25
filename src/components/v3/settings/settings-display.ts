@@ -107,6 +107,35 @@ export function localStorageLine(bytes: number, freeLabel: string | null, format
   return freeLabel ? `${used} · ${freeLabel} free` : used
 }
 
+export type LocalBudgetTone = 'ok' | 'warn'
+
+/**
+ * The local budget is a guide (nothing is deleted or stopped for going over it), so it gets its own
+ * status separate from free disk space: amber with text once recordings pass it, never a green light.
+ */
+export function localBudgetStatus(
+  bytes: number,
+  limitBytes: number,
+  formatBytes: (n: number) => string,
+): { tone: LocalBudgetTone; over: boolean; detail: string; overBy: string | null } {
+  const over = bytes > limitBytes
+  const near = !over && bytes >= limitBytes * 0.9
+  const detail = over
+    ? `Over budget · ${formatBytes(bytes)} of ${formatBytes(limitBytes)}`
+    : near
+      ? `Nearly full · ${formatBytes(bytes)} of ${formatBytes(limitBytes)}`
+      : `${formatBytes(bytes)} of ${formatBytes(limitBytes)}`
+  return { tone: over || near ? 'warn' : 'ok', over, detail, overBy: over ? formatBytes(bytes - limitBytes) : null }
+}
+
+/** Disk status line: free space only, so a full budget and a full disk can't hide behind one light. */
+export function diskFreeDetail(freeLabel: string | null, low: boolean, critical: boolean): string {
+  const free = freeLabel ? `${freeLabel} free` : 'Free space unknown'
+  if (critical) return `Critical · ${free}`
+  if (low) return `Low · ${free}`
+  return free
+}
+
 /** "2 untracked files (1.2 GB) will be deleted in 5 days …" — the visible countdown before auto-removal. */
 export function untrackedCountdownLine(
   b: { orphanScheduledCount: number; orphanScheduledBytes: number; orphanDeleteAt: number | null },
