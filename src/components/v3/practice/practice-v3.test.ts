@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import {
   cleanDrillTitle,
@@ -290,5 +292,101 @@ describe('bars of matches checked against the focus', () => {
     expect(focusBars(focus([[Number.NaN, false]]))).toBeNull()
     expect(focusBars({ baseline: Number.NaN, target: 0.3, checks: [{ value: 0.2, hit: true }] })).toBeNull()
     expect(focusBars(focus([[0, true]], 0, 0))).toBeNull()
+  })
+})
+
+describe('skill shape coverage (UX1124-20)', () => {
+  const label = (k: string) => ({ flick: 'Flick', tracking: 'Tracking', switching: 'Switching' } as Record<string, string>)[k] ?? k
+  const keys = ['flick', 'tracking', 'switching']
+
+  it('counts measured skills and names the drills that fill the rest', async () => {
+    const { radarCoverage } = await import('./practice-v3')
+    const c = radarCoverage(keys, { flick: { best_score: 61 } }, label)
+    expect(c.measured).toBe(1)
+    expect(c.line).toMatch(/^1 of 3 skills measured\..*Play Tracking or Switching to fill more\.$/)
+    expect(c.gaps.map(g => g.key)).toEqual(['tracking', 'switching'])
+    expect(c.gaps[0].reason).toBe('Not played yet')
+  })
+
+  it('says why runs on a skill do not count (old scoring)', async () => {
+    const { radarCoverage } = await import('./practice-v3')
+    const old = { scenario: 'tracking', score: 50, metadata: { scoring_version: 1 } }
+    const c = radarCoverage(keys, { tracking: { best_score: null, sessions: [old, old, old] } }, label)
+    expect(c.gaps.find(g => g.key === 'tracking')?.reason).toBe('3 runs on old scoring, not counted for best')
+  })
+
+  it('tells "no shape drills" apart from "never practised"', async () => {
+    const { radarCoverage } = await import('./practice-v3')
+    expect(radarCoverage(keys, { microflick: { best_score: 59 } }, label).line).toContain('other drills aren’t part of this shape')
+    expect(radarCoverage(keys, {}, label).line).not.toContain('other drills')
+  })
+
+  it('is complete when every skill has a best', async () => {
+    const { radarCoverage } = await import('./practice-v3')
+    const c = radarCoverage(keys, { flick: { best_score: 1 }, tracking: { best_score: 2 }, switching: { best_score: 3 } }, label)
+    expect(c).toEqual({ measured: 3, total: 3, line: null, gaps: [] })
+  })
+
+  it('every missing skill has its own Start button wired to launch that drill', () => {
+    const view = readFileSync(join(__dirname, 'PracticeAnalyticsV3.vue'), 'utf8')
+    expect(view).toContain("emit('start', g.key)")
+    expect(view).not.toContain('start your shape')
+    const hub = readFileSync(join(__dirname, '..', '..', '..', 'views', 'TrainingHubView.vue'), 'utf8')
+    expect(hub).toContain('@start="(k) => launchDrill(drillForScenario(k as ScenarioKey))"')
+  })
+})
+
+describe('Results rows: legacy runs and order (UX1124-21)', () => {
+  it('labels old-scoring runs on the row', async () => {
+    const { legacyRunsNote } = await import('./practice-v3')
+    expect(legacyRunsNote(0)).toBeNull()
+    expect(legacyRunsNote(1)).toBe('1 run on old scoring, not counted for best')
+    expect(legacyRunsNote(3)).toBe('3 runs on old scoring, not counted for best')
+  })
+
+  it('puts drills with runs first, keeping catalogue order', async () => {
+    const { activeDrillsFirst } = await import('./practice-v3')
+    const rows = [{ k: 'a', hasActivity: false }, { k: 'b', hasActivity: true }, { k: 'c', hasActivity: false }, { k: 'd', hasActivity: true }]
+    expect(activeDrillsFirst(rows).map(r => r.k)).toEqual(['b', 'd', 'a', 'c'])
+  })
+
+  it('the Results view keeps old runs out of the bars, shows the old best and a Show all drills toggle', () => {
+    const view = readFileSync(join(__dirname, 'PracticeAnalyticsV3.vue'), 'utf8')
+    expect(view).toContain('recent: recentScores(current)')
+    expect(view).toContain('{{ r.oldNote }}')
+    expect(view).toContain('r.oldBestCaption')
+    expect(view).toMatch(/Show all drills \(\$\{hiddenDrills\} not played\)/)
+    expect(view).toContain('v-for="r in visibleRows"')
+  })
+})
+
+describe('drill link and brief before launch (UX1124-22)', () => {
+  it('links a coaching drill to the differently named trainer drill', async () => {
+    const { trainsLink } = await import('./practice-v3')
+    expect(trainsLink('Head Height Pre-Aim on Dry Peeks', 'Angle Clearing')).toBe('Trains: Head Height Pre-Aim on Dry Peeks · Drill: Angle Clearing')
+    expect(trainsLink('Angle Clearing', 'angle clearing')).toBeNull()
+    expect(trainsLink('Something', null)).toBeNull()
+  })
+
+  it('gives the goal, what to do and what a run records', async () => {
+    const { drillBrief } = await import('./practice-v3')
+    const b = drillBrief('angle_clearing')!
+    expect(b.goal).toBe('Clear cover before taking a headshot.')
+    expect(b.how).toBe('Move sideways until the head clears cover, then click.')
+    expect(b.scored).toContain('records accuracy and')
+    expect(drillBrief('tracking')!.scored).toContain('records time on target.')
+    expect(drillBrief('nope')).toBeNull()
+  })
+
+  it('the launch dialog, the hero and the match rows show it', () => {
+    const dialog = readFileSync(join(__dirname, '..', '..', 'training', 'TrainingManualLaunchDialog.vue'), 'utf8')
+    expect(dialog).toContain('drillBrief(props.request.scenario)')
+    expect(dialog).toMatch(/<dt class="uf-t4">Goal<\/dt>[\s\S]*<dt class="uf-t4">Scoring<\/dt>/)
+    const page = readFileSync(join(__dirname, '..', '..', '..', 'views', 'v3', 'PracticeV3.vue'), 'utf8')
+    expect(page).toContain('trainsLink(nextDrill.value?.title, nextDrillLabel.value)')
+    expect(page).toContain('Practised in the trainer with {{ scenarioLabel(r.trainerScenario) }}')
+    const tile = readFileSync(join(__dirname, 'PracticeDrillTileV3.vue'), 'utf8')
+    expect(tile).toContain(':title="drill.description"')
+    expect(tile).toContain('-webkit-line-clamp: 2')
   })
 })

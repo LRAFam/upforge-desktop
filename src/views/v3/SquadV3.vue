@@ -14,7 +14,9 @@ import { gameMixLabel, pctLabel, presenceLabel, presenceTone, SQUAD_ACTIVITY_PRE
 import type { SquadActivityItem } from '../../components/squad/SquadActivityCards.vue'
 import type { SquadLineupMember, SquadPresenceEntry } from '../../components/squad/SquadLineupRow.vue'
 import type { SquadMemberStat } from '../../components/squad/SquadMemberPanel.vue'
-import { inferActivityGame, squadGameMixCounts, squadPlanBadgeLabel, squadTimeAgo, type SquadCompareRow } from '../../lib/squad-ui'
+import {
+  inferActivityGame, squadCreditsStat, squadGameMixCounts, squadPlanBadgeLabel, squadTimeAgo, squadWinRateText, type SquadCompareRow,
+} from '../../lib/squad-ui'
 import { formatMapLabel, getAgentImage, getMapListViewImage } from '../../lib/valorant'
 import { playerIdentity } from '../../lib/player-identity'
 import PlayerAvatar from '../../components/v3/identity/PlayerAvatar.vue'
@@ -26,6 +28,8 @@ interface Team {
   plan?: string
   credits_remaining?: number
   credits_total?: number
+  /** Last refill of the shared pool (newer API). */
+  credits_reset_at?: string | null
   invite_code?: string
   members: SquadLineupMember[]
 }
@@ -115,7 +119,9 @@ const stats = computed(() => {
     items.push({ value: `${props.weekRecord.wins}–${props.weekRecord.losses}`, caption: 'Week record', sub: 'Wins–losses' })
   }
   if (t.credits_remaining != null && t.credits_total) {
-    items.push({ value: `${t.credits_remaining}/${t.credits_total}`, caption: 'Shared credits', sub: 'Squad pool' })
+    // "45 of 45 left · 0 used · refilled 3 Nov": never a bare 0/45 that could mean used or left.
+    const c = squadCreditsStat(t.credits_remaining, t.credits_total, t.credits_reset_at)
+    items.push({ value: c.value, caption: 'Shared credits', sub: c.sub })
   }
   return items
 })
@@ -250,7 +256,7 @@ function kda(a: SquadActivityItem): string | null {
               <div v-if="selectedMemberId != null && selectedMemberStats" class="uf-member-more">
                 <div v-if="selectedMemberStats.has_stats !== false" class="uf-member-detail">
                   <span><b class="uf-d4">{{ selectedMemberStats.current_rank || '—' }}</b><span class="uf-t4">Rank</span></span>
-                  <span><b class="uf-d4">{{ pctLabel(selectedMemberStats.win_rate) ?? '—' }}</b><span class="uf-t4">Win rate</span></span>
+                  <span><b v-if="pctLabel(selectedMemberStats.win_rate)" class="uf-d4">{{ pctLabel(selectedMemberStats.win_rate) }}</b><b v-else class="uf-t4">Not calculated yet</b><span class="uf-t4">Win rate</span></span>
                   <span><b class="uf-d4">{{ selectedMemberStats.kd_ratio != null ? Number(selectedMemberStats.kd_ratio).toFixed(2) : '—' }}</b><span class="uf-t4">K/D</span></span>
                   <span><b class="uf-d4">{{ pctLabel(selectedMemberStats.headshot_percentage) ?? '—' }}</b><span class="uf-t4">Headshots</span></span>
                 </div>
@@ -269,7 +275,8 @@ function kda(a: SquadActivityItem): string | null {
                 <span class="uf-cmp-who"><PlayerAvatar :identity="memberIdentity(r.userId, r.name)" :size="24" /><span class="uf-t3">{{ r.name }}</span></span>
                 <span class="uf-cmp-bar"><span class="uf-fill" :style="{ width: `${(r.analysesCount / maxAnalyses) * 100}%` }" /></span>
                 <span class="uf-t4 uf-num">{{ plural(r.analysesCount, 'analysis', 'analyses') }}</span>
-                <b class="uf-d4">{{ pctLabel(r.winRate) ?? '—' }}</b>
+                <b v-if="!squadWinRateText(r.winRate, r.hasStats).missing" class="uf-d4">{{ pctLabel(r.winRate) }}</b>
+                <span v-else class="uf-t4">{{ squadWinRateText(r.winRate, r.hasStats).text }}</span>
               </div>
             </section>
 
@@ -310,9 +317,10 @@ function kda(a: SquadActivityItem): string | null {
                 </form>
                 <p class="uf-t4">Invites finish on upforge.gg.</p>
               </template>
+              <p v-if="pendingInvites.length" class="uf-t4" style="margin: 10px 0 0">Invites you started. They go once that player joins.</p>
               <div v-for="p in pendingInvites" :key="p.value" class="uf-pending">
                 <span class="uf-t3">{{ p.value }}</span>
-                <span class="uf-t4">{{ squadTimeAgo(new Date(p.createdAt).toISOString()) }}</span>
+                <span class="uf-t4">opened on upforge.gg {{ squadTimeAgo(new Date(p.createdAt).toISOString()) }}</span>
                 <button type="button" class="uf-icon-btn" :aria-label="`Remove invite for ${p.value}`" @click="emit('removePending', p.value)">
                   <UfIcon name="close" :size="14" />
                 </button>

@@ -104,7 +104,9 @@ async function confirmRepair(): Promise<void> {
 }
 
 function previewOnboarding(): void {
-  void router.push({ path: '/onboarding', query: { preview: '1' } })
+  // `from`: leaving the preview comes back here (Settings → Advanced), not to Coach. The Settings URL
+  // doesn't follow the category picked, so name this pane.
+  void router.push({ path: '/onboarding', query: { preview: '1', from: '/settings?tab=advanced' } })
 }
 </script>
 

@@ -7,14 +7,14 @@ import { uiV3 } from '../../lib/ui-v3'
 import UfButton from '../v3/UfButton.vue'
 import CrosshairPreview from '../v3/practice/CrosshairPreview.vue'
 import { getMapImage } from '../../lib/valorant'
-import { trainerAimFacts } from '../../lib/trainer-games'
+import { EDPI_NOTE, trainerAimFacts } from '../../lib/trainer-games'
 
 // Real map art behind the crosshair so colour and outline contrast read like in game.
 const previewBackdrop = getMapImage('Ascent')
 
 const router = useRouter()
 const crosshair = ref<CrosshairSettings | null>(null)
-/** Game, sensitivity and FOV the trainer launches with (it never reads DPI). */
+/** Game, sensitivity, DPI, eDPI and FOV, the same values as Settings › Trainer. */
 const aimFacts = ref<Array<{ label: string; value: string }>>([])
 
 onMounted(async () => {
@@ -38,12 +38,15 @@ function openSettings() {
     <p class="uf-t2" style="margin: 0">The crosshair and sensitivity the trainer uses when you launch a drill.</p>
     <div class="uf-lo-row">
       <CrosshairPreview v-if="crosshair" :settings="crosshair" :scale="2" :size="200" :background="previewBackdrop" />
-      <dl class="uf-lo-facts">
-        <div v-for="fact in aimFacts" :key="fact.label"><dt class="uf-t4">{{ fact.label }}</dt><dd class="uf-d4">{{ fact.value }}</dd></div>
-        <div><dt class="uf-t4">Crosshair</dt><dd class="uf-t3">Synced to trainer · shown at 2×</dd></div>
-      </dl>
+      <div class="uf-lo-side">
+        <dl class="uf-lo-facts">
+          <div v-for="fact in aimFacts" :key="fact.label"><dt class="uf-t4">{{ fact.label }}</dt><dd class="uf-d4 uf-num">{{ fact.value }}</dd></div>
+        </dl>
+        <p v-if="aimFacts.some(f => f.label === 'eDPI')" class="uf-t4" style="margin: 0; line-height: 1.5">{{ EDPI_NOTE }}</p>
+        <p class="uf-t4" style="margin: 0">Crosshair: synced to the trainer, shown at 2×.</p>
+        <UfButton variant="secondary" icon="settings" @click="openSettings">Edit in Settings</UfButton>
+      </div>
     </div>
-    <UfButton variant="secondary" icon="settings" @click="openSettings">Edit in Settings</UfButton>
     <div class="uf-hair" style="align-self: stretch" />
     <p class="uf-t4" style="margin: 0">Saving more than one loadout isn’t available yet.</p>
   </section>
@@ -98,8 +101,10 @@ function openSettings() {
 
 <style scoped>
 .uf-lo { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; padding: 14px 12px 32px; max-width: 560px; }
-.uf-lo-row { display: flex; align-items: center; gap: 28px; }
-.uf-lo-facts { display: flex; flex-direction: column; gap: 18px; margin: 0; }
+.uf-lo-row { display: flex; align-items: flex-start; gap: 28px; flex-wrap: wrap; }
+.uf-lo-side { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; flex: 1; min-width: 240px; }
+/* Same column width for every value so the numbers line up. */
+.uf-lo-facts { display: grid; grid-template-columns: repeat(3, minmax(88px, 1fr)); gap: 18px 24px; margin: 0; align-self: stretch; }
 .uf-lo-facts > div { display: flex; flex-direction: column-reverse; gap: 4px; }
 .uf-lo-facts dd { margin: 0; }
 </style>

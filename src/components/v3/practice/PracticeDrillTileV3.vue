@@ -72,7 +72,7 @@ const state = computed(() => {
         <span v-if="stateText == null && drill.personalBest != null" class="uf-d4" style="color: var(--uf-gold)"><span aria-hidden="true">★ </span>{{ Math.round(drill.personalBest) }}</span>
       </span>
       <span class="uf-tile-line">
-        <span class="uf-t4 uf-tile-what">{{ drill.description }}</span>
+        <span class="uf-t4 uf-tile-what" :title="drill.description">{{ drill.description }}</span>
         <span v-if="running" class="uf-t4 uf-live" style="color: var(--uf-red)">Running</span>
         <span v-else-if="state" class="uf-t4 uf-tile-state" :style="drill.completed || stateText === 'Done today' ? 'color: var(--uf-win)' : undefined">{{ state }}</span>
       </span>
@@ -95,6 +95,8 @@ const state = computed(() => {
 .uf-tile-go { position: absolute; right: 10px; bottom: 10px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: var(--uf-red); color: #fff; opacity: 0; transition: opacity 140ms ease-out; }
 .uf-tile:hover:not(:disabled) .uf-tile-go, .uf-tile:focus-visible .uf-tile-go { opacity: 1; }
 .uf-tile-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
-.uf-tile-name, .uf-tile-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uf-tile-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Two lines before it cuts; the full text is in the tooltip and in the launch dialog. */
+.uf-tile-what { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .uf-tile-state { flex: none; white-space: nowrap; }
 </style>

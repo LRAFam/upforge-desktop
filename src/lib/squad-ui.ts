@@ -127,6 +127,48 @@ export interface SquadCompareRow {
   winRate: number | null
   kdRatio: number | null
   analysesCount: number
+  /** The member has a Valorant stats snapshot (API `has_stats`); false = nothing synced yet. */
+  hasStats?: boolean
+}
+
+/** Win rate, or why there isn't one: no synced Valorant stats, or stats without a win rate yet. */
+export function squadWinRateText(winRate: number | null | undefined, hasStats: boolean | undefined): { text: string; missing: boolean } {
+  if (winRate != null && Number.isFinite(winRate)) return { text: `${Math.round(winRate)}%`, missing: false }
+  return { text: hasStats === false ? 'No Valorant stats' : 'Not calculated yet', missing: true }
+}
+
+/**
+ * Shared credits in words: "45 of 45 left" and "0 used · refilled 3 Nov". The pool refills each
+ * billing month (API `credits_reset_at` is the last refill); older APIs don't send it.
+ */
+export function squadCreditsStat(remaining: number, total: number, resetAt?: string | null): { value: string; sub: string } {
+  const used = Math.max(0, total - remaining)
+  const refilled = resetAt && Number.isFinite(Date.parse(resetAt))
+    ? ` · refilled ${new Date(resetAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+    : ' this billing month'
+  return { value: `${remaining} of ${total} left`, sub: `${used} used${refilled}` }
+}
+
+/** Invites the app remembers it opened on upforge.gg are dropped after this many days. */
+export const PENDING_INVITE_MAX_AGE_DAYS = 30
+
+/**
+ * The app only remembers invites it opened on upforge.gg; it can't see whether they were accepted.
+ * Drop one once that person is a member (name, Riot name or Riot ID match) or it is over 30 days old.
+ */
+export function reconcilePendingInvites<T extends { value: string; createdAt: number }>(
+  invites: readonly T[],
+  members: ReadonlyArray<{ name?: string | null; riot_name?: string | null; riot_tag?: string | null }>,
+  now: number = Date.now(),
+): T[] {
+  const keys = new Set<string>()
+  for (const m of members) {
+    for (const k of [m.name, m.riot_name, m.riot_name && m.riot_tag ? `${m.riot_name}#${m.riot_tag}` : null]) {
+      if (k?.trim()) keys.add(k.trim().toLowerCase())
+    }
+  }
+  const cutoff = now - PENDING_INVITE_MAX_AGE_DAYS * 86_400_000
+  return invites.filter(i => i.createdAt >= cutoff && !keys.has(i.value.trim().toLowerCase()))
 }
 
 export function coerceNullableNumber(value: unknown): number | null {
@@ -141,7 +183,7 @@ export function formatDecimalStat(value: unknown, decimals = 2): string {
 }
 
 export function buildSquadCompareRows(
-  stats: Array<{ user_id: number; name: string; win_rate?: number | null; kd_ratio?: number | null }>,
+  stats: Array<{ user_id: number; name: string; win_rate?: number | null; kd_ratio?: number | null; has_stats?: boolean }>,
   leaderboard: Array<{ user_id: number; name: string; analyses_count?: number }>,
 ): SquadCompareRow[] {
   const lbMap = Object.fromEntries(leaderboard.map(r => [r.user_id, r.analyses_count ?? 0]))
@@ -154,6 +196,7 @@ export function buildSquadCompareRows(
       winRate: coerceNullableNumber(s.win_rate),
       kdRatio: coerceNullableNumber(s.kd_ratio),
       analysesCount: lbMap[s.user_id] ?? 0,
+      ...(s.has_stats !== undefined ? { hasStats: s.has_stats } : {}),
     })
   }
   for (const lb of leaderboard) {
@@ -164,6 +207,7 @@ export function buildSquadCompareRows(
         winRate: null,
         kdRatio: null,
         analysesCount: lb.analyses_count ?? 0,
+        hasStats: false,
       })
     }
   }

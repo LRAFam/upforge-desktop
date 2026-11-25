@@ -476,6 +476,12 @@ export function setupAuthHandlers(
     return auth.updateCoachRosterSettings(payload)
   })
 
+  ipcMain.handle('coach:get-roster-student', async (_e, payload: { studentId?: unknown }) => {
+    const id = Number(payload?.studentId)
+    if (!auth.getToken() || !Number.isSafeInteger(id) || id <= 0) return null
+    return auth.fetchCoachRosterStudent(id)
+  })
+
   ipcMain.handle('coach:get-review-requests', async () => {
     if (!auth.getToken()) return []
     return auth.fetchCoachReviewRequests()

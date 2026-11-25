@@ -46,14 +46,26 @@ export function convertTrainerSensitivity(sensitivity: number, from: TrainerGame
   return Math.round((sensitivity * TRAINER_GAME_YAW[from]) / TRAINER_GAME_YAW[to] * 1000) / 1000
 }
 
-/** What Practice › Setup shows: the game, sensitivity and FOV the trainer launches with (it never reads DPI). */
-export function trainerAimFacts(mouse: { game?: unknown; sensitivity?: unknown; fov?: unknown } | null | undefined): Array<{ label: string; value: string }> {
+/**
+ * What Practice › Setup shows: game, sensitivity, mouse DPI, eDPI (DPI × sensitivity) and FOV, the same values
+ * as Settings › Trainer. The trainer reads mouse movement directly and never uses DPI; DPI is shown because it
+ * sets your effective speed (eDPI) in the game and the trainer alike.
+ */
+export function trainerAimFacts(mouse: { game?: unknown; sensitivity?: unknown; fov?: unknown; dpi?: unknown } | null | undefined): Array<{ label: string; value: string }> {
   if (!mouse || !isTrainerGame(mouse.game)) return []
+  const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
   const facts = [{ label: 'Game', value: TRAINER_GAME_LABELS[mouse.game] }]
-  if (typeof mouse.sensitivity === 'number' && Number.isFinite(mouse.sensitivity)) facts.push({ label: 'Sensitivity', value: String(mouse.sensitivity) })
-  if (typeof mouse.fov === 'number' && Number.isFinite(mouse.fov)) facts.push({ label: 'FOV', value: String(mouse.fov) })
+  if (num(mouse.sensitivity)) facts.push({ label: 'Sensitivity', value: String(mouse.sensitivity) })
+  if (num(mouse.dpi) && mouse.dpi > 0) {
+    facts.push({ label: 'Mouse DPI', value: String(Math.round(mouse.dpi)) })
+    if (num(mouse.sensitivity)) facts.push({ label: 'eDPI', value: String(Math.round(mouse.dpi * mouse.sensitivity)) })
+  }
+  if (num(mouse.fov)) facts.push({ label: 'FOV', value: `${mouse.fov}°` })
   return facts
 }
+
+/** One line under the Setup facts: what eDPI is and how a change moves it. */
+export const EDPI_NOTE = 'eDPI = mouse DPI × sensitivity, your effective speed. Raising either one raises eDPI. The trainer reads your mouse directly, so it feels the same as the game at any DPI.'
 
 export interface TrainerGameAim {
   sensitivity: number

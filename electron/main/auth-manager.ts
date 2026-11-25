@@ -1393,6 +1393,19 @@ export class AuthManager {
     }
   }
 
+  /** One student on the coach's roster: allowance this month and their reviews with this coach. Null when not found. */
+  async fetchCoachRosterStudent(studentId: number): Promise<Record<string, unknown> | null> {
+    if (!this._token || !Number.isSafeInteger(studentId) || studentId <= 0) return null
+    try {
+      const res = await this._api.get(`/api/coach/roster/students/${studentId}`)
+      return res.data?.success ? (res.data as Record<string, unknown>) : null
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 404 || status === 403) return null
+      throw err
+    }
+  }
+
   async fetchCoachReviewRequests(): Promise<unknown[]> {
     if (!this._token) return []
     try {

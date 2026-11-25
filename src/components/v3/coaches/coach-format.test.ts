@@ -27,11 +27,12 @@ describe('coach-format', () => {
   })
 
   it('summarises Students in plain words (roster-wide cap apart from the per-student allowance)', () => {
-    expect(studentsSummary(2, 'free', 9.99, { roster_reviews_this_month: 0, roster_reviews_limit: 8 })).toBe('2 students · free plan · 0 of 8 reviews used this month')
-    expect(studentsSummary(1, 'paid', 9.99, { roster_reviews_this_month: 5, roster_reviews_limit: null })).toBe('1 student · $9.99 a month plan · 5 reviews this month')
-    expect(studentsSummary(0, 'free', 0, null)).toBe('0 students · free plan · 0 reviews this month')
-    expect(settingsSummaryText('free', 9.99, 3, false)).toBe('Student plan: free · 3 reviews per student a month')
-    expect(settingsSummaryText('paid', 9.99, 1, true)).toBe('Student plan: $9.99 a month · 1 review per student a month · needs setup')
+    const nov = new Date(2026, 10, 24)
+    expect(studentsSummary(2, 'free', 9.99, { roster_reviews_this_month: 0, roster_reviews_limit: 8 }, nov)).toBe('2 students · free plan · Coach total: 0 of 8 reviews this month · resets 1 Dec')
+    expect(studentsSummary(1, 'paid', 9.99, { roster_reviews_this_month: 5, roster_reviews_limit: null }, nov)).toBe('1 student · $9.99 a month plan · 5 reviews this month · resets 1 Dec')
+    expect(studentsSummary(0, 'free', 0, null, new Date(2026, 11, 31))).toBe('0 students · free plan · 0 reviews this month · resets 1 Jan')
+    expect(settingsSummaryText('free', 9.99, 3, false)).toBe('Student plan: free · Per student: up to 3 reviews a month')
+    expect(settingsSummaryText('paid', 9.99, 1, true)).toBe('Student plan: $9.99 a month · Per student: up to 1 review a month · needs setup')
     expect(studentsHeadline(0)).toBe('Queue is clear')
     expect(studentsHeadline(1)).toBe('1 match needs your notes')
     expect(studentsHeadline(3)).toBe('3 matches need your notes')
@@ -76,5 +77,63 @@ describe('coach-format', () => {
 
   it('builds the member line without repeating open reviews', () => {
     expect(rosterMemberLine({ games_analysed: 15, membership_tier: 'free', last_active_at: null })).toBe('15 analysed · Free plan')
+  })
+})
+
+describe('open coach requests: states, last activity, overdue (UX1124-34)', () => {
+  it('tells sent, reviewing and overdue apart', async () => {
+    const { openReviewStatus } = await import('./coach-format')
+    expect(openReviewStatus({ status: 'pending' }, 'astar')).toEqual({ text: 'Sent · astar hasn’t started', overdue: false })
+    expect(openReviewStatus({ status: 'in_progress' }, 'astar')).toEqual({ text: 'astar is reviewing', overdue: false })
+    expect(openReviewStatus({ status: 'in_progress', overdue: true }, 'astar')).toEqual({ text: 'Overdue', overdue: true })
+  })
+
+  it('shows the latest activity date when it differs from the send date', async () => {
+    const { openReviewSubtitle } = await import('./coach-format')
+    expect(openReviewSubtitle({ status: 'pending', requested_at: '2026-07-03T10:00:00Z', last_activity_at: '2026-07-05T10:00:00Z' }, '4–9'))
+      .toBe('4–9 · sent 3 Jul · last activity 5 Jul')
+    expect(openReviewSubtitle({ status: 'pending', requested_at: '2026-07-03T10:00:00Z', last_activity_at: '2026-07-03T12:00:00Z' }, null))
+      .toBe('sent 3 Jul')
+  })
+
+  it('says an overdue request no longer blocks and what to do', async () => {
+    const { overdueLine } = await import('./coach-format')
+    expect(overdueLine('astar', 14)).toBe('No activity from astar for over 14 days. This request no longer stops you sending astar another match. Message them from their page, or contact support to cancel it.')
+    expect(overdueLine('astar', undefined)).toContain('for over a while')
+  })
+
+  it('Coaches uses them and the match row names the rating as the analysis rating', async () => {
+    const { readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const view = readFileSync(join(__dirname, '..', '..', '..', 'views', 'v3', 'RostersV3.vue'), 'utf8')
+    expect(view).toContain('openReviewStatus(r, coachName(r)).text')
+    expect(view).toContain('overdueLine(coachName(r), r.overdue_after_days)')
+    const row = readFileSync(join(__dirname, 'RosterMatchRowV3.vue'), 'utf8')
+    expect(row).not.toContain("'Coach rating'")
+    expect(row).toContain('Not a score from your coach.')
+  })
+})
+
+describe('Students: open a student, allowances with scope and reset (UX1124-35)', () => {
+  it('labels the per-student allowance with its reset date', async () => {
+    const { studentAllowanceLine, studentReviewStatus, nextMonthStart } = await import('./coach-format')
+    expect(studentAllowanceLine(1, 3, '2026-12-01T00:00:00Z')).toBe('Per student: 1 of 3 used this month · resets 1 Dec')
+    expect(studentAllowanceLine(0, 3, null)).toBe('Per student: 0 of 3 used this month')
+    expect(studentReviewStatus('completed')).toBe('Notes sent')
+    expect(studentReviewStatus('pending')).toBe('Waiting for you')
+    expect(studentReviewStatus('in_progress')).toBe('You started notes')
+    expect(nextMonthStart(new Date(2026, 11, 15)).getMonth()).toBe(0)
+  })
+
+  it('each student row opens their matches sent to you', async () => {
+    const { readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const roster = readFileSync(join(__dirname, 'CoachRosterV3.vue'), 'utf8')
+    expect(roster).toMatch(/<button type="button" class="uf-cr-member" :aria-expanded=/)
+    expect(roster).toContain('<StudentDetailV3 v-if="openStudentId === entry.student.id" :student-id="entry.student.id" @open-review="openAnalysis" />')
+    const detail = readFileSync(join(__dirname, 'StudentDetailV3.vue'), 'utf8')
+    expect(detail).toContain('window.api.coach.getRosterStudent?.(props.studentId)')
+    const ipc = readFileSync(join(__dirname, '..', '..', '..', '..', 'electron', 'main', 'auth-manager.ts'), 'utf8')
+    expect(ipc).toContain('`/api/coach/roster/students/${studentId}`')
   })
 })

@@ -6,11 +6,12 @@
 import { computed } from 'vue'
 import heroArt from '../../../assets/hero-agents.webp'
 import UfIcon from '../UfIcon.vue'
-import { railSteps, stepNumber } from './onboarding-steps'
+import { alreadyDoneNote, railSteps, stepNumber } from './onboarding-steps'
 import './onboarding-v3.css'
 
 const props = defineProps<{ step: number; labels: readonly string[]; initializing: boolean; skipped?: readonly number[] }>()
 const steps = computed(() => railSteps(props.labels, props.step, props.initializing, props.skipped ?? []))
+const doneNote = computed(() => alreadyDoneNote(steps.value))
 const current = computed(() => steps.value.find(s => s.state === 'current') ?? null)
 </script>
 
@@ -22,6 +23,7 @@ const current = computed(() => steps.value.find(s => s.state === 'current') ?? n
     <div class="ob-rail-compact">
       <span class="uf-label" style="color: var(--uf-red)">UpForge · setup</span>
       <span class="uf-d4">{{ current ? `${stepNumber(current.pos)} / ${stepNumber(steps.length)}` : 'Getting ready' }}</span>
+      <span v-if="current && doneNote" class="uf-t4">{{ doneNote }}</span>
       <div class="ob-rail-segs" aria-hidden="true">
         <span v-for="s in steps" :key="s.n" :class="`is-${s.state}`" />
       </div>
@@ -39,7 +41,7 @@ const current = computed(() => steps.value.find(s => s.state === 'current') ?? n
             <template v-else>{{ stepNumber(s.pos) }}</template>
           </span>
           <span class="uf-t3 ob-step-label">{{ s.label }}</span>
-          <span v-if="s.state === 'done'" class="uf-t4">Done</span>
+          <span v-if="s.state === 'done'" class="uf-t4">{{ s.alreadyDone ? 'Already done' : 'Done' }}</span>
         </li>
       </ol>
       <p class="uf-t4">Recording can be finished later in Settings → Recording.</p>
