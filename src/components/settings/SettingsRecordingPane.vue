@@ -9,7 +9,7 @@ import SettingsSection from './SettingsSection.vue'
 import SettingsStatusStrip from './SettingsStatusStrip.vue'
 import SettingsToggle from './SettingsToggle.vue'
 import type { StatusItem } from './SettingsStatusStrip.vue'
-import { diskFreeDetail, localBudgetStatus, localStorageLine, obsVersionLabel, untrackedCountdownLine } from '../v3/settings/settings-display'
+import { diskFreeDetail, localBudgetStatus, localStorageLine, obsVersionLabel, shortcutKeyParts, untrackedCountdownLine } from '../v3/settings/settings-display'
 
 const router = useRouter()
 
@@ -51,7 +51,12 @@ const {
   toggleMode,
   uploadPendingToCloud,
   cs2SteamNameField,
+  hotkeys,
+  isMac,
 } = useSettings()
+
+/** The clip hotkey as this OS names it (Ctrl on Windows, ⌘ on Mac), from the saved binding. */
+const clipHotkeyLabel = computed(() => shortcutKeyParts(hotkeys['save-clip'] || 'F9', isMac.value).join(' '))
 
 const modeHint = computed(() => {
   if (settings.primaryGame === 'lol') {
@@ -236,7 +241,7 @@ const statusItems = computed<StatusItem[]>(() => {
       </div>
 
       <div class="uf-field">
-        <div class="uf-set-row-text"><span class="uf-t3">Highlight clips to capture</span><span class="uf-t4">Choose which moments UpForge auto-saves after each match. Manual hotkey clips ({{ '\u2318' }}/F9) are always saved.</span></div>
+        <div class="uf-set-row-text"><span class="uf-t3">Highlight clips to capture</span><span class="uf-t4">Choose which moments UpForge auto-saves after each match. Manual hotkey clips ({{ clipHotkeyLabel }}) are always saved.</span></div>
         <p v-if="settings.primaryGame === 'deadlock'" class="uf-t4" style="margin: 0">Deadlock doesn't share kills while you play, so it gets no automatic kill clips yet. Use the hotkey to save a moment.</p>
         <div class="uf-set-sec-body is-rows uf-rows-top">
           <SettingsRow v-for="opt in clipCaptureOptions" :key="opt.key" :label="opt.label" :hint="opt.hint">
@@ -245,10 +250,10 @@ const statusItems = computed<StatusItem[]>(() => {
         </div>
       </div>
 
-      <SettingsRow label="Auto-delete local clips" hint="Local-only clips older than this are deleted on startup. Favorites are kept.">
+      <SettingsRow label="Auto-delete local clips" hint="Local-only clips older than this are deleted on startup. Favourites are kept.">
         <select v-model.number="settings.clipRetentionDays" aria-label="Auto-delete local clips" class="uf-select is-inline" @change="debouncedSave"><option :value="0">Never (keep all clips)</option><option :value="7">After 7 days</option><option :value="14">After 14 days</option><option :value="30">After 30 days</option><option :value="60">After 60 days</option></select>
       </SettingsRow>
-      <SettingsRow label="Auto-delete routine kill clips" hint="Removes old 1K kill clips only. Clutches, aces, multikills, bookmarks, and favorites are kept.">
+      <SettingsRow label="Auto-delete routine kill clips" hint="Removes old 1K kill clips only. Clutches, aces, multikills, bookmarks and favourites are kept.">
         <select v-model.number="settings.clipKillRetentionDays" aria-label="Auto-delete routine kill clips" class="uf-select is-inline" @change="debouncedSave"><option :value="0">Never</option><option :value="7">After 7 days</option><option :value="14">After 14 days</option><option :value="30">After 30 days</option></select>
       </SettingsRow>
       <SettingsRow label="Auto-delete local match recordings" hint="Deletes pending local VODs and untracked files in your save folder on startup. Cloud-backed recordings are not affected.">
@@ -515,7 +520,7 @@ const statusItems = computed<StatusItem[]>(() => {
 
       <div>
         <label class="mb-1 block text-xs text-gray-400">Highlight clips to capture</label>
-        <p class="mb-2 text-[11px] text-gray-600">Choose which moments UpForge auto-saves after each match. Manual hotkey clips ({{ '\u2318' }}/F9) are always saved.</p>
+        <p class="mb-2 text-[11px] text-gray-600">Choose which moments UpForge auto-saves after each match. Manual hotkey clips ({{ clipHotkeyLabel }}) are always saved.</p>
         <div class="space-y-1.5">
           <button
             v-for="opt in clipCaptureOptions"
@@ -542,7 +547,7 @@ const statusItems = computed<StatusItem[]>(() => {
           <option :value="30">After 30 days</option>
           <option :value="60">After 60 days</option>
         </select>
-        <p class="mt-1 text-xs text-gray-600">Local-only clips older than this are deleted on startup. Favorites are kept.</p>
+        <p class="mt-1 text-xs text-gray-600">Local-only clips older than this are deleted on startup. Favourites are kept.</p>
       </div>
 
       <div>
@@ -553,7 +558,7 @@ const statusItems = computed<StatusItem[]>(() => {
           <option :value="14">After 14 days</option>
           <option :value="30">After 30 days</option>
         </select>
-        <p class="mt-1 text-xs text-gray-600">Removes old 1K kill clips only. Clutches, aces, multikills, bookmarks, and favorites are kept.</p>
+        <p class="mt-1 text-xs text-gray-600">Removes old 1K kill clips only. Clutches, aces, multikills, bookmarks and favourites are kept.</p>
       </div>
 
       <div>

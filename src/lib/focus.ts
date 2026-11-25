@@ -290,7 +290,11 @@ export function focusChangeLine(done: Focus, next: Focus | null | undefined): st
   return `New attempt, new numbers: ${parts}. They're worked out again from your recent ranked matches.`
 }
 
-const ordinal = (n: number) => (['', 'First', 'Second', 'Third', 'Fourth', 'Fifth'][n] ?? `Try ${n}:`)
+/** "Second attempt" … "Fifth attempt", then "Attempt 10" (never a half-sentence like "Try 10: attempt"). */
+const attemptLabel = (n: number) => {
+  const word = ['', 'First', 'Second', 'Third', 'Fourth', 'Fifth'][n]
+  return word ? `${word} attempt` : `Attempt ${n}`
+}
 
 /**
  * The moment a focus ends: what the player did and what's next.
@@ -328,7 +332,7 @@ export function focusResult(done: Focus | null | undefined, next: Focus | null |
     title: `Not yet: ${label}`,
     body: `On target in ${p.hits} of ${p.games_played} games (goal ${goal}). ${moved}.`,
     next: sameNext
-      ? `It stays your focus. ${ordinal(attempt!)} attempt — practise it before you queue.`
+      ? `It stays your focus. ${attemptLabel(attempt!)} — practise it before you queue.`
       : otherNext ? `New focus: ${nextTitle}.` : 'Your next focus comes from your next ranked match.',
     attemptLine: focusAttemptLine(done),
     changeLine: focusChangeLine(done, next),

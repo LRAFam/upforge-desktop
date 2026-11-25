@@ -1,5 +1,6 @@
 import type { ClipRecord } from '../env.d.ts'
 import { topMomentClips } from './clip-priority'
+import { plural } from './plural'
 
 export type ClipTrigger = ClipRecord['trigger']
 
@@ -14,13 +15,14 @@ export interface ClipMatchGroup {
   triggerCounts: Partial<Record<ClipTrigger, number>>
 }
 
-const TRIGGER_LABELS: Partial<Record<ClipTrigger, string>> = {
-  kill: 'kill',
-  multikill: 'multi',
-  ace: 'ace',
-  clutch: 'clutch',
-  hotkey: 'bookmark',
-  manual: 'manual',
+/** Singular and plural for each trigger, so counts never read "3 clutchs". */
+const TRIGGER_LABELS: Partial<Record<ClipTrigger, [string, string]>> = {
+  kill: ['kill', 'kills'],
+  multikill: ['multi-kill', 'multi-kills'],
+  ace: ['ace', 'aces'],
+  clutch: ['clutch', 'clutches'],
+  hotkey: ['bookmark', 'bookmarks'],
+  manual: ['manual clip', 'manual clips'],
 }
 
 function dayKey(ms: number): string {
@@ -77,8 +79,8 @@ export function formatTriggerBreakdown(counts: Partial<Record<ClipTrigger, numbe
   for (const trigger of order) {
     const n = counts[trigger]
     if (!n) continue
-    const label = TRIGGER_LABELS[trigger] ?? trigger
-    parts.push(`${n} ${label}${n !== 1 && label !== 'multi' ? 's' : ''}`)
+    const [one, many] = TRIGGER_LABELS[trigger] ?? [trigger, `${trigger} clips`]
+    parts.push(plural(n, one, many))
   }
   return parts.join(' · ')
 }

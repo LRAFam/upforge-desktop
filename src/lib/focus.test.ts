@@ -193,6 +193,12 @@ describe('focusResult', () => {
     expect(r.next).toContain('Second attempt')
   })
 
+  it('names a late attempt as a full phrase, never a template fragment', () => {
+    const r = focusResult(done('missed', [0.4, 0.5], 0), next(2, 'opening_death_rate', 10))!
+    expect(r.next).toContain('Attempt 10 — practise it')
+    expect(r.next).not.toMatch(/Try \d+:/)
+  })
+
   it('without a next focus yet, says when it comes', () => {
     expect(focusResult(done('achieved', [0.1, 0.1], 2), null)!.next).toContain('next ranked match')
   })

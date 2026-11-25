@@ -1467,7 +1467,7 @@ function showToastMsg(msg: string, type: 'success' | 'error' = 'success') {
 const filters = computed(() => {
   const base = [
     { label: 'All', value: 'all' },
-    { label: 'Favorites', value: 'favorites' },
+    { label: 'Favourites', value: 'favorites' },
     { label: 'Bookmarks', value: 'hotkey' },
   ]
   if (isValorant.value) {

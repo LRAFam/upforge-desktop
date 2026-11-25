@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { drillDisplayName } from '../../lib/trainer-scenarios'
 import { plural } from '../../lib/plural'
 import { recentFormMatches, recentFormStats } from '../../components/v3/home/recent-form'
 import { newestPlayedFirst } from '../../lib/match-stats'
@@ -341,7 +342,7 @@ async function runPrimary() {
             <p class="uf-t3">This week: {{ d.weeklyFocus.value.goal }}</p>
             <p v-if="d.weeklyFocus.value.basis" class="uf-t4" style="color: var(--uf-muted)">Based on: {{ d.weeklyFocus.value.basis }}</p>
           </template>
-          <p v-if="d.trainerLastSession.value" class="uf-t4">Last drill: {{ d.trainerLastSession.value.scenario }} · {{ d.trainerLastSession.value.score }}</p>
+          <p v-if="d.trainerLastSession.value" class="uf-t4">Last drill: {{ drillDisplayName(d.trainerLastSession.value.scenario) }} · {{ d.trainerLastSession.value.score }}</p>
           <p v-else-if="!d.weeklyFocus.value" class="uf-t4" style="color: var(--uf-muted)">A few minutes of aim drills before you queue.</p>
           <span class="home3-links">
             <button type="button" class="uf-link" @click="d.router.push('/training')">Open practice →</button>
