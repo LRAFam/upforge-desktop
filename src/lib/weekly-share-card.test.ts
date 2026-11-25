@@ -40,7 +40,7 @@ describe('weekly share card data', () => {
 
   it('each number says what it covers', () => {
     expect(card.avg).toEqual({ value: 63, covers: 'Head Height · medium · 60s' })
-    expect(card.vsPrevious).toEqual({ value: 13, covers: 'Head Height · medium · 60s' })
+    expect(card.vsPrevious).toBeNull() // Only one comparable run in the previous week.
     expect(card.best).toEqual({ value: 81, covers: 'Gridshot' })
   })
 

@@ -16,6 +16,7 @@ function setup() {
   const practiceSession = usePracticeSessionStore()
   const context = {
     practiceSession, sessionUserKey: ref('guest'), setCacheScope: vi.fn(), setAchievementsAccount: vi.fn(),
+    runAchievements: { load: vi.fn(async () => {}) },
     riotId: ref(null), userName: ref(null), cs2SteamName: ref(null), lolRiotId: ref(null), userAvatarUrl: ref(''),
     userValorantStats: ref(null), isAdmin: ref(false), clipCount: ref(0), clipCountAvailable: ref(false), hasClipIndicator: ref(false), status: ref({}),
     consumeDeepLink: vi.fn(), loadClipSummary: vi.fn(), loadUserProfile: vi.fn(), loadGameIdentity: vi.fn(),
@@ -23,11 +24,19 @@ function setup() {
     applyUser: async (_id: number | null) => {},
   }
   vm.runInNewContext(code, context)
-  return { store: practiceSession, applyUser: context.applyUser }
+  return { store: practiceSession, applyUser: context.applyUser, loadAchievements: context.runAchievements.load }
 }
 
 describe('Practice state follows the signed-in account', () => {
   beforeEach(() => setActivePinia(createPinia()))
+
+  it('loads account achievements on sign-in, never on sign-out', async () => {
+    const { applyUser, loadAchievements } = setup()
+    await applyUser(1)
+    expect(loadAchievements).toHaveBeenCalledTimes(1)
+    await applyUser(null)
+    expect(loadAchievements).toHaveBeenCalledTimes(1)
+  })
 
   it.each([2, null])('drops another account’s daily completion and guided session on switch to %s', async next => {
     const { store, applyUser } = setup()

@@ -3,10 +3,11 @@
  * Pure helpers for the aim-trainer IPC: renderer launch request → DrillConfig, result → API payload,
  * and the correlation insights response. No Electron imports (unit-tested).
  */
+import { personalDistanceConfig } from '../../src/lib/personal-training-distance'
 import type { AppSettings } from './settings-manager'
 import type { DrillConfig, SessionResult, TrainerLaunchInfo } from './trainer-bridge'
 import { crosshairSettingsToGodot, targetPaletteToGodot, trainerMouseToGodot } from './trainer-settings'
-import { TRAINER_VERSION } from './trainer-version'
+import { TRAINER_VERSION, TRAINER_PERSONAL_DISTANCE_CAPABILITY } from './trainer-version'
 import { LAUNCHABLE_SCENARIO_KEYS } from '../../src/lib/trainer-scenarios'
 import { trainerStaysOpen } from '../../src/lib/trainer-display'
 
@@ -74,7 +75,7 @@ export function drillConfigFromRequest(
   req: Record<string, unknown>,
   settings: Pick<AppSettings, 'trainerMouse' | 'crosshairSettings'>,
   trainerVersion: string = TRAINER_VERSION,
-  opts: { keepOpen?: boolean } = {},
+  opts: { keepOpen?: boolean; personalDistanceCapability?: 'v1' } = {},
 ): DrillConfig {
   const duration = typeof req.duration_seconds === 'number' ? req.duration_seconds
     : typeof req.duration === 'number' ? req.duration : 60
@@ -82,6 +83,11 @@ export function drillConfigFromRequest(
     ? req.difficulty as DrillConfig['difficulty'] : 'medium'
   const userDrillId = typeof req.user_drill_id === 'number' && Number.isInteger(req.user_drill_id) && req.user_drill_id > 0
     ? req.user_drill_id : undefined
+  const mouseSettings = trainerMouseToGodot(settings.trainerMouse)
+  const distanceConfig = personalDistanceConfig(req.scenario, mouseSettings.game, req.distances_m)
+  if (distanceConfig.distances_m && (opts.personalDistanceCapability ?? TRAINER_PERSONAL_DISTANCE_CAPABILITY) !== 'v1') {
+    throw new Error('distances_m requires a verified trainer build with personalized distance support. Update UpForge before starting this drill.')
+  }
   const keepOpen = opts.keepOpen === true && trainerStaysOpen(trainerVersion)
   const next = keepOpen && typeof req.next_scenario === 'string' && (LAUNCHABLE_SCENARIO_KEYS as readonly string[]).includes(req.next_scenario)
     ? req.next_scenario as DrillConfig['scenario'] : undefined
@@ -96,7 +102,8 @@ export function drillConfigFromRequest(
     ...(keepOpen ? { keep_open: true } : {}),
     ...(next ? { next_scenario: next } : {}),
     ...targetPaletteToGodot(settings.trainerMouse, trainerVersion),
-    mouse_settings: trainerMouseToGodot(settings.trainerMouse),
+    ...distanceConfig,
+    mouse_settings: mouseSettings,
     crosshair_settings: crosshairSettingsToGodot(settings.crosshairSettings),
   }
 }
@@ -121,6 +128,6 @@ export function drillGameParams(game: unknown): { params?: { game: string } } {
 export const TRAINER_SCENARIOS_HEADER = 'X-Trainer-Scenarios'
 
 /** Axios config for GET /api/training/plan, /api/drills and /api/drills/rulebook: `?game=` plus the launchable drill keys. */
-export function drillReadConfig(game: unknown): { params?: { game: string }, headers: Record<string, string> } {
-  return { ...drillGameParams(game), headers: { [TRAINER_SCENARIOS_HEADER]: LAUNCHABLE_SCENARIO_KEYS.join(',') } }
+export function drillReadConfig(game: unknown, capability = TRAINER_PERSONAL_DISTANCE_CAPABILITY): { params?: { game: string }, headers: Record<string, string> } {
+  return { ...drillGameParams(game), headers: { [TRAINER_SCENARIOS_HEADER]: LAUNCHABLE_SCENARIO_KEYS.join(','), ...(capability === 'v1' ? { 'X-Trainer-Personal-Distance': 'v1' } : {}) } }
 }

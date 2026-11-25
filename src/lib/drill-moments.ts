@@ -10,6 +10,8 @@ export interface DrillMomentMatch {
 export interface DrillMoments {
   reviewId: number | null
   matches: DrillMomentMatch[]
+  playback: { sourceIdentity: string; url: string } | null
+  sourceMoments: { index: number; seconds: number; sourceIdentity: string; label: string }[]
 }
 
 const positiveId = (id: unknown): id is number => typeof id === 'number' && Number.isSafeInteger(id) && id > 0
@@ -44,5 +46,21 @@ export function parseDrillMoments(raw: unknown, drillId: number): DrillMoments |
       value: typeof row.value_pct === 'number' && Number.isFinite(row.value_pct) ? `${Math.round(row.value_pct)}%` : null,
     }]
   })
-  return { reviewId, matches }
+  const sourceMoments = reviewId && Array.isArray(data.source_moments) ? data.source_moments.slice(0, 3).flatMap((entry, index) => {
+    if (!entry || typeof entry !== 'object') return []
+    const row = entry as Record<string, unknown>
+    if (row.coordinate !== 'recording' || typeof row.timestamp_seconds !== 'number'
+      || !Number.isFinite(row.timestamp_seconds) || row.timestamp_seconds < 0 || row.timestamp_seconds > 14400
+      || typeof row.source_identity !== 'string' || !/^[a-f0-9]{64}$/.test(row.source_identity)) return []
+    return [{ index, seconds: row.timestamp_seconds, sourceIdentity: row.source_identity, label: `Review moment ${index + 1}` }]
+  }) : []
+  const rawPlayback = data.playback as { source_identity?: unknown; url?: unknown } | null
+  let playback: DrillMoments['playback'] = null
+  if (reviewId && typeof rawPlayback?.source_identity === 'string' && /^[a-f0-9]{64}$/.test(rawPlayback.source_identity) && typeof rawPlayback.url === 'string') {
+    try {
+      const url = new URL(rawPlayback.url)
+      if (url.protocol === 'https:' && !url.username && !url.password) playback = { sourceIdentity: rawPlayback.source_identity, url: url.href }
+    } catch { /* No verified playable recording URL. */ }
+  }
+  return { reviewId, matches, sourceMoments, playback }
 }

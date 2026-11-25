@@ -1,3 +1,4 @@
+import { trackMatchRecorded } from './funnel-events'
 import { cs2DemoRetrievalStatus } from './cs2-demo-retrieval'
 import { BrowserWindow } from 'electron'
 import fs from 'fs'
@@ -53,10 +54,17 @@ export function createMainReadiness(mainProcess: MainReadinessContext) {
 
   async function refreshRecordingVodProbe(
     rec: NonNullable<ReturnType<RecordingsStore['getById']>>,
+    matchOwner?: number | null,
   ): Promise<void> {
     if (!rec.path || rec.clipsOnly || rec.fileFinalizing) return
     if (!fs.existsSync(rec.path)) return
-    await refreshVodProbe(rec.path, (p) => mainProcess.clipExtractor.probe(p))
+    const probe = await refreshVodProbe(rec.path, (p) => mainProcess.clipExtractor.probe(p))
+    if (probe.ok && matchOwner != null && !rec.orphanedImport && !rec.onboardingAdminTest) {
+      // Only actual match-save/finalization callers pass an owner; generic library probes do not.
+      try {
+        if (fs.statSync(rec.path).size > 0) trackMatchRecorded(rec.game, rec.id, matchOwner)
+      } catch { /* File disappeared: no successful recording milestone. */ }
+    }
   }
 
   function cancelAnalysisReadinessRefresh(recordingId: string): void {

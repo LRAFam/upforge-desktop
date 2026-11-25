@@ -229,6 +229,8 @@
           class="main-content flex flex-1 min-h-0 flex-col"
           :class="isFullHeightView ? 'overflow-hidden' : 'overflow-y-auto'"
         >
+          <FirstSessionRecovery v-if="showNav && desktopApiAvailable && sessionUserKey !== 'guest'" :key="sessionUserKey" :safe="!status.recording && !status.currentGame" />
+          <PracticeAppointment v-if="showNav && desktopApiAvailable && sessionUserKey !== 'guest'" :key="sessionUserKey" :safe="!status.recording && !status.currentGame" />
           <RouterView v-slot="{ Component }" :key="sessionUserKey">
             <component
               :is="Component"
@@ -289,6 +291,8 @@
 </template>
 
 <script setup lang="ts">
+import FirstSessionRecovery from './components/dashboard/FirstSessionRecovery.vue'
+import PracticeAppointment from './components/dashboard/PracticeAppointment.vue'
 import TitleBarV3 from './components/v3/TitleBarV3.vue'
 import SidebarV3 from './components/v3/SidebarV3.vue'
 import { uiV3 } from './lib/ui-v3'
@@ -619,6 +623,7 @@ async function applySessionUser(userId: number | null) {
   sessionUserKey.value = userId != null ? `user-${userId}` : 'guest'
   setCacheScope(userId)
   setAchievementsAccount(userId)
+  if (userId != null) void runAchievements.load()
   if (userId == null) {
     riotId.value = null
     userName.value = null
@@ -714,6 +719,7 @@ onMounted(async () => {
   sessionUserKey.value = initialUserId != null ? `user-${initialUserId}` : 'guest'
   setCacheScope(initialUserId ?? null)
   setAchievementsAccount(initialUserId ?? null)
+  if (initialUserId != null) void runAchievements.load()
   if (initialUserId != null) void consumeDeepLink()
 
   try {

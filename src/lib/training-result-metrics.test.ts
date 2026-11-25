@@ -65,6 +65,18 @@ describe('scoring versions: a run is only compared with runs scored by the same 
     expect(priorTrainingSessions([flick113, run('flick', { scoring_version: 3 }, '2026-11-10T12:00:00Z')], flick)).toEqual([flick113])
   })
 
+  it('compares corrected jiggle-peek scores only with explicit version-eight jiggle runs', () => {
+    const corrected = run('jiggle_peek', { scoring_version: 8 }, '2026-11-24T12:00:00Z')
+    const same = run('jiggle_peek', { scoring_version: 8 }, '2026-11-23T12:00:00Z')
+    const previousRules = run('jiggle_peek', { scoring_version: 4 }, '2026-11-22T12:00:00Z')
+    expect(trainingComparisonRequest(corrected)?.scoring_version).toBe(8)
+    expect(comparableTrainingRuns(corrected, same)).toBe(true)
+    expect(priorTrainingSessions([same, previousRules], corrected)).toEqual([same])
+    expect(trainingComparisonRequest(run('flick', { scoring_version: 8 }))).toBeNull()
+    expect(scoringVersionForTrainer('1.16.0', 'jiggle_peek')).toBe(4)
+    expect(currentScoringVersion('jiggle_peek')).toBe(4)
+  })
+
   it('Practice keeps a best and a rank only when they are on this app’s rules for the drill', () => {
     const group = (scenario: string, version: number) => ({ best_score: 80, trend: 2, sessions: [],
       comparison: { difficulty: 'medium', duration_seconds: 60, scoring_version: version } })

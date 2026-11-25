@@ -40,6 +40,7 @@ export type TrainerScenario =
   | 'flash_swing' | 'operator_hold' | 'defuse_decision' | 'retake_crossfire'
 
 export interface DrillConfig {
+  distances_m?: [number, number]
   scenario: TrainerScenario
   duration_seconds: number
   difficulty: 'easy' | 'medium' | 'hard' | 'pro'
@@ -122,7 +123,9 @@ export interface SessionResult {
 
 /** What the renderer needs to replay / attribute a run (no mouse or crosshair settings). */
 export interface TrainerLaunchInfo {
+  distances_m?: [number, number]
   launchId: number
+  game?: string
   scenario: string
   duration_seconds: number
   difficulty: DrillConfig['difficulty']
@@ -655,9 +658,11 @@ export class TrainerBridge {
 function launchInfo(id: number, config: DrillConfig): TrainerLaunchInfo {
   return {
     launchId: id,
+    ...(config.mouse_settings?.game ? { game: config.mouse_settings.game } : {}),
     scenario: config.scenario,
     duration_seconds: config.duration_seconds,
     difficulty: config.difficulty,
+    ...(config.distances_m ? { distances_m: [...config.distances_m] as [number, number] } : {}),
     ...(config.user_drill_id ? { user_drill_id: config.user_drill_id } : {}),
     ...(config.context ? { context: config.context } : {}),
     ...(config.keep_open === true ? { keep_open: true } : {}),

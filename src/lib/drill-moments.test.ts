@@ -31,6 +31,14 @@ describe('drill source links', () => {
     expect(parseDrillMoments({ drill_id: 2, matches: [] }, 1)).toBeNull()
     expect(parseDrillMoments({ drill_id: 1, success: false, matches: [] }, 1)).toBeNull()
     expect(parseDrillMoments({ drill_id: 1, matches: [null, { match_id: '../../settings' }, { match_id: 'undefined' }, { match_id: 'x', recording_id: 'null', game: 'cs2' }, { match_id: 'x', game: 'cs2' }, { match_id: 'x', game: 'other' }] }, 1))
-      .toEqual({ reviewId: null, matches: [] })
+      .toEqual({ reviewId: null, matches: [], sourceMoments: [], playback: null })
+  })
+
+  it('uses only explicit recording coordinates and source hashes, preserving saved indices', () => {
+    const entry = { coordinate: 'recording', timestamp_seconds: 0, source_identity: 'a'.repeat(64) }
+    const parsed = parseDrillMoments({ drill_id: 1, review: { analysis_id: 42 }, matches: [], source_moments: [
+      { ...entry, timestamp_seconds: '00:10' }, entry, { ...entry, coordinate: 'match' }, entry,
+    ] }, 1)!
+    expect(parsed.sourceMoments).toEqual([{ index: 1, seconds: 0, sourceIdentity: 'a'.repeat(64), label: 'Review moment 2' }])
   })
 })

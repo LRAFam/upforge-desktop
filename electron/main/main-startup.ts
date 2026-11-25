@@ -1,3 +1,8 @@
+import { FirstSessionRecovery } from './first-session-recovery'
+import { setupFirstSessionRecoveryHandlers } from './ipc/first-session-recovery-ipc'
+import { PracticeAppointments } from './practice-appointment'
+import { setupPracticeAppointmentHandlers } from './ipc/practice-appointment-ipc'
+import { Notification } from 'electron'
 import { getApiBaseUrl } from './api-base'
 import { openExternalSafe } from './shell-open'
 import { canUseDeveloperTools, devOnly } from './dev-access'
@@ -327,6 +332,44 @@ export function createMainStartup(mainProcess: MainStartupContext) {
     () => mainProcess.obsStartupTask,
     mainProcess.currentRecordingOwnerGame,
     )
+
+    setupFirstSessionRecoveryHandlers(ipcMain, new FirstSessionRecovery({
+      userDataPath: app.getPath('userData'), appVersion: APP_VERSION,
+      session: () => {
+        const owner = mainProcess.authManager.getUser()?.id; const token = mainProcess.authManager.getToken()
+        return typeof owner === 'number' && token ? { owner, token } : null
+      },
+      recordings: owner => mainProcess.recordingsStore.forUser(owner).getAll(),
+      safeForeground: () => !!mainProcess.mainWindow && !mainProcess.mainWindow.isDestroyed() && mainProcess.mainWindow.isFocused() && mainProcess.mainWindow.isVisible()
+        && !mainProcess.gameDetector.currentGame() && !mainProcess.matchCapturePriority && !mainProcess.backgroundMatchState.active && !mainProcess.obsRecorder.isActivelyRecording(),
+      busy: id => mainProcess.activeUploadRecordingIds.has(id),
+      post: async (session, endpoint, data) => (await mainProcess.authManager.getApi().post(endpoint, data, {
+        headers: { Authorization: `Bearer ${session.token}` }, timeout: 8000,
+      })).data,
+    }))
+
+    setupPracticeAppointmentHandlers(ipcMain, new PracticeAppointments({
+      userDataPath: app.getPath('userData'),
+      session: () => {
+        const owner = mainProcess.authManager.getUser()?.id; const token = mainProcess.authManager.getToken()
+        return typeof owner === 'number' && token ? { owner, token } : null
+      },
+      safeForeground: () => !!mainProcess.mainWindow && !mainProcess.mainWindow.isDestroyed() && mainProcess.mainWindow.isFocused() && mainProcess.mainWindow.isVisible()
+        && !mainProcess.gameDetector.currentGame() && !mainProcess.matchCapturePriority && !mainProcess.backgroundMatchState.active && !mainProcess.obsRecorder.isActivelyRecording(),
+      request: async (session, method, endpoint, data) => (await mainProcess.authManager.getApi().request({
+        method, url: endpoint, data, headers: { Authorization: `Bearer ${session.token}` }, timeout: 8000,
+      })).data,
+      notify: (title, onClick) => new Promise(resolve => {
+        if (!Notification.isSupported()) { resolve('failed'); return }
+        const notification = new Notification({ title: 'Your saved practice task', body: title, silent: true })
+        const timer = setTimeout(() => resolve('unknown'), 5000)
+        notification.once('show', () => { clearTimeout(timer); resolve('delivered') })
+        notification.once('failed', () => { clearTimeout(timer); resolve('failed') })
+        notification.once('click', onClick)
+        notification.show()
+      }),
+      openPractice: drillId => { mainProcess.focusMainWindow(); mainProcess.mainWindow?.webContents.send('app:navigate', `/training?appointmentDrill=${drillId}`) },
+    }))
 
     setupClipHandlers(ipcMain, mainProcess.clipStore, mainProcess.clipExtractor, mainProcess.authManager, mainProcess.hotkeyManager, mainProcess.recordingsStore, mainProcess.settingsManager)
     mainProcess.ipcHandlersReady = true

@@ -1,3 +1,4 @@
+import { isPersonalDistancePair, PERSONAL_DISTANCE_LAYOUT, PERSONAL_DISTANCE_SCENARIOS } from './personal-training-distance'
 import trainerPin from '../../trainer-version.json'
 
 export interface ComparableTrainingRun {
@@ -27,7 +28,8 @@ export interface TrainingComparisonRequest {
  *   6  trainer 1.15.0 and later on the drills whose rules changed after 1.14.0 (CHANGED_AFTER_1_14)
  *   7  trainer 1.16.0 and later on the drills whose rules changed after 1.15.0 (CHANGED_AFTER_1_15)
  */
-export const COMPARED_SCORING_VERSIONS: readonly number[] = [3, 4, 5, 6, 7]
+// 8: corrected Jiggle Peek visibility accounting; explicit result stamp only until a compatible release is pinned.
+export const COMPARED_SCORING_VERSIONS: readonly number[] = [3, 4, 5, 6, 7, 8]
 
 /**
  * Gridshot and Sixshot time to hit (and consistency), Tracking's turns below 360 fps, Strafe Aim's lane-edge
@@ -92,9 +94,9 @@ export function scoringVersionOf(run: { metadata?: Record<string, unknown> } | n
 }
 
 /** On a version the app compares (each only with itself); older runs stay in history uncompared. */
-export function isComparableScoringRun(run: { metadata?: Record<string, unknown> } | null | undefined): boolean {
+export function isComparableScoringRun(run: { scenario?: string; metadata?: Record<string, unknown> } | null | undefined): boolean {
   const v = scoringVersionOf(run)
-  return v !== null && COMPARED_SCORING_VERSIONS.includes(v)
+  return v !== null && COMPARED_SCORING_VERSIONS.includes(v) && (v !== 8 || run?.scenario === 'jiggle_peek')
 }
 
 /** On the rules this app's trainer scores the drill by: only these runs make personal bests. */
@@ -146,11 +148,16 @@ export function trainingComparisonModel(metadata: Record<string, unknown> | null
     const value = metadata?.[key]
     if (typeof value === 'number' && Number.isFinite(value)) parts.push(`${key}=${modelNumber(value)}`)
   }
+  if (metadata?.layout === PERSONAL_DISTANCE_LAYOUT || metadata?.distances_m !== undefined) {
+    if (game !== 'valorant' || metadata.layout !== PERSONAL_DISTANCE_LAYOUT || !isPersonalDistancePair(metadata.distances_m)) return null
+    parts.push(`layout=${PERSONAL_DISTANCE_LAYOUT}`, `distances_m=${metadata.distances_m.join(',')}`)
+  }
   return parts.join(';')
 }
 
 /** The like-with-like group of a run: its drill, settings, game model and its own scoring version. */
 export function trainingComparisonRequest(run: ComparableTrainingRun): TrainingComparisonRequest | null {
+  if (run.metadata?.layout === PERSONAL_DISTANCE_LAYOUT && !PERSONAL_DISTANCE_SCENARIOS.includes(run.scenario)) return null
   const difficulty = run.metadata?.difficulty
   const model = trainingComparisonModel(run.metadata)
   const version = scoringVersionOf(run)

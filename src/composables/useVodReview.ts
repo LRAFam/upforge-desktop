@@ -1,7 +1,9 @@
+import { useRecoveryReportVisit } from './useRecoveryReportVisit'
 import type { TeamPlayerSnapshot } from '../../electron/main/riot-types'
 import { resolveScoreboardPlayer, groupScoreboardPlayers, resolveOwnTeam } from '../lib/vod-scoreboard'
 import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import { createReviewSeek } from '../lib/review-seek'
+import { createDrillMomentSeek } from '../lib/drill-moment-seek'
 import { buildReviewEvents } from '../lib/review-timeline'
 import { boundedMediaTime, reviewVideoUrl, reviewEventStart, EVENT_PRE_ROLL_SECONDS, DEATH_PRE_ROLL_SECONDS, PLANT_PRE_ROLL_SECONDS, DEFUSE_PRE_ROLL_SECONDS } from '../lib/review-media'
 import { PlaybackActivityMeter } from '../lib/playback-activity'
@@ -653,6 +655,26 @@ function createVodReview() {
   
   const videoSrc = computed(() => reviewVideoUrl(timeline.value?.videoPath))
 
+  const drillMomentSeek = createDrillMomentSeek({
+    context: () => ({ drillId: route.query.drillId, momentIndex: route.query.drillMoment,
+      analysisId: activePlaybackAnalysisId.value, videoSource: timeline.value ? videoSrc.value : null, video: videoEl.value }),
+    request: id => window.api.trainer.getDrillMoments(id),
+    setSource: url => {
+      if (!timeline.value) return
+      const reload = videoSrc.value === url
+      videoEl.value?.pause()
+      timeline.value = { ...timeline.value, videoPath: url }
+      duration.value = 0
+      currentTime.value = 0
+      playbackError.value = null
+      if (reload) videoEl.value?.load()
+    },
+    seek: seconds => { playbackError.value = null; seekToTime(seconds, { autoPlay: false }) },
+    unavailable: () => { playbackError.value = 'The saved moment’s recording is unavailable. No timestamp was applied.' },
+  })
+  watch([() => route.fullPath, activePlaybackAnalysisId, videoSrc, () => !!timeline.value], () => { void drillMomentSeek.load() }, { immediate: true })
+  watch(videoEl, () => drillMomentSeek.mediaReady())
+
   const isCloudVideo = computed(() => /^https?:\/\//i.test(timeline.value?.videoPath ?? ''))
 
   const canTrimLocalVod = computed(() =>
@@ -672,6 +694,10 @@ function createVodReview() {
   }
   
   async function refreshPlaybackUrl(): Promise<boolean> {
+    if (route.query.drillId != null) {
+      await drillMomentSeek.load(true)
+      return false // No generic auto-play/replacement path for an evidence-bound moment.
+    }
     if (playbackRefreshing.value || !canRefreshCloudPlayback.value) return false
     playbackRefreshing.value = true
     try {
@@ -709,6 +735,11 @@ function createVodReview() {
   }
   
   function onVideoError() {
+    if (route.query.drillId != null) {
+      drillMomentSeek.cancel()
+      playbackError.value = 'The saved recording could not load. Retry to check its current source.'
+      return
+    }
     if (!canRefreshCloudPlayback.value) {
       playbackError.value = 'This recording cannot be played in the desktop app.'
       return
@@ -1642,6 +1673,7 @@ function createVodReview() {
       return
     }
     tryInitialGameplaySeek()
+    drillMomentSeek.mediaReady()
   }
   
   /** Skip map-load black frames — land on first real gameplay moment for review (and screenshots). */
@@ -1672,6 +1704,7 @@ function createVodReview() {
   
   function tryInitialGameplaySeek() {
     if (initialSeekDone.value) return
+    if (route.query.drillId != null) return
   
     const routeSeekMs = Number(route.query.seekMs)
     if (!Number.isNaN(routeSeekMs) && routeSeekMs >= 0) {
@@ -1740,6 +1773,7 @@ function createVodReview() {
   }
 
   function applyInitialSeek(seekMsOverride?: number) {
+    if (route.query.drillId != null) return
     const seekMs = seekMsOverride ?? Number(route.query.seekMs)
     if (Number.isNaN(seekMs) || seekMs < 0) return
     initialSeekDone.value = true
@@ -1971,6 +2005,7 @@ function createVodReview() {
   }
   
   const cloudSessionCleanups = ['session:user-changed', 'auth:session-expired'].map(event => window.api.on(event, () => {
+    drillMomentSeek.cancel()
     if (!route.query.archiveId) return
     videoEl.value?.pause()
     timeline.value = null
@@ -2003,6 +2038,7 @@ function createVodReview() {
   })
   
   onUnmounted(() => {
+    drillMomentSeek.cancel()
     cloudSessionCleanups.forEach(fn => fn())
     reviewSeek.cancel()
     window.api.discord.setState('idle').catch(() => {})
@@ -2221,6 +2257,10 @@ function createVodReview() {
     }
     scrollActiveRoundIntoView(roundNumber)
   })
+
+  useRecoveryReportVisit(computed(() => reviewGame.value === 'valorant' && !timelineLoading.value && !timelineError.value
+    && coachingDetail.value && activePlaybackAnalysisId.value !== null && !comparisonActive.value
+    ? { result: 'vod_report', result_id: String(activePlaybackAnalysisId.value) } : null))
 
   return {
     comparisonActive,

@@ -10,11 +10,13 @@ import {
   resolveTrainerDuration,
   trainerScenarioDef,
 } from './trainer-scenarios'
+import { matchesDistanceLayout, type PersonalDistances } from './personal-training-distance'
 import { isCurrentScoringRun } from './training-result-metrics'
 
 export type SessionPhase = 'warmup' | 'focus' | 'cooldown'
 
 export interface SessionDrill {
+  distances_m?: [number, number]
   scenario: TrainerScenarioKey
   difficulty: TrainerDifficulty
   duration_seconds: number
@@ -106,10 +108,12 @@ export function bumpDifficultyForProgression(
   current: TrainerDifficulty,
   recentSessions: SessionHistoryRow[],
   durationSeconds?: number,
+  distances?: PersonalDistances,
 ): TrainerDifficulty {
   const atTier = recentSessions
     .filter(s => s.scenario === scenario && s.metadata?.difficulty === current
       && (durationSeconds === undefined || s.duration_seconds === undefined || s.duration_seconds === durationSeconds)
+      && matchesDistanceLayout(s.metadata, distances)
       && isCurrentScoringRun({ scenario: s.scenario, metadata: s.metadata ?? undefined }))
     .slice(0, PROGRESSION_SESSIONS_REQUIRED)
 
@@ -131,7 +135,7 @@ export interface CoachingDrillLike {
   trainer_scenario?: string | null
   trainer_difficulty?: string | null
   trainer_duration_seconds?: number | null
-  godot_config?: { scenario?: string; difficulty?: string; duration_seconds?: number } | null
+  godot_config?: { scenario?: string; difficulty?: string; duration_seconds?: number; distances_m?: PersonalDistances } | null
 }
 
 /** Null for drills the aim trainer cannot train (utility / economy / comms): they never join a trainer session. */
@@ -146,6 +150,7 @@ export function coachingDrillToSessionDrill(drill: CoachingDrillLike): SessionDr
     weakness_score: drill.baseline_score,
     reason: drill.title,
     user_drill_id: drill.id,
+    ...(drill.godot_config?.distances_m !== undefined ? { distances_m: [...drill.godot_config.distances_m] as PersonalDistances } : {}),
   }
 }
 
@@ -161,7 +166,7 @@ export function applyProgressionToDrill(
   // their score's tier.
   const startIdx = drill.user_drill_id != null && own >= 0 ? own : Math.max(DIFFICULTY_ORDER.indexOf(fromVod), own)
   const start = DIFFICULTY_ORDER[Math.max(0, startIdx)] ?? 'medium'
-  const bumped = bumpDifficultyForProgression(drill.scenario, start, recentSessions, drill.duration_seconds)
+  const bumped = bumpDifficultyForProgression(drill.scenario, start, recentSessions, drill.duration_seconds, drill.distances_m)
 
   return { ...drill, difficulty: bumped }
 }

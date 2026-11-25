@@ -17,6 +17,9 @@ export function initFunnelEvents(auth: AuthManager, version: string): void {
 }
 
 export type FunnelEventName =
+  | 'first_result_viewed'
+  | 'match_recorded'
+  | 'drill_started'
   | 'desktop_app_opened'
   | 'desktop_login'
   | 'desktop_onboarding_complete'
@@ -276,10 +279,39 @@ function matchReportProps(props: Record<string, unknown> | undefined): { game: s
 export function trackMatchReportOpened(props?: Record<string, unknown>): void {
   const clean = matchReportProps(props)
   if (clean) void trackFunnelEvent('match_report_opened', clean)
+  // CS2 facts are built locally; the server never receives a report GET for this view.
+  const resultId = props?.result_id
+  if (clean?.game === 'cs2' && typeof resultId === 'string' && resultId.length > 0 && resultId.length <= 80) {
+    void trackFunnelEvent('first_result_viewed', { game: 'cs2', result: 'local_match_report', result_id: resultId })
+  }
 }
 
 /** A video action was pressed inside the free match report (start, retry, open or plans). */
 export function trackMatchReportVideoClicked(props?: Record<string, unknown>): void {
   const clean = matchReportProps(props)
   if (clean) void trackFunnelEvent('match_report_video_clicked', clean)
+}
+
+/** A completed local milestone belongs to the capture/launch account, never a later login. */
+export async function trackOwnedMilestone(
+  event: 'match_recorded' | 'drill_started', properties: Record<string, unknown>, ownerId: number | null,
+): Promise<void> {
+  const auth = authRef
+  const token = auth?.getToken()
+  if (ownerId === null || !auth || !token || auth.getUser()?.id !== ownerId) return
+  try {
+    await auth.getApi().post('/api/funnel-events', {
+      event, channel: 'desktop', properties, session_id: SESSION_ID, app_version: appVersion,
+    }, { headers: { Authorization: `Bearer ${token}` } })
+  } catch { log.debug('[FunnelEvents] Milestone delivery incomplete:', event) }
+}
+
+export function trackMatchRecorded(game: string, recordingId: string, ownerId: number | null): void {
+  if (!MATCH_REPORT_GAMES.has(game) || !recordingId || recordingId.length > 80) return
+  void trackOwnedMilestone('match_recorded', { game, recording_id: recordingId }, ownerId)
+}
+
+export function trackDrillStarted(game: string | undefined, scenario: string, launchId: string, ownerId: number | null): void {
+  if (!game || !MATCH_REPORT_GAMES.has(game) || !/^[a-z0-9_]{1,80}$/.test(scenario)) return
+  void trackOwnedMilestone('drill_started', { game, scenario, launch_id: launchId }, ownerId)
 }

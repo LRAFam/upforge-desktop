@@ -16,6 +16,7 @@ export interface SessionResult {
 }
 
 export interface LaunchConfig {
+  distances_m?: [number, number]
   scenario: string
   duration_seconds: number
   difficulty: string

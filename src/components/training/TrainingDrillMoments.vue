@@ -35,13 +35,34 @@ async function load() {
     const parsed = parseDrillMoments(raw, id)
     if (!parsed) throw new Error('Drill source unavailable')
     moments.value = parsed
-    if (parsed.reviewId) {
+    if (parsed.reviewId && !parsed.sourceMoments.length) {
       await openAnalysisInApp(router, parsed.reviewId, {
         source: 'desktop_drill_moments',
         isCurrent: () => !life.ended && request === revision && id === props.drillId && opened.value,
       })
       if (!life.ended && request === revision) opened.value = false
     }
+  } catch {
+    if (!life.ended && request === revision) failed.value = true
+  } finally {
+    if (!life.ended && request === revision) loading.value = false
+  }
+}
+
+async function openMoment(index: number) {
+  const id = props.drillId
+  const request = ++revision
+  loading.value = true
+  failed.value = false
+  try {
+    // Resolve the owned, current recording again; never turn a cached card timestamp into a URL.
+    const parsed = parseDrillMoments(await window.api.trainer.getDrillMoments?.(id), id)
+    if (life.ended || request !== revision || id !== props.drillId || !opened.value) return
+    if (!parsed?.reviewId || !parsed.sourceMoments.some(m => m.index === index)) throw new Error('Moment unavailable')
+    await openAnalysisInApp(router, parsed.reviewId, {
+      source: 'desktop_drill_source_moment', drillMoment: { drillId: id, index },
+      isCurrent: () => !life.ended && request === revision && id === props.drillId && opened.value,
+    })
   } catch {
     if (!life.ended && request === revision) failed.value = true
   } finally {
@@ -70,6 +91,11 @@ onMounted(() => {
     <div v-if="opened" :id="regionId" class="drill-moments-body">
       <p v-if="loading" role="status">Loading your matches…</p>
       <p v-else-if="failed" role="alert">Couldn’t load your matches. <button type="button" class="uf-link" @click="load">Try again</button></p>
+      <ul v-else-if="moments?.sourceMoments.length">
+        <li v-for="moment in moments.sourceMoments" :key="moment.index">
+          <button type="button" class="uf-link" @click="openMoment(moment.index)">{{ moment.label }}</button>
+        </li>
+      </ul>
       <p v-else-if="!moments?.matches.length">The review or matches behind this drill are no longer stored.</p>
       <template v-else>
         <p>The matches this number was measured over:</p>

@@ -1,0 +1,8 @@
+[
+  { "name": "one run each is insufficient", "current": [80], "previous": [50], "delta": null },
+  { "name": "two current runs are insufficient", "current": [80, 90], "previous": [40, 50, 60], "delta": null },
+  { "name": "two previous runs are insufficient", "current": [70, 80, 90], "previous": [40, 60], "delta": null },
+  { "name": "three each allows an increase", "current": [70, 80, 90], "previous": [40, 50, 60], "delta": 30 },
+  { "name": "three each allows a decrease", "current": [40, 50, 60], "previous": [70, 80, 90], "delta": -30 },
+  { "name": "three each allows an unchanged comparison", "current": [40, 50, 60], "previous": [40, 50, 60], "delta": 0 }
+]

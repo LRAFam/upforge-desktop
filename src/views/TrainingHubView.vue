@@ -3,7 +3,7 @@ import { weeklyShareCardData } from '../lib/weekly-share-card'
 import { priorTrainingSessions, comparableTrainingRuns, trainingComparisonRequest, resultHitsCell, isTrackingScenario, currentScoringVersion, withCurrentRulesBenchmark, withCurrentRulesBests } from '../lib/training-result-metrics'
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useLifetime } from '../composables/useLifetime'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import type { TrainingHistory, CoachingDrill, TrainingBenchmark, SharedTrainingPlan } from '../env'
 import { ACHIEVEMENTS, useAchievements } from '../composables/useAchievements'
 import { asLaunchInfo, asNextDrillRequest, asSessionEnded, launchConfigFromInfo, launchTrainer, sessionEndedMessage, trainerLaunchConfig } from '../lib/trainer-launch'
@@ -78,6 +78,7 @@ type ScenarioKey = TrainerScenarioKey
 type ScenarioCategory = 'all' | 'aim' | 'reaction' | 'precision' | 'duel'
 
 interface AssignedDrill {
+  distances_m?: [number, number]
   scenario: ScenarioKey
   difficulty: 'easy' | 'medium' | 'hard' | 'pro'
   duration_seconds: number
@@ -94,6 +95,10 @@ interface AssignedDrill {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const router = useRouter()
+const appointmentRoute = useRoute()
+let appointmentViewActive = true
+onUnmounted(() => { appointmentViewActive = false })
+
 const trainerResultStore = useTrainerResultStore()
 // Guided session + runs seen this app session live in a store: every run opens the result screen,
 // which unmounts this view.
@@ -113,6 +118,15 @@ const activeDrill = ref<AssignedDrill | null>(null)
 const apiHistory = ref<TrainingHistory | null>(null)
 const sharedTrainingPlan = ref<SharedTrainingPlan | null>(null)
 const coachingDrills = ref<CoachingDrill[]>([])
+const appointmentTaskId = computed(() => {
+  const value = appointmentRoute.query.appointmentDrill
+  return typeof value === 'string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : null
+})
+const appointmentDrill = computed(() => {
+  const row = coachingDrills.value.find(d => d.id === appointmentTaskId.value)
+  return primaryGame.value === 'valorant' && row ? drillToAssigned(row) : null
+})
+
 const correlationInsights = ref<string[]>([])
 const benchmarkData = ref<TrainingBenchmark | null>(null)
 const loadingHistory = ref(false)
@@ -369,6 +383,7 @@ function drillToAssigned(drill: CoachingDrill): AssignedDrill | null {
     reason: drill.title,
     // Coaching drills from /api/drills are the user's drills: runs count towards them (API metadata.user_drill_id).
     user_drill_id: drill.id,
+    ...(drill.godot_config?.distances_m !== undefined ? { distances_m: [...drill.godot_config.distances_m] as [number, number] } : {}),
     ...legacyCoachingExtras(drill, scenario),
   }
 }
@@ -685,7 +700,21 @@ function assignedLaunchRequest(drill: AssignedDrill) {
     difficulty: drill.difficulty,
     context: { weakness: drill.weakness, score: drill.weakness_score },
     user_drill_id: drill.user_drill_id,
+    ...(drill.distances_m !== undefined ? { distances_m: [...drill.distances_m] as [number, number] } : {}),
   }
+}
+
+async function startAppointmentDrill() {
+  const drill = appointmentDrill.value
+  const id = appointmentTaskId.value
+  if (!drill || !id || launching.value || drillRunning.value) return
+  const current = await window.api.practiceAppointment.current().catch(() => null)
+  if (!appointmentViewActive || id !== appointmentTaskId.value || primaryGame.value !== 'valorant') return
+  if (current?.task?.id !== id || !['chosen', 'scheduled'].includes(current.state)) {
+    trainerNotice.value = 'This saved task is completed or no longer available.'
+    return
+  }
+  await launchDrill(drill)
 }
 
 /** `nextScenario`: the drill the trainer's end card offers next (a guided step that has a next step). */
@@ -701,6 +730,11 @@ async function launchDrill(drill: AssignedDrill, opts: { guidedStep?: boolean; n
   launching.value = true
   trainerNotice.value = null
   try {
+    if (!opts.guidedStep && drill.user_drill_id && primaryGame.value === 'valorant' && drill.scenario === 'head_height' && window.api?.practiceAppointment) {
+      const gameAtChoice = primaryGame.value
+      const choice = await window.api.practiceAppointment.choose(drill.user_drill_id).catch(() => ({ ok: false }))
+      if (!appointmentViewActive || gameAtChoice !== primaryGame.value || !choice.ok) { activeDrill.value = null; return }
+    }
     const result = await launchTrainer({ ...assignedLaunchRequest(drill), ...(opts.nextScenario ? { next_scenario: opts.nextScenario } : {}) })
     if (result.ok) {
       drillRunning.value = true
@@ -1324,7 +1358,9 @@ const trainingStats = computed(() => {
   const prevWeekAvg = prevWeek.length
     ? Math.round(prevWeek.reduce((a, s) => a + s.score, 0) / prevWeek.length)
     : null
-  const improvement = thisWeekAvg !== null && prevWeekAvg !== null ? thisWeekAvg - prevWeekAvg : null
+  // Match the API's trend minimum: three comparable runs on each side.
+  const improvement = thisWeek.length >= 3 && prevWeek.length >= 3 && thisWeekAvg !== null && prevWeekAvg !== null
+    ? thisWeekAvg - prevWeekAvg : null
 
   // Day streak, week count and total from every run (API `activity`), else from this page of runs.
   const activity = practiceActivity(apiHistory.value, now)
@@ -1402,6 +1438,7 @@ function assignedToSessionDrill(d: AssignedDrill): SessionDrill {
     weakness_score: d.weakness_score,
     reason: d.reason,
     user_drill_id: d.user_drill_id,
+    ...(d.distances_m !== undefined ? { distances_m: [...d.distances_m] as [number, number] } : {}),
   }
 }
 
@@ -1417,6 +1454,7 @@ async function launchStructuredStep(stepIndex: number) {
     weakness_score: step.weakness_score,
     reason: step.reason,
     user_drill_id: step.user_drill_id,
+    ...(step.distances_m !== undefined ? { distances_m: [...step.distances_m] as [number, number] } : {}),
   }, { guidedStep: true, nextScenario: guidedNextScenario(structuredSession.value?.plan, stepIndex) })
 }
 
@@ -1431,6 +1469,7 @@ async function startStructuredSession() {
     weakness_score: 0,
     reason: step.reason,
     user_drill_id: step.user_drill_id ?? undefined,
+    ...(step.distances_m !== undefined ? { distances_m: [...step.distances_m] as [number, number] } : {}),
   }))
   if (!plan?.length) return
 
@@ -1504,6 +1543,7 @@ const guidedSessionPreview = computed(() =>
     weakness_score: 0,
     reason: step.reason,
     user_drill_id: step.user_drill_id ?? undefined,
+    ...(step.distances_m !== undefined ? { distances_m: [...step.distances_m] as [number, number] } : {}),
   })) ?? [],
 )
 
@@ -1521,6 +1561,13 @@ const CATEGORY_ICON: Record<string, string> = {
 
 <template>
   <div class="h-full text-white flex flex-col overflow-hidden relative" :class="uiV3 ? 'uf-practice-legacy' : 'bg-[#0a0a0a]'">
+    <section v-if="appointmentTaskId" class="uf-insession" aria-label="Selected saved task">
+      <template v-if="appointmentDrill">
+        <span>{{ appointmentDrill.reason || 'Your saved practice task' }}</span>
+        <button type="button" :disabled="launching || drillRunning" @click="startAppointmentDrill">Start saved task</button>
+      </template>
+      <span v-else>This saved task is not available in your current practice list. Refresh your tasks to check its status.</span>
+    </section>
     <TrainingManualLaunchDialog :request="manualLaunchRequest" :busy="launching || drillRunning || structuredSessionActive"
       @close="cancelManualDrill" @start="startManualDrill" />
 

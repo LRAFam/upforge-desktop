@@ -32,7 +32,8 @@ function reportFor(matchId: string, extra: Record<string, unknown> = {}) {
 
 interface Setup {
   matchId: string
-  game?: 'lol'
+  game?: 'lol' | 'cs2'
+  timeline?: Record<string, unknown>
   recordings?: Array<Record<string, unknown>>
   user?: { tier: string; is_admin: boolean; analysis_stats: { total: number; limit: number | null; purchased?: number } } | null
   analyse?: () => Promise<{ ok?: boolean; error?: string; code?: string }>
@@ -57,7 +58,7 @@ async function mountReport(setup: Setup) {
         getGameMatchReport: async () => ({ ok: false, error: 'not_found' }),
         startCheckout,
       },
-      recordings: { listAll, getTimeline: async () => null, analyse },
+      recordings: { listAll, getTimeline: async () => setup.timeline ?? null, analyse },
       analyses: { getTimeline: getAnalysisTimeline },
       coachFlow: { allowances: async () => null, moments: async () => null, onUpdate: () => () => {} },
       profile: { get: async () => (setup.user === null ? null : { user: setup.user ?? { tier: 'free', is_admin: false, analysis_stats: { total: 0, limit: 1 } } }) },
@@ -178,5 +179,21 @@ describe('MatchReportV3: video coaching from the free report', () => {
       ] },
     })
     expect(page.text()).toContain('Your focuses Opening deaths 10% of rounds · target at most 24% On target this match Deaths traded 10% of deaths · target at least 35% Missed this match')
+  })
+})
+
+describe('local CS2 result-view activation', () => {
+  it('sends the actual local result identity only once the parsed report is visible', async () => {
+    const page = await mountReport({ matchId: 'local-cs2-activation', game: 'cs2', timeline: {
+      map: 'de_mirage', match_stats: { schema_version: 1, rounds: 22, score: '9-13',
+        player_stats: { kills: 14, deaths: 17, assists: 3 }, round_stats: {}, utility_stats: {}, economy_stats: {} },
+    } })
+    await settle()
+    expect(page.trackMatchReport).toHaveBeenCalledWith('opened', { game: 'cs2', video: 'none', result_id: 'local-cs2-activation' })
+  })
+  it('does not claim a viewed result when the local demo is still unavailable', async () => {
+    const page = await mountReport({ matchId: 'local-cs2-missing', game: 'cs2', timeline: { map: 'de_mirage', match_stats: null } })
+    await settle()
+    expect(page.trackMatchReport).not.toHaveBeenCalled()
   })
 })
