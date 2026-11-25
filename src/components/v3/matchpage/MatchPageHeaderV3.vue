@@ -15,7 +15,7 @@ import { deadlockRecordingHero, loadDeadlockHeroesOnce } from '../../../lib/dead
 import { matchReportPath } from '../../../lib/match-report'
 import { mapDisplayName } from '../games/display-names'
 import { matchMapArt } from '../matches/match-meta'
-import { coachLine, coachReplied, firstDeathEvent, matchResult, NOTES_TAB_LABEL, roundsForLine, showRoundRecord, statsOnlyNotice } from './match-page-v3'
+import { coachLine, coachReplied, firstDeathEvent, MAP_TAB_LABEL, matchResult, NOTES_TAB_LABEL, roundsForLine, showRoundRecord, statsOnlyNotice } from './match-page-v3'
 import { askAnalysisId } from './ask/ask-match'
 import { askPanelState, headerTab, type MatchHeaderTab } from './ask/ask-state'
 
@@ -78,7 +78,7 @@ const tab = computed<MatchHeaderTab>(() => headerTab({
 const tabs = computed(() => [
   { key: 'replay', label: 'Replay' },
   { key: 'notes', label: NOTES_TAB_LABEL, count: coachReplied(coachReview.value) && !showInsightsPanel.value ? 'new' : null },
-  ...(hasSpatialIntel.value ? [{ key: 'map', label: 'Map' }] : []),
+  ...(hasSpatialIntel.value ? [{ key: 'map', label: MAP_TAB_LABEL }] : []),
   ...(askId.value ? [{ key: 'ask', label: 'Ask AI' }] : []),
 ])
 function onTab(key: string) {
@@ -96,9 +96,8 @@ function watchFirstDeath() {
 }
 
 const layoutOpen = ref(false)
-const theaterLabel = computed(() => props.workspace
-  ? (theaterMode.value ? 'Restore panels' : 'Focus video')
-  : (theaterMode.value ? 'Exit theater' : 'Theater mode'))
+// One name in both layouts (the shortcut list and tooltips use it too).
+const theaterLabel = computed(() => (theaterMode.value ? 'Show panels' : 'Focus video'))
 function back() { router.back() }
 const workspaceOn = computed(() => props.workspace)
 </script>
@@ -123,38 +122,40 @@ const workspaceOn = computed(() => props.workspace)
       <UfTabs :items="tabs" :model-value="tab" label="Match sections" @update:model-value="onTab" />
       <button v-if="reportPath" type="button" class="uf-link" title="Free data report for this match" @click="router.push(reportPath)">Match report</button>
       <div class="uf-mp-spacer" />
-      <!-- View tools: secondary, icon-only, grouped apart from the section tabs. -->
-      <div class="uf-mp-tools" role="toolbar" aria-label="View options">
+      <!-- View: how the review is laid out. Icon + text so each tool says what it does. Playback lives
+           under the video; analysis actions (trim, compare, first death) sit to the right. -->
+      <div class="uf-mp-tools" role="toolbar" aria-label="View">
         <button v-if="!theaterMode && roundGroups.length" type="button" class="uf-mp-tool" :aria-pressed="!roundLogCollapsed"
-          :aria-label="`${roundLogCollapsed ? 'Show' : 'Hide'} ${isRoundBased ? 'round log' : 'match timeline'}`"
-          :title="`${roundLogCollapsed ? 'Show' : 'Hide'} ${isRoundBased ? 'round log' : 'match timeline'} (B)`" @click="roundLogCollapsed = !roundLogCollapsed">
-          <UfIcon name="list" />
+          :title="`${roundLogCollapsed ? 'Show' : 'Hide'} the ${isRoundBased ? 'round log' : 'match timeline'} (B)`" @click="roundLogCollapsed = !roundLogCollapsed">
+          <UfIcon name="list" :size="16" /><span>{{ isRoundBased ? 'Round log' : 'Timeline' }}</span>
         </button>
-        <button v-if="canTrimLocalVod" type="button" class="uf-mp-tool" aria-label="Trim local recording file" title="Trim local recording file" @click="openVodTrim">
-          <UfIcon name="trim" />
-        </button>
-        <button v-if="timeline?.videoPath" type="button" class="uf-mp-tool" :aria-pressed="theaterMode" :aria-label="theaterLabel"
-          :title="`${theaterLabel} (T)`" @click="toggleTheaterMode">
-          <UfIcon name="expand" />
-        </button>
-        <button type="button" class="uf-mp-tool" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" @click="showShortcuts = true">
-          <UfIcon name="keyboard" />
+        <button v-if="timeline?.videoPath" type="button" class="uf-mp-tool" :aria-pressed="theaterMode"
+          :title="`${theaterLabel}: hide the side panels (T). Full screen is on the video (F).`" @click="toggleTheaterMode">
+          <UfIcon name="expand" :size="16" /><span>{{ theaterLabel }}</span>
         </button>
         <div v-if="workspaceOn" class="uf-mp-layout">
-          <button type="button" class="uf-mp-tool" aria-label="Layout options" title="Layout options" aria-haspopup="menu" :aria-expanded="layoutOpen" @click="layoutOpen = !layoutOpen" @keydown.esc="layoutOpen = false">
-            <UfIcon name="columns" />
+          <button type="button" class="uf-mp-tool" title="Layout options" aria-haspopup="menu" :aria-expanded="layoutOpen" @click="layoutOpen = !layoutOpen" @keydown.esc="layoutOpen = false">
+            <UfIcon name="columns" :size="16" /><span>Layout</span>
           </button>
           <div v-if="layoutOpen" class="uf-mp-menu" role="menu" @click="layoutOpen = false">
             <button type="button" role="menuitem" @click="emit('reset-layout')">Reset layout</button>
             <button type="button" role="menuitem" @click="emit('toggle-workspace')">Use classic layout</button>
           </div>
         </div>
-        <button v-else type="button" class="uf-mp-tool" aria-label="Try the workspace layout" title="Try the workspace layout" @click="emit('toggle-workspace')">
-          <UfIcon name="columns" />
+        <button v-else type="button" class="uf-mp-tool" title="Resizable panels for the round log and notes" @click="emit('toggle-workspace')">
+          <UfIcon name="columns" :size="16" /><span>Layout</span>
+        </button>
+        <button type="button" class="uf-mp-tool" title="Keyboard shortcuts (?)" @click="showShortcuts = true">
+          <UfIcon name="keyboard" :size="16" /><span>Shortcuts</span>
         </button>
       </div>
-      <UfButton v-if="canCompare" icon="swap" @click="emit('compare')">Compare moments</UfButton>
-      <UfButton v-if="firstDeath" variant="primary" icon="play" @click="watchFirstDeath">Watch first death</UfButton>
+      <div class="uf-mp-tools" role="toolbar" aria-label="Analysis">
+        <button v-if="canTrimLocalVod" type="button" class="uf-mp-tool" title="Cut the start or end off the recording file on this PC" @click="openVodTrim">
+          <UfIcon name="trim" :size="16" /><span>Trim file</span>
+        </button>
+        <UfButton v-if="canCompare" icon="swap" @click="emit('compare')">Compare moments</UfButton>
+        <UfButton v-if="firstDeath" variant="primary" icon="play" @click="watchFirstDeath">Watch first death</UfButton>
+      </div>
     </div>
 
     <div v-if="coach || statsOnly || detailLoading" class="uf-mp-story">
@@ -186,8 +187,9 @@ const workspaceOn = computed(() => props.workspace)
 .uf-mp-bar { display: flex; align-items: center; gap: 18px; padding: 10px 40px; border-top: 1px solid var(--uf-line); flex-wrap: wrap; }
 .uf-mp-back { flex: none; }
 .uf-mp-spacer { flex: 1; }
-.uf-mp-tools { display: flex; align-items: center; gap: 2px; padding-left: 14px; border-left: 1px solid var(--uf-line); }
-.uf-mp-tool { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: none; border: 0; color: var(--uf-faint); cursor: pointer; }
+.uf-mp-tools { display: flex; align-items: center; gap: 8px; padding-left: 14px; border-left: 1px solid var(--uf-line); }
+.uf-mp-tool { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; background: none; border: 0; color: var(--uf-faint); cursor: pointer; font: 500 13px/1 var(--uf-body); white-space: nowrap; }
+.uf-mp-tools:empty { display: none; }
 .uf-mp-tool:hover, .uf-mp-tool:focus-visible { color: var(--uf-bone); background: var(--uf-hover); }
 .uf-mp-tool[aria-pressed='true'] { color: var(--uf-bone); }
 .uf-mp-layout { position: relative; }
