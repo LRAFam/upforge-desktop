@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router'
 import { useStaleLoad } from '../../../lib/stale-cache'
 import UfSkeleton from '../UfSkeleton.vue'
 import { recurringHabitRows, withLocalStatuses, type RecurringInsightLike } from './recurring-habits'
+import { openAnalysisInApp } from '../../../lib/open-analysis-in-app'
 
 const router = useRouter()
 const { data, loading, refreshing, error, reload } = useStaleLoad<RecurringInsightLike[] | null>(
@@ -24,6 +25,19 @@ const undo = ref<{ id: number; title: string; previous: string } | null>(null)
 const busy = ref<number | null>(null)
 const failed = ref<string | null>(null)
 const rows = computed(() => recurringHabitRows(withLocalStatuses(data.value, local.value)))
+/** Rows showing the coach's whole note. */
+const expanded = ref(new Set<number>())
+function toggle(id: number): void {
+  const next = new Set(expanded.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expanded.value = next
+}
+const opening = ref<number | null>(null)
+async function reviewExample(analysisId: number): Promise<void> {
+  opening.value = analysisId
+  try { await openAnalysisInApp(router, analysisId, { source: 'desktop_progress_habit' }) } finally { opening.value = null }
+}
 
 async function setStatus(id: number, status: 'active' | 'improving' | 'resolved'): Promise<boolean> {
   busy.value = id
@@ -50,8 +64,8 @@ async function undoFixed(): Promise<void> {
 <template>
   <section class="rh3" :class="{ 'uf-refreshing': refreshing }" aria-labelledby="rh3-h">
     <div class="rh3-head">
-      <span id="rh3-h" class="uf-label">What keeps coming up</span>
-      <button v-if="rows.length" type="button" class="uf-link uf-t4" @click="router.push('/training')">Practise these →</button>
+      <span id="rh3-h" class="uf-label">What keeps coming up · all analysed matches</span>
+      <button v-if="rows.some(r => r.polarity === 'risk')" type="button" class="uf-link uf-t4" @click="router.push('/training')">Practise these →</button>
     </div>
 
     <div v-if="loading" aria-hidden="true">
@@ -62,14 +76,26 @@ async function undoFixed(): Promise<void> {
       <div v-for="r in rows" :key="r.id" class="rh3-row uf-reveal">
         <div class="rh3-main">
           <span class="uf-t3">{{ r.title }}</span>
-          <span v-if="r.detail" class="uf-t4" :title="r.maps.length ? `Seen on ${r.maps.join(', ')}` : undefined">{{ r.detail }}</span>
+          <span v-if="r.more && expanded.has(r.id)" :id="`rh3-more-${r.id}`" class="uf-t4">{{ r.more }}</span>
+          <span v-else-if="r.detail" :id="`rh3-more-${r.id}`" class="uf-t4">{{ r.detail }}</span>
+          <span v-if="r.maps.length && (expanded.has(r.id) || !r.more)" class="uf-t4 rh3-maps">Seen on {{ r.maps.join(', ') }}</span>
+          <span v-if="r.more || r.exampleAnalysisId" class="rh3-acts">
+            <button v-if="r.more" type="button" class="uf-link uf-t4" :aria-expanded="expanded.has(r.id)" :aria-controls="`rh3-more-${r.id}`" @click="toggle(r.id)">
+              {{ expanded.has(r.id) ? 'Show less' : 'Show more' }}
+            </button>
+            <button v-if="r.exampleAnalysisId" type="button" class="uf-link uf-t4" :disabled="opening === r.exampleAnalysisId"
+              :aria-label="`Review an example of ${r.title} in match review`" @click="reviewExample(r.exampleAnalysisId)">
+              {{ opening === r.exampleAnalysisId ? 'Opening…' : 'Review an example →' }}
+            </button>
+          </span>
         </div>
         <div class="rh3-meta">
           <span class="uf-t4">{{ r.seen }}<template v-if="r.lastSeen"> · last {{ r.lastSeen }}</template></span>
           <span v-if="r.trend" class="rh3-trend uf-t4" :class="`is-${r.trend.tone}`">{{ r.trend.label }}</span>
-          <button type="button" class="uf-link uf-t4" :disabled="busy === r.id" :aria-label="`Mark fixed: ${r.title}`" @click="markFixed(r.id, r.title)">
+          <button v-if="r.polarity === 'risk'" type="button" class="uf-link uf-t4" :disabled="busy === r.id" :aria-label="`Mark fixed: ${r.title}`" @click="markFixed(r.id, r.title)">
             {{ busy === r.id ? 'Saving…' : 'Mark fixed' }}
           </button>
+          <span v-else-if="r.polarity === 'strength'" class="uf-t4 rh3-keep">Strength · keep doing this</span>
         </div>
       </div>
     </template>
@@ -96,6 +122,9 @@ async function undoFixed(): Promise<void> {
 .rh3-trend { font-weight: 600; color: var(--uf-muted); }
 .rh3-trend.is-better { color: var(--uf-win); }
 .rh3-trend.is-worse { color: var(--uf-loss); }
+.rh3-acts { display: flex; gap: 16px; flex-wrap: wrap; }
+.rh3-maps { color: var(--uf-faint); }
+.rh3-keep { color: var(--uf-win); }
 .rh3-empty { margin: 0; }
 .rh3-note { margin: 0; }
 @container (max-width: 640px) { .rh3-row { grid-template-columns: minmax(0, 1fr); } .rh3-meta { align-items: flex-start; text-align: left; } }

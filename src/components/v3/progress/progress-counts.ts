@@ -16,6 +16,13 @@ export function progressCountLine(checkedGames: number | null, analysed: number,
   return `${plural(checkedGames, 'game')} checked · ${analysed} analysed`
 }
 
+const RANGE_SCOPE: Record<string, string> = { '7d': 'last 7 days', '30d': 'last 30 days', '90d': 'last 90 days', all: 'all time' }
+
+/** The window a range-following section covers, named in its heading ("last 30 days"). */
+export function rangeScope(range: string): string {
+  return RANGE_SCOPE[range] ?? 'this range'
+}
+
 /** Empty line for "Analysed matches": says when the last one was, so an empty range doesn't read as "no data". */
 export function analysedEmptyLine(lastAnalysedAt: string | null, now = Date.now()): string {
   const t = lastAnalysedAt ? Date.parse(lastAnalysedAt) : Number.NaN

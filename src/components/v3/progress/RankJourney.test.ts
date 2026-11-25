@@ -56,6 +56,15 @@ describe('RankJourney', () => {
     expect(html.match(/<circle [^>]*r="7"/g)).toHaveLength(5)
     expect(html).not.toMatch(/<text[^>]*>Focus/)
   })
+  it('has a value scale, one keyboard stop for the points and a data table', async () => {
+    const html = await render({ history })
+    expect(html).toMatch(/<text[^>]*>Gold 1<\/text>/)
+    expect(html.match(/data-rj-pt/g)).toHaveLength(3)
+    expect(html.match(/tabindex="0"/g)).toHaveLength(1)
+    expect(html).toContain('aria-label="8 Oct · Gold 1 · 10 RR · +20 rating since the last point"')
+    expect(html).toContain('<summary>Show the numbers</summary>')
+    expect(html).toContain('<th scope="col">Rating change</th>')
+  })
   it('uses the loss colour when the rating falls', async () => {
     const html = await render({ history: [...history].map((x, i) => ({ ...x, elo: 1300 - i * 40 })) })
     expect(html).toContain('-80')
