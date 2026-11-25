@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { packEndLine, validStorageRequest, validStorageSnapshot } from './storage-addon'
+import { hideStorageOffer, packEndLine, packGain, validStorageRequest, validStorageSnapshot } from './storage-addon'
 it('accepts only known actions and pack amounts', () => {
   expect(validStorageRequest({ action: 'checkout', gb: 50 })).toBe(true)
   expect(validStorageRequest({ action: 'change', gb: 51 })).toBe(false)
@@ -33,5 +33,21 @@ describe('packEndLine', () => {
   })
   it('leaves out numbers the API did not send', () => {
     expect(packEndLine({ retentionStarted: true, packGraceDays: null, retentionGraceDays: null, freeKeepDays: null })).not.toMatch(/\d/)
+  })
+})
+
+describe('storage offer for accounts with no cap', () => {
+  it('hides the upsell for unlimited accounts but keeps pack management', () => {
+    expect(hideStorageOffer(true, true, false)).toBe(true)
+    expect(hideStorageOffer(true, false, false)).toBe(true)
+    expect(hideStorageOffer(true, true, true)).toBe(false)
+    expect(hideStorageOffer(false, true, false)).toBe(false)
+  })
+  it('says exactly what a pack adds', () => {
+    const fmt = (n: number) => `${n / 1e9} GB`
+    expect(packGain(10e9, 0, 50, fmt)).toBe('Your cloud space: 10 GB → 60 GB')
+    expect(packGain(10e9, 50e9, 100, fmt)).toBe('Your cloud space: 60 GB → 110 GB')
+    expect(packGain(10e9, 50e9, 50, fmt)).toBe('Your cloud space: 60 GB (this is your current pack)')
+    expect(packGain(null, 0, 50, fmt)).toBe('')
   })
 })

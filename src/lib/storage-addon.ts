@@ -47,3 +47,20 @@ export function packEndLine(opts: {
   const window = opts.packGraceDays ? `you have ${opts.packGraceDays} days to download them before removal` : 'you have time to download them before removal'
   return `New uploads use paid space when your plan allowance is full. Use Keep in paid storage for footage you want to retain longer. Files in paid storage stay while you keep paying. After paid access ends, ${window}.`
 }
+
+/**
+ * "Your cloud space: 10 GB → 60 GB" for the selected pack. Uses the plan's included space plus the
+ * pack (packs replace each other, they don't stack). Empty when the included space is unknown.
+ */
+export function packGain(includedBytes: number | null | undefined, currentPackBytes: number, selectedGb: number, format: (n: number) => string): string {
+  if (typeof includedBytes !== 'number') return ''
+  const now = includedBytes + currentPackBytes
+  const next = includedBytes + selectedGb * 1e9
+  if (now === next) return `Your cloud space: ${format(now)} (this is your current pack)`
+  return `Your cloud space: ${format(now)} → ${format(next)}`
+}
+
+/** No storage upsell for an account with no storage cap; an existing pack can still be managed. */
+export function hideStorageOffer(unlimited: boolean, loaded: boolean, hasSubscription: boolean): boolean {
+  return unlimited && (!loaded || !hasSubscription)
+}

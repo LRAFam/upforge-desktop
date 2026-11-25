@@ -66,6 +66,8 @@ const attentionCount = computed(() => library.value?.items.filter(file => {
 const failedMapImages = ref<Set<string>>(new Set())
 function hideMapImage(map: string) { failedMapImages.value = new Set([...failedMapImages.value, map]) }
 const full = computed(() => usage.value?.cloud_storage?.remaining_bytes === 0)
+/** Admin / unlimited accounts: "No storage cap", so no storage upsell (UX1124-32). */
+const noStorageCap = computed(() => usage.value?.cloud_storage ? usage.value.cloud_storage.included_bytes === null : !!retentionSummary.value && retentionSummary.value.capacity_bytes === null)
 const queue = computed(() => [
   ...recordings.value.filter(r => r.pipelineStatus === 'uploading' || !!r.lastAnalysisError).map(r => ({ id: `r:${r.id}`, title: `${r.map || 'Recording'}`, status: r.pipelineStatus === 'uploading' ? 'Uploading' : 'Needs attention', progress: r.pipelineStatus === 'uploading' && typeof r.uploadProgress === 'number' && Number.isFinite(r.uploadProgress) ? r.uploadProgress : null, path: '/recordings' })),
   ...clips.value.filter(c => c.uploadStatus === 'uploading' || c.uploadStatus === 'failed').map(c => ({ id: `c:${c.id}`, title: c.title || 'Clip', status: c.uploadStatus === 'uploading' ? 'Uploading' : 'Upload failed', progress: null, path: '/clips' })),
@@ -313,7 +315,7 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
       </div>
 
       <aside class="uf-cs-side">
-        <div ref="pickerAnchor"><StorageAddonPicker :key="addonVersion" :retention-started="!!retentionSummary?.started" :retention-grace-days="retentionSummary?.grace_days" :free-keep-days="retentionSummary?.free_keep_days" @changed="refresh" @loaded="addon=$event" /></div>
+        <div ref="pickerAnchor"><StorageAddonPicker :key="addonVersion" :retention-started="!!retentionSummary?.started" :retention-grace-days="retentionSummary?.grace_days" :free-keep-days="retentionSummary?.free_keep_days" :unlimited="noStorageCap" :included-bytes="usage?.cloud_storage?.included_bytes ?? retentionSummary?.included_bytes" @changed="refresh" @loaded="addon=$event" /></div>
         <section class="uf-cs-sec">
           <span class="uf-label">Your plan</span>
           <p class="uf-t3" style="margin: 0">{{ full || savesPausedMessage ? 'Your cloud space is full' : 'Keep more of your gameplay' }}</p>
