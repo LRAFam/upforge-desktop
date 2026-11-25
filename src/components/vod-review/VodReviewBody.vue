@@ -24,6 +24,7 @@ import VodMatchTimelineSidebar from './VodMatchTimelineSidebar.vue'
 import VodDemoPendingPanel from './VodDemoPendingPanel.vue'
 import Cs2FaceitAttach from '../v3/games/Cs2FaceitAttach.vue'
 import VodTimelineEventIcon from './VodTimelineEventIcon.vue'
+import VodEventTimingControl from './VodEventTimingControl.vue'
 import { recordingTimelineReady, usesAsyncDemoSync } from '../../lib/recording-demo-status'
 import { extraCoachNotes as pickExtraCoachNotes, moreDetailSummary as describeMoreDetail, momentsToWatch } from '../analysis/review-panel'
 
@@ -580,16 +581,7 @@ const noVideoHint = computed((): string => {
                 </button>
               </div>
               <div class="flex flex-wrap items-center gap-2 pt-0.5">
-                <div
-                  v-if="recordingId"
-                  class="flex items-center gap-1 rounded-md border border-white/[0.08] bg-black/30 px-1.5 py-0.5"
-                >
-                  <span class="text-[8px] text-gray-600">Sync</span>
-                  <button type="button" class="text-[9px] font-bold px-1 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white" title="Shift events 1s earlier" @click="nudgeTimelineSync(-1000)">−1s</button>
-                  <span class="text-[8px] tabular-nums text-gray-600 min-w-[2.25rem] text-center">{{ syncOffsetLabel }}</span>
-                  <button type="button" class="text-[9px] font-bold px-1 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white" title="Shift events 1s later" @click="nudgeTimelineSync(1000)">+1s</button>
-                  <button v-if="videoSyncOffsetMs" type="button" class="text-[8px] px-1 py-0.5 rounded text-gray-600 hover:text-gray-300" title="Reset sync offset" @click="resetTimelineSync">↺</button>
-                </div>
+                <VodEventTimingControl v-if="recordingId" compact />
                 <p v-if="!canSeekFromSpatial" class="text-[9px] text-amber-300/75">
                   <template v-if="spatialPreviewAvailable">1 free seek ·</template>
                   <button type="button" class="underline hover:text-amber-200" @click="openUpgrade">Plus</button>
@@ -648,14 +640,7 @@ const noVideoHint = computed((): string => {
             <button type="button" class="vb3-tb" @click="showShortcuts = true">Shortcuts</button>
           </div>
         </div>
-        <div v-if="recordingId && timeline && !theaterMode" class="vb3-sync">
-          <span class="uf-label">Event timing</span>
-          <button type="button" class="vb3-tb uf-num" title="Move all events five seconds earlier in this recording" @click="nudgeTimelineSync(-5000)">−5s</button>
-          <button type="button" class="vb3-tb uf-num" title="Move all events one second earlier" @click="nudgeTimelineSync(-1000)">−1s</button>
-          <span class="uf-t3 uf-num" style="min-width: 44px; text-align: center">{{ syncOffsetLabel }}</span>
-          <button type="button" class="vb3-tb uf-num" title="Move all events one second later" @click="nudgeTimelineSync(1000)">+1s</button>
-          <span class="uf-t4">Events late? Move them earlier. Saved for this recording.</span>
-        </div>
+        <VodEventTimingControl v-if="recordingId && timeline && !theaterMode" />
 </template>
 <template v-else>
         <!-- Transport deck -->
@@ -1390,16 +1375,7 @@ const noVideoHint = computed((): string => {
             </div>
           </div>
 
-          <div
-            v-if="recordingId"
-            class="flex flex-wrap items-center gap-2 rounded-lg border border-white/[0.08] bg-black/25 px-2.5 py-2"
-          >
-            <span class="text-[9px] font-semibold uppercase tracking-wider text-gray-600">Video sync</span>
-            <button type="button" class="text-[10px] font-bold px-2 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white" @click="nudgeTimelineSync(-1000)">−1s</button>
-            <span class="text-[10px] tabular-nums text-gray-400 min-w-[2.5rem] text-center">{{ syncOffsetLabel }}</span>
-            <button type="button" class="text-[10px] font-bold px-2 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white" @click="nudgeTimelineSync(1000)">+1s</button>
-            <button v-if="videoSyncOffsetMs" type="button" class="text-[9px] px-1.5 py-0.5 rounded text-gray-600 hover:text-gray-300" @click="resetTimelineSync">Reset</button>
-          </div>
+          <VodEventTimingControl v-if="recordingId" compact />
 
           <p v-if="!canSeekFromSpatial" class="text-[10px] text-amber-300/80">
             <template v-if="spatialPreviewAvailable">1 free death seek ·</template>
@@ -1469,7 +1445,6 @@ const noVideoHint = computed((): string => {
 .vb3-key-dot--kill { background: var(--uf-win); }
 .vb3-key-dot--death { background: var(--uf-loss); }
 .vb3-key-dot--ai { width: 7px; height: 7px; background: var(--uf-bone); transform: rotate(45deg); }
-.vb3-sync { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 24px; border-top: 1px solid var(--uf-line); }
 .vb3-board { flex-shrink: 0; max-height: 260px; overflow-y: auto; border-top: 1px solid var(--uf-line); padding: 0 24px 8px; }
 .vb3-board table { width: 100%; border-collapse: collapse; }
 .vb3-board th { text-align: right; padding: 10px 0 8px 16px; position: sticky; top: 0; background: var(--uf-bg); }

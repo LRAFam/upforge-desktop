@@ -36,6 +36,7 @@ import { useVodPortraits } from './vod/useVodPortraits'
 import { takeArchive, takeDetail, takeTimeline, noteArchiveRateLimited } from './vod/match-prefetch'
 import { uiV3 } from '../lib/ui-v3'
 import { readCache, writeCache } from '../lib/stale-cache'
+import { eventTiming } from '../lib/vod-event-timing'
 import { useLifetime } from './useLifetime'
 
 // Round outcome icons — game-aware via timeline-event-icons.ts
@@ -1041,6 +1042,8 @@ function createVodReview() {
     const sign = ms > 0 ? '+' : ''
     return `${sign}${(ms / 1000).toFixed(1)}s`
   })
+  /** The player's own nudge on top of the detected timing (what "Reset to detected timing" undoes). */
+  const eventTimingState = computed(() => eventTiming(effectiveSyncMs.value, defaultSyncMsForGame(timeline.value?.game)))
   
   function preRollSeconds(type: string): number {
     if (type === 'death') return DEATH_PRE_ROLL_SECONDS
@@ -2413,6 +2416,7 @@ function createVodReview() {
     spatialViewMode,
     supplementalCoachingNotes,
     syncOffsetLabel,
+    eventTimingState,
     tacticalIntelBrief,
     theaterMode,
     timeline,
