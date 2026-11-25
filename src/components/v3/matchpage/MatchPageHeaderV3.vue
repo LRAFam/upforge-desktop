@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * UI v3 match page header: compact hero (map art, result, score, K/D/A), one row of
- * section tabs + every action the old command bar offered, the coach's sentence and the
- * rounds line. All data comes from the injected review context.
+ * section tabs + every action the old command bar offered, and the coach's sentence. The rounds
+ * strip lives in the collapsible match summary (MatchRoundsStripV3). All data comes from the injected review context.
  */
 import { computed, ref } from 'vue'
 import { useVodReview } from '../../../composables/useVodReview'
@@ -10,7 +10,6 @@ import UfHeroBand from '../UfHeroBand.vue'
 import UfTabs from '../UfTabs.vue'
 import UfButton from '../UfButton.vue'
 import UfIcon from '../UfIcon.vue'
-import UfRoundsLine from '../UfRoundsLine.vue'
 import UfSkeleton from '../UfSkeleton.vue'
 import { deadlockRecordingHero, loadDeadlockHeroesOnce } from '../../../lib/deadlock-hero-names'
 import { matchReportPath } from '../../../lib/match-report'
@@ -25,13 +24,11 @@ const emit = defineEmits<{ 'toggle-workspace': []; 'reset-layout': []; compare: 
 
 const review = useVodReview()
 const {
-  activeRoundNumber,
   agentImageUrl,
   allTimelineEvents,
   canTrimLocalVod,
   coachingDetail,
   coachReview,
-  currentTime,
   detailLoading,
   displayGameMode,
   hasSpatialIntel,
@@ -44,7 +41,6 @@ const {
   roundRecord,
   router,
   seekToEvent,
-  seekToRound,
   showInsightsPanel,
   showShortcuts,
   spatialMapVisible,
@@ -90,16 +86,6 @@ function onTab(key: string) {
 }
 
 const roundBars = computed(() => (isRoundBased.value ? roundsForLine(roundGroups.value, allTimelineEvents.value) : []))
-// No highlight at 0:00 before anything played: R1 isn't "selected" just because the video starts there.
-const selectedRound = computed(() => {
-  if (activeRoundNumber.value == null || currentTime.value <= 0) return null
-  const i = roundGroups.value.findIndex(r => r.roundNumber === activeRoundNumber.value)
-  return i >= 0 ? i + 1 : null
-})
-function onRoundSelect(n: number) {
-  const g = roundGroups.value[n - 1]
-  if (g) seekToRound(g)
-}
 const markedCount = computed(() => roundBars.value.filter(r => r.marked).length)
 
 const coach = computed(() => coachLine(coachingDetail.value, roundGroups.value, allTimelineEvents.value, isRoundBased.value))
@@ -119,7 +105,7 @@ const workspaceOn = computed(() => props.workspace)
 
 <template>
   <header class="uf-mp-head" @keydown.stop>
-    <UfHeroBand :art="heroArt" :result="result?.word" :tone="result?.tone ?? 'none'" :meta="meta" :height="150" art-position="center 45%">
+    <UfHeroBand :art="heroArt" :result="result?.word" :tone="result?.tone ?? 'none'" :meta="meta" :height="112" art-position="center 45%">
       <div class="uf-mp-score">
         <img v-if="agentImageUrl" :src="agentImageUrl" alt="" class="uf-mp-agent">
         <span v-if="matchScoreline" class="uf-d2 uf-num">{{ matchScoreline.ally }}<span class="uf-mp-dash">–</span>{{ matchScoreline.enemy }}</span>
@@ -171,7 +157,7 @@ const workspaceOn = computed(() => props.workspace)
       <UfButton v-if="firstDeath" variant="primary" icon="play" @click="watchFirstDeath">Watch first death</UfButton>
     </div>
 
-    <div v-if="coach || roundBars.length || detailLoading" class="uf-mp-story">
+    <div v-if="coach || statsOnly || detailLoading" class="uf-mp-story">
       <!-- Hold the sentence until coaching detail lands, so a data-only line never swaps for the coach's. -->
       <p v-if="coach && !detailLoading" class="uf-mp-coach uf-reveal">
         <UfIcon name="chat" :size="15" />
@@ -187,17 +173,6 @@ const workspaceOn = computed(() => props.workspace)
         <span style="color: var(--uf-gold); font-weight: 600">{{ statsOnly.title }}.</span>
         {{ statsOnly.message }}<template v-if="statsOnly.limitation"> {{ statsOnly.limitation }}</template>
       </p>
-      <div v-if="roundBars.length" class="uf-mp-rounds">
-        <div class="uf-mp-rounds-head">
-          <span class="uf-label">Rounds</span>
-          <span class="uf-mp-legend">
-            <span><i class="uf-mp-key uf-mp-key--win" />Won</span>
-            <span><i class="uf-mp-key" />Lost</span>
-            <span v-if="markedCount > 0"><i class="uf-mp-key uf-mp-key--mark" />You died first</span>
-          </span>
-        </div>
-        <UfRoundsLine :rounds="roundBars" :selected="selectedRound" :height="22" @select="onRoundSelect" />
-      </div>
     </div>
   </header>
 </template>
@@ -219,17 +194,8 @@ const workspaceOn = computed(() => props.workspace)
 .uf-mp-menu { position: absolute; top: 100%; right: 0; z-index: 40; display: grid; min-width: 180px; padding: 4px 0; background: var(--uf-raised); border: 1px solid var(--uf-line-2); }
 .uf-mp-menu button { padding: 10px 14px; text-align: left; background: none; border: 0; color: var(--uf-bone); font: 400 13px/1.4 var(--uf-body); cursor: pointer; }
 .uf-mp-menu button:hover { background: var(--uf-hover); }
-.uf-mp-story { display: flex; flex-direction: column; gap: 12px; padding: 12px 40px 14px; border-top: 1px solid var(--uf-line); }
+.uf-mp-story { display: flex; flex-direction: column; gap: 8px; padding: 10px 40px; border-top: 1px solid var(--uf-line); }
 .uf-mp-coach { margin: 0; display: flex; align-items: baseline; gap: 10px; color: var(--uf-faint); }
 .uf-mp-coach svg { align-self: center; }
 .uf-mp-coach--loading { align-items: center; }
-/* Lost rounds read as muted loss red, not an empty track; the current round is marked by its number,
-   not an outline box. (Asked the lead to make this UfRoundsLine's default — see notes-audit-matchpage.md.) */
-.uf-mp-rounds { display: flex; flex-direction: column; gap: 8px; max-width: 760px; }
-.uf-mp-rounds-head { display: flex; justify-content: space-between; align-items: center; }
-.uf-mp-legend { display: flex; gap: 16px; font: 400 13px/1.4 var(--uf-body); color: var(--uf-faint); }
-.uf-mp-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.uf-mp-key { display: inline-block; width: 9px; height: 9px; background: var(--uf-mp-lost); }
-.uf-mp-key--win { background: var(--uf-win); }
-.uf-mp-key--mark { width: 12px; height: 3px; background: var(--uf-red); }
 </style>
