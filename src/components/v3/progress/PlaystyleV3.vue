@@ -58,7 +58,7 @@ const refreshing = computed(() => style.refreshing.value || skills.refreshing.va
     </div>
 
     <div v-if="showSkills" class="ps3-col ps3-col--side">
-      <span class="uf-label">Coach scores<template v-if="skillProfile"> · last {{ skillProfile.matches }} analysed {{ skillProfile.matches === 1 ? 'match' : 'matches' }}</template></span>
+      <span class="uf-label">Coach scores<template v-if="skillProfile"> · AI match reviews · last {{ skillProfile.matches }} analysed {{ skillProfile.matches === 1 ? 'match' : 'matches' }}</template></span>
       <div v-if="skills.loading.value" aria-hidden="true">
         <div v-for="i in 4" :key="i" class="ps3-row"><UfSkeleton :w="'50%'" :h="16" /><UfSkeleton :h="18" /></div>
       </div>
@@ -66,7 +66,7 @@ const refreshing = computed(() => style.refreshing.value || skills.refreshing.va
         <div v-for="c in skillProfile.categories" :key="c.key" class="ps3-row ps3-row--score uf-reveal">
           <span class="uf-t3">{{ categoryLabel(c.key) }}</span>
           <span class="ps3-bar"><span class="uf-fill" :style="{ width: `${c.average * 10}%` }" /><b class="uf-d4">{{ c.average }}</b></span>
-          <span class="uf-t4 ps3-of">/10 avg<template v-if="c.latest != null"> · latest {{ c.latest }}</template></span>
+          <span class="uf-t4 ps3-of" :title="`Average of ${c.samples} AI match ${c.samples === 1 ? 'review' : 'reviews'}, out of 10`">/10 avg · {{ c.samples }} {{ c.samples === 1 ? 'match' : 'matches' }}<template v-if="c.latest != null"> · latest {{ c.latest }}</template></span>
         </div>
         <span v-if="skillProfile.matches < 3" class="uf-t4">Fewer than 3 analysed matches is an early read.</span>
       </template>

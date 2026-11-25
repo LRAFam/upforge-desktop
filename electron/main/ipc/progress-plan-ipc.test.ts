@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({}))
 vi.mock('../renderer-trust', () => ({ isTrustedRendererUrl: (url: string) => url === 'app://trusted' }))
-import { parseSkillProfile, parseWeeklyPlan, setupProgressPlanHandlers } from './progress-plan-ipc'
+import { canonicalCategoryKey, parseSkillProfile, parseWeeklyPlan, setupProgressPlanHandlers } from './progress-plan-ipc'
 import type { IpcMain } from 'electron'
 import type { AuthManager } from '../auth-manager'
 
@@ -61,6 +61,23 @@ describe('progress plan IPC', () => {
   it('never scales scores up; 0–100 values come back to 0–10', () => {
     expect(parseSkillProfile({ category_history: [{ categories: { aim: 70 } }] })?.categories[0]).toMatchObject({ latest: 7, average: 7 })
     expect(parseSkillProfile({ category_history: [] })).toBeNull()
+  })
+
+  it('shows each category once when the AI spelled it differently across matches', () => {
+    const p = parseSkillProfile({ category_history: [
+      { categories: { game_sense: 4, mechanics: 7 } },
+      { categories: { 'Game Sense': 5, Mechanics: 6 } },
+      { categories: { gameSense: 3, 'game-sense': 5 } },
+    ] })!
+    expect(p.categories.map(c => c.key).sort()).toEqual(['game_sense', 'mechanics'])
+    expect(p.categories.find(c => c.key === 'game_sense')).toEqual({ key: 'game_sense', latest: 4, average: 4.3, samples: 3 })
+    expect(p.categories.find(c => c.key === 'mechanics')).toMatchObject({ average: 6.5, samples: 2 })
+  })
+
+  it('maps known aliases to one fixed key', () => {
+    expect(canonicalCategoryKey('Crosshair')).toBe('crosshair_placement')
+    expect(canonicalCategoryKey('utilityUsage')).toBe('utility_usage')
+    expect(canonicalCategoryKey(' Decision Making ')).toBe('decision_making')
   })
 
   it('says locked when the plan does not include the skill profile (403)', async () => {
