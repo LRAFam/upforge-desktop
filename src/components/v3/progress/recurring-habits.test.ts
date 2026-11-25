@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { recurringHabitRows, relativeDays } from './recurring-habits'
+import { parseHabitText, recurringHabitRows, relativeDays } from './recurring-habits'
 
 const NOW = Date.parse('2026-10-30T12:00:00Z')
 const row = (o: Partial<Parameters<typeof recurringHabitRows>[0] extends readonly (infer T)[] | null | undefined ? T : never>) => ({
@@ -53,6 +53,16 @@ describe('recurringHabitRows', () => {
     expect(p.note).toBe('Engages duels while debuffed, where holding the…')
     expect(p.maps).toEqual(['Ascent'])
     expect(recurringHabitRows([row({ occurrences: 1 })], NOW)).toEqual([])
+  })
+
+  it('drops the frozen count from newer API text so the row shows one live count', () => {
+    const a = parseHabitText('Untraded deaths — flagged 137 times. Died alone on B long without a trade. Maps: Bind, Haven.')
+    expect(a).toEqual({ note: 'Died alone on B long without a trade.', maps: ['Bind', 'Haven'] })
+    expect(parseHabitText('Positioning — flagged in 12 analysed matches (85 times). Held an open angle.').note).toBe('Held an open angle.')
+    expect(parseHabitText('Positioning — flagged in 1 analysed match. Held an open angle.').note).toBe('Held an open angle.')
+    const [r] = recurringHabitRows([row({ label: 'Untraded deaths', occurrences: 322, text: 'Untraded deaths — flagged 137 times. Died alone on B long.' })], NOW)
+    expect(r.detail).toBe('Died alone on B long.')
+    expect(r.seen).toBe('Flagged 322 times')
   })
 
   it('returns nothing for empty or missing data', () => {

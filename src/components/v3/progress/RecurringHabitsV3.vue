@@ -50,7 +50,7 @@ async function undoFixed(): Promise<void> {
 <template>
   <section class="rh3" :class="{ 'uf-refreshing': refreshing }" aria-labelledby="rh3-h">
     <div class="rh3-head">
-      <span id="rh3-h" class="uf-label">What keeps coming up</span>
+      <span id="rh3-h" class="uf-label">What keeps coming up · all analysed matches</span>
       <button v-if="rows.length" type="button" class="uf-link uf-t4" @click="router.push('/training')">Practise these →</button>
     </div>
 

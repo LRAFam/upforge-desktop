@@ -36,14 +36,17 @@ function firstSentence(text: string, max = MAX_TITLE): string {
 }
 
 /**
- * The API stores merged habits as "{label} — flagged across N analyses (T sightings). {coach note} Maps: A, B…."
- * (KnowledgeBankHabitSynthesizer). N there counts merged insight rows, not analyses, so the prefix is dropped;
- * T is the same number as occurrence_count. Returns the coach's own note (cut at a word, never mid-word)
- * and the maps it was seen on.
+ * The API stores merged habits as "{label} — flagged … . {coach note} Maps: A, B…." (KnowledgeBankHabitSynthesizer):
+ * "flagged across N analyses (T sightings)", "flagged in N analysed matches (T times)" or "flagged T times".
+ * Those counts are frozen when the habit is merged, while occurrence_count keeps rising, so the prefix is
+ * always dropped and the row shows only the live count. Returns the coach's own note (cut at a word,
+ * never mid-word) and the maps it was seen on.
  */
+const FLAGGED_PREFIX = /^[^.]*?\s+[—-]\s+flagged (?:across \d+ analys[ie]s \(\d+ sightings?\)|in \d+ analysed match(?:es)?(?: \(\d+ times?\))?|\d+ times?)\.\s*/i
+
 export function parseHabitText(text: string): { note: string; maps: string[] } {
   let t = text.trim().replace(/\s+/g, ' ')
-  t = t.replace(/^[^.]*?\s+[—-]\s+flagged across \d+ analys[ie]s \(\d+ sightings?\)\.\s*/i, '')
+  t = t.replace(FLAGGED_PREFIX, '')
   let maps: string[] = []
   const m = t.match(/\s*Maps: ([^.]*?)(?:…|\.\.\.)?\.?$/)
   if (m && m.index != null) {
