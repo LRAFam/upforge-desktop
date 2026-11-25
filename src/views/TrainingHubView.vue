@@ -2160,6 +2160,7 @@ const CATEGORY_ICON: Record<string, string> = {
         :week-done="weekCardDone"
         @share-week="exportWeeklyCard"
         @run-removed="retryTrainerRefresh"
+        @start="(k) => launchDrill(drillForScenario(k as ScenarioKey))"
       />
 
       <template v-if="!uiV3">

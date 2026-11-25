@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import {
   cleanDrillTitle,
@@ -290,5 +292,46 @@ describe('bars of matches checked against the focus', () => {
     expect(focusBars(focus([[Number.NaN, false]]))).toBeNull()
     expect(focusBars({ baseline: Number.NaN, target: 0.3, checks: [{ value: 0.2, hit: true }] })).toBeNull()
     expect(focusBars(focus([[0, true]], 0, 0))).toBeNull()
+  })
+})
+
+describe('skill shape coverage (UX1124-20)', () => {
+  const label = (k: string) => ({ flick: 'Flick', tracking: 'Tracking', switching: 'Switching' } as Record<string, string>)[k] ?? k
+  const keys = ['flick', 'tracking', 'switching']
+
+  it('counts measured skills and names the drills that fill the rest', async () => {
+    const { radarCoverage } = await import('./practice-v3')
+    const c = radarCoverage(keys, { flick: { best_score: 61 } }, label)
+    expect(c.measured).toBe(1)
+    expect(c.line).toMatch(/^1 of 3 skills measured\..*Play Tracking or Switching to fill more\.$/)
+    expect(c.gaps.map(g => g.key)).toEqual(['tracking', 'switching'])
+    expect(c.gaps[0].reason).toBe('Not played yet')
+  })
+
+  it('says why runs on a skill do not count (old scoring)', async () => {
+    const { radarCoverage } = await import('./practice-v3')
+    const old = { scenario: 'tracking', score: 50, metadata: { scoring_version: 1 } }
+    const c = radarCoverage(keys, { tracking: { best_score: null, sessions: [old, old, old] } }, label)
+    expect(c.gaps.find(g => g.key === 'tracking')?.reason).toBe('3 runs on old scoring, not counted for best')
+  })
+
+  it('tells "no shape drills" apart from "never practised"', async () => {
+    const { radarCoverage } = await import('./practice-v3')
+    expect(radarCoverage(keys, { microflick: { best_score: 59 } }, label).line).toContain('other drills aren’t part of this shape')
+    expect(radarCoverage(keys, {}, label).line).not.toContain('other drills')
+  })
+
+  it('is complete when every skill has a best', async () => {
+    const { radarCoverage } = await import('./practice-v3')
+    const c = radarCoverage(keys, { flick: { best_score: 1 }, tracking: { best_score: 2 }, switching: { best_score: 3 } }, label)
+    expect(c).toEqual({ measured: 3, total: 3, line: null, gaps: [] })
+  })
+
+  it('every missing skill has its own Start button wired to launch that drill', () => {
+    const view = readFileSync(join(__dirname, 'PracticeAnalyticsV3.vue'), 'utf8')
+    expect(view).toContain("emit('start', g.key)")
+    expect(view).not.toContain('start your shape')
+    const hub = readFileSync(join(__dirname, '..', '..', '..', 'views', 'TrainingHubView.vue'), 'utf8')
+    expect(hub).toContain('@start="(k) => launchDrill(drillForScenario(k as ScenarioKey))"')
   })
 })

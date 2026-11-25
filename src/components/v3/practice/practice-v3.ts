@@ -126,6 +126,53 @@ export function oldScoringNote(runs: readonly RunLike[] | null | undefined, tota
   return `${what} ${one ? 'was' : 'were'} scored differently, so ${one ? 'it doesn’t' : 'they don’t'} count towards personal bests. ${one ? 'It stays' : 'They stay'} in your history.`
 }
 
+/** How many of these runs are on older scoring (kept in history, never a personal best). */
+export function oldScoringCount(runs: readonly RunLike[] | null | undefined): number {
+  return (runs ?? []).filter(isOldScoringRun).length
+}
+
+/** Row note for a drill with old-scoring runs: "3 runs on old scoring, not counted for best", or null. */
+export function legacyRunsNote(oldCount: number): string | null {
+  if (!oldCount) return null
+  return `${oldCount} ${oldCount === 1 ? 'run' : 'runs'} on old scoring, not counted for best`
+}
+
+export interface RadarGap { key: string; label: string; reason: string }
+export interface RadarCoverage { measured: number; total: number; line: string | null; gaps: RadarGap[] }
+
+/**
+ * What the skill shape is missing. Each point is the personal best on the drill of the same name, so a
+ * skill with no current best is a gap with its reason (old scoring only, or not played) and its own drill to start.
+ */
+export function radarCoverage(
+  radarKeys: readonly string[],
+  byScenario: Record<string, { best_score: number | null; sessions?: readonly RunLike[] } | undefined> | null | undefined,
+  labelFor: (key: string) => string,
+): RadarCoverage {
+  const gaps: RadarGap[] = []
+  for (const key of radarKeys) {
+    const stats = byScenario?.[key]
+    if ((stats?.best_score ?? 0) > 0) continue
+    const old = oldScoringCount(stats?.sessions)
+    gaps.push({ key, label: labelFor(key), reason: legacyRunsNote(old) ?? 'Not played yet' })
+  }
+  const total = radarKeys.length
+  const measured = total - gaps.length
+  if (!gaps.length) return { measured, total, line: null, gaps }
+  const next = gaps.slice(0, 2).map(g => g.label).join(' or ')
+  const otherBests = Object.entries(byScenario ?? {}).some(([k, st]) => !radarKeys.includes(k) && (st?.best_score ?? 0) > 0)
+  const other = measured === 0 && otherBests ? ' Your other drills aren’t part of this shape. Their numbers are under By drill.' : ''
+  return {
+    measured, total, gaps,
+    line: `${measured} of ${total} skills measured. Each point is your current best on the drill of the same name. Play ${next} to fill more.${other}`,
+  }
+}
+
+/** Drills with any runs (current or old) come first, in catalogue order; drills never played after. */
+export function activeDrillsFirst<T extends { hasActivity: boolean }>(rows: readonly T[]): T[] {
+  return [...rows.filter(r => r.hasActivity), ...rows.filter(r => !r.hasActivity)]
+}
+
 /** Short caption for a drill with no current best: "Old best 53" or "Not played". */
 export function noBestCaption(oldBest: number | null | undefined): string {
   return typeof oldBest === 'number' && Number.isFinite(oldBest) ? `Old best ${Math.round(oldBest)}` : 'Not played'

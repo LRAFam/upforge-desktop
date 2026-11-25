@@ -7,13 +7,13 @@ import UfSkeleton from '../UfSkeleton.vue'
  */
 import { computed } from 'vue'
 import UfButton from '../UfButton.vue'
-import EmptyArt from '../empty/EmptyArt.vue'
 import PracticeRecentRunsV3 from './PracticeRecentRunsV3.vue'
 import { scenarioIconUrl } from '../../../lib/training-icons'
 import { drillMeasureTrends, measureSparkPath } from '../../../lib/training-result-metrics'
 import type { TrainingBenchmark, TrainingHistory } from '../../../env.d.ts'
 import { bestGroup, settingsLabel } from './best-settings'
-import { benchmarkMeta, benchmarkVisible, pct, recentScores, skillShapeEmptyCopy, toneColor, trendSummary } from './practice-session-v3'
+import { benchmarkMeta, benchmarkVisible, pct, recentScores, toneColor, trendSummary } from './practice-session-v3'
+import { radarCoverage } from './practice-v3'
 
 export interface AnalyticsRadar {
   scores: number[]
@@ -53,10 +53,9 @@ const props = defineProps<{
   scoringNote?: string | null
 }>()
 
-const emit = defineEmits<{ 'share-week': []; 'run-removed': [id: number] }>()
+const emit = defineEmits<{ 'share-week': []; 'run-removed': [id: number]; /** Start this drill (a missing skill on the shape). */ start: [scenario: string] }>()
 
 const hasHistory = computed(() => !!props.history && !!props.history.total)
-const shapeEmpty = computed(() => skillShapeEmptyCopy(props.history?.by_scenario, props.radarKeys))
 const unlocked = computed(() => props.achievements.filter(a => a.unlocked).length)
 const rows = computed(() => props.drills.map(d => {
   const stats = props.history?.by_scenario?.[d.key]
@@ -75,6 +74,8 @@ const rows = computed(() => props.drills.map(d => {
   }
 }))
 const radarLabel = (k: string) => props.drills.find(d => d.key === k)?.label ?? k
+// Which skills the shape is missing, why, and the drill that fills each one.
+const coverage = computed(() => radarCoverage(props.radarKeys, props.history?.by_scenario, radarLabel))
 // Radar centre is (70, 70). Anchor side labels away from the shape so long names ("Micro-Adjust") never clip.
 const labelAnchor = (x: number) => (x < 64 ? 'end' : x > 76 ? 'start' : 'middle')
 </script>
@@ -112,8 +113,17 @@ const labelAnchor = (x: number) => (x < 64 ? 'end' : x > 76 ? 'start' : 'middle'
             </div>
           </dl>
         </div>
-        <p v-if="!radar.hasData && scoringNote" class="uf-t2" style="margin: 0">{{ scoringNote }} Finish a drill to start your shape.</p>
-        <EmptyArt v-else-if="!radar.hasData" size="section" :title="shapeEmpty.title" :text="shapeEmpty.text" />
+        <div v-if="!loading && coverage.gaps.length" class="uf-an-gaps">
+          <p class="uf-t2" style="margin: 0">{{ coverage.line }}</p>
+          <p v-if="scoringNote" class="uf-t4" style="margin: 0">{{ scoringNote }}</p>
+          <ul aria-label="Skills not measured yet">
+            <li v-for="g in coverage.gaps" :key="g.key">
+              <span class="uf-t3">{{ g.label }}</span>
+              <span class="uf-t4">{{ g.reason }}</span>
+              <UfButton variant="secondary" icon="play" :aria-label="`Start ${g.label}`" @click="emit('start', g.key)">Start</UfButton>
+            </li>
+          </ul>
+        </div>
       </section>
 
       <!-- By drill -->
@@ -211,6 +221,9 @@ const labelAnchor = (x: number) => (x < 64 ? 'end' : x > 76 ? 'start' : 'middle'
 .uf-an-bests { display: flex; gap: 28px; margin: 0; flex-wrap: wrap; }
 .uf-an-bests > div { display: flex; flex-direction: column-reverse; gap: 4px; }
 .uf-an-bests dd { margin: 0; }
+.uf-an-gaps { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+.uf-an-gaps ul { list-style: none; margin: 4px 0 0; padding: 0; }
+.uf-an-gaps li { display: grid; grid-template-columns: 140px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 6px 0; border-top: 1px solid var(--uf-line); }
 .uf-an-rows { list-style: none; margin: 10px 0 0; padding: 0; }
 .uf-an-rows > li { border-top: 1px solid var(--uf-line); padding: 12px 0; display: flex; flex-direction: column; gap: 10px; }
 .uf-an-row { display: flex; align-items: center; gap: 18px; }
