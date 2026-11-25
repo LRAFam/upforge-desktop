@@ -259,6 +259,9 @@ export interface PlaystyleFocusArea {
   text: string
   severity: 'low' | 'medium' | 'high'
   agent?: string
+  /** "6 games · last 40 tracked matches" (newer API). */
+  sample?: string
+  early_read?: boolean
 }
 
 export interface PlaystyleProfile {

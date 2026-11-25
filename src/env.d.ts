@@ -1673,6 +1673,8 @@ declare global {
             text: string
             severity: 'low' | 'medium' | 'high'
             agent?: string
+            sample?: string
+            early_read?: boolean
           }>
           brain_habits?: Array<{
             id: string

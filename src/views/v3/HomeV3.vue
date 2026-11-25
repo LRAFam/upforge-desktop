@@ -339,6 +339,7 @@ async function runPrimary() {
           <div class="home3-row-head"><p class="uf-label">Warm-up</p><span v-if="d.trainerSessionCount.value" class="uf-t4">{{ plural(d.trainerSessionCount.value, 'drill') }} done</span></div>
           <template v-if="d.weeklyFocus.value">
             <p class="uf-t3">This week: {{ d.weeklyFocus.value.goal }}</p>
+            <p v-if="d.weeklyFocus.value.basis" class="uf-t4" style="color: var(--uf-muted)">Based on: {{ d.weeklyFocus.value.basis }}</p>
           </template>
           <p v-if="d.trainerLastSession.value" class="uf-t4">Last drill: {{ d.trainerLastSession.value.scenario }} · {{ d.trainerLastSession.value.score }}</p>
           <p v-else-if="!d.weeklyFocus.value" class="uf-t4" style="color: var(--uf-muted)">A few minutes of aim drills before you queue.</p>

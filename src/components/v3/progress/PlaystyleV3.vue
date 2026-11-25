@@ -38,7 +38,7 @@ const refreshing = computed(() => style.refreshing.value || skills.refreshing.va
   <section class="ps3" :class="{ 'uf-refreshing': refreshing, 'is-single': !showSkills }" aria-label="Your playstyle">
     <div class="ps3-col">
       <div class="ps3-head">
-        <span class="uf-label">Your playstyle<template v-if="matches"> · {{ matches }} tracked matches</template></span>
+        <span class="uf-label">Your playstyle<template v-if="matches"> · last {{ matches }} tracked {{ matches === 1 ? 'match' : 'matches' }}, any date</template></span>
         <button v-if="rows.length" type="button" class="uf-link uf-t4" @click="openWebFeature('/valorant/playstyle')">More on upforge.gg →</button>
       </div>
       <div v-if="style.loading.value" aria-hidden="true">
@@ -58,7 +58,7 @@ const refreshing = computed(() => style.refreshing.value || skills.refreshing.va
     </div>
 
     <div v-if="showSkills" class="ps3-col ps3-col--side">
-      <span class="uf-label">Coach scores<template v-if="skillProfile"> · AI match reviews · last {{ skillProfile.matches }} analysed {{ skillProfile.matches === 1 ? 'match' : 'matches' }}</template></span>
+      <span class="uf-label">Coach scores<template v-if="skillProfile"> · AI match reviews · last {{ skillProfile.matches }} analysed {{ skillProfile.matches === 1 ? 'match' : 'matches' }}, any date</template></span>
       <div v-if="skills.loading.value" aria-hidden="true">
         <div v-for="i in 4" :key="i" class="ps3-row"><UfSkeleton :w="'50%'" :h="16" /><UfSkeleton :h="18" /></div>
       </div>
