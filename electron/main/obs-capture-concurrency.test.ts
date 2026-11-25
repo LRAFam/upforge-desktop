@@ -109,3 +109,56 @@ it('creates the new capture kind once OBS finishes releasing an old incompatible
   expect(createCalls).toBe(2)
   expect(obs.call).toHaveBeenLastCalledWith('CreateInput', expect.objectContaining({ inputKind: config.inputKind }))
 })
+
+/**
+ * OBS keeps a removed input's name taken until its last reference is released, but
+ * refuses to add that removed source to a scene ("Failed to create the scene item.").
+ */
+function lingeringRemovedInputServer(releaseAfterCreates: number) {
+  const config = getUpForgeCaptureConfig('valorant', 'Valorant')
+  let createAttempts = 0
+  let attached = false
+  const lingering = () => createAttempts <= releaseAfterCreates
+  const obs = { call: vi.fn(async (method: string) => {
+    if (method === 'GetInputList') return { inputs: [] }
+    if (method === 'GetInputSettings') return { inputKind: config.inputKind, inputSettings: config.inputSettings }
+    if (method === 'GetSceneItemList') return { sceneItems: attached ? [{ sourceName: 'UpForge Capture', sceneItemId: 1 }] : [] }
+    if (method === 'CreateInput') {
+      createAttempts++
+      if (lingering()) throw Object.assign(new Error('A source already exists by that input name.'), { code: 601 })
+      attached = true
+    }
+    if (method === 'CreateSceneItem') {
+      throw Object.assign(new Error('Failed to create the scene item.'), { code: 700 })
+    }
+    return {}
+  }) }
+  return obs
+}
+
+it('creates a fresh capture input when the colliding one is a removed copy OBS will not add to the scene', async () => {
+  vi.useFakeTimers()
+  try {
+    const obs = lingeringRemovedInputServer(2)
+    const setup = ensureUpForgeCapture(obs as never, 'valorant')
+    await vi.advanceTimersByTimeAsync(5_000)
+    await expect(setup).resolves.toMatchObject({ inputCreated: true })
+    expect(obs.call.mock.calls.filter(([method]) => method === 'CreateInput')).toHaveLength(3)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('names the OBS error code, scene and input when the capture item still cannot be created', async () => {
+  vi.useFakeTimers()
+  try {
+    const obs = lingeringRemovedInputServer(Infinity)
+    const setup = expect(ensureUpForgeCapture(obs as never, 'valorant')).rejects.toThrow(
+      'Failed to create the scene item. (OBS code 700; scene "UpForge"; input "UpForge Capture")',
+    )
+    await vi.advanceTimersByTimeAsync(10_000)
+    await setup
+  } finally {
+    vi.useRealTimers()
+  }
+})

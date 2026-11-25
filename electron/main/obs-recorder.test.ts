@@ -483,7 +483,11 @@ describe('OBS recording completion', () => {
     expect(rec.onStatusChange).toHaveBeenCalledWith(false, expect.stringContaining('did not stop'), 'stop')
     await vi.advanceTimersByTimeAsync(90_000)
     expect(await rec.reclaimActiveRecording()).toBe(false)
-    await expect(rec.start('valorant')).rejects.toThrow('did not stop')
+    // The next start tries one more verified stop before refusing the match.
+    const restart = expect(rec.start('valorant')).rejects.toThrow('did not stop')
+    await vi.advanceTimersByTimeAsync(30_000)
+    await restart
+    expect(mock.call).not.toHaveBeenCalledWith('StartRecord')
   })
 
   it('waits for inactive status and a finalized file before reporting success', async () => {

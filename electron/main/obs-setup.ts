@@ -171,16 +171,62 @@ async function removeUpForgeInput(obs: OBSWebSocket): Promise<void> {
   await pruneUpForgeCaptureSources(obs)
 }
 
+/** Keep OBS's own message, and add its status code plus the scene and input involved. */
+function captureSetupError(err: unknown, inputName: string): Error {
+  const code = (err as { code?: unknown } | null)?.code
+  const detail = [
+    typeof code === 'number' && Number.isFinite(code) ? `OBS code ${code}` : null,
+    `scene "${UPFORGE_SCENE_NAME}"`,
+    `input "${inputName}"`,
+  ].filter(Boolean).join('; ')
+  return Object.assign(new Error(`${describeObsError(err)} (${detail})`, { cause: err }), { code })
+}
+
 async function ensureCaptureSceneItem(obs: OBSWebSocket, inputName: string): Promise<void> {
   const items = await obs.call('GetSceneItemList', { sceneName: UPFORGE_SCENE_NAME }) as {
     sceneItems?: { sourceName: string }[]
   }
   if (items.sceneItems?.some((item) => item.sourceName === inputName)) return
-  await obs.call('CreateSceneItem', {
-    sceneName: UPFORGE_SCENE_NAME,
-    sourceName: inputName,
-    sceneItemEnabled: true,
-  })
+  try {
+    await obs.call('CreateSceneItem', {
+      sceneName: UPFORGE_SCENE_NAME,
+      sourceName: inputName,
+      sceneItemEnabled: true,
+    })
+  } catch (err) {
+    throw captureSetupError(err, inputName)
+  }
+}
+
+const REMOVED_INPUT_RETRY_MS = 250
+const REMOVED_INPUT_RETRIES = 12
+
+/**
+ * OBS keeps a removed input's name taken until its last reference is released, and
+ * refuses to add that removed source to a scene. Create a fresh input once the name frees.
+ */
+async function createInputAfterRemovedCopy(
+  obs: OBSWebSocket,
+  inputKind: string,
+  inputSettings: Record<string, string | number | boolean>,
+  sceneItemError: unknown,
+): Promise<void> {
+  for (let attempt = 0; attempt < REMOVED_INPUT_RETRIES; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, REMOVED_INPUT_RETRY_MS))
+    try {
+      await obs.call('CreateInput', {
+        sceneName: UPFORGE_SCENE_NAME,
+        inputName: UPFORGE_INPUT_NAME,
+        inputKind,
+        inputSettings: inputSettings as never,
+        sceneItemEnabled: true,
+      })
+      return
+    } catch (err) {
+      if (!/source already exists by that input name/i.test(describeObsError(err))) throw captureSetupError(err, UPFORGE_INPUT_NAME)
+    }
+  }
+  throw captureSetupError(sceneItemError, UPFORGE_INPUT_NAME)
 }
 
 const INPUT_RELEASE_POLL_MS = 150
@@ -231,7 +277,14 @@ async function createOrReuseCaptureInput(
       inputSettings: inputSettings as never,
       overlay: true,
     })
-    await ensureCaptureSceneItem(obs, UPFORGE_INPUT_NAME)
+    try {
+      await ensureCaptureSceneItem(obs, UPFORGE_INPUT_NAME)
+    } catch (itemErr) {
+      log.warn('[OBS Setup] Colliding capture input cannot join the scene — waiting for OBS to release it:', describeObsError(itemErr))
+      await createInputAfterRemovedCopy(obs, inputKind, inputSettings, (itemErr as { cause?: unknown }).cause ?? itemErr)
+      log.info('[OBS Setup] Created capture input after OBS released a removed copy')
+      return true
+    }
     log.info('[OBS Setup] Reused capture input after a source name collision')
     return false
   }
