@@ -190,7 +190,10 @@ function createSettings() {
     replayBufferActive: boolean
     outputPath: string | null
     lastError: string | null
+    /** obs-websocket version. */
     obsVersion: string | null
+    /** OBS Studio version (older main processes may not send it). */
+    obsStudioVersion?: string | null
     lastApplied?: {
       at: number
       quality: string

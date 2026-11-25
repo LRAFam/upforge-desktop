@@ -9,7 +9,7 @@ import SettingsSection from './SettingsSection.vue'
 import SettingsStatusStrip from './SettingsStatusStrip.vue'
 import SettingsToggle from './SettingsToggle.vue'
 import type { StatusItem } from './SettingsStatusStrip.vue'
-import { diskFreeDetail, localBudgetStatus, localStorageLine, untrackedCountdownLine } from '../v3/settings/settings-display'
+import { diskFreeDetail, localBudgetStatus, localStorageLine, obsVersionLabel, untrackedCountdownLine } from '../v3/settings/settings-display'
 
 const router = useRouter()
 
@@ -86,7 +86,7 @@ const statusItems = computed<StatusItem[]>(() => {
     detail: obsStatus.value?.connected
       ? (canvasDetail
         ? `Connected · ${canvasDetail}`
-        : `Connected · v${obsStatus.value.obsVersion ?? '?'}`)
+        : `Connected${obsVersionLabel(obsStatus.value) ? ` · ${obsVersionLabel(obsStatus.value)}` : ''}`)
       : 'Not connected',
     tone: obsStatus.value?.connected
       ? (applied && !applied.ok ? 'warn' : 'ok')

@@ -6,6 +6,8 @@ import {
   diskFreeDetail,
   localBudgetStatus,
   localStorageLine,
+  OBS_REPAIR_CHANGES,
+  obsVersionLabel,
   untrackedCountdownLine,
   regionFromTimeZone,
   shortcutKeyParts,
@@ -141,5 +143,22 @@ describe('untrackedCountdownLine', () => {
   })
   it('is empty when nothing is scheduled', () => {
     expect(untrackedCountdownLine({ orphanScheduledCount: 0, orphanScheduledBytes: 0, orphanDeleteAt: null }, fmt, now)).toBe('')
+  })
+})
+
+describe('obsVersionLabel', () => {
+  it('names OBS Studio and the WebSocket version separately', () => {
+    expect(obsVersionLabel({ obsStudioVersion: '32.0.1', obsVersion: '5.7.6' })).toBe('OBS Studio 32.0.1 · WebSocket 5.7.6')
+  })
+  it('never shows the WebSocket version as if it were OBS Studio', () => {
+    expect(obsVersionLabel({ obsVersion: '5.7.6' })).toBe('WebSocket 5.7.6')
+    expect(obsVersionLabel(null)).toBe('')
+  })
+})
+
+describe('OBS_REPAIR_CHANGES', () => {
+  it('lists what repair changes and what it leaves alone', () => {
+    expect(OBS_REPAIR_CHANGES.some(c => /scene/i.test(c))).toBe(true)
+    expect(OBS_REPAIR_CHANGES.at(-1)).toMatch(/not changed/)
   })
 })

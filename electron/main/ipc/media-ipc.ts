@@ -319,7 +319,7 @@ export function setupMediaHandlers(
   })
 
   ipcMain.handle('obs:get-status', async () => {
-    if (!obsRecorder) return { connected: false, recording: false, replayBufferActive: false, outputPath: null, lastError: null, obsVersion: null }
+    if (!obsRecorder) return { connected: false, recording: false, replayBufferActive: false, outputPath: null, lastError: null, obsVersion: null, obsStudioVersion: null }
     return obsRecorder.getOBSStatus()
   })
 

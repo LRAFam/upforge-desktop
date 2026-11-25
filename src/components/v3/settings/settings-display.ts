@@ -99,6 +99,30 @@ export function valorantAccountsView(
   return [{ id: 0, riot_name: name, riot_tag: tag, riot_region: user?.riot_region ?? null, is_active: true }]
 }
 
+// ── OBS ──────────────────────────────────────────────────────────────────────
+
+/**
+ * "OBS Studio 32.0.1 · WebSocket 5.7.6". The websocket version alone ("v5.7.6") read like an OBS
+ * Studio version older than the 28+ the setup asks for.
+ */
+export function obsVersionLabel(status: { obsStudioVersion?: string | null; obsVersion?: string | null } | null | undefined): string {
+  const parts: string[] = []
+  if (status?.obsStudioVersion) parts.push(`OBS Studio ${status.obsStudioVersion}`)
+  if (status?.obsVersion) parts.push(`WebSocket ${status.obsVersion}`)
+  return parts.join(' · ')
+}
+
+/**
+ * Repair re-runs UpForge's scene setup. Listed before the player confirms, so nothing changes in OBS
+ * without them knowing what.
+ */
+export const OBS_REPAIR_CHANGES: readonly string[] = [
+  'Adds the "UpForge" scene and its game capture source if either is missing, and fits the capture to your canvas.',
+  'Switches OBS to the UpForge scene, unless OBS is recording, streaming, running the replay buffer or the virtual camera.',
+  'On the UpForge OBS profile only: sets the crash-safe recording format and turns on the replay buffer.',
+  'Your other scenes, sources and your own OBS profile are not changed.',
+]
+
 // ── Storage line ─────────────────────────────────────────────────────────────
 
 /** "1.2 GB saved on this PC · 69.9 GB free" — always says it's local, so it can't be confused with cloud counts. */
