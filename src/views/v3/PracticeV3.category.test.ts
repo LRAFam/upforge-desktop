@@ -185,3 +185,27 @@ describe('the hub gives Practice the whole drill list for the game', () => {
     expect(drills).not.toMatch(/matchesScenarioCategory|activeDrillCategory/)
   })
 })
+
+describe('actual assigned-drill measurement display', () => {
+  it.each([
+    ['waiting_for_matches', 2, 120, 20, 'Waiting for matches (2/3)'],
+    ['insufficient_hits', 3, 60, 10, 'Not enough hit data (60/80 hits)'],
+    ['target_not_met', 3, 10000, 1895, 'Target not met in this window'],
+    ['target_met', 3, 100, 20, 'Target met in this window'],
+    ['unavailable', 0, 0, 0, 'Match measurement unavailable'],
+  ] as const)('renders %s from the API without treating rounded percentages as completion', (status, matches, hits, numerator, label) => {
+    const rows = practice.matchDrillRows([{ id: 7, category: 'mechanics', title: 'Measured task', instructions: null, success_metric: null, practice_mode: 'ranked', source: 'match_stats', trainer_scenario: 'head_height',
+      stat: { label: 'HS', better: 'higher', baseline_pct: 16, target_pct: 19, current_pct: status === 'target_met' ? 20 : 19, matches: 8,
+        measurement: 'pooled_hits_latest_eligible_ranked', current_matches: matches, matches_needed: 3, current_hits: hits, current_numerator: numerator,
+        minimum_hits: 80, window_started_at: '2026-11-24T10:00:00Z', progress_status: status } }], () => 'Head Height')
+    const view = setup({ matchDrills: rows })
+    try {
+      const row = findAll(view.select('all'), n => n.props?.class === 'uf-mrow-what')[0]
+      const shown = text(row)
+      expect(shown).toContain(label)
+      if (status !== 'unavailable') { expect(shown).toContain('latest 3 eligible ranked Valorant matches'); expect(shown).toContain('Match statistics and trainer scores are tracked separately.') }
+      if (status === 'target_not_met') expect(shown).toContain('observed just below target')
+      expect(shown).not.toMatch(/consecutive|streak|verified improvement/i)
+    } finally { view.stop() }
+  })
+})

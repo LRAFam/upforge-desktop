@@ -396,6 +396,14 @@ function thumb(scenario: string | null | undefined) {
                     Practised in the trainer with {{ scenarioLabel(r.trainerScenario) }}<template v-if="drillBrief(r.trainerScenario)">: {{ drillBrief(r.trainerScenario)!.goal }}</template>
                   </span>
                   <span v-if="r.stat" class="uf-t4 uf-mrow-stat" :style="r.stat.trend === 'better' ? 'color: var(--uf-win)' : undefined">{{ r.stat.text }}</span>
+                  <template v-if="r.stat?.verification">
+                    <span class="uf-t4">{{ r.stat.verification.label }}</span>
+                    <details class="uf-t4">
+                      <summary>How this is checked</summary>
+                      <p>{{ r.stat.verification.detail }}</p>
+                    </details>
+                  </template>
+                  <span v-else-if="r.fromMatches" class="uf-t4">Match verification details unavailable</span>
                   <TrainingDrillMoments v-if="r.hasMoments" :drill-id="r.id" />
                 </div>
                 <UfButton v-if="r.steps || r.goal || r.trainerScenario" variant="link" :aria-expanded="openSteps === r.id"

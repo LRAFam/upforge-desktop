@@ -13,6 +13,7 @@ export type VodDrill = {
   from_matches?: boolean
   why?: string | null
   stat_line?: string | null
+  stat_verification?: import('../../lib/coaching-drill-stat').CoachingVerification
   beta?: boolean
 }
 
@@ -53,6 +54,11 @@ const emit = defineEmits<{ play: [drill: VodDrill]; dismiss: [drill: VodDrill] }
             </p>
             <p class="mt-1 text-xs leading-relaxed text-gray-400 line-clamp-2">{{ (drill.from_matches && drill.why) || drill.reason || description(drill.scenario) }}</p>
             <p v-if="drill.from_matches && drill.stat_line" class="mt-0.5 text-[11px] tabular-nums text-gray-300">{{ drill.stat_line }}</p>
+            <template v-if="drill.from_matches && drill.stat_verification">
+              <p class="mt-1 text-xs text-gray-300">{{ drill.stat_verification.label }}</p>
+              <p class="mt-1 text-xs text-gray-400">{{ drill.stat_verification.detail }}</p>
+            </template>
+            <p v-else-if="drill.from_matches" class="mt-1 text-xs text-gray-400">Match verification details unavailable</p>
           </div>
           <span class="shrink-0 text-xs font-semibold text-gray-300">Play <span aria-hidden="true">→</span></span>
         </button>

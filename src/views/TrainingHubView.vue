@@ -90,6 +90,7 @@ interface AssignedDrill {
   from_matches?: boolean
   why?: string | null
   stat_line?: string | null
+  stat_verification?: import('../lib/coaching-drill-stat').CoachingVerification
   beta?: boolean
 }
 
@@ -390,7 +391,7 @@ function drillToAssigned(drill: CoachingDrill): AssignedDrill | null {
 
 function legacyCoachingExtras(drill: CoachingDrill, scenario: string) {
   const x = coachingDrillExtras(drill, scenario)
-  return { from_matches: x.fromMatches, why: x.why, stat_line: x.stat?.text ?? null, beta: x.beta }
+  return { from_matches: x.fromMatches, why: x.why, stat_line: x.stat?.text ?? null, stat_verification: x.stat?.verification, beta: x.beta }
 }
 
 // ── Score helpers ─────────────────────────────────────────────────────────────
