@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { plural } from '../../lib/plural'
 import { recentFormMatches, recentFormStats } from '../../components/v3/home/recent-form'
+import { newestPlayedFirst } from '../../lib/match-stats'
 /**
  * UI v3 Home (Coach) — board 4. Reading order: last match score → the coach's sentence →
  * one red action → recent form → focus → evidence. Real data only; honest empty states.
@@ -39,7 +40,7 @@ import {
   analysedThisWeek,
   liveStatus,
   PRIMARY_LABEL, agentFullPortrait, analysedMatch, coachLine, dedupeByMatch, formSquareLabel, heroMetaParts, heroMismatchNote, heroScore, homeMapLabel, homeStateNote,
-  insightMatch, matchTime, pickPrimaryAction, relativeDay, resultTone, resultWord, syncedMatch,
+  insightMatch, matchTime, pickPrimaryAction, recentWhen, resultTone, resultWord, shortDate, syncedMatch,
 } from '../../components/v3/home/home-v3'
 import upforgeIcon from '../../assets/upforge-icon.webp'
 import cs2Art from '../../assets/games/cs2-card-bg.webp'
@@ -60,7 +61,8 @@ function onFocusLatest(latest: FocusUpdate | null) {
   focus.set(latest)
 }
 /** One row per real match (re-analyses of the same Riot match collapse to the newest). */
-const matches = computed(() => dedupeByMatch(d.dashboardAnalyses.value))
+// Newest PLAYED first: the API lists by analysis time, so an old match analysed late would jump the queue.
+const matches = computed(() => newestPlayedFirst(dedupeByMatch(d.dashboardAnalyses.value)))
 /** Nothing to draw yet: first-ever load for this game. Cached data skips this entirely. */
 const homeLoading = computed(() => d.analysesLoading.value && !matches.value.length)
 /** Sections that were skeletons fade in once; cached screens draw without animation. */
@@ -346,7 +348,7 @@ async function runPrimary() {
         </section>
         <div v-if="d.isValorant.value" class="uf-hair" />
 
-        <section class="home3-block" aria-label="Recent matches">
+        <section class="home3-block" aria-label="Recent matches, newest played first">
           <div class="home3-row-head"><p class="uf-label">Recent</p><button type="button" class="uf-link" @click="d.router.push('/recordings')">All →</button></div>
           <p v-if="weekCount" class="uf-t4">{{ weekCount }} analysed this week</p>
           <template v-if="homeLoading">
@@ -356,9 +358,10 @@ async function runPrimary() {
             </div>
           </template>
           <p v-else-if="!recent.length" class="uf-t4">No analysed matches yet.</p>
-          <button v-for="a in recent" :key="a.id" type="button" class="home3-recent" :class="{ 'uf-reveal': fromSkeleton }" @click="d.openAnalysisRow(a)">
+          <button v-for="a in recent" :key="a.id" type="button" class="home3-recent" :class="{ 'uf-reveal': fromSkeleton }"
+            :title="shortDate(matchTime(a)) ? `Played ${shortDate(matchTime(a))}` : undefined" @click="d.openAnalysisRow(a)">
             <span class="home3-recent-text"><span class="uf-t3">{{ mapLabel(a.map) || 'Match' }}</span>
-              <span class="uf-t4">{{ [a.agent, relativeDay(matchTime(a))].filter(Boolean).join(' · ') }}</span></span>
+              <span class="uf-t4">{{ [a.agent, recentWhen(matchTime(a))].filter(Boolean).join(' · ') }}</span></span>
             <span v-if="a.rounds_won != null && a.rounds_lost != null" class="uf-d4"
               :style="{ color: a.won === true ? 'var(--uf-win)' : a.won === false ? 'var(--uf-loss)' : 'var(--uf-bone)' }">{{ a.rounds_won }}–{{ a.rounds_lost }}</span>
             <UfIcon v-else name="play" :size="14" />

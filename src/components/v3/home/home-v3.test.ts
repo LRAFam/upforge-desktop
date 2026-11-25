@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agentFullPortrait, analysedMatch, heroMismatchNote, insightMatch, syncedMatch, analysedThisWeek, coachLine, daysAgo, dedupeByMatch, focusTitleParts, formSquareLabel, heroMetaParts, heroScore, homeMapLabel, homeStateNote, liveStatus, pickPrimaryAction, relativeDay, resultTone, resultWord } from './home-v3'
+import { agentFullPortrait, recentWhen, analysedMatch, heroMismatchNote, insightMatch, syncedMatch, analysedThisWeek, coachLine, daysAgo, dedupeByMatch, focusTitleParts, formSquareLabel, heroMetaParts, heroScore, homeMapLabel, homeStateNote, liveStatus, pickPrimaryAction, relativeDay, resultTone, resultWord } from './home-v3'
 
 describe('pickPrimaryAction', () => {
   it('opens the last match whenever there is one', () => {
@@ -202,5 +202,23 @@ describe('insight match labels (every Home insight names its match)', () => {
     expect(insightMatch({ analysisId: 1, date: null }, [hero], label)?.label).toBe('Summit · 22 Nov · analysed')
     expect(insightMatch({ analysisId: 77, date: '2026-11-02T10:00:00Z' }, [hero], label)?.label).toBe('Analysed match · 2 Nov')
     expect(insightMatch(null, [hero], label)).toBeNull()
+  })
+})
+
+describe('Recent list order and dates', () => {
+  const NOW = Date.parse('2026-11-25T12:00:00Z')
+  it('lists one row per match, newest played first, even when an old match was analysed last', async () => {
+    const { newestPlayedFirst } = await import('../../../lib/match-stats')
+    const rows = [
+      { id: 4, match_id: 'old', played_at: '2026-09-05T12:00:00Z', created_at: '2026-11-24T12:00:00Z' },
+      { id: 3, match_id: 'new', played_at: '2026-11-03T12:00:00Z', created_at: '2026-11-03T13:00:00Z' },
+      { id: 2, match_id: 'old', played_at: '2026-09-05T12:00:00Z', created_at: '2026-09-05T13:00:00Z' },
+    ]
+    expect(newestPlayedFirst(dedupeByMatch(rows)).map(r => r.id)).toEqual([3, 4])
+  })
+  it('shows a relative day this week and the exact date after that', () => {
+    expect(recentWhen('2026-11-24T12:00:00Z', NOW)).toBe('yesterday')
+    expect(recentWhen('2026-10-05T12:00:00Z', NOW)).toBe('5 Oct')
+    expect(recentWhen(null, NOW)).toBe('')
   })
 })

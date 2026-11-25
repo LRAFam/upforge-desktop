@@ -67,6 +67,13 @@ export function shortDate(iso: string | null | undefined): string {
   return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
+/** Recent-list date: "2h ago" / "3 days ago" this week, the exact date ("22 Sep") after that. */
+export function recentWhen(iso: string | null | undefined, now = Date.now()): string {
+  const days = daysAgo(iso, now)
+  if (days == null) return ''
+  return days < 7 ? relativeDay(iso, now) : shortDate(iso)
+}
+
 type SourceRow = Pick<AnalysisItem, 'id' | 'map' | 'played_at' | 'created_at'> & { match_id?: string | null }
 
 /** Which match a Home insight is about, so every summary can name it ("Summit · 22 Nov · analysed"). */
