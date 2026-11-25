@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
-import { decidedStats, focusBeforeAfter, deriveRoundFacts, sanitizeRoundFacts, focusHeadline, focusResult, pickFocusResult, focusSlots, focusSubline, focusSyncMessage, focusTransitionText, hydrateFocusResponse, pct, type Focus, type FocusResponse, type FocusUpdate, VALORANT_FOCUS_DESKTOP_ONLY } from './focus'
+import { decidedStats, focusAttemptLine, focusBeforeAfter, focusChangeLine, focusDateSpan, deriveRoundFacts, sanitizeRoundFacts, focusHeadline, focusResult, pickFocusResult, focusSlots, focusSubline, focusSyncMessage, focusTransitionText, hydrateFocusResponse, pct, type Focus, type FocusResponse, type FocusUpdate, VALORANT_FOCUS_DESKTOP_ONLY } from './focus'
 
 const base: Focus = {
   id: 1, metric: 'opening_death_rate', label: 'Opening deaths', better: 'lower', baseline: 0.364, target: 0.22,
@@ -195,6 +195,30 @@ describe('focusResult', () => {
 
   it('without a next focus yet, says when it comes', () => {
     expect(focusResult(done('achieved', [0.1, 0.1], 2), null)!.next).toContain('next ranked match')
+  })
+
+  it('names the finished attempt by number, dates and outcome', () => {
+    const d = { ...done('missed', [0.4, 0.5], 0), started_at: '2026-11-10T12:00:00Z', completed_at: '2026-11-17T12:00:00Z' }
+    expect(focusResult(d, null)!.attemptLine).toBe('Attempt 1 · 10–17 Nov · missed, 0 of 2 games on target')
+    expect(focusAttemptLine({ ...d, attempt: 2, started_at: '2026-10-28T12:00:00Z', completed_at: '2026-11-03T12:00:00Z' }))
+      .toBe('Attempt 2 · 28 Oct – 3 Nov · missed, 0 of 2 games on target')
+  })
+
+  it('explains why a retry has a new starting point and target', () => {
+    const d = done('missed', [0.4, 0.5], 0)
+    const retry = { ...next(2, 'opening_death_rate', 2), better: 'lower' as const, baseline: 0.44, target: 0.26 }
+    expect(focusResult(d, retry)!.changeLine)
+      .toBe("New attempt, new numbers: starting point 36% → 44%, target under 22% → under 26%. They're worked out again from your recent ranked matches.")
+    expect(focusChangeLine(d, { ...retry, baseline: 0.36, target: 0.22 })).toBe('')
+    expect(focusChangeLine(d, next(3, 'traded_death_rate'))).toBe('')
+  })
+})
+
+describe('focusDateSpan', () => {
+  it('handles one date, the same day and missing dates', () => {
+    expect(focusDateSpan('2026-11-17T10:00:00Z', null)).toBe('17 Nov')
+    expect(focusDateSpan('2026-11-17T10:00:00Z', '2026-11-17T20:00:00Z')).toBe('17 Nov')
+    expect(focusDateSpan(null, undefined)).toBe('')
   })
 })
 

@@ -89,13 +89,6 @@ onUnmounted(() => {
 
 <template>
   <section class="hf" aria-labelledby="hf-title">
-    <div v-if="result" class="hf-result" :class="`hf-result--${result.tone}`" role="status">
-      <p class="uf-label hf-result-kicker">{{ result.tone === 'achieved' ? 'Focus complete' : 'Focus check' }}</p>
-      <h2 class="uf-t3 hf-result-title">{{ result.title }}</h2>
-      <p class="uf-t4 hf-result-body">{{ result.body }}</p>
-      <p class="uf-t4 hf-result-next">{{ result.next }}</p>
-      <button type="button" class="uf-link" @click="dismissResult">Got it</button>
-    </div>
     <p class="uf-label" :style="{ color: focus ? 'var(--uf-red)' : undefined }">{{ kicker }}</p>
     <template v-if="focus">
       <!-- Type roles: the habit is a sentence (Plex), only the short goal uses the display face. -->
@@ -124,6 +117,16 @@ onUnmounted(() => {
       <h2 id="hf-title" class="uf-t3">No focus yet</h2>
       <p class="uf-t4 hf-sub">With Valorant open, UpForge reads your recent matches and picks the habit that shows up most in your ranked matches. No recording needed.</p>
     </template>
+    <!-- The finished attempt sits under the current focus, named by attempt and dates, so the two never read as one. -->
+    <div v-if="result" class="hf-result" :class="`hf-result--${result.tone}`" role="status">
+      <p class="uf-label hf-result-kicker">{{ result.tone === 'achieved' ? 'Finished focus' : 'Previous attempt' }}</p>
+      <p class="uf-t4 hf-result-attempt">{{ result.attemptLine }}</p>
+      <h3 class="uf-t3 hf-result-title">{{ result.title }}</h3>
+      <p class="uf-t4 hf-result-body">{{ result.body }}</p>
+      <p v-if="result.changeLine" class="uf-t4 hf-result-next">{{ result.changeLine }}</p>
+      <p class="uf-t4 hf-result-next">{{ result.next }}</p>
+      <button type="button" class="uf-link" @click="dismissResult">Got it</button>
+    </div>
     <p v-if="loadError && !data" class="uf-t4" role="alert">{{ loadError }}</p>
     <p v-else-if="loadError" class="uf-t4" role="status" style="color: var(--uf-faint)">Couldn't refresh your focus · showing the last one.</p>
     <div class="hf-sync">
@@ -147,7 +150,8 @@ onUnmounted(() => {
 .hf-slot--miss > span { background: var(--uf-loss); }
 .hf-sub { margin: 0; color: var(--uf-muted); line-height: 1.5; }
 .hf-skel { display: flex; flex-direction: column; gap: 12px; }
-.hf-result { display: flex; flex-direction: column; gap: 6px; padding: 12px 0 14px; border-bottom: 1px solid var(--uf-line); }
+.hf-result { display: flex; flex-direction: column; gap: 6px; padding: 14px 0 4px; border-top: 1px solid var(--uf-line); }
+.hf-result-attempt { color: var(--uf-muted); }
 .hf-result > * { margin: 0; }
 .hf-result--achieved .hf-result-kicker { color: var(--uf-win); }
 .hf-result--missed .hf-result-kicker { color: var(--uf-gold); }
