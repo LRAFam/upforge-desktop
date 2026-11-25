@@ -78,3 +78,37 @@ describe('coach-format', () => {
     expect(rosterMemberLine({ games_analysed: 15, membership_tier: 'free', last_active_at: null })).toBe('15 analysed · Free plan')
   })
 })
+
+describe('open coach requests: states, last activity, overdue (UX1124-34)', () => {
+  it('tells sent, reviewing and overdue apart', async () => {
+    const { openReviewStatus } = await import('./coach-format')
+    expect(openReviewStatus({ status: 'pending' }, 'astar')).toEqual({ text: 'Sent · astar hasn’t started', overdue: false })
+    expect(openReviewStatus({ status: 'in_progress' }, 'astar')).toEqual({ text: 'astar is reviewing', overdue: false })
+    expect(openReviewStatus({ status: 'in_progress', overdue: true }, 'astar')).toEqual({ text: 'Overdue', overdue: true })
+  })
+
+  it('shows the latest activity date when it differs from the send date', async () => {
+    const { openReviewSubtitle } = await import('./coach-format')
+    expect(openReviewSubtitle({ status: 'pending', requested_at: '2026-07-03T10:00:00Z', last_activity_at: '2026-07-05T10:00:00Z' }, '4–9'))
+      .toBe('4–9 · sent 3 Jul · last activity 5 Jul')
+    expect(openReviewSubtitle({ status: 'pending', requested_at: '2026-07-03T10:00:00Z', last_activity_at: '2026-07-03T12:00:00Z' }, null))
+      .toBe('sent 3 Jul')
+  })
+
+  it('says an overdue request no longer blocks and what to do', async () => {
+    const { overdueLine } = await import('./coach-format')
+    expect(overdueLine('astar', 14)).toBe('No activity from astar for over 14 days. This request no longer stops you sending astar another match. Message them from their page, or contact support to cancel it.')
+    expect(overdueLine('astar', undefined)).toContain('for over a while')
+  })
+
+  it('Coaches uses them and the match row names the rating as the analysis rating', async () => {
+    const { readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const view = readFileSync(join(__dirname, '..', '..', '..', 'views', 'v3', 'RostersV3.vue'), 'utf8')
+    expect(view).toContain('openReviewStatus(r, coachName(r)).text')
+    expect(view).toContain('overdueLine(coachName(r), r.overdue_after_days)')
+    const row = readFileSync(join(__dirname, 'RosterMatchRowV3.vue'), 'utf8')
+    expect(row).not.toContain("'Coach rating'")
+    expect(row).toContain('Not a score from your coach.')
+  })
+})

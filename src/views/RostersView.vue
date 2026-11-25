@@ -50,6 +50,11 @@ type HubReview = {
   status: string
   requested_at?: string | null
   completed_at?: string | null
+  /** Newer API: when the coach started, the latest activity, and overdue (no activity for overdue_after_days). */
+  started_at?: string | null
+  last_activity_at?: string | null
+  overdue?: boolean
+  overdue_after_days?: number
   coach?: { id: number; display_name: string; avatar_url?: string | null } | null
   analysis?: RosterMatchVisual & { id: number } | null
 }

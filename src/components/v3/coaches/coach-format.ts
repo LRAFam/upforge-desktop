@@ -111,6 +111,36 @@ export function blockedLine(name: string, code: string | null | undefined, reaso
   }
 }
 
+/** One open coach review, as the API sends it (newer APIs add the activity fields). */
+export interface OpenReviewLike {
+  status: string
+  requested_at?: string | null
+  started_at?: string | null
+  last_activity_at?: string | null
+  overdue?: boolean
+  overdue_after_days?: number
+}
+
+/** The row status: Sent (coach hasn't started) › Reviewing › Overdue (no activity for a while). */
+export function openReviewStatus(r: OpenReviewLike, coachName: string): { text: string; overdue: boolean } {
+  if (r.overdue) return { text: 'Overdue', overdue: true }
+  if (r.status === 'in_progress') return { text: `${coachName} is reviewing`, overdue: false }
+  return { text: `Sent · ${coachName} hasn’t started`, overdue: false }
+}
+
+/** "4–9 · sent 3 Jul · last activity 5 Jul" (the activity date only when it differs from the send date). */
+export function openReviewSubtitle(r: OpenReviewLike, score: string | null): string {
+  const sent = r.requested_at ? rosterFormatDate(r.requested_at) : null
+  const last = r.last_activity_at ? rosterFormatDate(r.last_activity_at) : null
+  return [score, sent ? `sent ${sent}` : null, last && last !== sent ? `last activity ${last}` : null].filter(Boolean).join(' · ')
+}
+
+/** Under the waiting list when a request is overdue: what that means and what you can do now. */
+export function overdueLine(coachName: string, days: number | undefined): string {
+  const span = typeof days === 'number' && days > 0 ? `${days} days` : 'a while'
+  return `No activity from ${coachName} for over ${span}. This request no longer stops you sending ${coachName} another match. Message them from their page, or contact support to cancel it.`
+}
+
 /** "astar has your Summit match" / "Crystalf1sh is reviewing Lotus". */
 export function waitingPhrase(name: string, map: string, status: string): string {
   return status === 'in_progress' ? `${name} is reviewing ${map}` : `${name} has your ${map} match`
