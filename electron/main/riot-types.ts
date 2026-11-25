@@ -1,5 +1,5 @@
 import type { LolLocalReview } from './lol-local-review'
-import type { TimerOffsetEvidence, VideoOffsetProvenance } from './video-offset-provenance'
+import type { TimerOffsetEvidence, TimerSyncFailure, VideoOffsetProvenance } from './video-offset-provenance'
 /**
  * riot-types.ts
  * TypeScript interfaces for the Riot Local API data model.
@@ -396,6 +396,8 @@ export interface MatchData {
    */
   roundTimerOffsetMs?: number
   roundTimerEvidence?: TimerOffsetEvidence
+  /** Why the last round-timer read fell back to the estimate; cleared once a read succeeds. */
+  roundTimerFailure?: TimerSyncFailure
   videoOffsetProvenance?: VideoOffsetProvenance
   /**
    * CS2: measured position in the recording of demo time zero (the first round_start), from GSI

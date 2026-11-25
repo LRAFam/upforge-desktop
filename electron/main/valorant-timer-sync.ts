@@ -15,6 +15,7 @@ import templatesJson from './valorant-timer-templates.json'
 import { observedRoundStarts } from './riot-event-time'
 import { manualSyncNudgeMs, recomputeTimelineVideoOffsets, totalRecordingOffsetMs } from './riot-local-api'
 import type { MatchData } from './riot-types'
+import type { TimerSyncFailure } from './video-offset-provenance'
 
 /** Timer digits as fractions of a 16:9 frame: left x, top y, width w, height h. */
 export const TIMER_CROP = { x: 0.465, y: 0.012, w: 0.07, h: 0.04 }
@@ -271,23 +272,38 @@ export async function alignValorantTimelineByRoundTimer(
     const rawKills = timeline.matchDetails?.kills
     if (Array.isArray(rawKills)) starts = observedRoundStarts(rawKills as Array<Record<string, unknown>>)
   }
-  if (starts.size < 2) return null
+  if (starts.size < 2) {
+    timeline.roundTimerFailure = { reason: 'too_few_round_starts' }
+    return null
+  }
   const current = totalRecordingOffsetMs(timeline)
   let est: OffsetEstimate | null = null
+  let finished = false
   try {
-    est = await withBudget(measureRoundTimerOffset(videoPath, starts, current, readFrames, { decode }), budgetMs)
+    est = await withBudget(
+      measureRoundTimerOffset(videoPath, starts, current, readFrames, { decode }).then((e) => { finished = true; return e }),
+      budgetMs,
+    )
   } catch (err) {
     log.warn('[TimerSync] Could not read the recording:', err instanceof Error ? err.message : err)
+    timeline.roundTimerFailure = { reason: 'read_error' }
     return null
   }
   if (manualSyncNudgeMs(timeline) !== nudgeBefore || timeline.recordingStartTime !== recordingStartBefore) {
     log.info('[TimerSync] Recording was nudged or trimmed during the scan; keeping it as the user left it')
     return null
   }
+  const failure: TimerSyncFailure = !finished
+    ? { reason: 'timed_out' }
+    : est
+      ? { reason: 'inconsistent', samples: est.samples, rounds: est.rounds, spreadMs: est.spreadMs, outliers: est.outliers }
+      : { reason: 'no_timer_read' }
   if (!isTrustworthy(est)) {
     log.info('[TimerSync] Not enough consistent timer ticks; keeping the estimated offset', est)
+    timeline.roundTimerFailure = failure
     return null
   }
+  delete timeline.roundTimerFailure
   timeline.roundTimerOffsetMs = est.offsetMs
   timeline.roundTimerEvidence = { samples: est.samples, rounds: est.rounds, spreadMs: est.spreadMs, outliers: est.outliers }
   recomputeTimelineVideoOffsets(timeline)

@@ -152,5 +152,37 @@ describe('alignValorantTimelineByRoundTimer', () => {
     const timeline = live([[0, 40_000], [1, 150_000]])
     expect(await alignValorantTimelineByRoundTimer(timeline, 'rec.mp4', async () => [], { info: vi.fn(), warn: vi.fn() }, decodeFake)).toBeNull()
     expect(timeline.roundTimerOffsetMs).toBeUndefined()
+    expect(timeline.roundTimerFailure).toEqual({ reason: 'no_timer_read' })
+  })
+
+  it('records why the read fell back, and clears it once a later read succeeds', async () => {
+    const { alignValorantTimelineByRoundTimer } = await import('./valorant-timer-sync')
+    const log = { info: vi.fn(), warn: vi.fn() }
+    const starts = new Map([[0, 40_000], [1, 150_000], [2, 260_000]])
+
+    const oneRound = live([[0, 40_000]])
+    expect(await alignValorantTimelineByRoundTimer(oneRound, 'rec.mp4', vi.fn(), log, decodeFake)).toBeNull()
+    expect(oneRound.roundTimerFailure).toEqual({ reason: 'too_few_round_starts' })
+
+    const broken = live([[0, 40_000], [1, 150_000]])
+    const failing: FrameReader = async () => { throw new Error('ffmpeg exited 1') }
+    expect(await alignValorantTimelineByRoundTimer(broken, 'rec.mp4', failing, log, decodeFake)).toBeNull()
+    expect(broken.roundTimerFailure).toEqual({ reason: 'read_error' })
+
+    const slow = live([[0, 40_000], [1, 150_000]])
+    const never: FrameReader = () => new Promise(() => {})
+    expect(await alignValorantTimelineByRoundTimer(slow, 'rec.mp4', never, log, decodeFake, 5)).toBeNull()
+    expect(slow.roundTimerFailure).toEqual({ reason: 'timed_out' })
+
+    // Ticks from one round only: read, but not enough agreement to trust.
+    const thin = live([[0, 40_000], [1, 150_000], [2, 260_000]])
+    const recording = fakeRecording(-4875, starts)
+    const firstRoundOnly: FrameReader = async (path, start, dur) => (start < 100 ? recording(path, start, dur) : [])
+    expect(await alignValorantTimelineByRoundTimer(thin, 'rec.mp4', firstRoundOnly, log, decodeFake)).toBeNull()
+    expect(thin.roundTimerFailure).toMatchObject({ reason: 'inconsistent', rounds: 1 })
+    expect(thin.roundTimerFailure!.samples).toBeGreaterThan(0)
+
+    expect(await alignValorantTimelineByRoundTimer(thin, 'rec.mp4', recording, log, decodeFake)).not.toBeNull()
+    expect(thin.roundTimerFailure).toBeUndefined()
   })
 })
