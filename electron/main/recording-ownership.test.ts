@@ -1,3 +1,4 @@
+import { readMainRuntimeSource } from './__tests__/main-runtime-source'
 import { describe, expect, it, vi } from 'vitest'
 import {
   MAX_RECORDING_DURATION_MS,
@@ -224,7 +225,7 @@ describe('createIgnoredStartRearm (game start ignored because OBS could not stop
 describe('index.ts wiring (card 232 follow-ups)', () => {
   const { readFileSync } = require('fs') as typeof import('fs')
   const { join } = require('path') as typeof import('path')
-  const source = readFileSync(join(__dirname, 'index.ts'), 'utf8').replace(/\r\n/g, '\n') // Windows checkouts are CRLF
+  const source = readMainRuntimeSource('main-session.ts', 'main-match-detection.ts', 'main-startup.ts', 'index.ts') // Windows checkouts are CRLF
   const start = source.indexOf("gameDetector.on('game-started'")
   const handler = source.slice(start, source.indexOf('const ownership = await resolveGameStartOwnership', start))
 
@@ -234,8 +235,8 @@ describe('index.ts wiring (card 232 follow-ups)', () => {
   })
 
   it('a game-tab switch never retargets capture under an owned recording', () => {
-    const fn = source.slice(source.indexOf('function handlePrimaryGameSwitch('), source.indexOf('const obsCaptureSetupInFlight'))
-    expect(fn).toMatch(/if \(!obsRecorder\.isRecording\(\)\) void ensureObsCaptureForGame\(game\)/)
+    const fn = source.slice(source.indexOf('function handlePrimaryGameSwitch('), source.indexOf('function onSettingsSaved('))
+    expect(fn).toMatch(/if \(!mainProcess\.obsRecorder\.isRecording\(\)\) void mainProcess\.ensureObsCaptureForGame\(game\)/)
   })
 
   it('re-arms a game start that was ignored because the old recording would not stop', () => {
@@ -258,7 +259,7 @@ describe('recordingOwnerGame (game a stop/OBS-death/clip belongs to)', () => {
 describe('index.ts wiring — the selected game tab never labels a recording', () => {
   const { readFileSync } = require('fs') as typeof import('fs')
   const { join } = require('path') as typeof import('path')
-  const source = readFileSync(join(__dirname, 'index.ts'), 'utf8').replace(/\r\n/g, '\n')
+  const source = readMainRuntimeSource('main-session.ts', 'main-match-detection.ts', 'main-startup.ts', 'index.ts')
   const slice = (from: string, to: string) => {
     const start = source.indexOf(from)
     expect(start).toBeGreaterThan(-1)
@@ -266,7 +267,7 @@ describe('index.ts wiring — the selected game tab never labels a recording', (
   }
 
   it('recorder:stop is wired to the owning recording game', () => {
-    expect(source).toMatch(/\(\) => obsStartupTask,\n\s+currentRecordingOwnerGame,\n\s+\)/)
+    expect(source).toMatch(/\(\) => mainProcess\.obsStartupTask,\n\s+mainProcess\.currentRecordingOwnerGame,\n\s+\)/)
   })
 
   it('orphan import does not read primaryGame and waits for an in-flight match save', () => {
@@ -277,7 +278,7 @@ describe('index.ts wiring — the selected game tab never labels a recording', (
   })
 
   it('OBS-death finalise uses the owning recording, not the tracked tab', () => {
-    const fn = slice('async function finalizeAfterObsProcessDeathImpl(', 'finalizeAfterObsProcessDeath = finalizeAfterObsProcessDeathImpl')
+    const fn = slice('async function finalizeAfterObsProcessDeathImpl(', 'mainProcess.finalizeAfterObsProcessDeath = finalizeAfterObsProcessDeathImpl')
     expect(fn).not.toContain('trackedPrimaryGame')
     expect(fn).toContain('currentRecordingOwnerGame()')
   })

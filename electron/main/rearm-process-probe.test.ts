@@ -1,3 +1,4 @@
+import { readMainRuntimeSource } from './__tests__/main-runtime-source'
 /**
  * CS2/Deadlock re-watch loop (rearmGameDetection) — runs every 3 s for up to 15 min, including
  * through a whole skipped/unrecorded match. It used a filtered `tasklist /fi` per tick (20 process
@@ -17,7 +18,7 @@ vi.mock('./steam-gsi-server', () => ({
 const CS2 = '"cs2.exe","3","Console","1","1 K"'
 
 function rearmLoopSource(): string {
-  const src = readFileSync(join(__dirname, 'index.ts'), 'utf8').replace(/\r\n/g, '\n') // Windows checkouts are CRLF
+  const src = readMainRuntimeSource('main-match-detection.ts') // Windows checkouts are CRLF
   const start = src.indexOf('async function rearmGameDetection(')
   const end = src.indexOf('\n  }\n', src.indexOf('const REWATCH_MS', start))
   expect(start).toBeGreaterThan(0)

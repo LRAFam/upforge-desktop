@@ -1,3 +1,4 @@
+import { readMainRuntimeSource } from './__tests__/main-runtime-source'
 import fs from 'node:fs'
 import vm from 'node:vm'
 import ts from 'typescript'
@@ -85,16 +86,22 @@ describe('tray with a destroyed main window', () => {
   })
 })
 
-const indexSource = fs.readFileSync(new URL('./index.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+const indexSource = readMainRuntimeSource('main-lifecycle.ts', 'main-startup.ts')
 
-function runSlice(startMarker: string, endMarker: string, context: Record<string, unknown>): vm.Context {
-  const start = indexSource.indexOf(startMarker)
-  const end = indexSource.indexOf(endMarker, start)
-  expect(start, `${startMarker} not found in index.ts`).toBeGreaterThan(-1)
-  const code = ts.transpileModule(indexSource.slice(start, end + endMarker.length), {
+function runSlice(startMarker: string, _endMarker: string, context: Record<string, unknown>): vm.Context {
+  const source = ts.createSourceFile('main-runtime.ts', indexSource, ts.ScriptTarget.Latest, true)
+  let statement: ts.ExpressionStatement | undefined
+  const visit = (node: ts.Node): void => {
+    if (ts.isExpressionStatement(node) && node.getText(source).startsWith(startMarker)) statement = node
+    else ts.forEachChild(node, visit)
+  }
+  visit(source)
+  expect(statement, `${startMarker} not found in main runtime`).toBeDefined()
+  const code = ts.transpileModule(statement!.getText(source), {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText
   const ctx = vm.createContext(context)
+  ctx.mainProcess = ctx
   vm.runInContext(code, ctx)
   return ctx
 }

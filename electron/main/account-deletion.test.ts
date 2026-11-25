@@ -1,3 +1,4 @@
+import { readMainRuntimeSource } from './__tests__/main-runtime-source'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import type { AxiosInstance } from 'axios'
@@ -68,8 +69,8 @@ describe('account deletion (desktop → API)', () => {
 
   it('Settings → Account shows the section, and the download link is re-read in the main process', () => {
     const pane = readFileSync(new URL('../../src/components/settings/SettingsAccountPane.vue', import.meta.url), 'utf8')
-    const main = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
+    const main = readMainRuntimeSource('main-startup.ts')
     expect(pane).toContain('<SettingsDeleteAccount v-if="user" :email="user.email" />')
-    expect(main).toMatch(/'account:export-open', async \(\) => \{[\s\S]*readAccountExport\(authManager\.getApi\(\)\)[\s\S]*isSafeDownloadUrl/)
+    expect(main).toMatch(/'account:export-open', async \(\) => \{[\s\S]*readAccountExport\(mainProcess\.authManager\.getApi\(\)\)[\s\S]*isSafeDownloadUrl/)
   })
 })

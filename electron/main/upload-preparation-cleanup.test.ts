@@ -1,16 +1,12 @@
+import { compileMainRuntimeFunctions } from './__tests__/main-runtime-source'
 import { describe, expect, it } from 'vitest'
 import fs from 'fs'
 import vm from 'vm'
 import ts from 'typescript'
 import { RecordingPipelineSingleFlight } from './recording-pipeline-single-flight'
 
-// Execute the real entry point without booting Electron or starting OBS.
-const source = fs.readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
-const start = source.indexOf('function doUploadAndAnalyse(')
-const end = source.indexOf('\nfunction createSplashWindow()', start)
-const compiled = ts.transpileModule(source.slice(start, end), {
-  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
-}).outputText
+// Execute the real orchestration functions without booting Electron or starting OBS.
+const compiled = compileMainRuntimeFunctions('main-analysis.ts', ['doUploadAndAnalyse', 'performUploadAndAnalyse'])
 
 describe('upload preparation cleanup', () => {
   it.each([false, true])('cleans active state and retains a retry only for a capture pause (paused=%s)', async (paused) => {
@@ -37,6 +33,7 @@ describe('upload preparation cleanup', () => {
       POST_MATCH_COPY: { compressPaused: 'Paused' },
       RecordingPreparationError: class RecordingPreparationError extends Error {},
     })
+    context.mainProcess = context
     vm.runInContext(compiled, context)
     await context.doUploadAndAnalyse('rec', 'vod.mp4', 'P', 'T', 'valorant', null, null, null, {})
     expect(active.size).toBe(0)

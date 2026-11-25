@@ -1,3 +1,4 @@
+import { readMainRuntimeSource } from '../../electron/main/__tests__/main-runtime-source'
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createReportPoller, NOTES_PENDING, REPORT_RETRY } from './report-poller'
@@ -84,7 +85,7 @@ describe('NOTES_PENDING (coach notes still being written)', () => {
 })
 
 describe('match-report:game-notes IPC', () => {
-  const main = readFileSync(new URL('../../electron/main/index.ts', import.meta.url), 'utf8')
+  const main = readMainRuntimeSource('main-startup.ts')
   it('passes notes_status through so the page can tell "pending" from "no notes"', () => {
     const start = main.indexOf("ipcMain.handle('match-report:game-notes'")
     const block = main.slice(start, main.indexOf('\n  })', start))
