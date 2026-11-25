@@ -45,9 +45,12 @@ describe('personal distance launch contract', () => {
     expect(personalDistanceCapability({})).toBeUndefined()
     expect(personalDistanceCapability({ capabilities: { personalized_distance_v1: 'true' } })).toBeUndefined()
     expect(personalDistanceCapability({ capabilities: { personalized_distance_v1: true } })).toBe('v1')
-    expect(drillReadConfig('valorant').headers).not.toHaveProperty('X-Trainer-Personal-Distance')
+    // A build without the capability (any value other than 'v1'), whatever trainer is pinned today.
+    const noCapability = 'none' as never
+    expect(drillReadConfig('valorant', noCapability).headers).not.toHaveProperty('X-Trainer-Personal-Distance')
     expect(drillReadConfig('valorant', 'v1').headers['X-Trainer-Personal-Distance']).toBe('v1')
-    expect(() => drillConfigFromRequest({ scenario: 'head_height', distances_m: [14, 22] }, { trainerMouse: { game: 'valorant' } } as never)).toThrow(/verified trainer build/)
+    expect(() => drillConfigFromRequest({ scenario: 'head_height', distances_m: [14, 22] }, { trainerMouse: { game: 'valorant' } } as never, undefined, { personalDistanceCapability: noCapability })).toThrow(/verified trainer build/)
+    expect(() => drillConfigFromRequest({ scenario: 'head_height', distances_m: [14, 22] }, { trainerMouse: { game: 'valorant' } } as never, undefined, { personalDistanceCapability: 'v1' })).not.toThrow()
   })
   it('advances only from current scoring on the identical personal pair', () => {
     const rows = Array.from({ length: 3 }, () => ({ ...personal([14, 22]), metadata: { ...personal([14, 22]).metadata, scoring_version: currentScoringVersion('head_height') }, score: 100 }))

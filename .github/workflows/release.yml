@@ -1,10 +1,10 @@
 name: Build Installers
 
 on:
+  # Tag builds are dispatched by auto-tag.yml after a version bump. A dev build of any branch is a
+  # manual run (Actions > Build Installers > Run workflow). No build on every push to main: those
+  # Windows + macOS builds were thrown away and macOS minutes are billed at ~10x.
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   # Packaged Windows app must start the CS2 demo worker before any installer is built.
