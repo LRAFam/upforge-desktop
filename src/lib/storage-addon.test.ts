@@ -1,5 +1,5 @@
-import { expect, it } from 'vitest'
-import { validStorageRequest, validStorageSnapshot } from './storage-addon'
+import { describe, expect, it } from 'vitest'
+import { packEndLine, validStorageRequest, validStorageSnapshot } from './storage-addon'
 it('accepts only known actions and pack amounts', () => {
   expect(validStorageRequest({ action: 'checkout', gb: 50 })).toBe(true)
   expect(validStorageRequest({ action: 'change', gb: 51 })).toBe(false)
@@ -20,4 +20,18 @@ it('confirms only paid active capacity matching the selected pack', async () => 
   expect(storagePaymentConfirmed({ ...data, usage: { ...data.usage, status: 'past_due' } }, 100)).toBe(false)
   expect(storagePaymentConfirmed({ ...data, usage: { ...data.usage, active: false } }, 100)).toBe(false)
   expect(validStorageRequest({ action: 'sync' })).toBe(true)
+})
+
+describe('packEndLine', () => {
+  it('uses the retention grace once retention has started, not the old pack window', () => {
+    const line = packEndLine({ retentionStarted: true, packGraceDays: 14, retentionGraceDays: 30, freeKeepDays: 14 })
+    expect(line).toContain('your full videos stay for 30 days, then Free rules apply (each video kept 14 days)')
+    expect(line).not.toContain('14 days before')
+  })
+  it('keeps the pack download window before retention starts', () => {
+    expect(packEndLine({ retentionStarted: false, packGraceDays: 14 })).toContain('you have 14 days to download them')
+  })
+  it('leaves out numbers the API did not send', () => {
+    expect(packEndLine({ retentionStarted: true, packGraceDays: null, retentionGraceDays: null, freeKeepDays: null })).not.toMatch(/\d/)
+  })
 })

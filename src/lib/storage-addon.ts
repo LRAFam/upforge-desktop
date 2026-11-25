@@ -25,3 +25,25 @@ export function validStorageSnapshot(value: unknown): value is StorageAddonSnaps
 export function storagePaymentConfirmed(snapshot: StorageAddonSnapshot, targetGb: number): boolean {
   return snapshot.usage.active && snapshot.usage.status === 'active' && snapshot.usage.capacity_bytes === targetGb * 1e9
 }
+
+/**
+ * What happens when a storage pack ends. Once full-video retention has started, packs follow the
+ * same rule as plans: the retention summary's `grace_days`, then Free keep time. Before that the
+ * pack's own download window applies. Numbers always come from the API; a missing one is left out
+ * of the sentence rather than guessed.
+ */
+export function packEndLine(opts: {
+  retentionStarted: boolean
+  packGraceDays: number | null | undefined
+  retentionGraceDays?: number | null
+  freeKeepDays?: number | null
+}): string {
+  if (opts.retentionStarted) {
+    const grace = opts.retentionGraceDays ?? opts.packGraceDays
+    const ends = grace ? `If it ends, your full videos stay for ${grace} days, then Free rules apply` : 'If it ends, Free rules apply after a grace period'
+    const free = opts.freeKeepDays ? ` (each video kept ${opts.freeKeepDays} days)` : ''
+    return `A storage pack keeps every full video in the cloud while you're subscribed. ${ends}${free}. Each affected video shows its removal date. Clips, notes and stats are never removed.`
+  }
+  const window = opts.packGraceDays ? `you have ${opts.packGraceDays} days to download them before removal` : 'you have time to download them before removal'
+  return `New uploads use paid space when your plan allowance is full. Use Keep in paid storage for footage you want to retain longer. Files in paid storage stay while you keep paying. After paid access ends, ${window}.`
+}

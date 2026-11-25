@@ -222,3 +222,13 @@ export function postGameCloudLine(s: RetentionSummary | null | undefined): strin
   if (s.kept_while_subscribed || s.keep_days === null) return null
   return `Free plan: this video stays in the cloud for ${s.keep_days} days.`
 }
+
+/**
+ * "How storage works" once retention has started, with the API's numbers (never hard-coded).
+ * A missing number is left out of the sentence rather than guessed.
+ */
+export function retentionRulesLine(s: Pick<RetentionSummary, 'free_keep_days' | 'grace_days'>): string {
+  const free = s.free_keep_days ? `Free keeps each full video for ${s.free_keep_days} days.` : 'Free keeps each full video for a limited time.'
+  const grace = s.grace_days ? `If it ends, your full videos stay for ${s.grace_days} days, then Free rules apply.` : 'If it ends, Free rules apply after a grace period.'
+  return `${free} A paid plan or a storage pack keeps them while you're subscribed. ${grace} Each affected video shows its removal date, and you get a warning 7 days and 1 day before anything is removed.`
+}

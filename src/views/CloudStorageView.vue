@@ -17,7 +17,7 @@ import UfDialog from '../components/v3/UfDialog.vue'
 import { capacityFacts, capacitySentence, libraryCountLabel } from '../components/v3/matches/cloud-storage-v3'
 import { formatMatchDate, matchMapArt, matchMapLabel } from '../components/v3/matches/match-meta'
 import { useCloudRetention } from '../composables/useCloudRetention'
-import { parseRetention, retentionLine } from '../lib/cloud-retention'
+import { parseRetention, retentionLine, retentionRulesLine } from '../lib/cloud-retention'
 const router = useRouter()
 // Cloud retention (v3): plan keep time, saves paused when full, per-video countdowns. Null on older APIs.
 const { summary: retentionSummary, keepTime, savesPausedMessage, expiringLine, refresh: refreshRetention } = useCloudRetention()
@@ -292,6 +292,7 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
                 <span v-if="fileRetentionLine(file)" class="uf-t4 uf-cs-ret" :class="`is-${fileRetentionLine(file)!.tone}`" :title="fileRetentionLine(file)!.detail ?? (file.expires_at ? `Removal date: ${date(file.expires_at)}` : undefined)">{{ fileRetentionLine(file)!.text }}</span>
                 <span v-else-if="!fileRetention(file)" class="uf-t4 uf-cs-ret" :class="retention(file.expires_at).state" :title="file.expires_at ? `Retention date: ${date(file.expires_at)}` : undefined">{{ file.paid_storage && addon?.usage.active ? 'Kept in paid storage' : retention(file.expires_at).label }}</span>
                 <span v-if="fileRetentionLine(file)?.countdown && fileRetentionLine(file)!.detail" class="uf-t4 uf-cs-ret-detail">{{ fileRetentionLine(file)!.detail }}</span>
+                <span v-if="fileRetentionLine(file)?.countdown && !fileRetentionLine(file)!.keepTime && fileRetention(file)?.expires_at" class="uf-t4 uf-cs-ret-detail">Removal date: {{ date(fileRetention(file)!.expires_at!) }}</span>
               </div>
               <div class="uf-cs-acts">
                 <button type="button" class="uf-link" :disabled="file.status === 'uploading'" @click="openFile(file)">{{ file.status === 'uploading' ? 'Uploading…' : isRemoved(file) ? (file.analysis_id ? 'Open notes' : 'Details') : !fileRetention(file) && retention(file.expires_at).state === 'expired' ? 'Recovery options' : 'Open file' }}</button>
@@ -312,7 +313,7 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
       </div>
 
       <aside class="uf-cs-side">
-        <div ref="pickerAnchor"><StorageAddonPicker :key="addonVersion" :retention-started="!!retentionSummary?.started" @changed="refresh" @loaded="addon=$event" /></div>
+        <div ref="pickerAnchor"><StorageAddonPicker :key="addonVersion" :retention-started="!!retentionSummary?.started" :retention-grace-days="retentionSummary?.grace_days" :free-keep-days="retentionSummary?.free_keep_days" @changed="refresh" @loaded="addon=$event" /></div>
         <section class="uf-cs-sec">
           <span class="uf-label">Your plan</span>
           <p class="uf-t3" style="margin: 0">{{ full || savesPausedMessage ? 'Your cloud space is full' : 'Keep more of your gameplay' }}</p>
@@ -331,7 +332,7 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
           <span class="uf-label">How storage works</span>
           <p class="uf-t4" style="margin: 0">One shared GB allowance for cloud clips and recordings across all games. Local files do not count. Cloud storage is used until files are removed; it does not reset each month.</p>
           <template v-if="retentionSummary?.started">
-            <p class="uf-t4" style="margin: 0">Free keeps each full video for {{ retentionSummary.free_keep_days ?? 14 }} days. A paid plan or a storage pack keeps them while you're subscribed. If it ends, you have {{ retentionSummary.grace_days ?? 30 }} days before free rules apply. You get a warning 7 days and 1 day before anything is removed.</p>
+            <p class="uf-t4" style="margin: 0">{{ retentionRulesLine(retentionSummary) }}</p>
             <p class="uf-t4" style="margin: 0">Only the full video is removed. Clips, notes, stats and analysis stay, and a copy on this PC still plays. Analysis always works, even when your space is full.</p>
           </template>
           <p v-else class="uf-t4" style="margin: 0">Files past their retention date may be removed during cleanup. Your saved notes and comparisons stay in your notebook even when footage is unavailable.</p>

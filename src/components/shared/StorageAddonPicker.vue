@@ -2,10 +2,15 @@
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { cloudBytes } from '../../lib/cloud-storage'
 import { uiV3 } from '../../lib/ui-v3'
-import { storagePaymentConfirmed, type StorageAddonSnapshot, type StorageAddonRequest } from '../../lib/storage-addon'
+import { packEndLine, storagePaymentConfirmed, type StorageAddonSnapshot, type StorageAddonRequest } from '../../lib/storage-addon'
 const emit = defineEmits<{ changed: []; loaded: [StorageAddonSnapshot] }>()
 // Cloud retention rules (once live, told by the page): a pack keeps every full video while subscribed.
-defineProps<{ retentionStarted?: boolean }>()
+const props = defineProps<{
+  retentionStarted?: boolean
+  /** Retention summary values, so the pack copy uses the same numbers as the rest of the page. */
+  retentionGraceDays?: number | null
+  freeKeepDays?: number | null
+}>()
 const snapshot = ref<StorageAddonSnapshot | null>(null), error = ref(''), notice = ref(''), busy = ref(false)
 const unavailable = ref(false), loading = ref(false)
 const retryRequest = ref<StorageAddonRequest | null>(null)
@@ -57,6 +62,7 @@ const price = computed(() => selected.value ? new Intl.NumberFormat('en-US',{sty
 const usage = computed(() => snapshot.value?.usage)
 const hasSubscription = computed(() => usage.value && !['none','canceled','incomplete_expired'].includes(usage.value.status))
 const date = (value: string | null) => value ? new Date(value).toLocaleDateString() : 'Not available'
+const endLine = computed(() => packEndLine({ retentionStarted: !!props.retentionStarted, packGraceDays: snapshot.value?.grace_days, retentionGraceDays: props.retentionGraceDays, freeKeepDays: props.freeKeepDays }))
 async function load(sync = false) {
   if (loading.value) return
   loading.value = true
@@ -105,7 +111,7 @@ onBeforeUnmount(() => { generation++; stopChecking(); cleanups.forEach(fn => fn(
     <p v-if="loading && !snapshot" class="uf-t4" role="status">Loading storage options…</p>
     <template v-if="snapshot && selected">
       <p v-if="usage && usage.capacity_bytes" class="uf-t4 uf-num">{{ cloudBytes(usage.used_bytes) }} used of {{ cloudBytes(usage.capacity_bytes) }}. {{ cloudBytes(usage.reserved_bytes) }} uploading.</p>
-      <p v-if="usage?.paid_until" class="uf-t4">{{ usage.cancel_at_period_end ? 'Paid access ends' : 'Current paid period ends' }} {{ date(usage.paid_until) }}. Download grace until {{ date(usage.grace_until) }} if not renewed.</p>
+      <p v-if="usage?.paid_until" class="uf-t4">{{ usage.cancel_at_period_end ? 'Paid access ends' : 'Current paid period ends' }} {{ date(usage.paid_until) }}. {{ retentionStarted ? 'Full videos kept until' : 'Download grace until' }} {{ date(usage.grace_until) }} if not renewed.</p>
       <div class="uf-sp-sel">
         <div><span class="uf-d3">{{ selected.gb }}</span><span class="uf-t4"> GB extra</span></div>
         <div style="text-align: right"><span class="uf-d4">{{ price }}</span><p class="uf-t4" style="margin: 4px 0 0">USD / month</p></div>
@@ -113,8 +119,7 @@ onBeforeUnmount(() => { generation++; stopChecking(); cleanups.forEach(fn => fn(
       <label class="uf-label" for="storage-addon-size">Extra capacity</label>
       <input id="storage-addon-size" v-model.number="step" class="uf-sp-range" type="range" min="0" :max="snapshot.packs.length-1" step="1" :disabled="busy || pendingGb !== null" :aria-valuetext="`${selected.gb} GB, ${price} per month`" />
       <div class="uf-sp-stops"><button v-for="(pack,index) in snapshot.packs" :key="pack.gb" type="button" :disabled="busy || pendingGb !== null" :aria-pressed="index===step" :class="{ 'is-on': index===step }" @click="step=index">{{ pack.gb }} GB</button></div>
-      <p v-if="retentionStarted" class="uf-t4">A storage pack keeps every full video in the cloud while you're subscribed. If it ends, you have {{ snapshot.grace_days }} days before free rules apply (each video kept 14 days). Clips, notes and stats are never removed.</p>
-      <p v-else class="uf-t4">New uploads use paid space when your plan allowance is full. Use Keep in paid storage for footage you want to retain longer. Files in paid storage stay while you keep paying. After paid access ends, you have {{ snapshot.grace_days }} days to download them before removal.</p>
+      <p class="uf-t4">{{ endLine }}</p>
       <button type="button" class="uf-btn-primary uf-sp-buy" :disabled="busy || pendingGb !== null || !selected.available || (usage?.capacity_bytes === selected.gb * 1e9 && hasSubscription)" @click="act({action:hasSubscription ? 'change' : 'checkout',gb:selected.gb})"><span>{{ busy ? 'Please wait…' : hasSubscription ? 'Review capacity change' : `Continue · ${price}/month` }}</span></button>
       <p class="uf-t4">{{ selected.available ? 'Review the total and any prorated charge in Stripe before confirming. GB means 1 billion bytes.' : 'Purchases are not available yet. Your current allowance is unchanged.' }}</p>
       <div v-if="hasSubscription" class="uf-sp-manage">
@@ -122,7 +127,7 @@ onBeforeUnmount(() => { generation++; stopChecking(); cleanups.forEach(fn => fn(
         <button v-if="usage?.cancel_at_period_end" type="button" class="uf-btn-secondary" :disabled="busy || pendingGb !== null" @click="act({action:'cancel',cancel:false})">Keep storage renewing</button>
         <button v-else type="button" class="uf-btn-secondary" :disabled="busy || pendingGb !== null" @click="confirmingCancel=true">Stop storage renewal</button>
         <div v-if="confirmingCancel" class="uf-sp-confirm">
-          <p class="uf-t4" style="margin: 0">Stop future storage renewals? Keep paid access until {{ date(usage?.paid_until ?? null) }}, then download your files by {{ date(usage?.grace_until ?? null) }}. Your main plan stays unchanged.</p>
+          <p class="uf-t4" style="margin: 0">Stop future storage renewals? Keep paid access until {{ date(usage?.paid_until ?? null) }}, then {{ retentionStarted ? 'your full videos stay until' : 'download your files by' }} {{ date(usage?.grace_until ?? null) }}. Your main plan stays unchanged.</p>
           <div class="uf-sp-row"><button type="button" class="uf-btn-secondary" :disabled="busy || pendingGb !== null" @click="act({action:'cancel',cancel:true})">Confirm stop renewal</button><button type="button" class="uf-link" @click="confirmingCancel=false">Go back</button></div>
         </div>
       </div>
