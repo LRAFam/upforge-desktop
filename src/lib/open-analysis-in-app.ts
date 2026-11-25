@@ -32,13 +32,14 @@ export type InAppDestination = 'match' | 'report' | 'reviews'
 export async function openAnalysisInApp(
   router: Pick<Router, 'push'>,
   analysisId: number,
-  opts?: { source?: string; coachNotes?: boolean; isCurrent?: () => boolean },
+  opts?: { source?: string; coachNotes?: boolean; isCurrent?: () => boolean; drillMoment?: { drillId: number; index: number } },
 ): Promise<InAppDestination | null> {
   if (!validId(analysisId) || opts?.isCurrent?.() === false) return null
   markAnalysisSeen(analysisId)
   try {
     if (await openAnalysisVodReview(router as Router, analysisId, {
       source: opts?.source ?? 'desktop_in_app', coachNotes: opts?.coachNotes,
+      drillMoment: opts?.drillMoment,
       ...(opts?.isCurrent ? { isCurrent: opts.isCurrent } : {}),
     })) return 'match'
   } catch { /* timeline unavailable: fall through to Coaching reviews */ }

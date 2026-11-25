@@ -50,6 +50,30 @@ afterEach(() => {
 })
 
 describe('See it in your matches', () => {
+  it('lists saved moments and navigates with only owned drill/index coordinates after rechecking', async () => {
+    const reply = { drill_id: 7, review: { analysis_id: 42 }, matches: [], source_moments: [
+      { coordinate: 'recording', timestamp_seconds: 12.5, source_identity: 'a'.repeat(64) },
+    ] }
+    const s = setup(async () => reply, async () => ({ game: 'valorant', analysisId: 42 })); stops.push(s.stop)
+    await s.state.load()
+    expect(s.router.push).not.toHaveBeenCalled()
+    expect(s.state.moments.value.sourceMoments).toHaveLength(1)
+    await s.state.openMoment(0)
+    expect(s.getDrillMoments).toHaveBeenCalledTimes(2)
+    expect(s.router.push).toHaveBeenCalledExactlyOnceWith({ path: '/vod-review', query: { timelineId: '42', drillId: '7', drillMoment: '0' } })
+  })
+
+  it('does not open a previously listed moment if its recording evidence has changed', async () => {
+    const s = setup(async () => ({ drill_id: 7, review: { analysis_id: 42 }, matches: [], source_moments: [
+      { coordinate: 'recording', timestamp_seconds: 12.5, source_identity: 'a'.repeat(64) },
+    ] })); stops.push(s.stop)
+    await s.state.load()
+    s.getDrillMoments.mockResolvedValue({ drill_id: 7, review: { analysis_id: 42 }, matches: [], source_moments: [] })
+    await s.state.openMoment(0)
+    expect(s.openAnalysisInApp).not.toHaveBeenCalled()
+    expect(s.state.failed.value).toBe(true)
+  })
+
   it('opens a video drill’s source review in the app after one click', async () => {
     const s = setup(async () => ({ drill_id: 7, review: { analysis_id: 42 }, matches: [] })); stops.push(s.stop)
     await s.state.load()
