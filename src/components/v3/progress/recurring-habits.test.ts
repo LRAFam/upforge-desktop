@@ -65,6 +65,15 @@ describe('recurringHabitRows', () => {
     expect(r.seen).toBe('Flagged 322 times')
   })
 
+  it('never shows a strength that comes up more as something to fix', () => {
+    const [s] = recurringHabitRows([row({ label: 'Mechanics habits', occurrences: 9, trend: 'worsening', text: 'Mechanics habits — flagged 9 times. Head-height holds turning multi-target fights into kills.' })], NOW)
+    expect(s.polarity).toBe('strength')
+    expect(s.trend).toEqual({ label: 'Showing more often', tone: 'better' })
+    const [r] = recurringHabitRows([row({ label: 'Untraded deaths', occurrences: 9, trend: 'worsening', text: 'Died alone on B long.' })], NOW)
+    expect(r.polarity).toBe('risk')
+    expect(r.trend).toEqual({ label: 'Coming up more', tone: 'worse' })
+  })
+
   it('returns nothing for empty or missing data', () => {
     expect(recurringHabitRows(null, NOW)).toEqual([])
     expect(recurringHabitRows([], NOW)).toEqual([])
