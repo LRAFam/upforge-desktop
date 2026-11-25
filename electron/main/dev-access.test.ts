@@ -1,3 +1,4 @@
+import { readMainRuntimeSource } from './__tests__/main-runtime-source'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it, vi } from 'vitest'
@@ -40,7 +41,7 @@ describe('devOnly', () => {
 })
 
 describe('index.ts registration', () => {
-  const source = readFileSync(join(__dirname, 'index.ts'), 'utf8')
+  const source = readMainRuntimeSource('main-startup.ts')
   const gated = [
     'dev:valorant-replay:download',
     'dev:valorant-replay:sync',

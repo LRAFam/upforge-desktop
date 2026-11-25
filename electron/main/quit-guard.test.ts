@@ -1,3 +1,4 @@
+import { readMainRuntimeSource } from './__tests__/main-runtime-source'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -191,7 +192,7 @@ describe('confirmThen (update install)', () => {
 })
 
 describe('index.ts wiring', () => {
-  const source = readFileSync(join(__dirname, 'index.ts'), 'utf8').replace(/\r\n/g, '\n') // Windows checkouts are CRLF
+  const source = readMainRuntimeSource('main-lifecycle.ts', 'main-startup.ts') // Windows checkouts are CRLF
   it('checks the guard first in before-quit', () => {
     expect(source).toMatch(/app\.on\('before-quit', \(event\) => \{\n\s+if \(quitGuard\.handleBeforeQuit\(event\)\) return/)
   })
@@ -199,7 +200,7 @@ describe('index.ts wiring', () => {
     expect(source).toMatch(/setInstallGate\(\(proceed\) => quitGuard\.confirmThen\(/)
   })
   it('treats post-match finalising as busy', () => {
-    expect(source).toMatch(/finalizing: localMediaWork > 0 \|\| matchFinalizeInFlight !== null/)
+    expect(source).toMatch(/finalizing: mainProcess\.localMediaWork > 0 \|\| mainProcess\.matchFinalizeInFlight !== null/)
   })
   it('clears background timers on will-quit so a cancelled quit keeps them', () => {
     expect(source).not.toMatch(/app\.(once|on)\('before-quit', \(\) => clearInterval/)

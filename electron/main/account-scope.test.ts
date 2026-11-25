@@ -1,3 +1,4 @@
+import { readMainRuntimeSource } from './__tests__/main-runtime-source'
 import { describe, expect, it, vi } from 'vitest'
 import { bumpAccountScope, snapshotAccountOwner } from './account-scope'
 
@@ -55,7 +56,7 @@ describe('cloud save wiring in the main process', () => {
   it('account switch bumps the scope and the archive save rechecks its owner at every boundary', async () => {
     const { readFileSync } = await import('fs')
     const { join } = await import('path')
-    const src = readFileSync(join(__dirname, 'index.ts'), 'utf8').replace(/\r\n/g, '\n')
+    const src = readMainRuntimeSource('main-session.ts', 'main-analysis.ts')
     const clear = src.slice(src.indexOf('function clearAccountScopedRuntimeState'), src.indexOf('function clearAccountScopedRuntimeState') + 200)
     expect(clear).toContain('bumpAccountScope()')
     const start = src.indexOf('async function uploadArchiveOnlyImpl')
@@ -64,7 +65,7 @@ describe('cloud save wiring in the main process', () => {
     expect(body).toContain("shouldStop: () => !owner.stillOwned()")
     // Before any upload request, and again before catalogue writes or local deletion.
     expect(body.indexOf('if (!owner.stillOwned())', body.indexOf('waitUntilBackgroundWorkAllowed'))).toBeGreaterThan(0)
-    expect(body.lastIndexOf('if (!owner.stillOwned())')).toBeLessThan(body.indexOf('recordingsStore.markArchived'))
-    expect(body.lastIndexOf('if (!owner.stillOwned())')).toBeGreaterThan(body.indexOf('uploadManager.archiveUpload'))
+    expect(body.lastIndexOf('if (!owner.stillOwned())')).toBeLessThan(body.indexOf('mainProcess.recordingsStore.markArchived'))
+    expect(body.lastIndexOf('if (!owner.stillOwned())')).toBeGreaterThan(body.indexOf('mainProcess.uploadManager.archiveUpload'))
   })
 })

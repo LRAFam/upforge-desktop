@@ -1,3 +1,4 @@
+import { readMainRuntimeSource } from './__tests__/main-runtime-source'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import fs from 'node:fs'
@@ -179,16 +180,16 @@ describe('recordings store wiring', () => {
 })
 
 describe('main process wiring', () => {
-  const main = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
+  const main = readMainRuntimeSource('main-startup.ts')
   it('the CS2 notes call sends played_at + job_id from the recording', () => {
     const start = main.indexOf("ipcMain.handle('match-report:game-notes'")
     const block = main.slice(start, main.indexOf('\n  })', start))
-    expect(block).toMatch(/cs2MatchExtras\(recordingsStore\.getById\(matchId\)\)/)
+    expect(block).toMatch(/cs2MatchExtras\(mainProcess\.recordingsStore\.getById\(matchId\)\)/)
     expect(block).toMatch(/\.\.\.cs2Extras/)
     expect(block).toMatch(/markCs2FocusCounted\(matchId/)
   })
   it('a saved timeline runs the focus check, and the demo retry links its CS2 job', () => {
-    expect(main).toMatch(/recordingsStore\.timelineListener = \(rec\) => \{ void cs2FocusChecker\.check\(rec\) \}/)
+    expect(main).toMatch(/mainProcess\.recordingsStore\.timelineListener = \(rec\) => \{ void cs2FocusChecker\.check\(rec\) \}/)
     expect(main).toMatch(/recordingsStore\.setCs2DemoJob\(recordingId, jobId\)/)
   })
 })

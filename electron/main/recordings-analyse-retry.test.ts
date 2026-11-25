@@ -1,3 +1,4 @@
+import { readMainRuntimeSource } from './__tests__/main-runtime-source'
 import { describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import vm from 'vm'
@@ -7,7 +8,7 @@ import { classifyActivationError } from './activation-error-codes'
 import { buildAnalysisErrorPayload, classifyAnalysisFailure, type AnalysisErrorPayload } from '../../src/lib/analysis-failure-messages'
 
 // Exercise the registered production handler without starting Electron, OBS or background services.
-const source = ts.createSourceFile('index.ts', fs.readFileSync(new URL('./index.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true)
+const source = ts.createSourceFile('index.ts', readMainRuntimeSource('main-startup.ts', 'main-analysis-notifications.ts'), ts.ScriptTarget.Latest, true)
 function compile(select: (node: ts.Node) => boolean): string {
   const selected: string[] = []
   function visit(node: ts.Node): void {
@@ -67,6 +68,7 @@ function setup(status: Record<string, unknown> | Error, lastError: string | null
     sendUploadFailure: vi.fn(), enqueuePostMatchAnalyse: enqueue, notifyRecordingsUpdated: vi.fn(),
     resolveUploadPlayerIdentity: () => ({ riotName: 'Player', riotTag: 'EU' }),
   })
+  context.mainProcess = context
   vm.runInContext(analyseCode, context)
   return { run: () => handler(null, { id: recording.id }), recording, store, poll, retry, enqueue, resume, completed, readiness, startPoll, active, owner: (value: number) => { owner = value } }
 }
@@ -187,7 +189,8 @@ describe('duplicate upload failure callers', () => {
       sendPostGameEventForRecording: emit, getActiveUserId: () => 7,
       trackUploadFailed: track, isLikelyNetworkFailure: () => false,
     })
-    vm.runInContext(failureCode, context)
+    context.mainProcess = context
+  vm.runInContext(failureCode, context)
     const caller = vm.runInContext(name, context) as (raw: string, opts: object) => AnalysisErrorPayload
     const payload = caller('upload_already_in_progress: This recording is already uploading', { recordingId: 'recording', notify: false, game: 'valorant' })
     expect(payload).toMatchObject({ kind: 'upload', canRetry: false, creditRefunded: false, failureCode: 'upload_already_in_progress' })
