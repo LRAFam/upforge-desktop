@@ -83,7 +83,7 @@ describe('bounded clip extraction', () => {
     await vi.advanceTimersByTimeAsync(22_000)
     expect(children).toHaveLength(2)
     children[1].stderr.emit('data', Buffer.from('Duration: 00:02:00.00\nStream #0:0: Video: h264\nAt least one output file must be specified'))
-    children[1].emit('exit', 1)
+    children[1].emit('close', 1)
     expect(await pending).toMatchObject({ ok: true })
     expect(children[0].kill).toHaveBeenCalledOnce()
     expect(children[1].kill).not.toHaveBeenCalled()
