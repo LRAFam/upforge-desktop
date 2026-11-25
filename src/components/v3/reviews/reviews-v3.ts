@@ -76,3 +76,27 @@ export function statItems(s: Pick<MatchRowStats, 'kills' | 'deaths' | 'assists' 
   if (s.hs_pct != null) out.push({ value: `${s.hs_pct}%`, label: 'headshots' })
   return out
 }
+
+/** GET /api/analysis/recent returns at most this many reviews (newest first). */
+export const REVIEW_LIST_LIMIT = 50
+
+export type ReviewQueue = 'reviewed' | 'waiting'
+
+/**
+ * The one line that explains the Reviewed list's numbers. The API sends the latest 50, so a full
+ * list says "latest 50" instead of implying that's every review; a filter says how many match.
+ */
+export function reviewCountLine(o: { shown: number; loaded: number; limit?: number }): string {
+  const limit = o.limit ?? REVIEW_LIST_LIMIT
+  const base = o.loaded >= limit ? `your latest ${o.loaded} reviews` : `${o.loaded} ${o.loaded === 1 ? 'review' : 'reviews'}`
+  if (o.shown !== o.loaded) return `${o.shown} of ${base} match this filter`
+  return o.loaded >= limit ? `Showing ${base}` : base.charAt(0).toUpperCase() + base.slice(1)
+}
+
+/** Which queue to show: the one holding the selected item, else Reviewed when there are any reviews. */
+export function queueFor(o: { selectedReview: boolean; selectedWaiting: boolean; reviewed: number; waiting: number; current?: ReviewQueue | null }): ReviewQueue {
+  if (o.selectedWaiting) return 'waiting'
+  if (o.selectedReview) return 'reviewed'
+  if (o.current) return o.current
+  return o.reviewed > 0 || o.waiting === 0 ? 'reviewed' : 'waiting'
+}
