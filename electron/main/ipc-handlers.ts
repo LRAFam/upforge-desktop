@@ -24,6 +24,7 @@ import { PerformanceManager } from './performance-manager'
 import { TrainerBridge } from './trainer-bridge'
 
 // Domain handler setup functions
+import { setupAchievementHandlers } from './ipc/achievements-ipc'
 import { setupAuthHandlers } from './ipc/auth-ipc'
 import { setupAppHandlers } from './ipc/app-ipc'
 import { setupMediaHandlers } from './ipc/media-ipc'
@@ -131,6 +132,7 @@ export function setupIpcHandlers(
   /** Game of the recording UpForge owns (session → match flow → detected). Never the game tab. */
   getRecordingOwnerGame: () => string | null = () => gameDetector.currentGame(),
 ): void {
+  setupAchievementHandlers(ipcMain, auth)
   setupAuthHandlers(
     ipcMain,
     auth,

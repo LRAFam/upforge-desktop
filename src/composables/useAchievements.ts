@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { measuredReactionMs } from '../lib/training-result-metrics'
 import { accountAchievementsSave, readAccountAchievements } from '../lib/account-achievements'
+import { mergeAchievementLists } from '../lib/achievement-sync'
 
 export interface AchievementDef {
   id: string
@@ -45,11 +46,15 @@ const unlocked = ref<Record<string, string>>({})
 /** Signed-in user id; undefined until known, null when signed out. */
 let account: number | null | undefined
 let loaded: Promise<void> | null = null
+let generation = 0
+let persistTail = Promise.resolve()
+let syncTail = Promise.resolve()
 
 /** The app shell calls this on start and on every sign-in / sign-out / account switch (undefined = not known yet). */
 export function setAchievementsAccount(userId: number | null | undefined): void {
   if (account === userId) return
   account = userId
+  generation++
   unlocked.value = {}
   loaded = null
 }
@@ -62,22 +67,42 @@ async function currentAccount(): Promise<number | null> {
   return account ?? null
 }
 
-async function persist(userId: number, list: Record<string, string>): Promise<void> {
-  const s = await window.api.settings.get().catch(() => null)
-  if (!s) return
-  await window.api.settings.save(accountAchievementsSave(s, userId, list)).catch(() => {})
+function persist(userId: number, list: Record<string, string>): Promise<void> {
+  // Serial reads/writes prevent simultaneous unlocks/account changes from replacing another list.
+  const task = persistTail.then(async () => {
+    const s = await window.api.settings.get()
+    const own = readAccountAchievements(s, userId).list
+    await window.api.settings.save(accountAchievementsSave(s, userId, mergeAchievementLists(own, list)))
+  }).catch(() => {})
+  persistTail = task
+  return task
+}
+
+function sync(userId: number, epoch: number): Promise<void> {
+  const task = syncTail.then(async () => {
+    if (account !== userId || generation !== epoch) return
+    const cloud = await window.api.achievements.sync(userId, { ...unlocked.value })
+    if (cloud === null || account !== userId || generation !== epoch) return
+    // Unlocks earned while the request was in flight are never replaced by its older snapshot.
+    unlocked.value = mergeAchievementLists(cloud, unlocked.value)
+    await persist(userId, { ...unlocked.value })
+  }).catch(() => { /* Offline: local unlocks remain; the next load/run retries. */ })
+  syncTail = task
+  return task
 }
 
 export function useAchievements() {
   async function load() {
+    const epoch = generation
     const userId = await currentAccount()
     if (userId === null) return
     const s = await window.api.settings.get().catch(() => null)
-    if (!s || account !== userId) return
+    if (!s || account !== userId || generation !== epoch) return
     const { list, claimedLegacy } = readAccountAchievements(s, userId)
     // Keep unlocks made while this read was in flight.
-    unlocked.value = { ...list, ...unlocked.value }
+    unlocked.value = mergeAchievementLists(list, unlocked.value)
     if (claimedLegacy) await persist(userId, { ...unlocked.value })
+    await sync(userId, epoch)
   }
 
   function ensureLoaded(): Promise<void> {
@@ -85,16 +110,24 @@ export function useAchievements() {
     return loaded
   }
 
-  async function unlock(id: string): Promise<boolean> {
+  async function unlockLocal(id: string): Promise<boolean> {
+    const epoch = generation
     await ensureLoaded()
     const userId = account
-    if (userId == null) return false
+    if (userId == null || generation !== epoch || !ACHIEVEMENTS.some(a => a.id === id)) return false
     if (unlocked.value[id]) return false
     unlocked.value[id] = new Date().toISOString()
     // Spread to a plain object — Vue reactive proxies can't be serialized by
     // Electron's structured clone algorithm and will throw "object could not be cloned".
     await persist(userId, { ...unlocked.value })
-    return true
+    return account === userId && generation === epoch
+  }
+
+  async function unlock(id: string): Promise<boolean> {
+    const epoch = generation
+    const earned = await unlockLocal(id)
+    if (account != null && generation === epoch) await sync(account, epoch)
+    return generation === epoch && earned
   }
 
   async function check(ctx: {
@@ -106,12 +139,15 @@ export function useAchievements() {
     lastRun?: { scenario: string; avg_reaction_ms: number; targets_hit?: number }
     hasAnalysis?: boolean
   }): Promise<string[]> {
+    const epoch = generation
     // Never decide from an empty list: an unread file would re-toast and overwrite old unlocks.
     await ensureLoaded()
+    if (generation !== epoch) return []
     const newlyUnlocked: string[] = []
 
     const tryUnlock = async (id: string) => {
-      const wasNew = await unlock(id)
+      if (generation !== epoch) return
+      const wasNew = await unlockLocal(id)
       if (wasNew) newlyUnlocked.push(id)
     }
 
@@ -141,7 +177,8 @@ export function useAchievements() {
       await tryUnlock('first-analysis')
     }
 
-    return newlyUnlocked
+    if (account != null && generation === epoch) await sync(account, epoch)
+    return generation === epoch ? newlyUnlocked : []
   }
 
   return { unlocked, load, unlock, check }

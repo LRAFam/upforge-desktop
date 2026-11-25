@@ -7,6 +7,7 @@ describe('Reaction King only counts a measured reaction', () => {
     setAchievementsAccount(1)
     ;(globalThis as any).window = {
       api: {
+        achievements: { sync: vi.fn(async () => null) },
         app: { getStatus: vi.fn(async () => ({ user: { id: 1 } })) },
         settings: { get: vi.fn(async () => ({})), save: vi.fn(async () => {}) },
       },
@@ -39,6 +40,7 @@ describe('achievements belong to the signed-in account', () => {
     file = {}
     ;(globalThis as any).window = {
       api: {
+        achievements: { sync: vi.fn(async () => null) },
         app: { getStatus: vi.fn(async () => ({ user: { id: 7 } })) },
         settings: {
           get: vi.fn(async () => JSON.parse(JSON.stringify(file))),
@@ -102,5 +104,85 @@ describe('achievements belong to the signed-in account', () => {
     const a = useAchievements()
     expect(await a.check({ totalDrills: 1 })).toContain('first-drill')
     expect(Object.keys(file.achievementsByUser as object)).toEqual(['7'])
+  })
+})
+
+describe('account cloud sync and offline recovery', () => {
+  const early = '2026-11-01T00:00:00.000Z'
+  let file: Record<string, any>
+  let cloud: ReturnType<typeof vi.fn>
+  beforeEach(() => {
+    setAchievementsAccount(null)
+    file = {}
+    cloud = vi.fn(async () => null)
+    ;(globalThis as any).window = { api: {
+      achievements: { sync: cloud }, app: { getStatus: async () => ({ user: { id: 7 } }) },
+      settings: { get: vi.fn(async () => structuredClone(file)), save: vi.fn(async (patch) => { file = { ...file, ...patch } }) },
+    } }
+    setAchievementsAccount(7)
+  })
+  it('loads another device’s unlocks, caches them locally and does not toast them again', async () => {
+    cloud.mockResolvedValue({ 'score-90': early })
+    const a = useAchievements()
+    expect(await a.check({ lastScore: 95 })).toEqual([])
+    expect(a.unlocked.value).toEqual({ 'score-90': early })
+    expect(file.achievementsByUser['7']).toEqual({ 'score-90': early })
+  })
+  it('keeps offline unlocks and retries them on a later run without earning them twice', async () => {
+    const a = useAchievements()
+    expect(await a.check({ lastScore: 95 })).toEqual(['score-90'])
+    const earned = file.achievementsByUser['7']['score-90']
+    cloud.mockImplementation(async (_owner, list) => list)
+    expect(await a.check({ lastScore: 95 })).toEqual([])
+    expect(cloud).toHaveBeenLastCalledWith(7, { 'score-90': earned })
+    expect(a.unlocked.value['score-90']).toBe(earned)
+  })
+  it('does not merge a delayed old-account reply or award its in-flight run to a new account', async () => {
+    let finish!: (list: Record<string, string>) => void
+    cloud.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const a = useAchievements()
+    const pending = a.check({ lastScore: 95 })
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    setAchievementsAccount(8)
+    finish({ 'score-90': early })
+    expect(await pending).toEqual([])
+    await a.load()
+    expect(a.unlocked.value).toEqual({})
+    expect(file.achievementsByUser?.['8']?.['score-90']).toBeUndefined()
+  })
+  it('rejects stale replies even if the same account signs out and back in', async () => {
+    let finish!: (list: Record<string, string>) => void
+    cloud.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const a = useAchievements()
+    const pending = a.load()
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    setAchievementsAccount(null)
+    setAchievementsAccount(7)
+    finish({ 'score-90': early })
+    await pending
+    expect(a.unlocked.value).toEqual({})
+  })
+  it('serializes local writes so simultaneous unlocks survive reload', async () => {
+    const a = useAchievements()
+    await Promise.all([a.unlock('first-drill'), a.unlock('score-90')])
+    expect(Object.keys(file.achievementsByUser['7']).sort()).toEqual(['first-drill', 'score-90'])
+    setAchievementsAccount(null); setAchievementsAccount(7)
+    await a.load()
+    expect(Object.keys(a.unlocked.value).sort()).toEqual(['first-drill', 'score-90'])
+  })
+  it('preserves an unlock earned while an older cloud snapshot is in flight', async () => {
+    const a = useAchievements()
+    await a.check({})
+    let finish!: (list: Record<string, string>) => void
+    cloud.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const loading = a.load()
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    const unlocking = a.unlock('score-90')
+    await vi.waitFor(() => expect(file.achievementsByUser?.['7']?.['score-90']).toBeTruthy())
+    finish({ 'first-drill': early })
+    await Promise.all([loading, unlocking])
+    expect(Object.keys(a.unlocked.value).sort()).toEqual(['first-drill', 'score-90'])
+    expect(Object.keys(file.achievementsByUser['7']).sort()).toEqual(['first-drill', 'score-90'])
+    expect(cloud).toHaveBeenLastCalledWith(7, expect.objectContaining({ 'first-drill': early, 'score-90': expect.any(String) }))
   })
 })
