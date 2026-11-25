@@ -170,20 +170,13 @@ export class ClipExtractor {
 
   /** Read video dimensions from container metadata (ffmpeg stderr). */
   async probeDimensions(filePath: string): Promise<{ width: number; height: number } | null> {
-    return new Promise((resolve) => {
-      const proc = spawn(ffmpegPath(), ['-i', filePath], { stdio: ['ignore', 'ignore', 'pipe'] })
-      let stderr = ''
-      proc.stderr?.on('data', (d: Buffer) => { stderr = (stderr + d.toString()).slice(-16_384) })
-      proc.on('close', () => {
-        const match = stderr.match(/,\s*(\d{2,5})x(\d{2,5})(?:\s|,|\[)/)
-        if (match) {
-          resolve({ width: parseInt(match[1], 10), height: parseInt(match[2], 10) })
-        } else {
-          resolve(null)
-        }
-      })
-      proc.on('error', () => resolve(null))
-    })
+    try {
+      const stderr = await this._probeMetadataStderr(filePath, probeTimeoutMs(fs.statSync(filePath).size))
+      const match = stderr.match(/,\s*(\d{2,5})x(\d{2,5})(?:\s|,|\[)/)
+      return match ? { width: parseInt(match[1], 10), height: parseInt(match[2], 10) } : null
+    } catch {
+      return null
+    }
   }
 
   /**
@@ -285,7 +278,8 @@ export class ClipExtractor {
         stderr = (stderr + d.toString()).slice(-16_384)
       })
       proc.on('error', (err) => settle(() => reject(new Error(`ffmpeg error: ${err.message}`))))
-      proc.on('exit', () => settle(() => resolve(stderr)))
+      // `exit` can precede the final stderr data; parse only after stdio closes.
+      proc.on('close', () => settle(() => resolve(stderr)))
 
       timer = setTimeout(() => {
         proc.kill()
@@ -296,23 +290,12 @@ export class ClipExtractor {
 
   /** Container duration in milliseconds (null when ffmpeg cannot parse it). */
   async probeDurationMs(filePath: string): Promise<number | null> {
-    return new Promise((resolve) => {
-      const proc = spawn(ffmpegPath(), ['-i', filePath], { stdio: ['ignore', 'ignore', 'pipe'] })
-      let stderr = ''
-      proc.stderr?.on('data', (d: Buffer) => { stderr = (stderr + d.toString()).slice(-16_384) })
-      proc.on('close', () => {
-        const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/)
-        if (!match) {
-          resolve(null)
-          return
-        }
-        const hours = parseInt(match[1], 10)
-        const minutes = parseInt(match[2], 10)
-        const seconds = parseFloat(match[3])
-        resolve(Math.round((hours * 3600 + minutes * 60 + seconds) * 1000))
-      })
-      proc.on('error', () => resolve(null))
-    })
+    try {
+      const stderr = await this._probeMetadataStderr(filePath, probeTimeoutMs(fs.statSync(filePath).size))
+      return parseRecordingDurationMs(stderr)
+    } catch {
+      return null
+    }
   }
 
   /** Concatenate multiple H.264 MP4 segments into one recap file. */

@@ -283,6 +283,9 @@ export class CatalogueWriter {
     if (!this.scheduled) return this.chain
     this.scheduled = false
     this.chain = this.chain.then(() => this.writeNow()).catch((err) => {
+      // Keep failed work eligible for an explicit retry or the synchronous quit flush.
+      // writeNow restores its dirty timelines; do not start a retry timer on a full disk.
+      this.scheduled = true
       const code = (err as NodeJS.ErrnoException)?.code
       console.error(code === 'ENOSPC'
         ? '[RecordingsStore] Disk full — could not persist recordings list'
