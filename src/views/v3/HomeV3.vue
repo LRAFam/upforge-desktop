@@ -38,8 +38,8 @@ import DashboardDevTools from '../../components/dashboard/DashboardDevTools.vue'
 import {
   analysedThisWeek,
   liveStatus,
-  PRIMARY_LABEL, agentFullPortrait, coachLine, dedupeByMatch, formSquareLabel, heroMetaParts, heroScore, homeMapLabel, homeStateNote,
-  matchTime, pickPrimaryAction, relativeDay, resultTone, resultWord,
+  PRIMARY_LABEL, agentFullPortrait, analysedMatch, coachLine, dedupeByMatch, formSquareLabel, heroMetaParts, heroMismatchNote, heroScore, homeMapLabel, homeStateNote,
+  insightMatch, matchTime, pickPrimaryAction, relativeDay, resultTone, resultWord, syncedMatch,
 } from '../../components/v3/home/home-v3'
 import upforgeIcon from '../../assets/upforge-icon.webp'
 import cs2Art from '../../assets/games/cs2-card-bg.webp'
@@ -102,6 +102,17 @@ const lastVerdict = computed(() => (last.value && verdictGame.value ? d.coaching
 const coach = computed(() => coachLine(focusLatest.value, d.lastInsight.value, last.value
   ? { verdict: lastVerdict.value ?? null }
   : null))
+// Which match each insight describes: the hero is the last analysed match; a focus note and its
+// rounds come from the last synced Riot match, which can be newer and not analysed yet.
+const heroMatch = computed(() => analysedMatch(last.value, m => mapLabel(m)))
+const focusMatch = computed(() => syncedMatch(focusLatest.value, matches.value, m => mapLabel(m)))
+const coachMatch = computed(() => {
+  const src = coach.value?.source
+  if (src === 'focus_note') return focusMatch.value
+  if (src === 'insight') return insightMatch(d.lastInsight.value, matches.value, m => mapLabel(m))
+  return src ? heroMatch.value : null
+})
+const coachMismatch = computed(() => heroMismatchNote(coachMatch.value, heroMatch.value))
 // Board 13: an early read (under 10 matches) or a welcome back after 14+ days away.
 const stateNote = computed(() => (homeLoading.value ? null : homeStateNote(d.dashboardAnalyses.value)))
 const coachPending = computed(() => {
@@ -149,7 +160,7 @@ function openReport(): void { if (reportMatchId.value) router.push(`/report/${re
 const roundsTitle = computed(() => {
   const r = rounds.value
   if (!r) return ''
-  return `${r.map ? `${formatMapLabel(r.map)} · ` : ''}${r.ally}–${r.enemy}`
+  return [focusMatch.value?.label ?? (r.map ? formatMapLabel(r.map) : null), `${r.ally}–${r.enemy}`].filter(Boolean).join(' · ')
 })
 const decided = computed(() => decidedStats(rounds.value))
 
@@ -227,10 +238,12 @@ async function runPrimary() {
             <UfSkeleton :w="'min(420px, 60%)'" :h="16" />
           </div>
           <template v-else-if="coach">
+            <p v-if="coachMatch" class="uf-t4 home3-source">About: {{ coachMatch.label }}</p>
             <p class="uf-t1" :class="{ 'uf-reveal': fromSkeleton }">{{ coach.headline }}</p>
             <p v-if="coach.next" class="uf-t2">{{ coach.next }}</p>
-            <!-- Match report: the full free data report for the match this note came from -->
-            <button v-if="reportMatchId" type="button" class="uf-link" style="align-self: flex-start" @click="openReport">Open match report →</button>
+            <p v-if="coachMismatch" class="uf-t4 home3-source">{{ coachMismatch }}</p>
+            <!-- Match report: the full free data report for the last synced match (named, as it can differ from the hero) -->
+            <button v-if="reportMatchId" type="button" class="uf-link" style="align-self: flex-start" @click="openReport">Open match report{{ focusMatch ? ` · ${focusMatch.label}` : '' }} →</button>
           </template>
           <template v-else>
             <p class="uf-t1">{{ d.status.value.obsConnected ? 'Play a match and your coach will read it.' : 'Set up recording and play a match. Your coach reads it straight after.' }}</p>
@@ -404,6 +417,7 @@ async function runPrimary() {
 .home3-recent--skel { cursor: default; }
 .home3-recent-text :deep(.uf-skel) + :deep(.uf-skel) { margin-top: 5px; }
 .home3-stale { margin: 0; display: flex; gap: 10px; align-items: baseline; }
+.home3-source { color: var(--uf-muted); }
 .home3-state { margin: 0 0 10px; color: var(--uf-muted); display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .home3-state .uf-label { color: var(--uf-faint); }
 .home3-dev { flex: none; padding: 0 40px 20px; opacity: 0.7; }

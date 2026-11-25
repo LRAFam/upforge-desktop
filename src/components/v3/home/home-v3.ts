@@ -59,6 +59,77 @@ export function coachLine(
   return null
 }
 
+/** "22 Nov" — the one exact-date format on Home (match labels, hover titles). */
+export function shortDate(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return ''
+  return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+type SourceRow = Pick<AnalysisItem, 'id' | 'map' | 'played_at' | 'created_at'> & { match_id?: string | null }
+
+/** Which match a Home insight is about, so every summary can name it ("Summit · 22 Nov · analysed"). */
+export interface InsightMatch {
+  /** Stable key for "same match as the hero?" checks (Riot match id, else analysis id). */
+  key: string
+  /** "Summit · 22 Nov · analysed" / "Corrode · 23 Nov · not analysed yet". */
+  label: string
+  analysed: boolean
+}
+
+function rowKey(a: SourceRow): string {
+  return a.match_id ? `m:${a.match_id}` : `a:${a.id}`
+}
+
+function labelOf(map: string, date: string, analysed: boolean): string {
+  return [map || 'Match', date || null, analysed ? 'analysed' : 'not analysed yet'].filter(Boolean).join(' · ')
+}
+
+/** The hero's match (always an analysed row). */
+export function analysedMatch(a: SourceRow | null | undefined, mapLabel: (m: string) => string): InsightMatch | null {
+  if (!a) return null
+  return { key: rowKey(a), label: labelOf(a.map ? mapLabel(a.map) : '', shortDate(matchTime(a)), true), analysed: true }
+}
+
+/**
+ * The match a synced focus note (and its rounds) describes. It may be newer than the newest
+ * analysis, so its analysed state comes from whether a row with the same Riot match id exists.
+ */
+export function syncedMatch(
+  latest: Pick<FocusUpdate, 'match_id' | 'focus' | 'previous_focus' | 'rounds'> | null | undefined,
+  rows: readonly SourceRow[],
+  mapLabel: (m: string) => string,
+): InsightMatch | null {
+  if (!latest?.match_id) return null
+  const row = rows.find(r => r.match_id === latest.match_id) ?? null
+  const check = [...(latest.focus?.checks ?? []), ...(latest.previous_focus?.checks ?? [])].find(c => c.match_id === latest.match_id)
+  const map = latest.rounds?.map ?? row?.map ?? null
+  const date = shortDate(check?.played_at ?? (row ? matchTime(row) : null))
+  return { key: `m:${latest.match_id}`, label: labelOf(map ? mapLabel(map) : '', date, !!row), analysed: !!row }
+}
+
+/** The match an older saved insight came from (by analysis id), when it is still in the list. */
+export function insightMatch(
+  insight: { analysisId: number | null; date?: string | null } | null | undefined,
+  rows: readonly SourceRow[],
+  mapLabel: (m: string) => string,
+): InsightMatch | null {
+  if (!insight) return null
+  const row = insight.analysisId != null ? rows.find(r => r.id === insight.analysisId) : undefined
+  if (row) return analysedMatch(row, mapLabel)
+  const date = shortDate(insight.date)
+  return date ? { key: `i:${insight.analysisId ?? date}`, label: `Analysed match · ${date}`, analysed: true } : null
+}
+
+/** "Score above: Summit · 22 Nov · analysed" when an insight is about a different match from the hero. */
+export function heroMismatchNote(source: InsightMatch | null, hero: InsightMatch | null): string {
+  if (!source || !hero || source.key === hero.key) return ''
+  return source.analysed
+    ? `The score above is from a different match: ${hero.label}.`
+    : `Your newest match isn't analysed yet. The score above is your last analysed match: ${hero.label}.`
+}
+
 /** Full-body agent art from the same CDN entry the app already uses for the bust icon. */
 export function agentFullPortrait(displayIcon: string): string {
   return displayIcon ? displayIcon.replace(/\/displayicon\.png$/, '/fullportrait.png') : ''
