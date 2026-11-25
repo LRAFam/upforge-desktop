@@ -6,11 +6,12 @@
  * students, Plan and price. A coach profile with no live plan and no students gets the one-screen
  * setup instead (coaches-flow-proposal.md screen d). Human coaching words only — no "roster".
  */
-import { computed, inject } from 'vue'
+import { computed, inject, ref } from 'vue'
 import UfButton from '../UfButton.vue'
 import UfSkeleton from '../UfSkeleton.vue'
 import UfTabs from '../UfTabs.vue'
 import RosterMatchRowV3 from './RosterMatchRowV3.vue'
+import StudentDetailV3 from './StudentDetailV3.vue'
 import { draftLine, rosterMemberLine, settingsSummaryText, studentsHeadline, studentsSummary } from './coach-format'
 import { playerIdentity } from '../../../lib/player-identity'
 import PlayerAvatar from '../identity/PlayerAvatar.vue'
@@ -31,6 +32,8 @@ const {
 } = r
 
 const queueCount = computed(() => openQueueCount(reviews.value))
+/** The student opened under their row (one at a time): their allowance and matches sent to you. */
+const openStudentId = ref<number | null>(null)
 /** Screen (d): coach profile, plan not live and nobody joined yet. */
 const setup = computed(() => !!settings.value && !settings.value.roster_is_live && students.value.length === 0)
 const title = computed(() => (setup.value ? 'Coach players between sessions' : studentsHeadline(queueCount.value)))
@@ -154,7 +157,10 @@ function fixDraft() { if (draftFix.value === 'pro') void openPro(); else void op
             <span class="uf-label">Your students<span class="uf-cr-count">{{ students.length }}</span></span>
           </div>
           <p v-if="!students.length" class="uf-t4 uf-cr-empty">No students yet. Copy your invite link and send it to the players you coach.</p>
-          <div v-for="entry in students" :key="entry.student.id" class="uf-cr-member">
+          <template v-for="entry in students" :key="entry.student.id">
+          <button type="button" class="uf-cr-member" :aria-expanded="openStudentId === entry.student.id"
+            :aria-label="`${entry.student.name}: show matches sent to you`"
+            @click="openStudentId = openStudentId === entry.student.id ? null : entry.student.id">
             <PlayerAvatar :identity="studentIdentity(entry)" :size="48" />
             <span class="uf-cr-member-main">
               <span class="uf-cr-member-name">
@@ -166,7 +172,10 @@ function fixDraft() { if (draftFix.value === 'pro') void openPro(); else void op
               <span class="uf-t4"><span v-if="riotId(entry)" class="uf-cr-mono">{{ riotId(entry) }}</span><span v-else>Riot ID not linked</span> · {{ rosterMemberLine(entry) }}</span>
             </span>
             <span v-if="entry.open_review_count > 0" class="uf-t4 uf-cr-open">{{ plural(entry.open_review_count, 'match', 'matches') }} waiting</span>
-          </div>
+            <span class="uf-t4 uf-cr-chev" aria-hidden="true">{{ openStudentId === entry.student.id ? 'Hide' : 'Open' }}</span>
+          </button>
+          <StudentDetailV3 v-if="openStudentId === entry.student.id" :student-id="entry.student.id" @open-review="openAnalysis" />
+          </template>
         </section>
 
         <!-- Invite · Taking new students · Plan and price -->
@@ -236,7 +245,9 @@ function fixDraft() { if (draftFix.value === 'pro') void openPro(); else void op
 .uf-cr-sec-head { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 8px; }
 .uf-cr-count { margin-left: 10px; color: var(--uf-muted); font-variant-numeric: tabular-nums; }
 .uf-cr-empty { padding: 12px 0; border-top: 1px solid var(--uf-line); }
-.uf-cr-member { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--uf-line); }
+.uf-cr-member { width: 100%; display: flex; align-items: center; gap: 14px; padding: 12px 0; border: 0; border-top: 1px solid var(--uf-line); background: none; color: inherit; cursor: pointer; text-align: left; }
+.uf-cr-member:hover { background: var(--uf-hover); }
+.uf-cr-chev { flex: none; color: var(--uf-muted); }
 .uf-cr-member-name { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
 .uf-cr-rank { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .uf-cr-member-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }

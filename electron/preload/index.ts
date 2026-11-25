@@ -374,6 +374,7 @@ const api = {
       roster_included_reviews_per_month?: number
     }) => ipcRenderer.invoke('coach:update-roster-settings', payload),
     getReviewRequests: () => ipcRenderer.invoke('coach:get-review-requests'),
+    getRosterStudent: (studentId: number) => ipcRenderer.invoke('coach:get-roster-student', { studentId }),
     startReview: (reviewId: number) => ipcRenderer.invoke('coach:start-review', { reviewId }),
     // Coach notes (desktop, UI v3)
     addAnnotation: (reviewId: number, note: { body: string; roundNumber?: number | null; videoOffsetMs?: number | null }) =>
