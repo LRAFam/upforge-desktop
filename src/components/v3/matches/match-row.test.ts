@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchRowSummary, relativeTime, rowCloudAction, rowOpenAction, storageSummary } from './match-row'
+import { matchRowSummary, relativeTime, rowCloudAction, rowOpenAction, rowStateLine, storageSummary } from './match-row'
 
 describe('matchRowSummary', () => {
   it('uses the final score and stats when present', () => {
@@ -76,12 +76,29 @@ describe('rowOpenAction', () => {
   it('labels coached matches as AI coaching', () => {
     expect(rowOpenAction({ analysisId: 5 }, { unavailable: false, timeline: true })).toMatchObject({ label: 'AI coaching', ai: true, icon: 'notes' })
   })
-  it('keeps Review / Watch for recordings without coaching', () => {
-    expect(rowOpenAction({ analysisId: null }, { unavailable: false, timeline: true }).label).toBe('Review')
-    expect(rowOpenAction({ analysisId: null }, { unavailable: false, timeline: false }).label).toBe('Watch')
-    expect(rowOpenAction({ analysisId: null, cloudOnly: true }, { unavailable: false, timeline: false }).label).toBe('Review')
+  it('names what the button opens for recordings without coaching', () => {
+    expect(rowOpenAction({ analysisId: null }, { unavailable: false, timeline: true }).label).toBe('Open timeline')
+    expect(rowOpenAction({ analysisId: null }, { unavailable: false, timeline: false }).label).toBe('Watch video')
+    expect(rowOpenAction({ analysisId: null, cloudOnly: true }, { unavailable: false, timeline: false }).label).toBe('Open timeline')
   })
   it('does not promise coaching when the match cannot open', () => {
     expect(rowOpenAction({ analysisId: 5 }, { unavailable: true, timeline: true }).ai).toBe(false)
+  })
+})
+
+describe('rowStateLine', () => {
+  it('always says where the video is and the analysis state, in that order', () => {
+    expect(rowStateLine('Local', true, false)).toBe('Video on this PC · Not analysed')
+    expect(rowStateLine('Analysed', false, true)).toBe('Video in cloud · Analysed')
+    expect(rowStateLine('Analysed', false, false)).toBe('No video · Analysed')
+    expect(rowStateLine('Failed', true, true)).toBe('Video on this PC and in cloud · Analysis failed')
+    expect(rowStateLine('Cloud', false, true)).toBe('Video in cloud · Not analysed')
+  })
+})
+
+describe('storageSummary with unrecorded matches', () => {
+  it('counts every match shown and says how many were recorded', () => {
+    expect(storageSummary({ count: 79, noun: ['match', 'matches'], recorded: 61 })).toBe('79 matches · 61 recorded')
+    expect(storageSummary({ count: 3, noun: ['recording', 'recordings'] })).toBe('3 recordings')
   })
 })

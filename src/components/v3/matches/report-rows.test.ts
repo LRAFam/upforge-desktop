@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { LibraryRecording } from '../../../lib/footage-library'
-import { matchListGroups, reportOnlyRows, reportPlayedAt, reportRowView, showReportRows, type MatchReportRow } from './report-rows'
+import { matchListGroups, notRecordedReason, reportOnlyRows, reportPlayedAt, reportRowView, showReportRows, type MatchReportRow } from './report-rows'
 
 // Monday 2 Nov 2026, 12:00 local time.
 const now = new Date(2026, 10, 2, 12, 0).getTime()
@@ -107,5 +107,18 @@ describe('MatchesV3 lists unrecorded matches', () => {
   })
   it('shows the list instead of "No matches yet" when only unrecorded matches exist', () => {
     expect(page).toMatch(/v-else-if="!hasRows && !filtered\.length"/)
+  })
+})
+
+describe('notRecordedReason', () => {
+  it('names a mode that is switched off in recorded modes', () => {
+    const settings = { recordedModesByGame: { valorant: ['COMPETITIVE', 'PREMIER'] } }
+    expect(notRecordedReason('deathmatch', settings)).toEqual({ text: "Deathmatch isn't in your recorded modes", fix: { label: 'Change recorded modes', path: '/settings?tab=recording' } })
+  })
+  it('stays a "may" when the mode was recorded or unknown', () => {
+    const settings = { recordedModesByGame: { valorant: ['COMPETITIVE'] } }
+    expect(notRecordedReason('COMPETITIVE', settings).text).toBe('UpForge or OBS may not have been running')
+    expect(notRecordedReason(null, settings).text).toBe('UpForge or OBS may not have been running')
+    expect(notRecordedReason('DEATHMATCH', null).fix.path).toBe('/settings?tab=recording')
   })
 })

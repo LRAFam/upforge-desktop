@@ -15,7 +15,8 @@ import UfButton from '../UfButton.vue'
 import { deadlockRecordingHero, loadDeadlockHeroesOnce } from '../../../lib/deadlock-hero-names'
 import { deadlockReviewState } from './deadlock-review-row'
 import { gameLogo } from './game-logo'
-import { localExpiryLine, matchRowSummary, rowCloudAction, rowOpenAction, rowStatusText } from './match-row'
+import { localExpiryLine, matchRowSummary, rowCloudAction, rowOpenAction, rowStateLine } from './match-row'
+import { pendingMatchActionLabel } from '../../../lib/match-lifecycle'
 import { useReadyAnalyses } from '../../../composables/useReadyAnalyses'
 import { parseRetention, retentionLine } from '../../../lib/cloud-retention'
 import { useCloudRetention } from '../../../composables/useCloudRetention'
@@ -57,8 +58,10 @@ const openLabel = computed(() => unavailable.value || openAction.value.label)
 const { items: readyItems } = useReadyAnalyses()
 const isNew = computed(() => props.rec.analysisId != null && readyItems.value.some(r => r.analysisId === props.rec.analysisId))
 const status = computed(() => recordingStatusBadge(props.rec).label)
-/** One status line ("Analysed · Video in cloud") so every row has the same height and baseline. */
-const statusText = computed(() => unavailable.value || rowStatusText(status.value, !!props.rec.hasLocalFile, !!(props.rec.archiveId || props.rec.cloudUploaded)))
+/** One status line, same shape on every row: where the video is · the analysis ("Video in cloud · Analysed"). */
+const statusText = computed(() => unavailable.value || rowStateLine(status.value, !!props.rec.hasLocalFile, !!(props.rec.archiveId || props.rec.cloudUploaded)))
+/** The next step for a match that needs one, named by what it does ("Run AI coaching", "Retry analysis"). */
+const nextStepLabel = computed(() => pendingMatchActionLabel(props.rec) ?? 'Next step')
 const ufScore = computed(() => matchScore(props.analysis))
 /** Local-only recording that auto-delete will remove soon (warned by desktop notification too). */
 const expiryText = computed(() => localExpiryLine(props.rec.localExpiresAt))
@@ -163,10 +166,10 @@ async function startReview() {
       <span v-else-if="cloudAction?.kind === 'removed'" class="uf-t4 uf-trunc" style="color: var(--uf-faint)">{{ cloudAction.text }}</span>
     </div>
     <div v-if="!selecting" class="uf-actions" @click.stop>
-      <button v-if="!rec.cloudOnly && recordingNeedsAttention(rec)" type="button" class="uf-link" :disabled="busy" @click="emit('continue')">Continue →</button>
+      <button v-if="!rec.cloudOnly && recordingNeedsAttention(rec)" type="button" class="uf-link" :disabled="busy" @click="emit('continue')">{{ nextStepLabel }} →</button>
       <button v-if="review === 'available'" type="button" class="uf-link" :disabled="busy" @click="confirmOpen = true">Review replay</button>
       <span v-else-if="review === 'in_progress'" class="uf-t4">Replay review in progress</span>
-      <button v-if="rec.analysisId != null && canWatchRawRecording(rec)" type="button" class="uf-link" @click="emit('watch')">Watch</button>
+      <button v-if="rec.analysisId != null && canWatchRawRecording(rec)" type="button" class="uf-link" title="Watch the recording without the coaching panel" @click="emit('watch')">Watch video</button>
       <button v-if="reportPath" type="button" class="uf-link" title="Free stats report for this match (no AI)" @click.stop="openReport">Stats report</button>
       <button type="button" class="uf-btn-secondary uf-open" :class="{ 'uf-open--ai': openAction.ai }" :title="openAction.title" :disabled="!canOpen || busy" @click="emit('open')">
         <UfIcon :name="openAction.icon" :size="15" /><span v-if="isNew" class="uf-open-new" title="Not opened yet"><span class="uf-sr">New: </span></span>{{ openLabel }}

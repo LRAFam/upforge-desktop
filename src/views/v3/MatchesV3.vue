@@ -13,7 +13,7 @@ import { useRoute, useRouter } from 'vue-router'
 import MatchesTabsV3 from '../../components/v3/matches/MatchesTabsV3.vue'
 import MatchRowV3 from '../../components/v3/matches/MatchRowV3.vue'
 import ReportRowV3 from '../../components/v3/matches/ReportRowV3.vue'
-import { matchListGroups, reportOnlyRows, showReportRows, type MatchReportRow } from '../../components/v3/matches/report-rows'
+import { matchListGroups, notRecordedReason, reportOnlyRows, showReportRows, type MatchReportRow, type RecordingSettingsLike } from '../../components/v3/matches/report-rows'
 import { statusFilters, useFootageLibrary } from '../../components/v3/matches/useFootageLibrary'
 import UfButton from '../../components/v3/UfButton.vue'
 import EmptyArt from '../../components/v3/empty/EmptyArt.vue'
@@ -97,8 +97,11 @@ async function loadReports(): Promise<void> {
   if (res?.ok) reports.value = res.reports
 }
 let stopReports: (() => void) | null = null
+// Recorded modes, so a "Not recorded" row can say when its mode is switched off.
+const recordingSettings = ref<RecordingSettingsLike | null>(null)
 onMounted(() => {
   void loadReports()
+  void window.api?.settings?.get?.().then(s => { recordingSettings.value = s }).catch(() => {})
   // A new report arrives a couple of minutes after each match.
   stopReports = window.api?.app?.onFocusUpdated?.(() => { void loadReports() }) ?? null
 })
@@ -178,8 +181,12 @@ const countLine = computed(() => {
   if (coaching.value) return ''
   const cloud = usage.value?.cloud_storage
   return storageSummary({
-    count: chipFiltered.value.length,
-    noun: gameName.value ? [`${gameName.value} recording`, `${gameName.value} recordings`] : ['recording', 'recordings'],
+    // The list can hold matches that weren't recorded: count what's shown, and say how many were recorded.
+    count: searchedRecordings.value.length + searchedReports.value.length,
+    noun: searchedReports.value.length
+      ? (gameName.value ? [`${gameName.value} match`, `${gameName.value} matches`] : ['match', 'matches'])
+      : (gameName.value ? [`${gameName.value} recording`, `${gameName.value} recordings`] : ['recording', 'recordings']),
+    recorded: searchedReports.value.length ? searchedRecordings.value.length : null,
     localBytes: recordingsBytes.value > 0 ? formatRecordingBytes(recordingsBytes.value) : null,
     cloudUsed: cloud ? cloudBytes(cloud.used_bytes) : null,
     cloudCapacity: cloud?.capacity_bytes != null ? cloudBytes(cloud.capacity_bytes) : null,
@@ -279,7 +286,7 @@ const countLine = computed(() => {
             </button>
             <template v-if="lib.isGroupExpanded(group.label)">
               <template v-for="item in lib.groupVisibility(group).shown" :key="item.key">
-                <ReportRowV3 v-if="item.kind === 'report'" :report="item.report" @open="router.push(`/report/${item.report.match_id}`)" />
+                <ReportRowV3 v-if="item.kind === 'report'" :report="item.report" :reason="notRecordedReason(item.report.game_mode, recordingSettings)" @open="router.push(`/report/${item.report.match_id}`)" @fix="router.push($event)" />
                 <MatchRowV3
                   v-else
                   :rec="item.rec"

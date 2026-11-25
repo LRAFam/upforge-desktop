@@ -7,6 +7,7 @@ import type { LibraryRecording } from '../../../lib/footage-library'
 import { modeQueueLabel } from '../../../lib/game-queue'
 import { matchScore, type MatchScoreDisplay } from '../../../lib/upforge-score'
 import { formatMatchDate, groupByMatchDate, matchMapLabel, type MatchDateGroup } from './match-meta'
+import { getRecordedModesForGame, isModeFilteredOut, VALORANT_RECORDABLE_MODES } from '../../../../electron/main/recorded-modes-filter'
 
 /** One stored match report as GET /api/match-reports lists it. */
 export interface MatchReportRow {
@@ -98,4 +99,29 @@ export function reportRowView(report: MatchReportRow, now = Date.now()): ReportR
     score1000: matchScore({ upforge_score: report.upforge_score }),
     line: report.headline?.trim() || 'Match facts',
   }
+}
+
+/** Why a synced match has no recording, and where to change it. Only says what we can see today. */
+export interface NotRecordedReason {
+  text: string
+  fix: { label: string; path: string }
+}
+
+export interface RecordingSettingsLike {
+  recordedModes?: string[]
+  recordedModesByGame?: { valorant?: string[] } | null
+}
+
+export function notRecordedReason(gameMode: string | null | undefined, settings: RecordingSettingsLike | null | undefined): NotRecordedReason {
+  const fix = { label: 'Recording settings', path: '/settings?tab=recording' }
+  const key = gameMode?.trim().toUpperCase().replace(/[\s-]+/g, '_') || null
+  if (settings && key) {
+    const modes = getRecordedModesForGame(settings.recordedModesByGame as Parameters<typeof getRecordedModesForGame>[0], 'valorant', settings.recordedModes)
+    if (isModeFilteredOut(modes, key, VALORANT_RECORDABLE_MODES)) {
+      const name = modeQueueLabel('valorant', key).split(' · ')[0] || key
+      return { text: `${name} isn't in your recorded modes`, fix: { label: 'Change recorded modes', path: fix.path } }
+    }
+  }
+  // We can't see what happened at match time, so this stays a "may".
+  return { text: 'UpForge or OBS may not have been running', fix }
 }
