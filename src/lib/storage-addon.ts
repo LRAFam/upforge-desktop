@@ -61,6 +61,6 @@ export function packGain(includedBytes: number | null | undefined, currentPackBy
 }
 
 /** No storage upsell for an account with no storage cap; an existing pack can still be managed. */
-export function hideStorageOffer(unlimited: boolean, loaded: boolean, hasSubscription: boolean): boolean {
-  return unlimited && (!loaded || !hasSubscription)
+export function hideStorageOffer(noCap: boolean, loaded: boolean, hasSubscription: boolean): boolean {
+  return noCap && (!loaded || !hasSubscription)
 }

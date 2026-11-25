@@ -10,8 +10,8 @@ const props = defineProps<{
   /** Retention summary values, so the pack copy uses the same numbers as the rest of the page. */
   retentionGraceDays?: number | null
   freeKeepDays?: number | null
-  /** No storage cap on this account (admin / unlimited): no upsell, only management of an existing pack. */
-  unlimited?: boolean
+  /** No storage cap on this account (admin): no upsell, only management of an existing pack. */
+  noCap?: boolean
   /** Plan's included cloud space, for the "10 GB → 60 GB" line. */
   includedBytes?: number | null
 }>()
@@ -66,7 +66,7 @@ const price = computed(() => selected.value ? new Intl.NumberFormat('en-US',{sty
 const usage = computed(() => snapshot.value?.usage)
 const hasSubscription = computed(() => usage.value && !['none','canceled','incomplete_expired'].includes(usage.value.status))
 const date = (value: string | null) => value ? new Date(value).toLocaleDateString() : 'Not available'
-const hidden = computed(() => hideStorageOffer(!!props.unlimited, !!snapshot.value, !!hasSubscription.value))
+const hidden = computed(() => hideStorageOffer(!!props.noCap, !!snapshot.value, !!hasSubscription.value))
 const gainLine = computed(() => selected.value ? packGain(props.includedBytes, usage.value?.active ? usage.value.capacity_bytes : 0, selected.value.gb, cloudBytes) : '')
 const endLine = computed(() => packEndLine({ retentionStarted: !!props.retentionStarted, packGraceDays: snapshot.value?.grace_days, retentionGraceDays: props.retentionGraceDays, freeKeepDays: props.freeKeepDays }))
 async function load(sync = false) {
@@ -118,7 +118,7 @@ onBeforeUnmount(() => { generation++; stopChecking(); cleanups.forEach(fn => fn(
     <template v-if="snapshot && selected">
       <p v-if="usage && usage.capacity_bytes" class="uf-t4 uf-num">{{ cloudBytes(usage.used_bytes) }} used of {{ cloudBytes(usage.capacity_bytes) }}. {{ cloudBytes(usage.reserved_bytes) }} uploading.</p>
       <p v-if="usage?.paid_until" class="uf-t4">{{ usage.cancel_at_period_end ? 'Paid access ends' : 'Current paid period ends' }} {{ date(usage.paid_until) }}. {{ retentionStarted ? 'Full videos kept until' : 'Download grace until' }} {{ date(usage.grace_until) }} if not renewed.</p>
-      <p v-if="unlimited" class="uf-t4">Your account has no storage cap, so extra storage adds no space. You can stop renewing it below.</p>
+      <p v-if="noCap" class="uf-t4">Your account has no storage cap, so extra storage adds no space. You can stop renewing it below.</p>
       <template v-else>
       <div class="uf-sp-sel">
         <div><span class="uf-d3">{{ selected.gb }}</span><span class="uf-t4"> GB extra</span></div>
