@@ -224,9 +224,9 @@ describe('update manifest validation before creating a release', () => {
 describe('single release trigger and serialization', () => {
   const workflow = yaml.load(fs.readFileSync(path.resolve(__dirname, '../.github/workflows/release.yml'), 'utf8'))
   const autoTag = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/auto-tag.yml'), 'utf8')
-  it('dispatches tag builds once and keeps branch builds unpublished', () => {
+  it('dispatches tag builds once, never builds on every push, and keeps branch builds unpublished', () => {
     expect(workflow.on).toHaveProperty('workflow_dispatch')
-    expect(workflow.on.push).toEqual({ branches: ['main'] })
+    expect(workflow.on).not.toHaveProperty('push')
     expect(autoTag).toContain('gh workflow run "release.yml" --ref "${{ steps.pkg.outputs.version }}"')
     expect(workflow.jobs['publish-release'].if).toContain("startsWith(github.ref, 'refs/tags/v')")
   })
