@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { AUTO_SAVE_LABEL, createAutoSaver, type AutoSaveState } from '../../lib/auto-save'
 import type { CoachingPreferences } from '../../lib/coaching-preferences'
 import { coachingSkipMessage, coachingSkipNeedsDiscord } from '../../lib/coaching-preferences'
 import { useRouter } from 'vue-router'
@@ -14,10 +15,24 @@ const message = ref('')
 const needsDiscord = ref(false)
 const router = useRouter()
 function openDiscordRow() { router.push(DISCORD_LINK_ROUTE).catch(() => {}) }
-onMounted(async () => {
-  try { preferences.value = await window.api.coaching.preferences() }
-  catch { message.value = 'Could not load coaching preferences. Reopen Settings to try again.' }
+// Saves on change like every other switch in Settings, with the state shown beside the controls.
+const saveState = ref<AutoSaveState>('idle')
+const validLimit = (p: CoachingPreferences) => Number.isInteger(p.daily_limit) && p.daily_limit >= 1 && p.daily_limit <= 5
+const saver = createAutoSaver<CoachingPreferences>({
+  save: value => window.api.coaching.savePreferences({ ...value }),
+  onState: state => { saveState.value = state },
+  delayMs: 600,
+  valid: validLimit,
 })
+watch(preferences, value => { if (value) saver.schedule(value) }, { deep: true })
+onMounted(async () => {
+  try {
+    const loaded = await window.api.coaching.preferences()
+    saver.markSaved(loaded)
+    preferences.value = loaded
+  } catch { message.value = 'Could not load coaching preferences. Reopen Settings to try again.' }
+})
+onBeforeUnmount(() => { void saver.flush(); saver.dispose() })
 async function save() {
   if (!preferences.value) return
   busy.value = true
@@ -61,8 +76,11 @@ async function pregame() {
         <div class="uf-set-row-text"><p class="uf-t3">Automatic briefs per day, per type (UTC)</p></div>
         <div class="uf-set-ctl"><input v-model.number="preferences.daily_limit" type="number" min="1" max="5" class="uf-input" style="width: 72px" aria-label="Automatic briefs per day"></div>
       </div>
+      <p v-if="saveState !== 'idle'" class="uf-t4" :class="saveState === 'failed' || saveState === 'invalid' ? 'uf-tone-warn' : ''" role="status" aria-live="polite">
+        {{ saveState === 'invalid' ? 'Not saved yet: automatic briefs per day must be 1 to 5.' : AUTO_SAVE_LABEL[saveState] }}
+        <button v-if="saveState === 'failed'" type="button" class="uf-link" @click="saver.flush()">Retry</button>
+      </p>
       <div class="uf-set-actions">
-        <button type="button" class="uf-btn-secondary uf-set-btn" @click="save">Save preferences</button>
         <button type="button" class="uf-btn-secondary uf-set-btn" @click="pregame">Request current pre-game brief</button>
       </div>
       <p class="uf-t4">Request a post-game debrief from the match screen. Pre-game briefs use saved advice and do not spend AI credits.</p>

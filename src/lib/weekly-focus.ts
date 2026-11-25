@@ -11,6 +11,10 @@ export interface PlaystyleFocusArea {
   category: string
   text: string
   severity?: 'low' | 'medium' | 'high'
+  /** "6 games · last 40 tracked matches" (API ≥ UX1124-04). */
+  sample?: string
+  /** Fewer than 10 tracked matches behind it. */
+  early_read?: boolean
 }
 
 /**
@@ -22,6 +26,8 @@ export interface WeeklyFocusPlan {
   metric: { label: string; hint: string }
   recurrence?: string
   grade?: string | null
+  /** What the goal is based on ("Early read · last 4 tracked matches"); only for a playstyle goal. */
+  basis?: string
 }
 
 const METRIC_BY_SKILL: Record<SkillId, { label: string; hint: string }> = {
@@ -86,8 +92,13 @@ export function buildWeeklyFocusPlan(opts: {
       ? `${topIssue.count}× in last ${profile.gamesAnalysed} games`
       : undefined
 
+  const basis = playstyleText && goal === playstyleText && playstyleArea?.sample
+    ? `${playstyleArea.early_read ? 'Early read · ' : ''}${playstyleArea.sample}`
+    : undefined
+
   return {
     goal,
+    ...(basis ? { basis } : {}),
     metric: { label: metricBase.label, hint: metricHint },
     recurrence,
     grade: opts.avgSessionScore != null ? scoreGrade(opts.avgSessionScore) : null,

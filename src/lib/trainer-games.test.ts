@@ -43,17 +43,22 @@ describe('switchTrainerGame', () => {
 })
 
 describe('Practice › Setup', () => {
-  it('shows the game, sensitivity and FOV the trainer launches with', () => {
-    expect(trainerAimFacts({ game: 'cs2', sensitivity: 1.114, fov: 90, dpi: 800 } as never)).toEqual([
-      { label: 'Game', value: 'CS2' }, { label: 'Sensitivity', value: '1.114' }, { label: 'FOV', value: '90' },
+  it('shows game, sensitivity, DPI, eDPI and FOV like Settings › Trainer (UX1124-25)', () => {
+    expect(trainerAimFacts({ game: 'valorant', sensitivity: 0.1, fov: 90, dpi: 1600 })).toEqual([
+      { label: 'Game', value: 'Valorant' }, { label: 'Sensitivity', value: '0.1' }, { label: 'Mouse DPI', value: '1600' },
+      { label: 'eDPI', value: '160' }, { label: 'FOV', value: '90°' },
+    ])
+    expect(trainerAimFacts({ game: 'cs2', sensitivity: 1.114, fov: 90 })).toEqual([
+      { label: 'Game', value: 'CS2' }, { label: 'Sensitivity', value: '1.114' }, { label: 'FOV', value: '90°' },
     ])
     expect(trainerAimFacts(null)).toEqual([])
     expect(trainerAimFacts({ game: 'lol' })).toEqual([])
   })
 
-  it('no longer shows the mouse DPI, the one value the trainer never reads', () => {
+  it('the Setup tab shows the facts, the eDPI note and an Edit link', () => {
     const tab = readFileSync(resolve(__dirname, '../components/training/TrainingLoadoutsTab.vue'), 'utf8')
     expect(tab).toContain('trainerAimFacts(s.trainerMouse)')
-    expect(tab).not.toMatch(/Mouse DPI|DPI:|mouseDpi/)
+    expect(tab).toContain('{{ EDPI_NOTE }}')
+    expect(tab).toContain('Edit in Settings')
   })
 })

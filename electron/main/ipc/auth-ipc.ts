@@ -26,7 +26,7 @@ import { timelineDeathsForVod, timelineKillsForVod } from '../recording-sync'
 import type { MatchData } from '../riot-types'
 import { applyLayoutForRoute } from '../window-layouts'
 import { parseDesktopOnboardingCampaignState } from '../../../src/lib/desktop-onboarding-campaign'
-import { getLatestNotifications, markNotificationReadById } from '../coach-notification-poller'
+import { getLatestNotifications, markNotificationReadById, markAllNotificationsRead } from '../coach-notification-poller'
 
 export function setupAuthHandlers(
   ipcMain: IpcMain,
@@ -200,6 +200,7 @@ export function setupAuthHandlers(
     if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) return { ok: false }
     return markNotificationReadById(auth, id)
   })
+  ipcMain.handle('notifications:mark-all-read', async () => (auth.isAuthenticated() ? markAllNotificationsRead(auth) : { ok: false }))
 
   ipcMain.handle('billing:open-portal', async () => {
     const result = await auth.createBillingPortalSession()
@@ -474,6 +475,12 @@ export function setupAuthHandlers(
   }) => {
     if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
     return auth.updateCoachRosterSettings(payload)
+  })
+
+  ipcMain.handle('coach:get-roster-student', async (_e, payload: { studentId?: unknown }) => {
+    const id = Number(payload?.studentId)
+    if (!auth.getToken() || !Number.isSafeInteger(id) || id <= 0) return null
+    return auth.fetchCoachRosterStudent(id)
   })
 
   ipcMain.handle('coach:get-review-requests', async () => {

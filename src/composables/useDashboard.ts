@@ -414,7 +414,7 @@ function createDashboard(opts: DashboardOptions = {}) {
         death_hotspots?: Array<{ callout: string; count: number }>
       }
     }
-    focus_areas: Array<{ id: string; category: string; text: string; severity: 'low' | 'medium' | 'high' }>
+    focus_areas: Array<{ id: string; category: string; text: string; severity: 'low' | 'medium' | 'high'; sample?: string; early_read?: boolean }>
     brain_habits?: Array<{ id: string; category: string; text: string; severity: 'low' | 'medium' | 'high' }>
     agent_pool: Record<string, number>
   } | null>(null)

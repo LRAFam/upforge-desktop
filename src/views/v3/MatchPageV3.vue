@@ -4,7 +4,7 @@
  * the review context is provided by VODReviewView; this file only changes layout and look.
  * The player, timeline, round log, minimap, notes, comparison and trim logic are unchanged.
  */
-import { computed, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useVodReview } from '../../composables/useVodReview'
 import { matchRouteKey, recallMatchSummary, rememberMatchSummary, summaryFromTimeline } from '../../composables/vod/match-summary'
@@ -25,6 +25,8 @@ import MatchStatsDrawerV3 from '../../components/v3/matchpage/MatchStatsDrawerV3
 import EnemyHabitsV3 from '../../components/v3/matchpage/EnemyHabitsV3.vue'
 import RoundReviewV3 from '../../components/v3/matchpage/RoundReviewV3.vue'
 import ReplayViewerV3 from '../../components/v3/matchpage/ReplayViewerV3.vue'
+import MatchRoundsStripV3 from '../../components/v3/matchpage/MatchRoundsStripV3.vue'
+import { initialSummaryOpen, saveSummaryOpen, summaryContents } from '../../components/v3/matchpage/match-summary-panel'
 import { markAnalysisSeen } from '../../composables/useReadyAnalyses'
 
 defineProps<{
@@ -61,6 +63,12 @@ const {
   timeline,
   roundGroups,
   seekToRound,
+  updateVideoFrameSize,
+  roundLogCollapsed,
+  theaterMode,
+  toggleTheaterMode,
+  setSidePanelTab,
+  showInsightsPanel,
 } = useVodReview()
 
 // `?round=N` (1-based, as shown on screen) opens the match at that round, e.g. from the post-game
@@ -82,6 +90,51 @@ const autoReviewRound = computed(() => {
   const r = roundFromQuery(route.query.round)
   return r == null ? null : r + 1
 })
+
+// Match summary panel: closed by default so the replay gets the height; the choice is remembered.
+const summaryOpen = ref(initialSummaryOpen(typeof localStorage === 'undefined' ? null : localStorage, { autoReview: autoReviewRound.value != null }))
+watch(summaryOpen, open => {
+  saveSummaryOpen(typeof localStorage === 'undefined' ? null : localStorage, open)
+  void nextTick(() => updateVideoFrameSize())
+})
+// Name what is inside from the sections that rendered (each child root carries data-summary).
+const summaryBody = ref<HTMLElement | null>(null)
+const summaryNames = ref('')
+function readSummaryNames() {
+  const el = summaryBody.value
+  summaryNames.value = el ? summaryContents(Array.from(el.children, c => (c as HTMLElement).dataset.summary)) : ''
+}
+let summaryObserver: MutationObserver | null = null
+watch(summaryBody, el => {
+  summaryObserver?.disconnect()
+  summaryObserver = null
+  if (!el) { summaryNames.value = ''; return }
+  readSummaryNames()
+  if (typeof MutationObserver !== 'undefined') {
+    summaryObserver = new MutationObserver(readSummaryNames)
+    summaryObserver.observe(el, { childList: true })
+  }
+})
+// The toggle row appearing or disappearing changes the video's room too.
+watch(summaryNames, () => { void nextTick(() => updateVideoFrameSize()) })
+onBeforeUnmount(() => summaryObserver?.disconnect())
+
+// Skip links (keyboard): jump straight to the player, the round log or the notes instead of tabbing
+// through every round and event. Panels that are hidden are opened first.
+const pageEl = ref<HTMLElement | null>(null)
+async function skipTo(target: 'video' | 'rounds' | 'notes') {
+  if (theaterMode.value && target !== 'video') toggleTheaterMode()
+  if (target === 'rounds') roundLogCollapsed.value = false
+  if (target === 'notes' && !showInsightsPanel.value) setSidePanelTab('notes')
+  await nextTick()
+  const root = pageEl.value
+  const el = target === 'video'
+    ? root?.querySelector<HTMLElement>('.vb3-ib--play')
+    : target === 'rounds'
+      ? root?.querySelector<HTMLElement>('.vod-round-log [data-rove][tabindex="0"]') ?? root?.querySelector<HTMLElement>('.vod-round-log button')
+      : root?.querySelector<HTMLElement>('.vod-notes-panel')
+  el?.focus()
+}
 
 // Header facts before the timeline lands: the clicked row, or the last visit to this match.
 const routeKey = computed(() => matchRouteKey(route.query))
@@ -107,7 +160,12 @@ const coachMatchLabel = computed(() => {
 </script>
 
 <template>
-  <div class="vod-review uf-matchpage">
+  <div ref="pageEl" class="vod-review uf-matchpage">
+    <nav v-if="!timelineLoading && !timelineError && !comparisonActive && !accessOpen" class="uf-mp-skip" aria-label="Skip to">
+      <button type="button" @click="skipTo('video')">Skip to video</button>
+      <button v-if="roundGroups.length" type="button" @click="skipTo('rounds')">Skip to round log</button>
+      <button type="button" @click="skipTo('notes')">Skip to notes</button>
+    </nav>
     <MatchPageSkeletonV3 v-if="timelineLoading" :summary="summary" :workspace="workspace" :rounds-width="roundsWidth" :details-width="detailsWidth" :cloud="!!route.query.archiveId" />
     <MatchPageHeaderV3
       v-if="!timelineLoading && !timelineError"
@@ -126,16 +184,29 @@ const coachMatchLabel = computed(() => {
     <div v-else-if="!timelineLoading && !timelineError && coachAnalysisId != null" v-show="!comparisonActive && !accessOpen" class="uf-mp-coachrow">
       <SendToCoachV3 :analysis-id="coachAnalysisId" :match-label="coachMatchLabel" />
     </div>
-    <!-- CS2 deep tabs / Deadlock replay review (game-specific; renders nothing for other games). -->
-    <MatchStatsDrawerV3 v-if="!timelineLoading && !timelineError" v-show="!comparisonActive && !accessOpen" />
-    <!-- Valorant (r7-val): enemy habits this match, from Riot position snapshots. Renders nothing without enough data. -->
-    <div v-if="!timelineLoading && !timelineError && timeline?.game === 'valorant'" v-show="!comparisonActive && !accessOpen" class="uf-mp-coachrow">
-      <EnemyHabitsV3 :recording-id="timeline?.id ?? null" />
-      <!-- AI round review: hidden unless enabled (flag + API) and the match was analysed. -->
-      <RoundReviewV3 :auto-round="autoReviewRound" />
-      <!-- 2D round viewer from the match replay (only when the app uploaded and the server parsed it). -->
-      <ReplayViewerV3 />
-    </div>
+    <!-- Match summary: rounds strip, game stats, enemy habits, AI round review and the 2D replay, in one
+         collapsible section so the video keeps its height. Children stay mounted (v-show) so their data loads
+         and the toggle can name what is inside; empty sections render nothing and are not listed. -->
+    <section v-if="!timelineLoading && !timelineError" v-show="!comparisonActive && !accessOpen && summaryNames" class="uf-mp-summary" aria-label="Match summary">
+      <button type="button" class="uf-mp-summary-toggle" :aria-expanded="summaryOpen" aria-controls="uf-mp-summary-body" @click="summaryOpen = !summaryOpen">
+        <span class="uf-label">Match summary</span>
+        <span class="uf-t4">{{ summaryNames }}</span>
+        <span class="uf-t4 uf-mp-summary-act">{{ summaryOpen ? 'Hide' : 'Show' }}</span>
+      </button>
+      <div v-show="summaryOpen" id="uf-mp-summary-body" ref="summaryBody" class="uf-mp-summary-body">
+        <MatchRoundsStripV3 data-summary="rounds" />
+        <!-- CS2 deep tabs / Valorant rounds-duels-economy / Deadlock replay review (renders nothing for other games). -->
+        <MatchStatsDrawerV3 :data-summary="timeline?.game === 'deadlock' ? 'replay review' : 'match stats'" />
+        <template v-if="timeline?.game === 'valorant'">
+          <!-- Enemy habits this match, from Riot position snapshots. Renders nothing without enough data. -->
+          <EnemyHabitsV3 :recording-id="timeline?.id ?? null" data-summary="enemy habits" />
+          <!-- AI round review: hidden unless enabled (flag + API) and the match was analysed. -->
+          <RoundReviewV3 :auto-round="autoReviewRound" data-summary="AI round review" />
+          <!-- 2D round viewer from the match replay (only when the app uploaded and the server parsed it). -->
+          <ReplayViewerV3 data-summary="2D replay" />
+        </template>
+      </div>
+    </section>
     <CloudVodActions v-if="route.query.archiveId && !timelineLoading && !timelineError" v-show="!comparisonActive && !accessOpen" />
     <!-- Cloud retention: countdown (keep / download) or "Full video no longer stored"; silent when playing from this PC. -->
     <CloudRetentionBarV3 v-if="!timelineLoading && !timelineError" v-show="!comparisonActive && !accessOpen" />
@@ -169,7 +240,7 @@ const coachMatchLabel = computed(() => {
 @import '../../components/vod-review/vod-review.css';
 
 /* Layout: same container contract as the classic view (the workspace layout queries it). */
-.uf-matchpage { display: flex; flex-direction: column; height: 100%; overflow: hidden; color: var(--uf-bone); container-type: inline-size; container-name: review-workspace; }
+.uf-matchpage { position: relative; display: flex; flex-direction: column; height: 100%; overflow: hidden; color: var(--uf-bone); container-type: inline-size; container-name: review-workspace; }
 
 /* v3 restyle of the shared review pieces — surfaces flat, square, hairlines, no glow. */
 .uf-matchpage.vod-review { background: var(--uf-bg); }
@@ -192,5 +263,20 @@ const coachMatchLabel = computed(() => {
 .uf-matchpage :deep(.rounded-xl),
 .uf-matchpage :deep(.rounded-2xl) { border-radius: 2px; }
 .uf-mp-coachrow:empty { display: none; }
+/* Skip links: off-screen until focused, then a bar over the top of the page. */
+.uf-mp-skip { position: absolute; z-index: 60; top: 0; left: 0; display: flex; gap: 8px; padding: 8px 40px; transform: translateY(-120%); background: var(--uf-raised); border-bottom: 1px solid var(--uf-line-2); }
+.uf-mp-skip:focus-within { transform: none; }
+.uf-mp-skip button { padding: 6px 10px; background: none; border: 1px solid var(--uf-line-2); color: var(--uf-bone); font: 500 13px/1 var(--uf-body); cursor: pointer; }
+.uf-mp-skip button:focus-visible { outline: 2px solid var(--uf-bone); outline-offset: 2px; }
+.uf-mp-summary { flex: none; border-bottom: 1px solid var(--uf-line); }
+.uf-mp-summary-toggle { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 40px; background: none; border: 0; color: var(--uf-faint); cursor: pointer; text-align: left; }
+.uf-mp-summary-toggle .uf-label { color: var(--uf-bone); }
+.uf-mp-summary-toggle:hover, .uf-mp-summary-toggle:focus-visible { background: var(--uf-hover); }
+.uf-mp-summary-toggle:hover .uf-mp-summary-act { color: var(--uf-bone); }
+.uf-mp-summary-act { margin-left: auto; }
+/* Open: scrolls inside its own box so the replay below never drops off the screen. */
+.uf-mp-summary-body { max-height: 42vh; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
+.uf-mp-summary-body > :not(.msd) { margin-left: 40px; margin-right: 40px; }
+.uf-mp-summary-body > .msd { border-bottom: 0; border-top: 1px solid var(--uf-line); }
 .uf-mp-coachrow { padding: 8px 40px 0; }
 </style>

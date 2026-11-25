@@ -577,6 +577,26 @@ export interface ForgeRankInfo {
   prestige_xp: number
 }
 
+/** GET /api/coach/roster/students/{id}: one student on the coach's roster. */
+export interface RosterStudentDetail {
+  student: { id: number; name: string; riot_name?: string | null; riot_tag?: string | null }
+  membership_tier: 'free' | 'paid' | null
+  joined_at: string | null
+  reviews_this_month: number
+  reviews_per_month_limit: number
+  resets_at: string
+  reviews: Array<{
+    id: number
+    status: string
+    requested_at: string | null
+    completed_at: string | null
+    annotation_count: number
+    student_question: string | null
+    analysis_id: number | null
+    analysis: (import('./lib/roster-match-display').RosterMatchVisual & { id: number }) | null
+  }>
+}
+
 export interface ProfileData {
   user: {
     id: number
@@ -1026,6 +1046,8 @@ declare global {
         /** Last /api/notifications answer from the coach poller; null before the first poll. */
         inbox: () => Promise<import('./components/v3/shell/notification-inbox').InboxSnapshot | null>
         markRead: (id: number) => Promise<{ ok: boolean }>
+        /** POST /api/notifications/mark-all-as-read, then the cached inbox matches. */
+        markAllRead: () => Promise<{ ok: boolean }>
       }
       billing: {
         openPortal: () => Promise<{ ok: boolean; error?: string }>
@@ -1624,6 +1646,8 @@ declare global {
           roster_included_reviews_per_month?: number
         }) => Promise<{ ok: true; settings: Record<string, unknown> } | { ok: false; error: string }>
         getReviewRequests: () => Promise<Array<Record<string, unknown>>>
+        /** One student on your roster (API Nov 2026+); null when not found or on an older API. */
+        getRosterStudent: (studentId: number) => Promise<RosterStudentDetail | null>
         startReview: (reviewId: number) => Promise<{ ok: boolean; review?: unknown; error?: string }>
         // Coach notes (desktop, UI v3)
         addAnnotation: (reviewId: number, note: { body: string; roundNumber?: number | null; videoOffsetMs?: number | null }) => Promise<{ ok: true; id: number | null } | { ok: false; error: string }>
@@ -1673,6 +1697,8 @@ declare global {
             text: string
             severity: 'low' | 'medium' | 'high'
             agent?: string
+            sample?: string
+            early_read?: boolean
           }>
           brain_habits?: Array<{
             id: string
@@ -1742,7 +1768,10 @@ declare global {
           replayBufferActive: boolean
           outputPath: string | null
           lastError: string | null
+          /** obs-websocket version. */
           obsVersion: string | null
+          /** OBS Studio version (older builds may not send it). */
+          obsStudioVersion?: string | null
           lastApplied?: {
             at: number
             quality: string

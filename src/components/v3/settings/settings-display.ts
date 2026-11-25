@@ -99,12 +99,65 @@ export function valorantAccountsView(
   return [{ id: 0, riot_name: name, riot_tag: tag, riot_region: user?.riot_region ?? null, is_active: true }]
 }
 
+// ── OBS ──────────────────────────────────────────────────────────────────────
+
+/**
+ * "OBS Studio 32.0.1 · WebSocket 5.7.6". The websocket version alone ("v5.7.6") read like an OBS
+ * Studio version older than the 28+ the setup asks for.
+ */
+export function obsVersionLabel(status: { obsStudioVersion?: string | null; obsVersion?: string | null } | null | undefined): string {
+  const parts: string[] = []
+  if (status?.obsStudioVersion) parts.push(`OBS Studio ${status.obsStudioVersion}`)
+  if (status?.obsVersion) parts.push(`WebSocket ${status.obsVersion}`)
+  return parts.join(' · ')
+}
+
+/**
+ * Repair re-runs UpForge's scene setup. Listed before the player confirms, so nothing changes in OBS
+ * without them knowing what.
+ */
+export const OBS_REPAIR_CHANGES: readonly string[] = [
+  'Adds the "UpForge" scene and its game capture source if either is missing, and fits the capture to your canvas.',
+  'Switches OBS to the UpForge scene, unless OBS is recording, streaming, running the replay buffer or the virtual camera.',
+  'On the UpForge OBS profile only: sets the crash-safe recording format and turns on the replay buffer.',
+  'Your other scenes, sources and your own OBS profile are not changed.',
+]
+
 // ── Storage line ─────────────────────────────────────────────────────────────
 
 /** "1.2 GB saved on this PC · 69.9 GB free" — always says it's local, so it can't be confused with cloud counts. */
 export function localStorageLine(bytes: number, freeLabel: string | null, formatBytes: (n: number) => string): string {
   const used = bytes > 0 ? `${formatBytes(bytes)} saved on this PC` : 'No recordings saved on this PC'
   return freeLabel ? `${used} · ${freeLabel} free` : used
+}
+
+export type LocalBudgetTone = 'ok' | 'warn'
+
+/**
+ * The local budget is a guide (nothing is deleted or stopped for going over it), so it gets its own
+ * status separate from free disk space: amber with text once recordings pass it, never a green light.
+ */
+export function localBudgetStatus(
+  bytes: number,
+  limitBytes: number,
+  formatBytes: (n: number) => string,
+): { tone: LocalBudgetTone; over: boolean; detail: string; overBy: string | null } {
+  const over = bytes > limitBytes
+  const near = !over && bytes >= limitBytes * 0.9
+  const detail = over
+    ? `Over budget · ${formatBytes(bytes)} of ${formatBytes(limitBytes)}`
+    : near
+      ? `Nearly full · ${formatBytes(bytes)} of ${formatBytes(limitBytes)}`
+      : `${formatBytes(bytes)} of ${formatBytes(limitBytes)}`
+  return { tone: over || near ? 'warn' : 'ok', over, detail, overBy: over ? formatBytes(bytes - limitBytes) : null }
+}
+
+/** Disk status line: free space only, so a full budget and a full disk can't hide behind one light. */
+export function diskFreeDetail(freeLabel: string | null, low: boolean, critical: boolean): string {
+  const free = freeLabel ? `${freeLabel} free` : 'Free space unknown'
+  if (critical) return `Critical · ${free}`
+  if (low) return `Low · ${free}`
+  return free
 }
 
 /** "2 untracked files (1.2 GB) will be deleted in 5 days …" — the visible countdown before auto-removal. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agentFullPortrait, analysedThisWeek, coachLine, daysAgo, dedupeByMatch, focusTitleParts, formSquareLabel, heroMetaParts, heroScore, homeMapLabel, homeStateNote, liveStatus, pickPrimaryAction, relativeDay, resultTone, resultWord } from './home-v3'
+import { agentFullPortrait, recentWhen, analysedMatch, heroMismatchNote, insightMatch, syncedMatch, analysedThisWeek, coachLine, daysAgo, dedupeByMatch, focusTitleParts, formSquareLabel, heroMetaParts, heroScore, homeMapLabel, homeStateNote, liveStatus, pickPrimaryAction, relativeDay, resultTone, resultWord } from './home-v3'
 
 describe('pickPrimaryAction', () => {
   it('opens the last match whenever there is one', () => {
@@ -174,5 +174,51 @@ describe('matchTime (audit 2026-11-02)', () => {
     const { matchTime } = await import('./home-v3')
     expect(matchTime({ played_at: '2026-09-05T18:00:00Z', created_at: '2026-09-24T10:00:00Z' })).toBe('2026-09-05T18:00:00Z')
     expect(matchTime({ played_at: null, created_at: '2026-09-24T10:00:00Z' })).toBe('2026-09-24T10:00:00Z')
+  })
+})
+
+describe('insight match labels (every Home insight names its match)', () => {
+  const label = (m: string) => m
+  const hero = { id: 1, match_id: 'm-old', map: 'Summit', played_at: '2026-11-22T18:00:00Z', created_at: '2026-11-22T19:00:00Z' }
+  const focus = { id: 9, metric: 'm', label: 'L', better: 'lower' as const, baseline: 0.4, target: 0.3, started_at: null, completed_at: null,
+    progress: { games_played: 1, hits: 0, games_required: 3, hits_required: 2, status: 'active' },
+    checks: [{ match_id: 'm-new', value: 0.5, hit: false, played_at: '2026-11-23T20:00:00Z' }] }
+
+  it('labels the hero match with map, exact date and analysed state', () => {
+    expect(analysedMatch(hero, label)).toEqual({ key: 'm:m-old', label: 'Summit · 22 Nov · analysed', analysed: true })
+  })
+  it('names a newer synced match as not analysed yet and says where the hero score comes from', () => {
+    const synced = syncedMatch({ match_id: 'm-new', focus, rounds: { map: 'Corrode', ally: 13, enemy: 5, rounds: [] } }, [hero], label)
+    expect(synced).toEqual({ key: 'm:m-new', label: 'Corrode · 23 Nov · not analysed yet', analysed: false })
+    expect(heroMismatchNote(synced, analysedMatch(hero, label)))
+      .toBe("Your newest match isn't analysed yet. The score above is your last analysed match: Summit · 22 Nov · analysed.")
+  })
+  it('shows no mismatch note when the insight is about the hero match', () => {
+    const synced = syncedMatch({ match_id: 'm-old', focus: null, rounds: null }, [hero], label)
+    expect(synced?.label).toBe('Summit · 22 Nov · analysed')
+    expect(heroMismatchNote(synced, analysedMatch(hero, label))).toBe('')
+  })
+  it('finds an older insight by its analysis id', () => {
+    expect(insightMatch({ analysisId: 1, date: null }, [hero], label)?.label).toBe('Summit · 22 Nov · analysed')
+    expect(insightMatch({ analysisId: 77, date: '2026-11-02T10:00:00Z' }, [hero], label)?.label).toBe('Analysed match · 2 Nov')
+    expect(insightMatch(null, [hero], label)).toBeNull()
+  })
+})
+
+describe('Recent list order and dates', () => {
+  const NOW = Date.parse('2026-11-25T12:00:00Z')
+  it('lists one row per match, newest played first, even when an old match was analysed last', async () => {
+    const { newestPlayedFirst } = await import('../../../lib/match-stats')
+    const rows = [
+      { id: 4, match_id: 'old', played_at: '2026-09-05T12:00:00Z', created_at: '2026-11-24T12:00:00Z' },
+      { id: 3, match_id: 'new', played_at: '2026-11-03T12:00:00Z', created_at: '2026-11-03T13:00:00Z' },
+      { id: 2, match_id: 'old', played_at: '2026-09-05T12:00:00Z', created_at: '2026-09-05T13:00:00Z' },
+    ]
+    expect(newestPlayedFirst(dedupeByMatch(rows)).map(r => r.id)).toEqual([3, 4])
+  })
+  it('shows a relative day this week and the exact date after that', () => {
+    expect(recentWhen('2026-11-24T12:00:00Z', NOW)).toBe('yesterday')
+    expect(recentWhen('2026-10-05T12:00:00Z', NOW)).toBe('5 Oct')
+    expect(recentWhen(null, NOW)).toBe('')
   })
 })

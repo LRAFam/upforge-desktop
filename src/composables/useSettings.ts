@@ -190,7 +190,10 @@ function createSettings() {
     replayBufferActive: boolean
     outputPath: string | null
     lastError: string | null
+    /** obs-websocket version. */
     obsVersion: string | null
+    /** OBS Studio version (older main processes may not send it). */
+    obsStudioVersion?: string | null
     lastApplied?: {
       at: number
       quality: string
@@ -550,6 +553,7 @@ function createSettings() {
       { value: 'DEATHMATCH', label: 'Deathmatch', hint: 'Warm-up & practice' },
       { value: 'TEAMDEATHMATCH', label: 'Team Deathmatch', hint: 'HURM mode' },
       { value: 'SHOOTING_RANGE', label: 'The Range', hint: 'Practice range' },
+      { value: 'OTHER', label: 'Other modes', hint: 'Skirmish 2v2, Snowball Fight and event modes' },
     ],
     lol: [
       { value: 'CLASSIC', label: "Summoner's Rift", hint: 'Ranked, normals and Swiftplay' },
@@ -557,6 +561,7 @@ function createSettings() {
       { value: 'ARENA', label: 'Arena', hint: '2v2v2v2' },
       { value: 'CUSTOM', label: 'Custom / Practice', hint: 'Custom games and practice tool' },
       { value: 'BOT', label: 'Co-op vs AI', hint: 'Bot games' },
+      { value: 'OTHER', label: 'Other modes', hint: 'URF, One for All and event modes' },
     ],
     cs2: [
       { value: 'COMPETITIVE', label: 'Competitive', hint: 'Ranked' },
@@ -564,6 +569,7 @@ function createSettings() {
       { value: 'WINGMAN', label: 'Wingman', hint: '2v2' },
       { value: 'CASUAL', label: 'Casual', hint: '' },
       { value: 'DEATHMATCH', label: 'Deathmatch', hint: '' },
+      { value: 'OTHER', label: 'Other modes', hint: 'Arms Race, Retakes, Demolition and more' },
     ],
     deadlock: [
       // One switch: the queue is only known after the match, so it can't filter before recording.

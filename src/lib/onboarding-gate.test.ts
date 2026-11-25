@@ -59,3 +59,26 @@ it('opens the requested first report after normal onboarding completion', () => 
   expect(resolveOnboardingCompletionRoute({ destination: 'analysis', recordingId: 'first-match' })).toEqual({ path: '/vod-review', query: { id: 'first-match' } })
   expect(resolveOnboardingCompletionRoute()).toEqual({ path: '/dashboard' })
 })
+
+describe('leaving an onboarding preview (UX1124-37)', () => {
+  it('goes back to a safe in-app page only', async () => {
+    const { previewReturnRoute } = await import('./onboarding-gate')
+    expect(previewReturnRoute('/settings?tab=advanced')).toBe('/settings?tab=advanced')
+    expect(previewReturnRoute('/dashboard')).toBe('/dashboard')
+    expect(previewReturnRoute('//evil.example')).toBeNull()
+    expect(previewReturnRoute('https://evil.example')).toBeNull()
+    expect(previewReturnRoute('/onboarding?preview=1')).toBeNull()
+    expect(previewReturnRoute(['/settings'])).toBeNull()
+    expect(previewReturnRoute(undefined)).toBeNull()
+  })
+
+  it('every Preview onboarding button says where it came from, and the wizard uses it', async () => {
+    const { readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const src = (p: string) => readFileSync(join(__dirname, '..', p), 'utf8')
+    expect(src('components/settings/SettingsAdvancedPane.vue')).toContain("from: '/settings?tab=advanced'")
+    expect(src('App.vue')).toContain("query: { preview: '1', from: route.fullPath }")
+    expect(src('components/dashboard/DashboardDevTools.vue').match(/preview: '1', from: \$route\.fullPath/g)?.length).toBe(2)
+    expect(src('views/OnboardingView.vue')).toContain('previewReturnRoute(route.query.from)')
+  })
+})

@@ -110,6 +110,8 @@ export function statsOnlyNotice(detail: {
 
 /** The side-panel tab is called this wherever the match was opened from (Home, Matches, a coach link). */
 export const NOTES_TAB_LABEL = 'Coach notes'
+/** The docked map panel (heatmap, death spots, filters). The small map on the video is the "minimap". */
+export const MAP_TAB_LABEL = 'Map intel'
 
 /** A coach has actually written back (a note or their perspective) — a student's question alone doesn't count. */
 export function coachReplied(review: { coach_perspective?: string | null; annotations?: unknown[] | null } | null | undefined): boolean {

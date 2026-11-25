@@ -14,10 +14,10 @@ import UfSkeleton from '../components/v3/UfSkeleton.vue'
 import { readCache, writeCache } from '../lib/stale-cache'
 import UfTabs from '../components/v3/UfTabs.vue'
 import UfDialog from '../components/v3/UfDialog.vue'
-import { capacityFacts, capacitySentence, libraryCountLabel } from '../components/v3/matches/cloud-storage-v3'
+import { capacityFacts, capacitySentence, cloudFileDates, libraryCountLabel } from '../components/v3/matches/cloud-storage-v3'
 import { formatMatchDate, matchMapArt, matchMapLabel } from '../components/v3/matches/match-meta'
 import { useCloudRetention } from '../composables/useCloudRetention'
-import { parseRetention, retentionLine } from '../lib/cloud-retention'
+import { parseRetention, retentionLine, retentionRulesLine } from '../lib/cloud-retention'
 const router = useRouter()
 // Cloud retention (v3): plan keep time, saves paused when full, per-video countdowns. Null on older APIs.
 const { summary: retentionSummary, keepTime, savesPausedMessage, expiringLine, refresh: refreshRetention } = useCloudRetention()
@@ -66,6 +66,8 @@ const attentionCount = computed(() => library.value?.items.filter(file => {
 const failedMapImages = ref<Set<string>>(new Set())
 function hideMapImage(map: string) { failedMapImages.value = new Set([...failedMapImages.value, map]) }
 const full = computed(() => usage.value?.cloud_storage?.remaining_bytes === 0)
+/** Admin and no-cap accounts: "No storage cap", so no storage upsell (UX1124-32). */
+const noStorageCap = computed(() => usage.value?.cloud_storage ? usage.value.cloud_storage.included_bytes === null : !!retentionSummary.value && retentionSummary.value.capacity_bytes === null)
 const queue = computed(() => [
   ...recordings.value.filter(r => r.pipelineStatus === 'uploading' || !!r.lastAnalysisError).map(r => ({ id: `r:${r.id}`, title: `${r.map || 'Recording'}`, status: r.pipelineStatus === 'uploading' ? 'Uploading' : 'Needs attention', progress: r.pipelineStatus === 'uploading' && typeof r.uploadProgress === 'number' && Number.isFinite(r.uploadProgress) ? r.uploadProgress : null, path: '/recordings' })),
   ...clips.value.filter(c => c.uploadStatus === 'uploading' || c.uploadStatus === 'failed').map(c => ({ id: `c:${c.id}`, title: c.title || 'Clip', status: c.uploadStatus === 'uploading' ? 'Uploading' : 'Upload failed', progress: null, path: '/clips' })),
@@ -196,7 +198,8 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
       <div class="uf-cs-head-text">
         <span class="uf-label">All games · account-wide</span>
         <h1 class="uf-d2" style="margin: 0">Cloud storage</h1>
-        <p class="uf-t2" style="margin: 0">Your clips and recordings from every game, in one library.</p>
+        <p class="uf-t2" style="margin: 0">The cloud copies of your clips and recordings from every game, in one library.</p>
+        <p class="uf-t4" style="margin: 0">Files on this PC are separate: see <button type="button" class="uf-link" @click="router.push({ path: '/settings', query: { tab: 'recording', section: 'storage' } })">Storage on this PC</button>.</p>
       </div>
       <!-- v3 loading rule: a background refresh is a 1px line, never a button that reads "Refreshing…". -->
       <UfButton :disabled="loading" @click="refresh">Refresh</UfButton>
@@ -274,8 +277,8 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
           <template v-else-if="library">
             <div v-if="!library.items.length" class="uf-cs-empty">
               <p class="uf-t3" style="margin: 0">No {{ kind === 'all' ? 'cloud files' : kind === 'clip' ? 'cloud clips' : 'cloud recordings' }}{{ game === 'all' ? '' : ` for ${gameLabel}` }} yet</p>
-              <p class="uf-t4" style="margin: 0">Upload from Clips or Footage to keep your gameplay available on other devices.</p>
-              <UfButton @click="router.push(kind === 'clip' ? '/clips' : '/recordings')">Open {{ kind === 'clip' ? 'Clips' : 'Footage' }}</UfButton>
+              <p class="uf-t4" style="margin: 0">Upload from Clips or Matches to keep your gameplay available on other devices.</p>
+              <UfButton @click="router.push(kind === 'clip' ? '/clips' : '/recordings')">Open {{ kind === 'clip' ? 'Clips' : 'Matches' }}</UfButton>
             </div>
             <div v-for="file in library.items" :key="`${file.kind}:${file.id}`" class="uf-cs-file" :class="{ ended: fileRetention(file) ? isRemoved(file) : retention(file.expires_at).state === 'expired' }">
               <!-- Map art, same as the Matches rows (no cropped agent face). -->
@@ -285,16 +288,18 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
               </div>
               <div class="uf-cs-row-text" style="flex: 1">
                 <button type="button" class="uf-cs-open uf-t3" :disabled="file.status === 'uploading'" @click="openFile(file)">{{ fileTitle(file) }}</button>
-                <span class="uf-t4">{{ cloudGames.find(item => item.value === file.game)?.label || 'Game not recorded' }} · {{ cloudKindLabel(file.kind) }}<span v-if="file.agent"> · {{ file.agent }}</span> · {{ formatMatchDate(Date.parse(file.created_at)) }}<span v-if="file.status === 'uploading'"> · Uploading</span><span v-if="file.status === 'failed'" class="uf-cs-bad"> · Upload failed</span></span>
+                <span class="uf-t4">{{ cloudGames.find(item => item.value === file.game)?.label || 'Game not recorded' }} · {{ cloudKindLabel(file.kind) }}<span v-if="file.agent"> · {{ file.agent }}</span> · {{ cloudFileDates(file, formatMatchDate) }}<span v-if="file.status === 'uploading'"> · Uploading</span><span v-if="file.status === 'failed'" class="uf-cs-bad"> · Upload failed</span></span>
               </div>
               <div class="uf-cs-size">
                 <span class="uf-t3 uf-num" :title="file.bytes === null ? 'This older file has no verified size yet. Its size has not been counted as zero.' : undefined">{{ cloudBytes(file.bytes) }}</span>
                 <span v-if="fileRetentionLine(file)" class="uf-t4 uf-cs-ret" :class="`is-${fileRetentionLine(file)!.tone}`" :title="fileRetentionLine(file)!.detail ?? (file.expires_at ? `Removal date: ${date(file.expires_at)}` : undefined)">{{ fileRetentionLine(file)!.text }}</span>
                 <span v-else-if="!fileRetention(file)" class="uf-t4 uf-cs-ret" :class="retention(file.expires_at).state" :title="file.expires_at ? `Retention date: ${date(file.expires_at)}` : undefined">{{ file.paid_storage && addon?.usage.active ? 'Kept in paid storage' : retention(file.expires_at).label }}</span>
                 <span v-if="fileRetentionLine(file)?.countdown && fileRetentionLine(file)!.detail" class="uf-t4 uf-cs-ret-detail">{{ fileRetentionLine(file)!.detail }}</span>
+                <span v-if="fileRetentionLine(file)?.countdown && !fileRetentionLine(file)!.keepTime && fileRetention(file)?.expires_at" class="uf-t4 uf-cs-ret-detail">Removal date: {{ date(fileRetention(file)!.expires_at!) }}</span>
               </div>
               <div class="uf-cs-acts">
                 <button type="button" class="uf-link" :disabled="file.status === 'uploading'" @click="openFile(file)">{{ file.status === 'uploading' ? 'Uploading…' : isRemoved(file) ? (file.analysis_id ? 'Open notes' : 'Details') : !fileRetention(file) && retention(file.expires_at).state === 'expired' ? 'Recovery options' : 'Open file' }}</button>
+                <button v-if="file.kind !== 'clip' && !isRemoved(file) && typeof file.analysis_id === 'number' && file.analysis_id > 0" type="button" class="uf-link" @click="router.push({ path: '/vod-review', query: { timelineId: String(file.analysis_id) } })">Open match</button>
                 <template v-if="fileRetentionLine(file)?.countdown">
                   <button type="button" class="uf-link" @click="showKeepOptions">Keep it in the cloud</button>
                   <button type="button" class="uf-link" @click="downloadRow(file)">Download</button>
@@ -312,7 +317,7 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
       </div>
 
       <aside class="uf-cs-side">
-        <div ref="pickerAnchor"><StorageAddonPicker :key="addonVersion" :retention-started="!!retentionSummary?.started" @changed="refresh" @loaded="addon=$event" /></div>
+        <div ref="pickerAnchor"><StorageAddonPicker :key="addonVersion" :retention-started="!!retentionSummary?.started" :retention-grace-days="retentionSummary?.grace_days" :free-keep-days="retentionSummary?.free_keep_days" :no-cap="noStorageCap" :included-bytes="usage?.cloud_storage?.included_bytes ?? retentionSummary?.included_bytes" @changed="refresh" @loaded="addon=$event" /></div>
         <section class="uf-cs-sec">
           <span class="uf-label">Your plan</span>
           <p class="uf-t3" style="margin: 0">{{ full || savesPausedMessage ? 'Your cloud space is full' : 'Keep more of your gameplay' }}</p>
@@ -323,15 +328,15 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
         </section>
         <section class="uf-cs-sec">
           <span class="uf-label">Manage your footage</span>
-          <UfButton variant="link" @click="router.push('/recordings')">Open Footage</UfButton>
+          <UfButton variant="link" @click="router.push('/recordings')">Open Matches</UfButton>
           <UfButton variant="link" @click="router.push('/clips')">Open Clips</UfButton>
-          <p class="uf-t4" style="margin: 0">Open files here to watch or download. Use Clips for editing and Footage for match review.</p>
+          <p class="uf-t4" style="margin: 0">Open files here to watch or download. Use Clips for editing and Matches for match review.</p>
         </section>
         <section class="uf-cs-sec">
           <span class="uf-label">How storage works</span>
           <p class="uf-t4" style="margin: 0">One shared GB allowance for cloud clips and recordings across all games. Local files do not count. Cloud storage is used until files are removed; it does not reset each month.</p>
           <template v-if="retentionSummary?.started">
-            <p class="uf-t4" style="margin: 0">Free keeps each full video for {{ retentionSummary.free_keep_days ?? 14 }} days. A paid plan or a storage pack keeps them while you're subscribed. If it ends, you have {{ retentionSummary.grace_days ?? 30 }} days before free rules apply. You get a warning 7 days and 1 day before anything is removed.</p>
+            <p class="uf-t4" style="margin: 0">{{ retentionRulesLine(retentionSummary) }}</p>
             <p class="uf-t4" style="margin: 0">Only the full video is removed. Clips, notes, stats and analysis stay, and a copy on this PC still plays. Analysis always works, even when your space is full.</p>
           </template>
           <p v-else class="uf-t4" style="margin: 0">Files past their retention date may be removed during cleanup. Your saved notes and comparisons stay in your notebook even when footage is unavailable.</p>

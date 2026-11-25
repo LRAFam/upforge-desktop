@@ -52,17 +52,40 @@ export function parseWeeklyPlan(body: unknown): WeeklyPlan | null {
   }
 }
 
+/** Spelling variants the AI has used for one category ("Game Sense", "gameSense", "game-sense"). */
+const CATEGORY_ALIASES: Record<string, string> = {
+  gamesense: 'game_sense',
+  crosshair: 'crosshair_placement',
+  utility: 'utility_usage',
+  util_usage: 'utility_usage',
+  decisions: 'decision_making',
+}
+
+/** One fixed key per category, so the same category never shows twice under one name. */
+export function canonicalCategoryKey(raw: string): string {
+  const k = raw.trim().replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  return CATEGORY_ALIASES[k] ?? CATEGORY_ALIASES[k.replace(/_/g, '')] ?? k
+}
+
 export function parseSkillProfile(body: unknown): SkillProfileSummary | null {
   const history = Array.isArray(rec(body).category_history) ? rec(body).category_history as unknown[] : []
   const sums = new Map<string, { total: number; n: number; latest: number | null }>()
   history.forEach((entry, i) => {
-    for (const [key, raw] of Object.entries(rec(rec(entry).categories))) {
-      const v = num(raw)
+    // Variants of one category inside the same match count as one score for that match.
+    const perMatch = new Map<string, number[]>()
+    for (const [raw, value] of Object.entries(rec(rec(entry).categories))) {
+      const v = num(value)
       if (v == null) continue
+      const key = canonicalCategoryKey(raw)
+      if (!key) continue
+      perMatch.set(key, [...(perMatch.get(key) ?? []), score10(v)])
+    }
+    for (const [key, vals] of perMatch) {
+      const v = vals.reduce((a, b) => a + b, 0) / vals.length
       const s = sums.get(key) ?? { total: 0, n: 0, latest: null }
-      s.total += score10(v)
+      s.total += v
       s.n += 1
-      if (i === 0) s.latest = score10(v)
+      if (i === 0) s.latest = Math.round(v * 10) / 10
       sums.set(key, s)
     }
   })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analysedEmptyLine, progressCountLine } from './progress-counts'
+import { analysedEmptyLine, progressCountLine, rangeScope } from './progress-counts'
 
 describe('progressCountLine', () => {
   it('names both counts so the header never contradicts the chart and habits', () => {
@@ -26,5 +26,11 @@ describe('analysedEmptyLine', () => {
   })
   it('has an honest line when there are none at all', () => {
     expect(analysedEmptyLine(null, NOW)).toBe('No analysed matches yet. Play a match with recording on to get one.')
+  })
+})
+
+describe('rangeScope', () => {
+  it('names the window a range-following section covers', () => {
+    expect(['7d', '30d', '90d', 'all', 'x'].map(rangeScope)).toEqual(['last 7 days', 'last 30 days', 'last 90 days', 'all time', 'this range'])
   })
 })

@@ -168,6 +168,8 @@ export interface RecurringInsight {
   occurrences: number
   /** Distinct analysed matches that flagged it; null when the API didn't track it (older habits). */
   analysisCount?: number | null
+  /** Newest analysis that flagged it (API example_analysis_id), for "Review an example". */
+  exampleAnalysisId?: number | null
   status: string | null
   trend: string | null
   firstSeenAt: string | null
@@ -257,6 +259,9 @@ export interface PlaystyleFocusArea {
   text: string
   severity: 'low' | 'medium' | 'high'
   agent?: string
+  /** "6 games · last 40 tracked matches" (newer API). */
+  sample?: string
+  early_read?: boolean
 }
 
 export interface PlaystyleProfile {
@@ -639,6 +644,7 @@ export class AuthManager {
         severity: typeof r.severity === 'string' ? r.severity : null,
         occurrences: Number.isFinite(Number(r.occurrence_count)) ? Number(r.occurrence_count) : 0,
         analysisCount: r.analysis_count != null && Number.isFinite(Number(r.analysis_count)) ? Number(r.analysis_count) : null,
+        exampleAnalysisId: Number.isSafeInteger(Number(r.example_analysis_id)) && Number(r.example_analysis_id) > 0 ? Number(r.example_analysis_id) : null,
         status: typeof r.status === 'string' ? r.status : null,
         trend: typeof r.trend_direction === 'string' ? r.trend_direction : null,
         firstSeenAt: typeof r.first_seen_at === 'string' ? r.first_seen_at : null,
@@ -1384,6 +1390,19 @@ export class AuthManager {
         ?? (err as { response?: { data?: { error?: string } } })?.response?.data?.error
         ?? (err instanceof Error ? err.message : 'Failed to update roster settings')
       return { ok: false, error: msg }
+    }
+  }
+
+  /** One student on the coach's roster: allowance this month and their reviews with this coach. Null when not found. */
+  async fetchCoachRosterStudent(studentId: number): Promise<Record<string, unknown> | null> {
+    if (!this._token || !Number.isSafeInteger(studentId) || studentId <= 0) return null
+    try {
+      const res = await this._api.get(`/api/coach/roster/students/${studentId}`)
+      return res.data?.success ? (res.data as Record<string, unknown>) : null
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 404 || status === 403) return null
+      throw err
     }
   }
 

@@ -8,6 +8,13 @@ import { modeQueueLabel } from '../../src/lib/game-queue'
 
 export type RecordableGame = 'valorant' | 'lol' | 'cs2' | 'deadlock'
 
+/**
+ * Catch-all switch for every queue without its own switch (Valorant Skirmish 2v2, Snowball Fight,
+ * event modes; CS2 Arms Race, Retakes; League URF…). Without it those queues could only be
+ * recorded by ticking every mode, and the skipped-match notice pointed at a switch that didn't exist.
+ */
+export const OTHER_MODES = 'OTHER'
+
 export const VALORANT_RECORDABLE_MODES = [
   'COMPETITIVE',
   'PREMIER',
@@ -16,8 +23,8 @@ export const VALORANT_RECORDABLE_MODES = [
   'TEAMDEATHMATCH',
   'SPIKERUSH',
   'SWIFTPLAY',
-  'SNOWBALL',
   'SHOOTING_RANGE',
+  OTHER_MODES,
 ] as const
 
 /** Live Client reports CLASSIC for all Summoner's Rift queues (can't split ranked/normals yet). */
@@ -27,6 +34,7 @@ export const LOL_RECORDABLE_MODES = [
   'ARENA',
   'CUSTOM',
   'BOT',
+  OTHER_MODES,
 ] as const
 
 export const CS2_RECORDABLE_MODES = [
@@ -35,6 +43,7 @@ export const CS2_RECORDABLE_MODES = [
   'WINGMAN',
   'CASUAL',
   'DEATHMATCH',
+  OTHER_MODES,
 ] as const
 
 export const DEADLOCK_RECORDABLE_MODES = [
@@ -59,6 +68,23 @@ export const DEFAULT_RECORDED_MODES_BY_GAME: Record<RecordableGame, string[]> = 
 }
 
 export type RecordedModesByGame = Record<RecordableGame, string[]>
+
+/**
+ * The full mode lists before the Other modes switch existed. Ticking all of them turned the filter
+ * off (record everything), so a saved list that still holds all of them gains Other modes on load
+ * and keeps recording every queue.
+ */
+const LEGACY_ALL_MODES: Partial<Record<RecordableGame, readonly string[]>> = {
+  valorant: ['COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'TEAMDEATHMATCH', 'SPIKERUSH', 'SWIFTPLAY', 'SNOWBALL', 'SHOOTING_RANGE'],
+  lol: ['CLASSIC', 'ARAM', 'ARENA', 'CUSTOM', 'BOT'],
+  cs2: ['COMPETITIVE', 'PREMIER', 'WINGMAN', 'CASUAL', 'DEATHMATCH'],
+}
+
+function keepRecordingEverything(game: RecordableGame, modes: string[]): string[] {
+  const legacy = LEGACY_ALL_MODES[game]
+  if (!legacy || modes.includes(OTHER_MODES) || !legacy.every(m => modes.includes(m))) return modes
+  return [...modes, OTHER_MODES]
+}
 
 export function defaultRecordedModesByGame(): RecordedModesByGame {
   return {
@@ -85,6 +111,7 @@ export function migrateRecordedModesByGame(
   if (Array.isArray(recordedModes) && !Array.isArray(existing?.valorant)) {
     next.valorant = [...recordedModes]
   }
+  for (const game of ['valorant', 'lol', 'cs2'] as const) next[game] = keepRecordingEverything(game, next[game])
   return next
 }
 
@@ -116,7 +143,16 @@ export function isModeFilteredOut(
 ): boolean {
   if (!gameMode || recordedModes.length === 0) return false
   const filterByMode = !allModes.every((m) => recordedModes.includes(m))
-  return filterByMode && !recordedModes.includes(gameMode)
+  if (!filterByMode || recordedModes.includes(gameMode)) return false
+  // A queue without its own switch is recorded when Other modes is on.
+  if (allModes.includes(OTHER_MODES) && !allModes.includes(gameMode)) return !recordedModes.includes(OTHER_MODES)
+  return true
+}
+
+/** True when this queue has no switch of its own and is covered by Other modes. */
+export function isOtherMode(game: string, gameMode: string): boolean {
+  const all = recordableModesForGame(game)
+  return all.includes(OTHER_MODES) && !all.includes(gameMode)
 }
 
 /** @deprecated Prefer isModeFilteredOut with VALORANT_RECORDABLE_MODES */
@@ -134,6 +170,9 @@ export function isValorantModeFilteredOut(
  */
 export function modeSkippedMessage(game: string, gameMode: string): string {
   const name = modeQueueLabel(game, gameMode).split(' · ')[0] || gameMode
+  if (isOtherMode(game, gameMode)) {
+    return `${name} was not recorded because Other modes is off. Turn on Other modes in Settings → Recording to capture it.`
+  }
   return `${name} is not in your recorded modes, so this match was not captured. Change modes in Settings → Recording.`
 }
 

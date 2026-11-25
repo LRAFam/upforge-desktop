@@ -32,3 +32,13 @@ export function resolveOnboardingCompletionRoute(options?: { destination?: 'dash
     ? { path: '/vod-review', query: { id: options.recordingId } }
     : { path: '/dashboard' }
 }
+
+/**
+ * Where leaving an onboarding preview goes: back to the in-app page that opened it (`?from=`, e.g.
+ * "/settings?tab=advanced"), or null when there's no safe one. Only app paths, never onboarding itself.
+ */
+export function previewReturnRoute(from: unknown): string | null {
+  if (typeof from !== 'string' || !from.startsWith('/') || from.startsWith('//') || from.length > 300) return null
+  if (from === '/onboarding' || from.startsWith('/onboarding?') || from.startsWith('/onboarding/')) return null
+  return from
+}

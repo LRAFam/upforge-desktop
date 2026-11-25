@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { drillDisplayName } from '../../lib/trainer-scenarios'
 import { plural } from '../../lib/plural'
 import { recentFormMatches, recentFormStats } from '../../components/v3/home/recent-form'
+import { newestPlayedFirst } from '../../lib/match-stats'
 /**
  * UI v3 Home (Coach) — board 4. Reading order: last match score → the coach's sentence →
  * one red action → recent form → focus → evidence. Real data only; honest empty states.
@@ -38,8 +40,8 @@ import DashboardDevTools from '../../components/dashboard/DashboardDevTools.vue'
 import {
   analysedThisWeek,
   liveStatus,
-  PRIMARY_LABEL, agentFullPortrait, coachLine, dedupeByMatch, formSquareLabel, heroMetaParts, heroScore, homeMapLabel, homeStateNote,
-  matchTime, pickPrimaryAction, relativeDay, resultTone, resultWord,
+  PRIMARY_LABEL, agentFullPortrait, analysedMatch, coachLine, dedupeByMatch, formSquareLabel, heroMetaParts, heroMismatchNote, heroScore, homeMapLabel, homeStateNote,
+  insightMatch, matchTime, pickPrimaryAction, recentWhen, resultTone, resultWord, shortDate, syncedMatch,
 } from '../../components/v3/home/home-v3'
 import upforgeIcon from '../../assets/upforge-icon.webp'
 import cs2Art from '../../assets/games/cs2-card-bg.webp'
@@ -60,7 +62,8 @@ function onFocusLatest(latest: FocusUpdate | null) {
   focus.set(latest)
 }
 /** One row per real match (re-analyses of the same Riot match collapse to the newest). */
-const matches = computed(() => dedupeByMatch(d.dashboardAnalyses.value))
+// Newest PLAYED first: the API lists by analysis time, so an old match analysed late would jump the queue.
+const matches = computed(() => newestPlayedFirst(dedupeByMatch(d.dashboardAnalyses.value)))
 /** Nothing to draw yet: first-ever load for this game. Cached data skips this entirely. */
 const homeLoading = computed(() => d.analysesLoading.value && !matches.value.length)
 /** Sections that were skeletons fade in once; cached screens draw without animation. */
@@ -102,6 +105,17 @@ const lastVerdict = computed(() => (last.value && verdictGame.value ? d.coaching
 const coach = computed(() => coachLine(focusLatest.value, d.lastInsight.value, last.value
   ? { verdict: lastVerdict.value ?? null }
   : null))
+// Which match each insight describes: the hero is the last analysed match; a focus note and its
+// rounds come from the last synced Riot match, which can be newer and not analysed yet.
+const heroMatch = computed(() => analysedMatch(last.value, m => mapLabel(m)))
+const focusMatch = computed(() => syncedMatch(focusLatest.value, matches.value, m => mapLabel(m)))
+const coachMatch = computed(() => {
+  const src = coach.value?.source
+  if (src === 'focus_note') return focusMatch.value
+  if (src === 'insight') return insightMatch(d.lastInsight.value, matches.value, m => mapLabel(m))
+  return src ? heroMatch.value : null
+})
+const coachMismatch = computed(() => heroMismatchNote(coachMatch.value, heroMatch.value))
 // Board 13: an early read (under 10 matches) or a welcome back after 14+ days away.
 const stateNote = computed(() => (homeLoading.value ? null : homeStateNote(d.dashboardAnalyses.value)))
 const coachPending = computed(() => {
@@ -149,7 +163,7 @@ function openReport(): void { if (reportMatchId.value) router.push(`/report/${re
 const roundsTitle = computed(() => {
   const r = rounds.value
   if (!r) return ''
-  return `${r.map ? `${formatMapLabel(r.map)} · ` : ''}${r.ally}–${r.enemy}`
+  return [focusMatch.value?.label ?? (r.map ? formatMapLabel(r.map) : null), `${r.ally}–${r.enemy}`].filter(Boolean).join(' · ')
 })
 const decided = computed(() => decidedStats(rounds.value))
 
@@ -227,10 +241,12 @@ async function runPrimary() {
             <UfSkeleton :w="'min(420px, 60%)'" :h="16" />
           </div>
           <template v-else-if="coach">
+            <p v-if="coachMatch" class="uf-t4 home3-source">About: {{ coachMatch.label }}</p>
             <p class="uf-t1" :class="{ 'uf-reveal': fromSkeleton }">{{ coach.headline }}</p>
             <p v-if="coach.next" class="uf-t2">{{ coach.next }}</p>
-            <!-- Match report: the full free data report for the match this note came from -->
-            <button v-if="reportMatchId" type="button" class="uf-link" style="align-self: flex-start" @click="openReport">Open match report →</button>
+            <p v-if="coachMismatch" class="uf-t4 home3-source">{{ coachMismatch }}</p>
+            <!-- Match report: the full free data report for the last synced match (named, as it can differ from the hero) -->
+            <button v-if="reportMatchId" type="button" class="uf-link" style="align-self: flex-start" @click="openReport">Open match report{{ focusMatch ? ` · ${focusMatch.label}` : '' }} →</button>
           </template>
           <template v-else>
             <p class="uf-t1">{{ d.status.value.obsConnected ? 'Play a match and your coach will read it.' : 'Set up recording and play a match. Your coach reads it straight after.' }}</p>
@@ -324,8 +340,9 @@ async function runPrimary() {
           <div class="home3-row-head"><p class="uf-label">Warm-up</p><span v-if="d.trainerSessionCount.value" class="uf-t4">{{ plural(d.trainerSessionCount.value, 'drill') }} done</span></div>
           <template v-if="d.weeklyFocus.value">
             <p class="uf-t3">This week: {{ d.weeklyFocus.value.goal }}</p>
+            <p v-if="d.weeklyFocus.value.basis" class="uf-t4" style="color: var(--uf-muted)">Based on: {{ d.weeklyFocus.value.basis }}</p>
           </template>
-          <p v-if="d.trainerLastSession.value" class="uf-t4">Last drill: {{ d.trainerLastSession.value.scenario }} · {{ d.trainerLastSession.value.score }}</p>
+          <p v-if="d.trainerLastSession.value" class="uf-t4">Last drill: {{ drillDisplayName(d.trainerLastSession.value.scenario) }} · {{ d.trainerLastSession.value.score }}</p>
           <p v-else-if="!d.weeklyFocus.value" class="uf-t4" style="color: var(--uf-muted)">A few minutes of aim drills before you queue.</p>
           <span class="home3-links">
             <button type="button" class="uf-link" @click="d.router.push('/training')">Open practice →</button>
@@ -333,7 +350,7 @@ async function runPrimary() {
         </section>
         <div v-if="d.isValorant.value" class="uf-hair" />
 
-        <section class="home3-block" aria-label="Recent matches">
+        <section class="home3-block" aria-label="Recent matches, newest played first">
           <div class="home3-row-head"><p class="uf-label">Recent</p><button type="button" class="uf-link" @click="d.router.push('/recordings')">All →</button></div>
           <p v-if="weekCount" class="uf-t4">{{ weekCount }} analysed this week</p>
           <template v-if="homeLoading">
@@ -343,9 +360,10 @@ async function runPrimary() {
             </div>
           </template>
           <p v-else-if="!recent.length" class="uf-t4">No analysed matches yet.</p>
-          <button v-for="a in recent" :key="a.id" type="button" class="home3-recent" :class="{ 'uf-reveal': fromSkeleton }" @click="d.openAnalysisRow(a)">
+          <button v-for="a in recent" :key="a.id" type="button" class="home3-recent" :class="{ 'uf-reveal': fromSkeleton }"
+            :title="shortDate(matchTime(a)) ? `Played ${shortDate(matchTime(a))}` : undefined" @click="d.openAnalysisRow(a)">
             <span class="home3-recent-text"><span class="uf-t3">{{ mapLabel(a.map) || 'Match' }}</span>
-              <span class="uf-t4">{{ [a.agent, relativeDay(matchTime(a))].filter(Boolean).join(' · ') }}</span></span>
+              <span class="uf-t4">{{ [a.agent, recentWhen(matchTime(a))].filter(Boolean).join(' · ') }}</span></span>
             <span v-if="a.rounds_won != null && a.rounds_lost != null" class="uf-d4"
               :style="{ color: a.won === true ? 'var(--uf-win)' : a.won === false ? 'var(--uf-loss)' : 'var(--uf-bone)' }">{{ a.rounds_won }}–{{ a.rounds_lost }}</span>
             <UfIcon v-else name="play" :size="14" />
@@ -404,6 +422,7 @@ async function runPrimary() {
 .home3-recent--skel { cursor: default; }
 .home3-recent-text :deep(.uf-skel) + :deep(.uf-skel) { margin-top: 5px; }
 .home3-stale { margin: 0; display: flex; gap: 10px; align-items: baseline; }
+.home3-source { color: var(--uf-muted); }
 .home3-state { margin: 0 0 10px; color: var(--uf-muted); display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .home3-state .uf-label { color: var(--uf-faint); }
 .home3-dev { flex: none; padding: 0 40px 20px; opacity: 0.7; }

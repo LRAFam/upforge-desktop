@@ -25,7 +25,7 @@ const showAdminTools = computed(() => profile.value?.user?.is_admin === true || 
       <button type="button" class="uf-link uf-t4" :disabled="simulating" @click="simulateGame('valorant', 8000)">{{ simulating ? 'Simulating…' : 'Simulate Valorant (8s)' }}</button>
       <button type="button" class="uf-link uf-t4" @click="$router.push('/post-game-preview')">Post-game</button>
       <button type="button" class="uf-link uf-t4" @click="$router.push('/dashboard-needs-you-preview')">Needs you</button>
-      <button type="button" class="uf-link uf-t4" @click="$router.push({ path: '/onboarding', query: { preview: '1' } })">Preview onboarding</button>
+      <button type="button" class="uf-link uf-t4" @click="$router.push({ path: '/onboarding', query: { preview: '1', from: $route.fullPath } })">Preview onboarding</button>
       <button v-if="showAdminTools" type="button" class="uf-link uf-t4" @click="$router.push('/onboarding')">Test onboarding</button>
       <button type="button" class="uf-link uf-t4" @click="$router.push('/training')">Trainer</button>
       <button v-if="isDev" type="button" class="uf-link uf-t4" @click="$router.push('/dev/match-fixture')">Match page fixture</button>
@@ -42,7 +42,7 @@ const showAdminTools = computed(() => profile.value?.user?.is_admin === true || 
         <button class="flex-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-yellow-500/[0.08] text-yellow-500/70 hover:bg-yellow-500/[0.14] transition-colors border border-yellow-500/10" :disabled="simulating" @click="simulateGame('valorant', 8000)">{{ simulating ? 'Simulating...' : 'Simulate Valorant (8s)' }}</button>
         <button class="px-2 py-1.5 rounded-lg text-xs font-medium bg-white/[0.04] text-gray-500 hover:bg-white/[0.07] transition-colors border border-white/[0.09]" @click="$router.push('/post-game-preview')">Post-game</button>
         <button class="px-2 py-1.5 rounded-lg text-xs font-medium bg-amber-500/[0.08] text-amber-400/80 hover:bg-amber-500/[0.14] transition-colors border border-amber-500/15" @click="$router.push('/dashboard-needs-you-preview')">Needs you</button>
-        <button class="px-2 py-1.5 rounded-lg text-xs font-medium bg-sky-500/[0.08] text-sky-400/80 hover:bg-sky-500/[0.14] transition-colors border border-sky-500/15" @click="$router.push({ path: '/onboarding', query: { preview: '1' } })">Preview onboarding</button>
+        <button class="px-2 py-1.5 rounded-lg text-xs font-medium bg-sky-500/[0.08] text-sky-400/80 hover:bg-sky-500/[0.14] transition-colors border border-sky-500/15" @click="$router.push({ path: '/onboarding', query: { preview: '1', from: $route.fullPath } })">Preview onboarding</button>
         <button v-if="showAdminTools" class="px-2 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/[0.08] text-emerald-400/80 hover:bg-emerald-500/[0.14] transition-colors border border-emerald-500/15" @click="$router.push('/onboarding')">Test onboarding</button>
         <button class="px-2 py-1.5 rounded-lg text-xs font-medium bg-orange-500/[0.08] text-orange-500/70 hover:bg-orange-500/[0.14] transition-colors border border-orange-500/10" @click="$router.push('/training')">Trainer</button>
       </div>

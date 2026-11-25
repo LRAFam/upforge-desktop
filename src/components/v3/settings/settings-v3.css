@@ -196,3 +196,16 @@
 .ui-v3 .uf-xh-import { display: flex; gap: 10px; }
 .ui-v3 .uf-xh-import .uf-input { flex: 1; }
 @media (max-width: 760px) { .ui-v3 .uf-xh { grid-template-columns: 1fr; } .ui-v3 .uf-xh-preview { position: static; } }
+
+/* Allowance table (Settings → Account): one row per allowance. */
+.ui-v3 .uf-cap-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ui-v3 .uf-cap-table caption { text-align: left; padding-bottom: 6px; }
+.ui-v3 .uf-cap-table th, .ui-v3 .uf-cap-table td { text-align: left; vertical-align: top; padding: 8px 12px 8px 0; border-top: 1px solid var(--uf-line); color: var(--uf-muted); }
+.ui-v3 .uf-cap-table thead th { font-size: 12px; font-weight: 600; color: var(--uf-faint); border-top: 0; }
+.ui-v3 .uf-cap-table tbody th { color: var(--uf-bone); font-weight: 600; white-space: nowrap; }
+.ui-v3 .uf-cap-table td.is-empty { color: var(--uf-gold); }
+@media (max-width: 900px) {
+  .ui-v3 .uf-cap-table thead { display: none; }
+  .ui-v3 .uf-cap-table tr { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; padding: 8px 0; border-top: 1px solid var(--uf-line); }
+  .ui-v3 .uf-cap-table th, .ui-v3 .uf-cap-table td { border-top: 0; padding: 0; }
+}

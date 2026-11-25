@@ -68,4 +68,7 @@ describe('formatTriggerBreakdown', () => {
       '4 kills · 1 clutch · 1 bookmark',
     )
   })
+  it('uses real plurals', () => {
+    expect(formatTriggerBreakdown({ clutch: 3, multikill: 2, manual: 1 })).toBe('2 multi-kills · 3 clutches · 1 manual clip')
+  })
 })

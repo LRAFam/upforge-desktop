@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { badgeIndexes, chartGeometry, habitTone, HABIT_METRICS, inRange, eloDelta, eloSeries, formatMetric, halfDelta, metricLabel, rankChanges, sparkline, trendDeltaLabel } from './progress-chart'
+import { badgeIndexes, rankAxisTicks, rankPointRows, chartGeometry, habitTone, HABIT_METRICS, inRange, eloDelta, eloSeries, formatMetric, halfDelta, metricLabel, rankChanges, sparkline, trendDeltaLabel } from './progress-chart'
 
 const snap = (date: string, rank: string | null, rr: number, elo: number) => ({ date, rank, rr, elo })
 
@@ -128,5 +128,25 @@ describe('inRange', () => {
   it('keeps dated items inside the range; All keeps everything', () => {
     expect(inRange(items, i => i.d, '7d', NOW)).toEqual([items[0]])
     expect(inRange(items, i => i.d, 'all', NOW)).toHaveLength(3)
+  })
+})
+
+describe('rank chart scale and points', () => {
+  const s = eloSeries([snap('2026-10-01', 'Silver 3', 90, 1190), snap('2026-10-08', 'Gold 1', 10, 1210), snap('2026-10-20', 'Gold 1', 60, 1260)])
+  it('labels rank boundaries with the rank the data shows starting there', () => {
+    expect(rankAxisTicks(s, 1000, 1400)).toEqual([
+      { value: 1000, label: '1000' }, { value: 1100, label: 'Silver 3' }, { value: 1200, label: 'Gold 1' },
+      { value: 1300, label: '1300' }, { value: 1400, label: '1400' },
+    ])
+  })
+  it('uses RR steps when the window sits inside one division', () => {
+    const one = eloSeries([snap('2026-10-01', 'Gold 1', 20, 1220), snap('2026-10-02', 'Gold 1', 60, 1260)])
+    expect(rankAxisTicks(one, 1210, 1270).map(t => t.label)).toEqual(['Gold 1 · 25 RR', 'Gold 1 · 50 RR'])
+  })
+  it('gives every point a date, absolute rank + RR and a separate rating change', () => {
+    const rows = rankPointRows(s)
+    expect(rows[0]).toMatchObject({ date: '1 Oct', rank: 'Silver 3', rr: '90 RR', change: 'First point' })
+    expect(rows[1]).toMatchObject({ rank: 'Gold 1', rr: '10 RR', change: '+20 rating' })
+    expect(rows[1].label).toBe('8 Oct · Gold 1 · 10 RR · +20 rating since the last point')
   })
 })

@@ -36,6 +36,7 @@ import { useVodPortraits } from './vod/useVodPortraits'
 import { takeArchive, takeDetail, takeTimeline, noteArchiveRateLimited } from './vod/match-prefetch'
 import { uiV3 } from '../lib/ui-v3'
 import { readCache, writeCache } from '../lib/stale-cache'
+import { eventTiming } from '../lib/vod-event-timing'
 import { useLifetime } from './useLifetime'
 
 // Round outcome icons — game-aware via timeline-event-icons.ts
@@ -209,11 +210,11 @@ function createVodReview() {
     { key: '← / →', label: 'Skip 5s (Shift: 1s)' },
     { key: 'J / L', label: 'Prev / next event' },
     { key: '[ / ]', label: 'Slower / faster' },
-    { key: 'T', label: 'Theater mode' },
-    { key: 'F', label: 'Fullscreen' },
-    { key: 'M', label: 'Toggle intel map' },
+    { key: 'T', label: 'Focus video (hide panels)' },
+    { key: 'F', label: 'Full screen' },
+    { key: 'M', label: 'Map intel panel' },
     { key: 'B', label: 'Round log panel' },
-    { key: 'N', label: 'Review notes' },
+    { key: 'N', label: 'Coach notes panel' },
     { key: 'V', label: 'Mute / unmute' },
     { key: 'S', label: 'Scoreboard' },
     { key: 'R', label: 'Round detail' },
@@ -1041,6 +1042,8 @@ function createVodReview() {
     const sign = ms > 0 ? '+' : ''
     return `${sign}${(ms / 1000).toFixed(1)}s`
   })
+  /** The player's own nudge on top of the detected timing (what "Reset to detected timing" undoes). */
+  const eventTimingState = computed(() => eventTiming(effectiveSyncMs.value, defaultSyncMsForGame(timeline.value?.game)))
   
   function preRollSeconds(type: string): number {
     if (type === 'death') return DEATH_PRE_ROLL_SECONDS
@@ -2413,6 +2416,7 @@ function createVodReview() {
     spatialViewMode,
     supplementalCoachingNotes,
     syncOffsetLabel,
+    eventTimingState,
     tacticalIntelBrief,
     theaterMode,
     timeline,

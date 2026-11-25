@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { recurringHabitRows, relativeDays } from './recurring-habits'
+import { parseHabitText, recurringHabitRows, relativeDays } from './recurring-habits'
 
 const NOW = Date.parse('2026-10-30T12:00:00Z')
 const row = (o: Partial<Parameters<typeof recurringHabitRows>[0] extends readonly (infer T)[] | null | undefined ? T : never>) => ({
@@ -53,6 +53,36 @@ describe('recurringHabitRows', () => {
     expect(p.note).toBe('Engages duels while debuffed, where holding the…')
     expect(p.maps).toEqual(['Ascent'])
     expect(recurringHabitRows([row({ occurrences: 1 })], NOW)).toEqual([])
+  })
+
+  it('drops the frozen count from newer API text so the row shows one live count', () => {
+    const a = parseHabitText('Untraded deaths — flagged 137 times. Died alone on B long without a trade. Maps: Bind, Haven.')
+    expect(a).toEqual({ note: 'Died alone on B long without a trade.', maps: ['Bind', 'Haven'] })
+    expect(parseHabitText('Positioning — flagged in 12 analysed matches (85 times). Held an open angle.').note).toBe('Held an open angle.')
+    expect(parseHabitText('Positioning — flagged in 1 analysed match. Held an open angle.').note).toBe('Held an open angle.')
+    const [r] = recurringHabitRows([row({ label: 'Untraded deaths', occurrences: 322, text: 'Untraded deaths — flagged 137 times. Died alone on B long.' })], NOW)
+    expect(r.detail).toBe('Died alone on B long.')
+    expect(r.seen).toBe('Flagged 322 times')
+  })
+
+  it('never shows a strength that comes up more as something to fix', () => {
+    const [s] = recurringHabitRows([row({ label: 'Mechanics habits', occurrences: 9, trend: 'worsening', text: 'Mechanics habits — flagged 9 times. Head-height holds turning multi-target fights into kills.' })], NOW)
+    expect(s.polarity).toBe('strength')
+    expect(s.trend).toEqual({ label: 'Showing more often', tone: 'better' })
+    const [r] = recurringHabitRows([row({ label: 'Untraded deaths', occurrences: 9, trend: 'worsening', text: 'Died alone on B long.' })], NOW)
+    expect(r.polarity).toBe('risk')
+    expect(r.trend).toEqual({ label: 'Coming up more', tone: 'worse' })
+  })
+
+  it('keeps the whole note for "Show more" and passes the example analysis through', () => {
+    const long = 'Died alone on B long without a trade in round 4 at 3:12. Again in round 9 at 7:40 after swinging wide. Hold for your duelist.'
+    const [r] = recurringHabitRows([row({ label: 'Untraded deaths', occurrences: 5, text: long, exampleAnalysisId: 812 })], NOW)
+    expect(r.detail).toBe('Died alone on B long without a trade in round 4 at 3:12.')
+    expect(r.more).toBe(long)
+    expect(r.exampleAnalysisId).toBe(812)
+    const [short] = recurringHabitRows([row({ label: 'Untraded deaths', occurrences: 5, text: 'Died alone on B long.' })], NOW)
+    expect(short.more).toBeNull()
+    expect(short.exampleAnalysisId).toBeNull()
   })
 
   it('returns nothing for empty or missing data', () => {
