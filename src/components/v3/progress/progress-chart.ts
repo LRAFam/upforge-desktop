@@ -4,12 +4,12 @@
  */
 
 export interface RankSnapshot { id?: number; date: string; rank: string | null; rr: number; elo: number }
-export interface EloPoint { t: number; elo: number; rank: string | null }
+export interface EloPoint { t: number; elo: number; rank: string | null; rr?: number | null }
 
 /** Valid ELO points, oldest first. Snapshots without a usable ELO or date are dropped, never mixed with RR. */
 export function eloSeries(history: RankSnapshot[]): EloPoint[] {
   return history
-    .map(h => ({ t: new Date(h.date).getTime(), elo: h.elo, rank: h.rank }))
+    .map(h => ({ t: new Date(h.date).getTime(), elo: h.elo, rank: h.rank, rr: Number.isFinite(h.rr) ? h.rr : null }))
     .filter(p => Number.isFinite(p.t) && Number.isFinite(p.elo) && p.elo > 0)
     .sort((a, b) => a.t - b.t)
 }
@@ -42,7 +42,8 @@ export function spacedByX<T extends { x: number }>(items: T[], minGap = 40): T[]
   return out.reverse()
 }
 
-export interface ChartBox { width: number; height: number; padX: number; padTop: number; padBottom: number }
+/** `padLeft` (optional) leaves room for the value axis; it defaults to `padX`. */
+export interface ChartBox { width: number; height: number; padX: number; padTop: number; padBottom: number; padLeft?: number }
 
 export interface ChartGeometry {
   points: Array<{ x: number; y: number }>
@@ -51,6 +52,7 @@ export interface ChartGeometry {
   min: number
   max: number
   xAt: (t: number) => number
+  yAt: (v: number) => number
 }
 
 /** Scales a series into an SVG box. X is by time (uneven gaps stay honest); Y has 10% headroom. */
@@ -63,15 +65,72 @@ export function chartGeometry(series: EloPoint[], box: ChartBox): ChartGeometry 
   const head = Math.max(10, (hi - lo) * 0.1)
   const min = lo - head
   const max = hi + head
-  const innerW = box.width - box.padX * 2
+  const left = box.padLeft ?? box.padX
+  const innerW = box.width - left - box.padX
   const innerH = box.height - box.padTop - box.padBottom
-  const xAt = (t: number) => box.padX + (t1 === t0 ? innerW / 2 : ((t - t0) / (t1 - t0)) * innerW)
+  const xAt = (t: number) => left + (t1 === t0 ? innerW / 2 : ((t - t0) / (t1 - t0)) * innerW)
   const yAt = (v: number) => box.padTop + ((max - v) / (max - min)) * innerH
   const points = series.map(p => ({ x: round(xAt(p.t)), y: round(yAt(p.elo)) }))
   const line = 'M' + points.map(p => `${p.x},${p.y}`).join(' L')
   const base = box.height - box.padBottom
   const area = `${line} L${points[points.length - 1].x},${base} L${points[0].x},${base} Z`
-  return { points, line, area, min, max, xAt: t => round(xAt(t)) }
+  return { points, line, area, min, max, xAt: t => round(xAt(t)), yAt: v => round(yAt(v)) }
+}
+
+/** Where each rank division starts on the rating scale, read from the data (rating − RR), so no ladder is assumed. */
+function divisionStarts(series: EloPoint[]): Map<number, string> {
+  const out = new Map<number, string>()
+  for (const p of series) {
+    if (!p.rank || p.rr == null || p.rr < 0 || p.rr >= 100) continue
+    const start = p.elo - p.rr
+    if (!out.has(start)) out.set(start, p.rank)
+  }
+  return out
+}
+
+/**
+ * Value-axis ticks for the rank chart. Rank boundaries (every 100 rating) inside the plotted range,
+ * labelled with the rank that starts there when the data shows it; thinned to `maxTicks`. A window
+ * inside one division gets RR steps instead ("Gold 1 · 50 RR").
+ */
+export function rankAxisTicks(series: EloPoint[], min: number, max: number, maxTicks = 5): Array<{ value: number; label: string }> {
+  if (!series.length || !(max > min)) return []
+  const starts = divisionStarts(series)
+  const nameAt = (v: number) => starts.get(v) ?? null
+  const bounds: number[] = []
+  for (let v = Math.ceil(min / 100) * 100; v <= max; v += 100) bounds.push(v)
+  if (bounds.length >= 2) {
+    const step = Math.ceil(bounds.length / maxTicks)
+    return bounds.filter((_, i) => i % step === 0).map(v => ({ value: v, label: nameAt(v) ?? String(v) }))
+  }
+  const out: Array<{ value: number; label: string }> = []
+  for (let v = Math.ceil(min / 25) * 25; v <= max; v += 25) {
+    const start = Math.floor(v / 100) * 100
+    const rank = nameAt(start)
+    const rr = v - start
+    out.push({ value: v, label: rr === 0 ? (rank ?? String(v)) : rank ? `${rank} · ${rr} RR` : String(v) })
+  }
+  return out
+}
+
+const dayMonth = (t: number) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+
+export interface RankPointRow { date: string; rank: string; rr: string; change: string; label: string }
+
+/**
+ * One readable row per plotted point: date, absolute rank + RR, and the rating change since the
+ * previous point (kept apart so a keyboard user never mixes rank with RR change).
+ */
+export function rankPointRows(series: EloPoint[]): RankPointRow[] {
+  return series.map((p, i) => {
+    const prev = i > 0 ? series[i - 1] : null
+    const d = prev ? Math.round(p.elo - prev.elo) : null
+    const change = d == null ? 'First point' : d === 0 ? 'No change' : `${d > 0 ? '+' : '−'}${Math.abs(d)} rating`
+    const date = dayMonth(p.t)
+    const rank = p.rank ?? 'Unranked'
+    const rr = p.rr != null ? `${p.rr} RR` : '—'
+    return { date, rank, rr, change, label: [date, rank, p.rr != null ? rr : null, d == null ? null : `${change} since the last point`].filter(Boolean).join(' · ') }
+  })
 }
 
 /** Fewest values on each side of a first-half vs second-half comparison. Fewer is not a trend. */

@@ -97,7 +97,7 @@ describe('useFootageLibrary', () => {
   it('local-only footage is removed after a confirm', async () => {
     const lib = await start([rec({ id: 'plain', path: '/x.mp4', hasLocalFile: true })])
     await lib.deleteRecording(lib.recordings.value[0])
-    expect(confirmCalls[0]).toMatch(/remove the local file/)
+    expect(confirmCalls[0]).toMatch(/Delete this recording from this PC\? It isn't in the cloud/)
     expect(dismiss).toHaveBeenCalledWith('plain', { mode: 'remove', deleteLocal: true })
   })
 

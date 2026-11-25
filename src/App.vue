@@ -981,7 +981,7 @@ function openObsSettings() {
 }
 
 function previewOnboarding() {
-  void router.push({ path: '/onboarding', query: { preview: '1' } })
+  void router.push({ path: '/onboarding', query: { preview: '1', from: route.fullPath } })
 }
 </script>
 

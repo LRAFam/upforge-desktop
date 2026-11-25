@@ -243,9 +243,58 @@ export interface FocusResult {
   body: string
   /** What comes next. */
   next: string
+  /** Names the finished attempt so it never reads as the current one: "Attempt 1 · 10–17 Nov · missed, 0 of 2 games". */
+  attemptLine: string
+  /** Why the current focus has a different target or starting point; '' when nothing changed or there is no next focus. */
+  changeLine: string
 }
 
-const ordinal = (n: number) => (['', 'First', 'Second', 'Third', 'Fourth', 'Fifth'][n] ?? `Try ${n}:`)
+const dayMonth = (t: number) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+
+/** "10–17 Nov", "28 Oct – 3 Nov", "17 Nov" — '' when no date is known. */
+export function focusDateSpan(startIso: string | null | undefined, endIso: string | null | undefined): string {
+  const a = Date.parse(startIso ?? '')
+  const b = Date.parse(endIso ?? '')
+  if (Number.isNaN(a) && Number.isNaN(b)) return ''
+  if (Number.isNaN(a) || Number.isNaN(b)) return dayMonth(Number.isNaN(a) ? b : a)
+  const [from, to] = [dayMonth(a), dayMonth(b)]
+  if (from === to) return to
+  const [fd, fm] = from.split(' ')
+  const [, tm] = to.split(' ')
+  return fm === tm ? `${fd}–${to}` : `${from} – ${to}`
+}
+
+/** One line for a finished attempt: number, dates, outcome and games on target. */
+export function focusAttemptLine(done: Focus): string {
+  const p = done.progress
+  const lastPlayed = [...done.checks].reverse().find(c => c.played_at)?.played_at ?? null
+  const span = focusDateSpan(done.started_at ?? done.checks[0]?.played_at, done.completed_at ?? lastPlayed)
+  const outcome = `${p.status === 'achieved' ? 'achieved' : 'missed'}, ${p.hits} of ${p.games_played} game${p.games_played === 1 ? '' : 's'} on target`
+  return [`Attempt ${done.attempt ?? 1}`, span || null, outcome].filter(Boolean).join(' · ')
+}
+
+/**
+ * Same habit, new numbers: the API sets each focus's starting point from your recent ranked
+ * matches (focus_suggestion.current), so a retry can start from a different baseline and target.
+ */
+export function focusChangeLine(done: Focus, next: Focus | null | undefined): string {
+  if (!next || next.id === done.id || next.metric !== done.metric || next.progress.status !== 'active') return ''
+  const baselineMoved = Math.round(next.baseline * 100) !== Math.round(done.baseline * 100)
+  const targetMoved = Math.round(next.target * 100) !== Math.round(done.target * 100)
+  if (!baselineMoved && !targetMoved) return ''
+  const goal = (f: Focus) => `${f.better === 'lower' ? 'under' : 'over'} ${pct(f.target)}`
+  const parts = [
+    baselineMoved ? `starting point ${pct(done.baseline)} → ${pct(next.baseline)}` : null,
+    targetMoved ? `target ${goal(done)} → ${goal(next)}` : null,
+  ].filter(Boolean).join(', ')
+  return `New attempt, new numbers: ${parts}. They're worked out again from your recent ranked matches.`
+}
+
+/** "Second attempt" … "Fifth attempt", then "Attempt 10" (never a half-sentence like "Try 10: attempt"). */
+const attemptLabel = (n: number) => {
+  const word = ['', 'First', 'Second', 'Third', 'Fourth', 'Fifth'][n]
+  return word ? `${word} attempt` : `Attempt ${n}`
+}
 
 /**
  * The moment a focus ends: what the player did and what's next.
@@ -272,6 +321,8 @@ export function focusResult(done: Focus | null | undefined, next: Focus | null |
       title: `Focus complete: ${label}`,
       body: `On target in ${p.hits} of ${p.games_played} games (goal ${goal}). ${moved}.`,
       next: otherNext ? `New focus: ${nextTitle}.` : 'Your next focus comes from your next ranked match — a different habit.',
+      attemptLine: focusAttemptLine(done),
+      changeLine: '',
     }
   }
   const attempt = sameNext ? (next!.attempt ?? 2) : null
@@ -281,8 +332,10 @@ export function focusResult(done: Focus | null | undefined, next: Focus | null |
     title: `Not yet: ${label}`,
     body: `On target in ${p.hits} of ${p.games_played} games (goal ${goal}). ${moved}.`,
     next: sameNext
-      ? `It stays your focus. ${ordinal(attempt!)} attempt — practise it before you queue.`
+      ? `It stays your focus. ${attemptLabel(attempt!)} — practise it before you queue.`
       : otherNext ? `New focus: ${nextTitle}.` : 'Your next focus comes from your next ranked match.',
+    attemptLine: focusAttemptLine(done),
+    changeLine: focusChangeLine(done, next),
   }
 }
 

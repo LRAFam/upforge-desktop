@@ -16,12 +16,12 @@
   /* Text: warm bone, never pure white or pure grey */
   --uf-bone: #ece8e1;
   --uf-muted: #9aa2ad;
-  --uf-faint: #7a828e;  /* 4.9:1 on --uf-bg (AA for small text) */
+  --uf-faint: #858d99;  /* ≥4.5:1 on every surface incl. --uf-hover (AA small text; v3-contrast.test.ts) */
   /* Four colours, four meanings (validated for colour blindness on --uf-bg) */
   --uf-red: #ff4655;      /* brand, the one action, the focus */
   --uf-red-deep: #c4323e;
   --uf-win: #22a99b;      /* won rounds / wins / better */
-  --uf-loss: #e8505b;     /* lost rounds / defeats / worse */
+  --uf-loss: #ee5c66;     /* lost rounds / defeats / worse (≥4.5:1 on --uf-hover) */
   --uf-gold: #e8c26a;     /* best in lobby / personal best, with a star */
   /* Game accents — one at a time, always next to the game's logo */
   --uf-game-valorant: #ff4655;
@@ -231,7 +231,7 @@
 }
 .ui-v3 .uf-select, .ui-v3 .uf-pselect {
   -webkit-appearance: none; appearance: none; padding-right: 36px; cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%237a828e' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23858d99' stroke-width='1.5'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 12px center;
 }
 .ui-v3 .uf-select:hover, .ui-v3 .uf-pselect:hover { border-color: var(--uf-muted); }

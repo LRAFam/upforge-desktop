@@ -1,10 +1,14 @@
 /** Shapes knowledge-bank insights into "What keeps coming up" rows (v3 Progress). Pure, tested. */
+import { habitPolarity, type HabitPolarity } from './habit-polarity'
+
 export interface RecurringInsightLike {
   id: number
   label: string | null
   text: string
   occurrences: number
   analysisCount?: number | null
+  severity?: string | null
+  exampleAnalysisId?: number | null
   status: string | null
   trend: string | null
   lastSeenAt: string | null
@@ -16,11 +20,17 @@ export interface RecurringHabitRow {
   id: number
   title: string
   detail: string | null
+  /** The coach's whole note when `detail` is cut short (shown with "Show more"); null when nothing is hidden. */
+  more: string | null
+  /** Newest analysis that flagged this habit, to open in match review. */
+  exampleAnalysisId: number | null
   /** Maps the habit was seen on (from the API text), at most a few. */
   maps: string[]
   seen: string
   lastSeen: string | null
   trend: { label: string; tone: HabitTrendTone } | null
+  /** risk = something to fix (Mark fixed); strength = keep doing it; neutral = no action. */
+  polarity: HabitPolarity
 }
 
 const MAX_ROWS = 5
@@ -36,14 +46,17 @@ function firstSentence(text: string, max = MAX_TITLE): string {
 }
 
 /**
- * The API stores merged habits as "{label} — flagged across N analyses (T sightings). {coach note} Maps: A, B…."
- * (KnowledgeBankHabitSynthesizer). N there counts merged insight rows, not analyses, so the prefix is dropped;
- * T is the same number as occurrence_count. Returns the coach's own note (cut at a word, never mid-word)
- * and the maps it was seen on.
+ * The API stores merged habits as "{label} — flagged … . {coach note} Maps: A, B…." (KnowledgeBankHabitSynthesizer):
+ * "flagged across N analyses (T sightings)", "flagged in N analysed matches (T times)" or "flagged T times".
+ * Those counts are frozen when the habit is merged, while occurrence_count keeps rising, so the prefix is
+ * always dropped and the row shows only the live count. Returns the coach's own note (cut at a word,
+ * never mid-word) and the maps it was seen on.
  */
+const FLAGGED_PREFIX = /^[^.]*?\s+[—-]\s+flagged (?:across \d+ analys[ie]s \(\d+ sightings?\)|in \d+ analysed match(?:es)?(?: \(\d+ times?\))?|\d+ times?)\.\s*/i
+
 export function parseHabitText(text: string): { note: string; maps: string[] } {
   let t = text.trim().replace(/\s+/g, ' ')
-  t = t.replace(/^[^.]*?\s+[—-]\s+flagged across \d+ analys[ie]s \(\d+ sightings?\)\.\s*/i, '')
+  t = t.replace(FLAGGED_PREFIX, '')
   let maps: string[] = []
   const m = t.match(/\s*Maps: ([^.]*?)(?:…|\.\.\.)?\.?$/)
   if (m && m.index != null) {
@@ -67,11 +80,17 @@ export function relativeDays(iso: string | null, now = Date.now()): string | nul
   return months === 1 ? 'a month ago' : `${months} months ago`
 }
 
-function trendOf(trend: string | null, status: string | null): RecurringHabitRow['trend'] {
-  if (trend === 'improving' || status === 'improving') return { label: 'Coming up less', tone: 'better' }
-  if (trend === 'worsening') return { label: 'Coming up more', tone: 'worse' }
-  if (trend === 'stable') return { label: 'Steady', tone: 'steady' }
-  return null
+/**
+ * The API's trend says whether a habit is flagged less ("improving") or more ("worsening").
+ * That is only good news for a risk: a strength showing up more is good, never red.
+ */
+function trendOf(trend: string | null, status: string | null, polarity: HabitPolarity): RecurringHabitRow['trend'] {
+  const less = trend === 'improving' || status === 'improving'
+  const more = !less && trend === 'worsening'
+  if (!less && !more) return trend === 'stable' ? { label: 'Steady', tone: 'steady' } : null
+  if (polarity === 'risk') return less ? { label: 'Coming up less', tone: 'better' } : { label: 'Coming up more', tone: 'worse' }
+  if (polarity === 'strength') return less ? { label: 'Showing less often', tone: 'steady' } : { label: 'Showing more often', tone: 'better' }
+  return { label: less ? 'Coming up less' : 'Coming up more', tone: 'steady' }
 }
 
 /** "Flagged in 2 matches · 3 times" when the API counts matches; older habits only know "times". */
@@ -93,17 +112,22 @@ export function recurringHabitRows(rows: readonly RecurringInsightLike[] | null 
       const { note, maps } = parseHabitText(r.text)
       const title = r.label?.trim() || firstSentence(note)
       const detail = r.label && note ? firstSentence(note, MAX_DETAIL) : null
+      const shown = detail && detail.toLowerCase() !== title.toLowerCase() ? detail : null
+      const polarity = habitPolarity({ label: r.label, note: note || r.text, severity: r.severity })
       return {
         id: r.id,
         title,
         // One plain line: the coach's latest note for this habit, never the title again.
-        detail: detail && detail.toLowerCase() !== title.toLowerCase() ? detail : null,
+        detail: shown,
+        more: note && note !== (shown ?? title) ? note : null,
+        exampleAnalysisId: r.exampleAnalysisId ?? null,
         maps,
         // Whole numbers only (copy rule). occurrence_count goes up once per coach finding, and one
         // analysed match can add more than one, so it is "times", not "matches".
         seen: habitSeen(r.occurrences, r.analysisCount),
         lastSeen: relativeDays(r.lastSeenAt, now),
-        trend: trendOf(r.trend, r.status),
+        trend: trendOf(r.trend, r.status, polarity),
+        polarity,
       }
     })
 }

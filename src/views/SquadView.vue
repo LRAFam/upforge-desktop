@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { inMatchPollGuard } from '../lib/in-match-poll-pause'
 import SquadBriefingHero from '../components/squad/SquadBriefingHero.vue'
 import SquadStatsStrip from '../components/squad/SquadStatsStrip.vue'
@@ -27,6 +27,7 @@ import {
   squadGameMixCounts,
   squadActivityUrl,
   buildSquadCompareRows,
+  reconcilePendingInvites,
 } from '../lib/squad-ui'
 
 interface Team {
@@ -35,6 +36,7 @@ interface Team {
   max_members?: number
   credits_remaining?: number
   credits_total?: number
+  credits_reset_at?: string | null
   invite_code?: string
   members: SquadLineupMember[]
 }
@@ -169,8 +171,20 @@ function loadPendingInvites(): Array<{ value: string; createdAt: number }> {
 }
 
 function persistPendingInvites() {
-  localStorage.setItem('upforge-squad-pending-invites', JSON.stringify(pendingInvites.value.slice(0, 5)))
+  try {
+    localStorage.setItem('upforge-squad-pending-invites', JSON.stringify(pendingInvites.value.slice(0, 5)))
+  } catch { /* storage unavailable: the list just isn't remembered */ }
 }
+
+// Members and invites must agree: an invite goes once that player is in the squad (or after 30 days).
+watch(() => team.value?.members, (members) => {
+  if (!members) return
+  const kept = reconcilePendingInvites(pendingInvites.value, members)
+  if (kept.length !== pendingInvites.value.length) {
+    pendingInvites.value = kept
+    persistPendingInvites()
+  }
+}, { immediate: true })
 
 async function load() {
   loading.value = true

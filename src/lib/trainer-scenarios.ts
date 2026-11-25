@@ -253,3 +253,9 @@ export function resolveTrainerDuration(
 // Session → API metadata lives in the main process (electron/main/trainer-payload.ts buildTrainingSessionPayload).
 
 export const EXTENDED_SCENARIO_KEYS = TRAINER_SCENARIOS.filter(s => !s.radar).map(s => s.key)
+
+/** The drill's display name ("Flick Shot"), never its internal id; unknown ids are title-cased. */
+export function drillDisplayName(key: string | null | undefined): string {
+  if (!key) return 'Drill'
+  return trainerScenarioDef(key)?.label ?? key.split(/[_-]+/).filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+}

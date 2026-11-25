@@ -1,12 +1,12 @@
 <script setup lang="ts">
-/** One match as a hairline row: map art, agent, map + subtitle, UpForge score (or coach rating /10), round score, and an optional action. */
+/** One match as a hairline row: map art, agent, map + subtitle, UpForge score (or the analysis's match rating /10, never the human coach's), round score, and an optional action. */
 import { computed } from 'vue'
 import { getMapListViewImage } from '../../../lib/valorant'
 import { rosterAgentImage, rosterMapLabel, rosterMatchGame, rosterScoreOutOf100, type RosterMatchVisual } from '../../../lib/roster-match-display'
 import { matchScore, scoreToneColor } from '../../../lib/upforge-score'
 import { resultTone, roundScore } from './coach-format'
 
-const props = defineProps<{ match: RosterMatchVisual; subtitle?: string; status?: string; statusTone?: 'win' | 'muted' }>()
+const props = defineProps<{ match: RosterMatchVisual; subtitle?: string; status?: string; statusTone?: 'win' | 'muted' | 'loss' }>()
 defineEmits<{ open: [] }>()
 
 const map = computed(() => rosterMapLabel(props.match))
@@ -27,9 +27,9 @@ const forge = computed(() => matchScore({ upforge_score: props.match.upforge_sco
         <span class="uf-t3">{{ map }}</span>
         <span v-if="subtitle" class="uf-t4">{{ subtitle }}</span>
       </span>
-      <span v-if="status" class="uf-mrow-status" :style="{ color: statusTone === 'win' ? 'var(--uf-win)' : 'var(--uf-muted)' }">{{ status }}</span>
-      <span v-if="forge" class="uf-mrow-forge" :title="forge.kind === 'stats' ? `UpForge score ${forge.text} of 1000 · ${forge.label}` : `Coach rating ${forge.text}`">
-        <b class="uf-d4" :style="{ color: forge.tone ? scoreToneColor(forge.tone) : 'var(--uf-bone)' }">{{ forge.text }}</b><span class="uf-t4">{{ forge.kind === 'stats' ? 'UpForge' : 'Coach rating' }}</span>
+      <span v-if="status" class="uf-mrow-status" :style="{ color: statusTone === 'win' ? 'var(--uf-win)' : statusTone === 'loss' ? 'var(--uf-loss)' : 'var(--uf-muted)' }">{{ status }}</span>
+      <span v-if="forge" class="uf-mrow-forge" :title="forge.kind === 'stats' ? `UpForge score ${forge.text} of 1000 · ${forge.label}` : `Match rating ${forge.text}: UpForge's rating of your play from the match analysis. Not a score from your coach.`">
+        <b class="uf-d4" :style="{ color: forge.tone ? scoreToneColor(forge.tone) : 'var(--uf-bone)' }">{{ forge.text }}</b><span class="uf-t4">{{ forge.kind === 'stats' ? 'UpForge' : 'Match rating' }}</span>
       </span>
       <span v-if="score" class="uf-d4" :style="{ color: tone === 'win' ? 'var(--uf-win)' : tone === 'loss' ? 'var(--uf-loss)' : 'var(--uf-bone)' }">{{ score }}</span>
     </button>

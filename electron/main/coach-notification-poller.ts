@@ -104,6 +104,17 @@ export async function markNotificationReadById(authManager: AuthManager, id: num
   return { ok: true }
 }
 
+/** Bell "Mark all read": one API call, then the cached inbox matches. */
+export async function markAllNotificationsRead(authManager: AuthManager): Promise<{ ok: boolean }> {
+  try {
+    await authManager.getApi().post('/api/notifications/mark-all-as-read')
+  } catch {
+    return { ok: false }
+  }
+  if (latestInbox) latestInbox = { ...latestInbox, unreadCount: 0, items: latestInbox.items.map(n => ({ ...n, read: true })) }
+  return { ok: true }
+}
+
 function statePath(): string {
   return join(app.getPath('userData'), 'coach-notifications-shown.json')
 }

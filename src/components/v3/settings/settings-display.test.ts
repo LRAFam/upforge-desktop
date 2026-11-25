@@ -3,7 +3,11 @@ import {
   canBuyReports,
   defaultLolPlatform,
   defaultValorantRegion,
+  diskFreeDetail,
+  localBudgetStatus,
   localStorageLine,
+  OBS_REPAIR_CHANGES,
+  obsVersionLabel,
   untrackedCountdownLine,
   regionFromTimeZone,
   shortcutKeyParts,
@@ -79,6 +83,27 @@ describe('localStorageLine', () => {
   })
 })
 
+describe('localBudgetStatus', () => {
+  const GB = 1024 ** 3
+  const fmt = (n: number) => `${Math.round(n / GB)} GB`
+  it('is amber with text once recordings pass the budget', () => {
+    expect(localBudgetStatus(118 * GB, 50 * GB, fmt)).toEqual({ tone: 'warn', over: true, detail: 'Over budget · 118 GB of 50 GB', overBy: '68 GB' })
+  })
+  it('warns when nearly full and is fine below that', () => {
+    expect(localBudgetStatus(46 * GB, 50 * GB, fmt).tone).toBe('warn')
+    expect(localBudgetStatus(10 * GB, 50 * GB, fmt)).toMatchObject({ tone: 'ok', over: false, overBy: null })
+  })
+})
+
+describe('diskFreeDetail', () => {
+  it('names the free-space state in words', () => {
+    expect(diskFreeDetail('18 GB', false, false)).toBe('18 GB free')
+    expect(diskFreeDetail('1 GB', true, false)).toBe('Low · 1 GB free')
+    expect(diskFreeDetail('200 MB', true, true)).toBe('Critical · 200 MB free')
+    expect(diskFreeDetail(null, false, false)).toBe('Free space unknown')
+  })
+})
+
 describe('report purchase', () => {
   it('hides the purchase on unlimited plans', () => {
     expect(canBuyReports({ limit: null })).toBe(false)
@@ -118,5 +143,22 @@ describe('untrackedCountdownLine', () => {
   })
   it('is empty when nothing is scheduled', () => {
     expect(untrackedCountdownLine({ orphanScheduledCount: 0, orphanScheduledBytes: 0, orphanDeleteAt: null }, fmt, now)).toBe('')
+  })
+})
+
+describe('obsVersionLabel', () => {
+  it('names OBS Studio and the WebSocket version separately', () => {
+    expect(obsVersionLabel({ obsStudioVersion: '32.0.1', obsVersion: '5.7.6' })).toBe('OBS Studio 32.0.1 · WebSocket 5.7.6')
+  })
+  it('never shows the WebSocket version as if it were OBS Studio', () => {
+    expect(obsVersionLabel({ obsVersion: '5.7.6' })).toBe('WebSocket 5.7.6')
+    expect(obsVersionLabel(null)).toBe('')
+  })
+})
+
+describe('OBS_REPAIR_CHANGES', () => {
+  it('lists what repair changes and what it leaves alone', () => {
+    expect(OBS_REPAIR_CHANGES.some(c => /scene/i.test(c))).toBe(true)
+    expect(OBS_REPAIR_CHANGES.at(-1)).toMatch(/not changed/)
   })
 })

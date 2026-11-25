@@ -27,7 +27,7 @@ export function resultTone(row: { won?: boolean | null; rounds_won?: number | nu
 }
 
 /**
- * Students page summary line: "2 students · free plan · 0 of 8 reviews used this month".
+ * Students page summary line: "2 students · free plan · Coach total: 0 of 8 reviews this month · resets 1 Dec".
  * `roster_reviews_limit` is the whole roster's monthly cap on the free coach plan (config
  * coach_hub.limits.community = 8; Coach Pro has none). It is not the per-student allowance.
  */
@@ -36,14 +36,38 @@ export function studentsSummary(
   mode: 'free' | 'paid',
   priceDollars: number,
   s: { roster_reviews_this_month?: number; roster_reviews_limit?: number | null } | null | undefined,
+  now: Date = new Date(),
 ): string {
   const used = s?.roster_reviews_this_month ?? 0
   const limit = s?.roster_reviews_limit
   return [
     plural(studentCount, 'student'),
     mode === 'paid' ? `$${priceDollars} a month plan` : 'free plan',
-    limit ? `${used} of ${limit} reviews used this month` : `${plural(used, 'review')} this month`,
+    // The coach's cap across every student, not the per-student allowance (that one is in Plan and price).
+    limit ? `Coach total: ${used} of ${limit} reviews this month` : `${plural(used, 'review')} this month`,
+    `resets ${rosterFormatDate(nextMonthStart(now).toISOString())}`,
   ].join(' · ')
+}
+
+/** First day of next month (local time, midday so the date never slips): when monthly counts reset. */
+export function nextMonthStart(now: Date = new Date()): Date {
+  return new Date(now.getFullYear(), now.getMonth() + 1, 1, 12)
+}
+
+/** One student's allowance with this coach: "Per student: 1 of 3 used this month · resets 1 Dec". */
+export function studentAllowanceLine(used: number, limit: number, resetsAt: string | null | undefined): string {
+  const resets = resetsAt ? ` · resets ${rosterFormatDate(resetsAt)}` : ''
+  return `Per student: ${used} of ${limit} used this month${resets}`
+}
+
+/** A student's review, from the coach's side. */
+export function studentReviewStatus(status: string): string {
+  if (status === 'completed') return 'Notes sent'
+  if (status === 'in_progress') return 'You started notes'
+  if (status === 'pending') return 'Waiting for you'
+  if (status === 'cancelled') return 'Cancelled'
+  const t = status.replace(/_/g, ' ').trim()
+  return t ? t[0].toUpperCase() + t.slice(1) : ''
 }
 
 /** Students H1: the one thing that matters now. */
@@ -56,7 +80,7 @@ export function studentsHeadline(queueCount: number): string {
 export function settingsSummaryText(mode: 'free' | 'paid', priceDollars: number, includedReviews: number, needsSetup: boolean): string {
   const parts = [
     mode === 'paid' ? `Student plan: $${priceDollars} a month` : 'Student plan: free',
-    `${includedReviews} ${includedReviews === 1 ? 'review' : 'reviews'} per student a month`,
+    `Per student: up to ${includedReviews} ${includedReviews === 1 ? 'review' : 'reviews'} a month`,
   ]
   if (needsSetup) parts.push('needs setup')
   return parts.join(' · ')
@@ -109,6 +133,36 @@ export function blockedLine(name: string, code: string | null | undefined, reaso
     default:
       return reason?.trim() || `You can’t send a match to ${name} right now.`
   }
+}
+
+/** One open coach review, as the API sends it (newer APIs add the activity fields). */
+export interface OpenReviewLike {
+  status: string
+  requested_at?: string | null
+  started_at?: string | null
+  last_activity_at?: string | null
+  overdue?: boolean
+  overdue_after_days?: number
+}
+
+/** The row status: Sent (coach hasn't started) › Reviewing › Overdue (no activity for a while). */
+export function openReviewStatus(r: OpenReviewLike, coachName: string): { text: string; overdue: boolean } {
+  if (r.overdue) return { text: 'Overdue', overdue: true }
+  if (r.status === 'in_progress') return { text: `${coachName} is reviewing`, overdue: false }
+  return { text: `Sent · ${coachName} hasn’t started`, overdue: false }
+}
+
+/** "4–9 · sent 3 Jul · last activity 5 Jul" (the activity date only when it differs from the send date). */
+export function openReviewSubtitle(r: OpenReviewLike, score: string | null): string {
+  const sent = r.requested_at ? rosterFormatDate(r.requested_at) : null
+  const last = r.last_activity_at ? rosterFormatDate(r.last_activity_at) : null
+  return [score, sent ? `sent ${sent}` : null, last && last !== sent ? `last activity ${last}` : null].filter(Boolean).join(' · ')
+}
+
+/** Under the waiting list when a request is overdue: what that means and what you can do now. */
+export function overdueLine(coachName: string, days: number | undefined): string {
+  const span = typeof days === 'number' && days > 0 ? `${days} days` : 'a while'
+  return `No activity from ${coachName} for over ${span}. This request no longer stops you sending ${coachName} another match. Message them from their page, or contact support to cancel it.`
 }
 
 /** "astar has your Summit match" / "Crystalf1sh is reviewing Lotus". */

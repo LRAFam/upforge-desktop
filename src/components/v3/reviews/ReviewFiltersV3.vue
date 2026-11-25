@@ -7,6 +7,7 @@ import { computed } from 'vue'
 import { useCoachingHistory } from '../../../composables/useCoachingHistory'
 import { openGameHistoryWeb } from '../../../lib/game-modules'
 import UfTabs from '../UfTabs.vue'
+import { reviewCountLine } from './reviews-v3'
 
 const {
   RESULT_FILTERS,
@@ -17,7 +18,6 @@ const {
   features,
   filteredAnalyses,
   formatMapLabel,
-  pendingRecordings,
   primaryGame,
 } = useCoachingHistory()
 
@@ -37,7 +37,7 @@ function setResult(key: string) {
     <div class="rv3-filter-row">
       <UfTabs :items="resultItems" :model-value="activeFilter" size="filter" label="Result" @update:model-value="setResult" />
       <span style="flex: 1" />
-      <span class="uf-t4">{{ pendingRecordings.length }} before coaching · {{ filteredAnalyses.length }} of {{ allAnalyses.length }} reviewed</span>
+      <span class="uf-t4">{{ reviewCountLine({ shown: filteredAnalyses.length, loaded: allAnalyses.length }) }}</span>
     </div>
     <div v-if="showMaps" class="rv3-maps">
       <UfTabs :items="mapItems" :model-value="activeMap ?? '__all'" size="filter" label="Map" @update:model-value="activeMap = $event === '__all' ? null : $event" />

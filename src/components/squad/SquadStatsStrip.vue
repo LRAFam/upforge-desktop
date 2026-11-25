@@ -40,7 +40,7 @@ const activeGames = computed(() =>
         <div class="w-full max-w-[88px] h-1 rounded-full bg-white/[0.06] overflow-hidden">
           <div class="h-full bg-amber-500/80 rounded-full transition-all" :style="{ width: `${creditPct ?? 0}%` }" />
         </div>
-        <span class="text-[8px] text-gray-600 uppercase tracking-wide">Shared credits</span>
+        <span class="text-[8px] text-gray-600 uppercase tracking-wide">Shared credits left</span>
       </template>
       <template v-else>
         <span class="text-sm font-black text-gray-600">—</span>

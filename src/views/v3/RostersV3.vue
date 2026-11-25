@@ -15,7 +15,8 @@ import UfButton from '../../components/v3/UfButton.vue'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import RosterMatchRowV3 from '../../components/v3/coaches/RosterMatchRowV3.vue'
 import {
-  allowanceLine, blockedLine, coachesHeadline, sendBlockedText, planLabel, roundScore, waitingPhrase, type CoachLimits,
+  allowanceLine, blockedLine, coachesHeadline, openReviewStatus, openReviewSubtitle, overdueLine, sendBlockedText, planLabel, roundScore,
+  waitingPhrase, type CoachLimits,
 } from '../../components/v3/coaches/coach-format'
 import { sendLabel } from '../../components/v3/roster-flow/roster-flow'
 import { rosterFormatDate, rosterMapLabel, type RosterMatchVisual } from '../../lib/roster-match-display'
@@ -46,6 +47,11 @@ interface Review {
   status: string
   requested_at?: string | null
   completed_at?: string | null
+  /** Newer API: when the coach started, the latest activity, and overdue (no activity for overdue_after_days). */
+  started_at?: string | null
+  last_activity_at?: string | null
+  overdue?: boolean
+  overdue_after_days?: number
   coach?: { id: number; display_name: string } | null
   analysis?: (RosterMatchVisual & { id: number }) | null
 }
@@ -165,9 +171,10 @@ const coachIdentities = computed(() => new Map(props.coaches.map(c => [c.coach_i
 })])))
 
 function waitingSubtitle(r: Review): string {
-  const parts = [roundScore(r.analysis?.rounds_won, r.analysis?.rounds_lost), r.requested_at ? `sent ${rosterFormatDate(r.requested_at)}` : null]
-  return parts.filter(Boolean).join(' · ')
+  return openReviewSubtitle(r, roundScore(r.analysis?.rounds_won, r.analysis?.rounds_lost))
 }
+/** Overdue requests: one line each with the way out (they no longer block sending). */
+const overdueReviews = computed(() => props.pendingReviews.filter(r => r.overdue))
 function notesSubtitle(r: Review): string {
   const parts = [roundScore(r.analysis?.rounds_won, r.analysis?.rounds_lost), coachName(r), r.completed_at ? rosterFormatDate(r.completed_at) : null]
   return parts.filter(Boolean).join(' · ')
@@ -255,7 +262,12 @@ function notesSubtitle(r: Review): string {
             <section v-if="pendingReviews.length">
               <div class="uf-sec-head"><span class="uf-label">Waiting for notes</span></div>
               <RosterMatchRowV3 v-for="r in pendingReviews" :key="r.id" :match="r.analysis ?? {}" :subtitle="waitingSubtitle(r)"
-                :status="r.status === 'in_progress' ? `${coachName(r)} is reviewing` : `Waiting for ${coachName(r)}`" @open="emit('openNotes', r)" />
+                :status="openReviewStatus(r, coachName(r)).text" :status-tone="openReviewStatus(r, coachName(r)).overdue ? 'loss' : undefined"
+                @open="emit('openNotes', r)" />
+              <p v-for="r in overdueReviews" :key="`overdue-${r.id}`" class="uf-t4 uf-roster-overdue">
+                {{ overdueLine(coachName(r), r.overdue_after_days) }}
+                <UfButton v-if="r.coach" variant="link" @click="emit('openCoach', r.coach.id)">{{ coachName(r) }}’s page</UfButton>
+              </p>
             </section>
 
             <section v-if="actionable.length">
@@ -306,6 +318,7 @@ function notesSubtitle(r: Review): string {
 .uf-coach-name { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 /* The section label already separates; no hairline straight under it. */
 .uf-sec-head + .uf-coach { border-top: 0; }
+.uf-roster-overdue { margin: 8px 0 0; line-height: 1.5; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
 .uf-roster-blocked { margin: 0; padding: 4px 0 0; color: var(--uf-muted); }
 .uf-msg { margin: 0 0 8px; font: 400 13px/1.5 var(--uf-body); color: var(--uf-muted); }
 .uf-msg--bad { color: var(--uf-loss); }

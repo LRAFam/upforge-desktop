@@ -14,7 +14,7 @@ import RecurringHabitsV3 from '../../components/v3/progress/RecurringHabitsV3.vu
 import YourPlanV3 from '../../components/v3/progress/YourPlanV3.vue'
 import PlaystyleV3 from '../../components/v3/progress/PlaystyleV3.vue'
 import { rankHistoryInRange, formatMetric, habitTone, halfDelta, inRange, metricLabel, sparkline, type RankSnapshot, type TrendTone } from '../../components/v3/progress/progress-chart'
-import { progressCountLine, analysedEmptyLine } from '../../components/v3/progress/progress-counts'
+import { progressCountLine, analysedEmptyLine, rangeScope } from '../../components/v3/progress/progress-counts'
 import type { FocusResponse } from '../../lib/focus'
 import GameProgress from '../../components/v3/games/GameProgress.vue'
 import FocusesV3 from '../../components/v3/focus/FocusesV3.vue'
@@ -143,6 +143,8 @@ const countLine = computed(() => {
   const n = props.excludedFunModeCount ?? 0
   return n > 0 ? `${base} · ${n} fun-mode ${n === 1 ? 'match' : 'matches'} not counted` : base
 })
+// Sections that follow the range tabs name the window; fixed-window sections name theirs (Playstyle, Coach scores, habits).
+const scope = computed(() => rangeScope(props.range))
 const analysedEmpty = computed(() => analysedEmptyLine(props.lastAnalysedAt ?? null))
 const form = computed(() => [...props.recentForm].reverse().filter(r => r !== '-').map(r => ({ won: r === 'W' })))
 const hasRank = computed(() => props.rankHistory.filter(h => Number.isFinite(h.elo) && h.elo > 0).length >= 2)
@@ -199,7 +201,7 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
 
       <div v-if="!demoGame" class="pv3-cols">
         <section class="pv3-col">
-          <span class="uf-label">Habits that moved · first half vs second half of {{ checkedGames.length }} games</span>
+          <span class="uf-label">Habits that moved · {{ scope }} · first half vs second half of {{ checkedGames.length }} games</span>
           <template v-if="habits.length">
             <div v-for="h in habits" :key="h.key" class="pv3-habit">
               <span class="uf-t3">{{ h.label }}</span>
@@ -239,7 +241,7 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
       <div class="uf-hair" />
 
       <section class="pv3-block">
-        <span class="uf-label">{{ demoGame ? 'Analysed in UpForge' : 'Analysed matches' }}</span>
+        <span class="uf-label">{{ demoGame ? 'Analysed in UpForge' : 'Analysed matches' }} · {{ scope }}</span>
         <EmptyArt v-if="!gameCount" size="section" :title="analysedEmpty" />
         <UfStatRow v-else :items="stats" />
         <div v-if="form.length >= 2" class="pv3-form">
@@ -250,7 +252,7 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
 
       <div v-if="gameCount" class="pv3-cols">
         <section v-for="t in tables" :key="t.title" class="pv3-col">
-          <span class="uf-label">{{ t.title }} · win rate</span>
+          <span class="uf-label">{{ t.title }} · win rate · {{ scope }}</span>
           <template v-if="t.rows.length">
             <div class="pv3-row pv3-row--head uf-t4"><span>Name</span><span>Games</span><span>Won</span><span>K/D</span></div>
             <div v-for="r in t.rows" :key="r.name" class="pv3-row">

@@ -32,3 +32,15 @@ export function libraryCountLabel(total: number, kind: CloudKind, gameLabel: str
   const scope = gameLabel ? ` · ${gameLabel}` : ' · every game'
   return `${total} ${noun}${kind === 'all' ? ' (recordings and clips)' : ''}${scope}`
 }
+
+/**
+ * "Played 12 Nov · Uploaded 14 Nov": labelled dates, so copies of the same map can be told apart.
+ * Only the upload date when the API doesn't know when the match was played.
+ */
+export function cloudFileDates(file: { created_at: string; played_at?: string | null }, format: (ms: number) => string): string {
+  const uploaded = Date.parse(file.created_at)
+  const played = file.played_at ? Date.parse(file.played_at) : NaN
+  const up = Number.isFinite(uploaded) ? `Uploaded ${format(uploaded)}` : ''
+  if (!Number.isFinite(played)) return up
+  return up ? `Played ${format(played)} · ${up}` : `Played ${format(played)}`
+}

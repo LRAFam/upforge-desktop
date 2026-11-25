@@ -39,7 +39,7 @@ const cols = computed(() => (props.workspace
 
 <template>
   <div class="mps" role="status" aria-label="Loading match">
-    <UfHeroBand :art="art" :result="result" :tone="tone" :meta="meta" :height="150" art-position="center 45%">
+    <UfHeroBand :art="art" :result="result" :tone="tone" :meta="meta" :height="112" art-position="center 45%">
       <div class="mps-score">
         <img v-if="agentImg" :src="agentImg" alt="" class="mps-agent">
         <UfSkeleton v-else :w="44" :h="44" />

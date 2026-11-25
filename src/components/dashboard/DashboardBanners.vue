@@ -83,7 +83,7 @@ function dismissWarning() {
       <span class="uf-banner-dot is-gold" aria-hidden="true" />
       <p class="uf-banner-text" style="margin: 0"><span class="uf-banner-main">{{ skippedMatchNotice.message }}</span></p>
       <div class="uf-banner-actions">
-        <button type="button" class="uf-banner-link" @click="router.push('/settings?tab=recording')">Recording settings</button>
+        <button type="button" class="uf-banner-link" @click="router.push({ path: '/settings', query: { tab: 'recording', section: 'capture' } })">Recording settings</button>
         <button type="button" class="uf-banner-x" aria-label="Dismiss" @click="dismissSkippedMatchNotice"><UfIcon name="close" :size="14" /></button>
       </div>
     </div>

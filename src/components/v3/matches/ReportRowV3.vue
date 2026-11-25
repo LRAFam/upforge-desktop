@@ -7,10 +7,10 @@ import { computed } from 'vue'
 import { scoreToneColor } from '../../../lib/upforge-score'
 import { gameLogo } from './game-logo'
 import { matchRowArt } from './match-meta'
-import { reportRowView, type MatchReportRow } from './report-rows'
+import { reportRowView, type MatchReportRow, type NotRecordedReason } from './report-rows'
 
-const props = defineProps<{ report: MatchReportRow }>()
-const emit = defineEmits<{ open: [] }>()
+const props = defineProps<{ report: MatchReportRow; reason?: NotRecordedReason | null }>()
+const emit = defineEmits<{ open: []; fix: [path: string] }>()
 
 const view = computed(() => reportRowView(props.report))
 const art = computed(() => matchRowArt({ game: 'valorant', map: props.report.map, agent: props.report.agent, timeline: null }))
@@ -41,15 +41,18 @@ const logo = gameLogo('valorant')
       </template>
     </div>
     <div class="uf-status">
-      <span class="uf-t4 uf-trunc" style="color: var(--uf-faint)">Not recorded</span>
+      <span class="uf-t4 uf-trunc" style="color: var(--uf-muted)">Not recorded · Stats only</span>
+      <span v-if="reason" class="uf-t4 uf-trunc" style="color: var(--uf-faint)" :title="reason.text">{{ reason.text }}</span>
+      <button v-if="reason" type="button" class="uf-link uf-t4 uf-trunc uf-fix" @click="emit('fix', reason.fix.path)">{{ reason.fix.label }}</button>
     </div>
     <div class="uf-actions">
-      <button type="button" class="uf-btn-secondary uf-open" :aria-label="`Open the match report: ${view.mapLabel}${view.score ? `, ${view.score}` : ''}`" @click="emit('open')">Open report</button>
+      <button type="button" class="uf-btn-secondary uf-open" :aria-label="`Open the match report: ${view.mapLabel}${view.score ? `, ${view.score}` : ''}`" title="Free stats report for this match (no video)" @click="emit('open')">Stats report</button>
     </div>
   </div>
 </template>
 
 <style scoped>
+.uf-fix { align-self: flex-start; max-width: 100%; text-align: left; }
 /* Same columns as MatchRowV3 (shared with the skeleton in MatchesV3). */
 .uf-row { display: grid; grid-template-columns: 150px 104px minmax(150px, 1fr) 104px 96px 140px 320px; gap: 18px; align-items: center; padding: 0 16px 0 0; min-height: 88px; border-top: 1px solid var(--uf-line); }
 @container uf-matches (max-width: 1040px) {

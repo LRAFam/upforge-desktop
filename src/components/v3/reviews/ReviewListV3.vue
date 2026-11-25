@@ -3,7 +3,8 @@
  * v3 list of coached sessions + matches waiting for coaching, as hairline rows grouped by match date
  * with the same groups and row order as Matches (Today / This week / Last week / month; map · agent).
  */
-import { computed, inject } from 'vue'
+import { computed, inject, nextTick, ref, watch } from 'vue'
+import UfTabs from '../UfTabs.vue'
 import { useCoachingHistory } from '../../../composables/useCoachingHistory'
 import { formatMatchDate, groupByMatchDate, matchMapArt, matchMapLabel } from '../matches/match-meta'
 import { matchScore, scoreToneColor } from '../../../lib/upforge-score'
@@ -12,7 +13,7 @@ import EmptyArt from '../empty/EmptyArt.vue'
 import { pendingMatchLifecycleState, pendingMatchStatusLabel } from '../../../lib/match-lifecycle'
 import { recordingRowStats } from '../../../lib/dashboard-match-row'
 import { normalizeAgentName } from '../../../lib/valorant'
-import { ARCHIVE_DATES_KEY, kdaLine, pendingDot, resultTone, reviewPlayedAt, scoreLine, sessionStatusLabel } from './reviews-v3'
+import { ARCHIVE_DATES_KEY, kdaLine, pendingDot, queueFor, resultTone, reviewPlayedAt, scoreLine, sessionStatusLabel, type ReviewQueue } from './reviews-v3'
 
 const {
   allAnalyses,
@@ -37,10 +38,39 @@ const archiveDates = inject(ARCHIVE_DATES_KEY, null)
 const playedAt = (a: { id: number; created_at: string }) => reviewPlayedAt(a, archiveDates?.value)
 const groups = computed(() => groupByMatchDate(filteredAnalyses.value, playedAt))
 const mapArt = (map: string | null) => (map ? getMapListViewImage(map) || matchMapArt(null, map) : '')
+
+// Two queues instead of one long list: Reviewed (coached matches) and Waiting (recorded, not coached yet).
+// The queue follows the selection, so the open review is always in the list you're looking at.
+const queue = ref<ReviewQueue | null>(null)
+const shownQueue = computed(() => queueFor({
+  selectedReview: selectedId.value != null,
+  selectedWaiting: selectedRecordingId.value != null,
+  reviewed: allAnalyses.value.length,
+  waiting: pendingRecordings.value.length,
+  current: queue.value,
+}))
+const queueItems = computed(() => [
+  { key: 'reviewed', label: 'Reviewed', count: allAnalyses.value.length },
+  { key: 'waiting', label: 'Waiting for coaching', count: pendingRecordings.value.length },
+])
+function setQueue(key: string) { queue.value = key === 'waiting' ? 'waiting' : 'reviewed' }
+watch([selectedId, selectedRecordingId], ([id, recId]) => {
+  if (id != null) queue.value = 'reviewed'
+  else if (recId != null) queue.value = 'waiting'
+})
+
+// Keep the selected row in view (it may be far down, or arrive after the list loads).
+const listEl = ref<HTMLElement | null>(null)
+watch([selectedId, selectedRecordingId, shownQueue, () => filteredAnalyses.value.length, () => pendingRecordings.value.length], () => {
+  void nextTick(() => listEl.value?.querySelector<HTMLElement>('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' }))
+}, { immediate: true })
 </script>
 
 <template>
-  <div class="rv3-list" :class="{ 'is-collapsed': selectedId != null || selectedRecordingId != null }">
+  <div ref="listEl" class="rv3-list" :class="{ 'is-collapsed': selectedId != null || selectedRecordingId != null }">
+    <div v-if="allAnalyses.length || pendingRecordings.length" class="rv3-queues">
+      <UfTabs :items="queueItems" :model-value="shownQueue" size="filter" label="Queue" @update:model-value="setQueue" />
+    </div>
     <!-- Skeleton until reviews exist to show: never flash "No coaching reviews yet" while they load. -->
     <div v-if="(loading && !allAnalyses.length) || (pendingLoading && !allAnalyses.length && !pendingRecordings.length)" class="rv3-loading" role="status" aria-label="Loading coaching reviews">
       <div v-for="i in 6" :key="i" class="rv3-skel-row">
@@ -53,14 +83,17 @@ const mapArt = (map: string | null) => (map ? getMapListViewImage(map) || matchM
     <div v-else-if="filteredAnalyses.length === 0 && pendingRecordings.length === 0 && allAnalyses.length === 0" class="rv3-empty">
       <EmptyArt size="section" title="No coaching reviews yet" text="Record a match and run AI coaching — every review lands here." />
     </div>
-    <div v-else-if="filteredAnalyses.length === 0 && pendingRecordings.length === 0" class="rv3-empty">
-      <p class="uf-t3">No reviews match this filter</p>
-      <p class="uf-t4">Try another result or map filter.</p>
+    <div v-else-if="shownQueue === 'waiting' && pendingRecordings.length === 0" class="rv3-empty">
+      <p class="uf-t3">Nothing waiting for coaching</p>
+      <p class="uf-t4">Recorded matches that haven't been coached yet show here.</p>
+    </div>
+    <div v-else-if="shownQueue === 'reviewed' && filteredAnalyses.length === 0" class="rv3-empty">
+      <p class="uf-t3">{{ allAnalyses.length ? 'No reviews match this filter' : 'No coaching reviews yet' }}</p>
+      <p class="uf-t4">{{ allAnalyses.length ? 'Try another result or map filter.' : 'Run AI coaching on a match under Waiting for coaching.' }}</p>
     </div>
 
     <template v-else>
-      <section v-if="pendingRecordings.length" class="rv3-group" aria-label="Before coaching">
-        <div class="rv3-group-head"><span class="uf-label">Before coaching</span><span class="uf-t4">{{ pendingRecordings.length }}</span></div>
+      <section v-if="shownQueue === 'waiting'" class="rv3-group" aria-label="Waiting for coaching">
         <button
           v-for="rec in pendingRecordings"
           :key="rec.id"
@@ -87,7 +120,7 @@ const mapArt = (map: string | null) => (map ? getMapListViewImage(map) || matchM
         </button>
       </section>
 
-      <section v-for="group in groups" :key="group.label" class="rv3-group" :aria-label="group.label">
+      <section v-for="group in (shownQueue === 'reviewed' ? groups : [])" :key="group.label" class="rv3-group" :aria-label="group.label">
         <div class="rv3-group-head"><span class="uf-label">{{ group.label }}</span><span class="uf-t4">{{ group.items.length }}</span></div>
         <button
           v-for="a in group.items"
@@ -130,7 +163,9 @@ const mapArt = (map: string | null) => (map ? getMapListViewImage(map) || matchM
 .rv3-group-head { display: flex; align-items: baseline; justify-content: space-between; padding: 10px 24px 8px 40px; }
 .rv3-row { display: flex; align-items: center; gap: 14px; width: 100%; padding: 10px 24px 10px 40px; background: none; border: 0; border-top: 1px solid var(--uf-line); text-align: left; cursor: pointer; color: inherit; }
 .rv3-row:hover { background: var(--uf-hover); }
-.rv3-row.is-on { background: var(--uf-raised); box-shadow: inset 2px 0 0 var(--uf-red); }
+.rv3-row.is-on { background: var(--uf-raised); box-shadow: inset 3px 0 0 var(--uf-red); }
+.rv3-row.is-on .uf-t3 { color: var(--uf-bone); font-weight: 600; }
+.rv3-queues { position: sticky; top: -8px; z-index: 1; margin-top: -8px; padding: 12px 24px 8px 40px; background: var(--uf-bg); border-bottom: 1px solid var(--uf-line); }
 .rv3-thumb { position: relative; width: 72px; height: 40px; flex: none; overflow: hidden; background: var(--uf-raised); }
 .rv3-map { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.55; }
 .rv3-agent { position: absolute; right: 0; bottom: 0; height: 100%; width: auto; }

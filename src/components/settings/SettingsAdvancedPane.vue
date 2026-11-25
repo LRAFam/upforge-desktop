@@ -10,10 +10,12 @@ import GameDataCaptureSection from './GameDataCaptureSection.vue'
 import type { StatusItem } from './SettingsStatusStrip.vue'
 import { uiV3 } from '../../lib/ui-v3'
 import trainerPin from '../../../trainer-version.json'
+import { OBS_REPAIR_CHANGES, obsVersionLabel } from '../v3/settings/settings-display'
 
 const router = useRouter()
 const trainerVersion = trainerPin.version
 const developerOpen = ref(false)
+const repairConfirmOpen = ref(false)
 
 const {
   BADGE_PREVIEW_ITEMS,
@@ -59,7 +61,7 @@ const statusItems = computed<StatusItem[]>(() => [
     id: 'obs',
     label: 'OBS',
     detail: obsStatus.value?.connected
-      ? `Connected · v${obsStatus.value.obsVersion ?? '?'}`
+      ? (obsStatus.value.obsStudioVersion ? `Connected · OBS Studio ${obsStatus.value.obsStudioVersion}` : 'Connected')
       : obsProcessState.value?.processRunning
         ? 'Running, not connected'
         : 'Not connected',
@@ -96,8 +98,15 @@ async function copySupportLog(): Promise<void> {
   }
 }
 
+async function confirmRepair(): Promise<void> {
+  repairConfirmOpen.value = false
+  await obsRepairSetup()
+}
+
 function previewOnboarding(): void {
-  void router.push({ path: '/onboarding', query: { preview: '1' } })
+  // `from`: leaving the preview comes back here (Settings → Advanced), not to Coach. The Settings URL
+  // doesn't follow the category picked, so name this pane.
+  void router.push({ path: '/onboarding', query: { preview: '1', from: '/settings?tab=advanced' } })
 }
 </script>
 
@@ -109,35 +118,65 @@ function previewOnboarding(): void {
         <div class="uf-set-row-text">
           <p class="uf-t3">Connection</p>
           <p class="uf-note" :class="obsStatus?.connected ? 'is-ok' : 'is-warn'">
-            <template v-if="obsStatus?.connected">Connected · OBS v{{ obsStatus.obsVersion ?? '?' }}</template>
+            <template v-if="obsStatus?.connected">Connected<template v-if="obsVersionLabel(obsStatus)"> · {{ obsVersionLabel(obsStatus) }}</template></template>
             <template v-else-if="obsProcessState?.processRunning">OBS is running but not connected (likely stuck after a crash)</template>
-            <template v-else>Required: install OBS 28+, enable WebSocket, then connect below</template>
+            <template v-else>Required: install OBS Studio 28 or newer, then connect below</template>
           </p>
         </div>
       </div>
-      <ol class="uf-steps">
-        <li class="uf-t4">Install <a href="https://obsproject.com/" target="_blank" class="uf-inline-link">OBS Studio 28+</a></li>
+      <ol v-if="!obsStatus?.connected" class="uf-steps">
+        <li class="uf-t4">Install <a href="https://obsproject.com/" target="_blank" class="uf-inline-link">OBS Studio 28 or newer</a></li>
         <li class="uf-t4">Click <strong>Launch OBS + Connect</strong>. We install the UpForge profile and WebSocket defaults</li>
         <li class="uf-t4">Default password is <strong>upforge</strong> unless you changed it in OBS</li>
         <li class="uf-t4">Capture is <strong>game window only</strong>. Alt-tab will not record other apps</li>
         <li class="uf-t4">Prefer <strong>borderless windowed</strong> in Valorant. Exclusive fullscreen makes alt-tab flaky for capture</li>
       </ol>
-      <div class="uf-set-actions">
-        <template v-if="!obsStatus?.connected">
-          <button type="button" class="uf-btn-primary" :disabled="obsConnecting" @click="obsLaunchAndConnect"><span>{{ obsConnecting ? 'Starting…' : 'Launch OBS + Connect' }}</span></button>
-          <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="obsConnecting" @click="obsConnect">{{ obsConnecting ? 'Connecting…' : 'Connect' }}</button>
-          <button type="button" class="uf-link" @click="installObsProfile">Install OBS profile</button>
-        </template>
-        <template v-else>
-          <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="obsPreflightRunning" @click="obsRunPreflight">{{ obsPreflightRunning ? 'Checking…' : 'Verify setup' }}</button>
-          <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="obsTestRecordingRunning" @click="obsTestRecording">{{ obsTestRecordingRunning ? 'Testing…' : 'Test recording' }}</button>
-          <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="obsRepairRunning" @click="obsRepairSetup">{{ obsRepairRunning ? 'Repairing…' : 'Repair setup' }}</button>
-          <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="obsSetupRunning" @click="obsSetupScene">{{ obsSetupRunning ? 'Setting up…' : 'Recreate UpForge scene' }}</button>
-          <button type="button" class="uf-link" @click="obsDisconnect">Disconnect</button>
-        </template>
+      <ul v-else class="uf-steps" aria-label="OBS checks">
+        <li class="uf-t4">
+          <template v-if="settings.obsSetupPassedAt">Setup check passed {{ new Date(settings.obsSetupPassedAt).toLocaleString() }}</template>
+          <template v-else>Setup not checked yet. Run <strong>Verify setup</strong> below</template>
+        </li>
+        <li class="uf-t4">
+          <template v-if="obsStatus.lastApplied && obsStatus.lastApplied.ok">Recording settings applied{{ obsStatus.lastApplied.outputWidth && obsStatus.lastApplied.outputHeight ? `: ${obsStatus.lastApplied.outputWidth}×${obsStatus.lastApplied.outputHeight} · ${obsStatus.lastApplied.fps} fps` : '' }}</template>
+          <template v-else-if="obsStatus.lastApplied">Recording settings partly applied: {{ obsStatus.lastApplied.warnings.join(' ') || 'check OBS' }}</template>
+          <template v-else>Recording settings are applied before each match</template>
+        </li>
+        <li class="uf-t4">Capture is <strong>game window only</strong>. Prefer <strong>borderless windowed</strong> in game</li>
+      </ul>
+      <div v-if="!obsStatus?.connected" class="uf-set-actions">
+        <button type="button" class="uf-btn-primary" :disabled="obsConnecting" @click="obsLaunchAndConnect"><span>{{ obsConnecting ? 'Starting…' : 'Launch OBS + Connect' }}</span></button>
+        <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="obsConnecting" @click="obsConnect">{{ obsConnecting ? 'Connecting…' : 'Connect' }}</button>
+        <button type="button" class="uf-link" @click="installObsProfile">Install OBS profile</button>
       </div>
+      <template v-else>
+        <div class="uf-field">
+          <span class="uf-t3">Checks</span>
+          <span class="uf-t4">Safe to run any time. They don't change your OBS scenes or settings. Test recording saves a few seconds to check a file is written.</span>
+          <div class="uf-set-actions">
+            <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="obsPreflightRunning" @click="obsRunPreflight">{{ obsPreflightRunning ? 'Checking…' : 'Verify setup' }}</button>
+            <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="obsTestRecordingRunning" @click="obsTestRecording">{{ obsTestRecordingRunning ? 'Testing…' : 'Test recording' }}</button>
+            <button type="button" class="uf-link" @click="obsDisconnect">Disconnect</button>
+          </div>
+        </div>
+        <div class="uf-field">
+          <span class="uf-t3">Repair</span>
+          <span class="uf-t4">Changes your OBS setup. Use it when a check fails or the UpForge scene was deleted.</span>
+          <div v-if="!repairConfirmOpen" class="uf-set-actions">
+            <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="obsRepairRunning" @click="repairConfirmOpen = true">{{ obsRepairRunning ? 'Repairing…' : 'Repair UpForge scene…' }}</button>
+          </div>
+          <div v-else class="uf-note is-warn" role="group" aria-label="Confirm OBS repair">
+            <p style="margin: 0">Repair will make these changes in OBS:</p>
+            <ul class="uf-steps" style="margin-top: 4px">
+              <li v-for="change in OBS_REPAIR_CHANGES" :key="change">{{ change }}</li>
+            </ul>
+            <div class="uf-set-actions" style="margin-top: 8px">
+              <button type="button" class="uf-btn-primary" :disabled="obsRepairRunning" @click="confirmRepair"><span>Repair now</span></button>
+              <button type="button" class="uf-link" @click="repairConfirmOpen = false">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </template>
       <p v-if="obsPreflightMessage" class="uf-note" :class="obsPreflightMessageError ? 'is-bad' : 'is-ok'">{{ obsPreflightMessage }}</p>
-      <p v-if="settings.obsSetupPassedAt" class="uf-t4">Last verified {{ new Date(settings.obsSetupPassedAt).toLocaleString() }}</p>
       <div class="uf-obs-conn">
         <label class="uf-field"><span class="uf-t4">WebSocket host</span><input v-model="settings.obsHost" type="text" placeholder="127.0.0.1" class="uf-input" @change="debouncedSave()"></label>
         <label class="uf-field"><span class="uf-t4">Port</span><input v-model.number="settings.obsPort" type="number" min="1" max="65535" class="uf-input" @change="debouncedSave()"></label>

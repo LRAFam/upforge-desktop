@@ -1262,7 +1262,7 @@ import PlayerAvatar from '../components/v3/identity/PlayerAvatar.vue'
 import { readCache } from '../lib/stale-cache'
 import type { ProfileData } from '../env.d.ts'
 import { readJoinCoachLater, setJoinCoachLater } from '../components/v3/roster-flow/roster-flow'
-import { resolveOnboardingCompletionRoute } from '../lib/onboarding-gate'
+import { previewReturnRoute, resolveOnboardingCompletionRoute } from '../lib/onboarding-gate'
 import { syncPendingOnboardingCampaign } from '../lib/desktop-onboarding-campaign'
 import { AUTO_ANALYSE_CHOICE_HINT, AUTO_ANALYSE_CHOICE_LABEL, autoAnalyseChoicePatch } from '../lib/auto-analyse-choice'
 import { resolveOnboardingStep } from '../lib/onboarding-flow'
@@ -2615,7 +2615,10 @@ async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; r
   if (saving.value) return
   completeError.value = ''
   if (isPreview.value) {
-    router.push(resolveOnboardingCompletionRoute(opts))
+    // Leaving a preview goes back to where it was opened (Settings → Advanced, Dev tools), unless the
+    // preview's own first-report action picked a destination.
+    const back = opts?.destination ? null : previewReturnRoute(route.query.from)
+    router.push(back ?? resolveOnboardingCompletionRoute(opts))
     return
   }
   saving.value = true
