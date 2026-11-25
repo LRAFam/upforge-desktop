@@ -64,6 +64,11 @@ const {
   roundGroups,
   seekToRound,
   updateVideoFrameSize,
+  roundLogCollapsed,
+  theaterMode,
+  toggleTheaterMode,
+  setSidePanelTab,
+  showInsightsPanel,
 } = useVodReview()
 
 // `?round=N` (1-based, as shown on screen) opens the match at that round, e.g. from the post-game
@@ -114,6 +119,23 @@ watch(summaryBody, el => {
 watch(summaryNames, () => { void nextTick(() => updateVideoFrameSize()) })
 onBeforeUnmount(() => summaryObserver?.disconnect())
 
+// Skip links (keyboard): jump straight to the player, the round log or the notes instead of tabbing
+// through every round and event. Panels that are hidden are opened first.
+const pageEl = ref<HTMLElement | null>(null)
+async function skipTo(target: 'video' | 'rounds' | 'notes') {
+  if (theaterMode.value && target !== 'video') toggleTheaterMode()
+  if (target === 'rounds') roundLogCollapsed.value = false
+  if (target === 'notes' && !showInsightsPanel.value) setSidePanelTab('notes')
+  await nextTick()
+  const root = pageEl.value
+  const el = target === 'video'
+    ? root?.querySelector<HTMLElement>('.vb3-ib--play')
+    : target === 'rounds'
+      ? root?.querySelector<HTMLElement>('.vod-round-log [data-rove][tabindex="0"]') ?? root?.querySelector<HTMLElement>('.vod-round-log button')
+      : root?.querySelector<HTMLElement>('.vod-notes-panel')
+  el?.focus()
+}
+
 // Header facts before the timeline lands: the clicked row, or the last visit to this match.
 const routeKey = computed(() => matchRouteKey(route.query))
 const summary = computed(() => recallMatchSummary(routeKey.value))
@@ -138,7 +160,12 @@ const coachMatchLabel = computed(() => {
 </script>
 
 <template>
-  <div class="vod-review uf-matchpage">
+  <div ref="pageEl" class="vod-review uf-matchpage">
+    <nav v-if="!timelineLoading && !timelineError && !comparisonActive && !accessOpen" class="uf-mp-skip" aria-label="Skip to">
+      <button type="button" @click="skipTo('video')">Skip to video</button>
+      <button v-if="roundGroups.length" type="button" @click="skipTo('rounds')">Skip to round log</button>
+      <button type="button" @click="skipTo('notes')">Skip to notes</button>
+    </nav>
     <MatchPageSkeletonV3 v-if="timelineLoading" :summary="summary" :workspace="workspace" :rounds-width="roundsWidth" :details-width="detailsWidth" :cloud="!!route.query.archiveId" />
     <MatchPageHeaderV3
       v-if="!timelineLoading && !timelineError"
@@ -213,7 +240,7 @@ const coachMatchLabel = computed(() => {
 @import '../../components/vod-review/vod-review.css';
 
 /* Layout: same container contract as the classic view (the workspace layout queries it). */
-.uf-matchpage { display: flex; flex-direction: column; height: 100%; overflow: hidden; color: var(--uf-bone); container-type: inline-size; container-name: review-workspace; }
+.uf-matchpage { position: relative; display: flex; flex-direction: column; height: 100%; overflow: hidden; color: var(--uf-bone); container-type: inline-size; container-name: review-workspace; }
 
 /* v3 restyle of the shared review pieces — surfaces flat, square, hairlines, no glow. */
 .uf-matchpage.vod-review { background: var(--uf-bg); }
@@ -236,6 +263,11 @@ const coachMatchLabel = computed(() => {
 .uf-matchpage :deep(.rounded-xl),
 .uf-matchpage :deep(.rounded-2xl) { border-radius: 2px; }
 .uf-mp-coachrow:empty { display: none; }
+/* Skip links: off-screen until focused, then a bar over the top of the page. */
+.uf-mp-skip { position: absolute; z-index: 60; top: 0; left: 0; display: flex; gap: 8px; padding: 8px 40px; transform: translateY(-120%); background: var(--uf-raised); border-bottom: 1px solid var(--uf-line-2); }
+.uf-mp-skip:focus-within { transform: none; }
+.uf-mp-skip button { padding: 6px 10px; background: none; border: 1px solid var(--uf-line-2); color: var(--uf-bone); font: 500 13px/1 var(--uf-body); cursor: pointer; }
+.uf-mp-skip button:focus-visible { outline: 2px solid var(--uf-bone); outline-offset: 2px; }
 .uf-mp-summary { flex: none; border-bottom: 1px solid var(--uf-line); }
 .uf-mp-summary-toggle { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 40px; background: none; border: 0; color: var(--uf-faint); cursor: pointer; text-align: left; }
 .uf-mp-summary-toggle .uf-label { color: var(--uf-bone); }

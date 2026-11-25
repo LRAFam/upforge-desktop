@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useRovingFocus } from '../../composables/useRovingFocus'
 import { uiV3 } from '../../lib/ui-v3'
 import { useVodReview } from '../../composables/useVodReview'
 import VodTimelineEventIcon from './VodTimelineEventIcon.vue'
@@ -21,6 +22,11 @@ const {
 } = useVodReview()
 
 type FlatEvent = (typeof allTimelineEvents)['value'][number]
+
+// One Tab stop for the whole feed; ↑/↓ move between events.
+const roveRoot = ref<HTMLElement | null>(null)
+const { focusList } = useRovingFocus(roveRoot)
+defineExpose({ focusList })
 
 const OBJECTIVE_KINDS = new Set(['dragon', 'baron', 'herald', 'tower', 'inhibitor', 'ace', 'multikill'])
 
@@ -68,8 +74,9 @@ function titleClass(event: FlatEvent): string {
         <button type="button" role="tab" :aria-selected="roundLogFilter === 'all'" :class="{ on: roundLogFilter === 'all' }" @click="roundLogFilter = 'all'">Full feed</button>
       </div>
     </div>
-    <div class="mt3-list scrollbar-hide">
-      <button v-for="(event, ei) in events" :key="`${event.type}-${event.videoOffsetMs}-${ei}`" type="button" class="vod-round-event mt3-event" :class="[nearEventHighlightClass(event), `mt3-event--${event.type === 'kill' ? 'kill' : event.type === 'death' ? 'death' : 'other'}`]" @click="seekToEvent(event)">
+    <p id="mt3-keys" class="sr-only">One stop in the tab order. Use the up and down arrow keys to move between events.</p>
+    <div ref="roveRoot" class="mt3-list scrollbar-hide" role="group" aria-label="Match events" aria-describedby="mt3-keys">
+      <button v-for="(event, ei) in events" :key="`${event.type}-${event.videoOffsetMs}-${ei}`" type="button" data-rove="line" :data-rove-group="ei" class="vod-round-event mt3-event" :class="[nearEventHighlightClass(event), `mt3-event--${event.type === 'kill' ? 'kill' : event.type === 'death' ? 'death' : 'other'}`]" @click="seekToEvent(event)">
         <VodTimelineEventIcon :type="event.type" :game="timeline?.game" :first-blood="event.isFirstBlood" :source-image="eventOpponentImage(event) || undefined" size="sm" />
         <span class="mt3-text">
           <span class="mt3-main">{{ eventTitle(event) }}</span>
@@ -168,6 +175,7 @@ function titleClass(event: FlatEvent): string {
 .mt3-filter button:hover { color: var(--uf-bone); }
 .mt3-filter button.on { color: var(--uf-bone); border-bottom-color: var(--uf-red); }
 .mt3-list { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
+.mt3-list [data-rove]:focus-visible { outline: 2px solid var(--uf-bone); outline-offset: -2px; }
 .mt3-event { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 12px 7px 20px; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--uf-line); cursor: pointer; }
 .mt3-event:hover { background: var(--uf-hover); }
 .mt3-event--kill { box-shadow: inset 3px 0 0 rgba(34, 169, 155, 0.5); }

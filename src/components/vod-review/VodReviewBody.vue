@@ -582,6 +582,8 @@ const noVideoHint = computed((): string => {
         <!-- Slim intel strip when side panel is open (desktop) — removed; intel lives in side panel -->
 
 <template v-if="uiV3">
+        <!-- Timeline markers are mouse shortcuts only (tabindex -1): keyboard users have J / L for events and the
+             round log / notes lists, so the markers don't add dozens of Tab stops. -->
         <div class="vb3-transport">
           <div class="vb3-scrub" @click="onScrubberClick" @mousemove="onScrubberHover" @mouseleave="hoverTime = null">
             <div class="vb3-track">
@@ -591,10 +593,10 @@ const noVideoHint = computed((): string => {
               <template v-if="isRoundBased">
                 <div v-for="sep in roundSeparators" :key="sep.percent" class="vb3-sep" :style="{ left: sep.percent + '%' }" />
               </template>
-              <button v-for="marker in aiCoachingMarkers" :key="marker.key" type="button" class="vb3-mk vb3-mk--ai" :style="{ left: marker.percent + '%' }" :title="`AI note: ${marker.label}`" :aria-label="`AI note: ${marker.label}`" @click.stop="seekCoachingEvidence(marker.evidence)" />
-              <button v-for="marker in coachProgressMarkers" :key="marker.key" type="button" class="vb3-mk vb3-mk--coach" :style="{ left: marker.percent + '%' }" :title="`Coach note: ${marker.label}`" :aria-label="`Coach note: ${marker.label}`" @click.stop="jumpToCoachMarker(marker)" />
+              <button v-for="marker in aiCoachingMarkers" :key="marker.key" type="button" tabindex="-1" class="vb3-mk vb3-mk--ai" :style="{ left: marker.percent + '%' }" :title="`AI note: ${marker.label}`" :aria-label="`AI note: ${marker.label}`" @click.stop="seekCoachingEvidence(marker.evidence)" />
+              <button v-for="marker in coachProgressMarkers" :key="marker.key" type="button" tabindex="-1" class="vb3-mk vb3-mk--coach" :style="{ left: marker.percent + '%' }" :title="`Coach note: ${marker.label}`" :aria-label="`Coach note: ${marker.label}`" @click.stop="jumpToCoachMarker(marker)" />
               <template v-for="marker in progressMarkers" :key="marker.key">
-                <button v-if="marker.kind !== 'round' || isRoundBased" type="button" :class="v3MarkerClass(marker.kind)" :style="{ left: marker.percent + '%' }" :title="marker.label" :aria-label="marker.label" @click.stop="jumpToMarker(marker)" />
+                <button v-if="marker.kind !== 'round' || isRoundBased" type="button" tabindex="-1" :class="v3MarkerClass(marker.kind)" :style="{ left: marker.percent + '%' }" :title="marker.label" :aria-label="marker.label" @click.stop="jumpToMarker(marker)" />
               </template>
               <div v-if="hoverTime !== null" class="vb3-hover" :style="{ left: (hoverTime / duration * 100) + '%' }" />
             </div>
@@ -1132,7 +1134,7 @@ const noVideoHint = computed((): string => {
         </div>
 
 </template>
-        <div v-show="showInsightsPanel && !askOpen" class="vod-notes-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-4">
+        <div v-show="showInsightsPanel && !askOpen" tabindex="-1" aria-label="Coach notes" class="vod-notes-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-4">
           <!-- One notebook instance for both UIs (an unsaved note must survive panel toggles). In v3 it is
                moved below the coach's lead blocks with CSS order, not by remounting it. -->
           <VodPersonalReview class="vb3-notebook" />
