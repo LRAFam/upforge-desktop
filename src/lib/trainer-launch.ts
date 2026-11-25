@@ -9,6 +9,7 @@ import type { TrainerLaunchInfo, TrainerNextDrillRequest, TrainerSessionEnded } 
 import type { LaunchConfig } from '../stores/trainerResult'
 
 export interface TrainerLaunchRequest {
+  distances_m?: [number, number]
   scenario: string
   duration_seconds?: number
   difficulty?: string
@@ -51,6 +52,7 @@ export function trainerLaunchConfig(req: TrainerLaunchRequest): LaunchConfig {
     duration_seconds: duration,
     difficulty: req.difficulty ?? 'medium',
   }
+  if (req.distances_m !== undefined) config.distances_m = [...req.distances_m]
   if (req.context) config.context = JSON.parse(JSON.stringify(req.context)) as Record<string, unknown>
   if (typeof req.user_drill_id === 'number' && Number.isInteger(req.user_drill_id) && req.user_drill_id > 0) {
     config.user_drill_id = req.user_drill_id
@@ -87,6 +89,7 @@ export function launchConfigFromInfo(info: unknown): LaunchConfig | null {
     difficulty: typeof i.difficulty === 'string' ? i.difficulty : 'medium',
     context: i.context as Record<string, unknown> | undefined,
     user_drill_id: i.user_drill_id,
+    ...(i.distances_m !== undefined ? { distances_m: [...i.distances_m] as [number, number] } : {}),
   })
 }
 
