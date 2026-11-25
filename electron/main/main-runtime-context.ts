@@ -297,7 +297,7 @@ export interface MainRuntimeBindings {
     recoverOrphanedValorantMetadata: (rec: PendingRecording) => Promise<boolean>;
     refreshCoachNotificationPoller: () => void;
     refreshDeadlockProfile: (fresh?: boolean) => Promise<void>;
-    refreshRecordingVodProbe: (rec: NonNullable<ReturnType<RecordingsStore['getById']>>) => Promise<void>;
+    refreshRecordingVodProbe: (rec: NonNullable<ReturnType<RecordingsStore['getById']>>, matchOwner?: number | null) => Promise<void>;
     refreshReplayTimelineForRecording: (recordingId: string, options?: {
         notifyActivity?: boolean;
     }) => Promise<boolean>;

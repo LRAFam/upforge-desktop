@@ -2128,7 +2128,7 @@ const recordingFileFinalizer = createRecordingFileFinalizer({
     await store.flush()
     if (getActiveUserId() !== owner) return
     const recording = store.getById(id)
-    if (recording) await refreshRecordingVodProbe(recording)
+    if (recording) await refreshRecordingVodProbe(recording, owner)
     if (getActiveUserId() !== owner) return
     notifyRecordingsUpdated()
     resumeSavedLocalMedia()
@@ -2510,8 +2510,9 @@ function sendAnalysisReadinessUpdate(
 
 async function refreshRecordingVodProbe(
   rec: NonNullable<ReturnType<RecordingsStore['getById']>>,
+  matchOwner?: number | null,
 ): Promise<void> {
-  return mainReadiness.refreshRecordingVodProbe(rec)
+  return mainReadiness.refreshRecordingVodProbe(rec, matchOwner)
 }
 
 /** Poll Riot + VOD probe until analyse is unblocked — Valorant only; CS2/Deadlock are VOD-ready without demo. */

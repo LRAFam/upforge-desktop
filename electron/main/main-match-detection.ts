@@ -1197,7 +1197,7 @@ export function createMainMatchDetection(mainProcess: MainMatchDetectionContext)
         })
 
         // Leave "preparing" immediately — don't block UI on ffprobe / Riot sync.
-        void mainProcess.refreshRecordingVodProbe(savedRecording).catch(() => {})
+        void mainProcess.refreshRecordingVodProbe(savedRecording, activityRecordingOwner).catch(() => {})
         const recForStep = captureStore.getById(savedRecording.id) ?? savedRecording
         const stepReadiness = getAnalysisReadiness(recForStep)
         const nextStep = decidePostMatchNextStep({
