@@ -168,6 +168,8 @@ export interface RecurringInsight {
   occurrences: number
   /** Distinct analysed matches that flagged it; null when the API didn't track it (older habits). */
   analysisCount?: number | null
+  /** Newest analysis that flagged it (API example_analysis_id), for "Review an example". */
+  exampleAnalysisId?: number | null
   status: string | null
   trend: string | null
   firstSeenAt: string | null
@@ -639,6 +641,7 @@ export class AuthManager {
         severity: typeof r.severity === 'string' ? r.severity : null,
         occurrences: Number.isFinite(Number(r.occurrence_count)) ? Number(r.occurrence_count) : 0,
         analysisCount: r.analysis_count != null && Number.isFinite(Number(r.analysis_count)) ? Number(r.analysis_count) : null,
+        exampleAnalysisId: Number.isSafeInteger(Number(r.example_analysis_id)) && Number(r.example_analysis_id) > 0 ? Number(r.example_analysis_id) : null,
         status: typeof r.status === 'string' ? r.status : null,
         trend: typeof r.trend_direction === 'string' ? r.trend_direction : null,
         firstSeenAt: typeof r.first_seen_at === 'string' ? r.first_seen_at : null,

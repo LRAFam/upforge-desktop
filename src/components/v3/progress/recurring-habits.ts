@@ -8,6 +8,7 @@ export interface RecurringInsightLike {
   occurrences: number
   analysisCount?: number | null
   severity?: string | null
+  exampleAnalysisId?: number | null
   status: string | null
   trend: string | null
   lastSeenAt: string | null
@@ -19,6 +20,10 @@ export interface RecurringHabitRow {
   id: number
   title: string
   detail: string | null
+  /** The coach's whole note when `detail` is cut short (shown with "Show more"); null when nothing is hidden. */
+  more: string | null
+  /** Newest analysis that flagged this habit, to open in match review. */
+  exampleAnalysisId: number | null
   /** Maps the habit was seen on (from the API text), at most a few. */
   maps: string[]
   seen: string
@@ -107,12 +112,15 @@ export function recurringHabitRows(rows: readonly RecurringInsightLike[] | null 
       const { note, maps } = parseHabitText(r.text)
       const title = r.label?.trim() || firstSentence(note)
       const detail = r.label && note ? firstSentence(note, MAX_DETAIL) : null
+      const shown = detail && detail.toLowerCase() !== title.toLowerCase() ? detail : null
       const polarity = habitPolarity({ label: r.label, note: note || r.text, severity: r.severity })
       return {
         id: r.id,
         title,
         // One plain line: the coach's latest note for this habit, never the title again.
-        detail: detail && detail.toLowerCase() !== title.toLowerCase() ? detail : null,
+        detail: shown,
+        more: note && note !== (shown ?? title) ? note : null,
+        exampleAnalysisId: r.exampleAnalysisId ?? null,
         maps,
         // Whole numbers only (copy rule). occurrence_count goes up once per coach finding, and one
         // analysed match can add more than one, so it is "times", not "matches".

@@ -74,6 +74,17 @@ describe('recurringHabitRows', () => {
     expect(r.trend).toEqual({ label: 'Coming up more', tone: 'worse' })
   })
 
+  it('keeps the whole note for "Show more" and passes the example analysis through', () => {
+    const long = 'Died alone on B long without a trade in round 4 at 3:12. Again in round 9 at 7:40 after swinging wide. Hold for your duelist.'
+    const [r] = recurringHabitRows([row({ label: 'Untraded deaths', occurrences: 5, text: long, exampleAnalysisId: 812 })], NOW)
+    expect(r.detail).toBe('Died alone on B long without a trade in round 4 at 3:12.')
+    expect(r.more).toBe(long)
+    expect(r.exampleAnalysisId).toBe(812)
+    const [short] = recurringHabitRows([row({ label: 'Untraded deaths', occurrences: 5, text: 'Died alone on B long.' })], NOW)
+    expect(short.more).toBeNull()
+    expect(short.exampleAnalysisId).toBeNull()
+  })
+
   it('returns nothing for empty or missing data', () => {
     expect(recurringHabitRows(null, NOW)).toEqual([])
     expect(recurringHabitRows([], NOW)).toEqual([])
