@@ -1,25 +1,21 @@
 <script setup lang="ts">
 import { plural } from '../../lib/plural'
 import UfSkeleton from '../v3/UfSkeleton.vue'
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { cloudBytes } from '../../lib/cloud-storage'
 import { capacityLabel } from '../../lib/account-usage'
 import { useAccountUsage } from '../../composables/useAccountUsage'
 import { uiV3 } from '../../lib/ui-v3'
-import { canBuyReports, showPurchasedReports } from '../v3/settings/settings-display'
-import { momentsLine, notesLine, roundReviewsLine, type CoachAllowances } from '../../lib/coach-allowances'
+import type { CoachAllowances } from '../../lib/coach-allowances'
+import { capabilityRows } from '../../lib/capability-table'
 // Coaching allowances (new design): daily coach notes, monthly key moments, round reviews.
 const coach = ref<CoachAllowances | null>(null)
-const coachLines = () => [
-  ['Coach notes', notesLine(coach.value?.notes)],
-  ['Key-moment reviews', momentsLine(coach.value?.key_moments)],
-  ['Round reviews', roundReviewsLine(coach.value?.round_reviews)],
-].filter((r): r is [string, string] => !!r[1])
 if (uiV3.value) void window.api?.coachFlow?.allowances?.().then(a => { coach.value = a }).catch(() => {})
 const emit = defineEmits<{ upgrade: [] }>()
 const router = useRouter()
 const { usage, error, loading, load } = useAccountUsage()
+const rows = computed(() => capabilityRows(usage.value, coach.value))
 const purchasing = ref(false), purchaseNotice = ref('')
 let purchaseGeneration = 0
 const purchaseCleanups = ['session:user-changed', 'auth:session-expired'].map(event => window.api.on(event, () => {
@@ -41,8 +37,6 @@ async function buyReports() {
   } catch { if (generation === purchaseGeneration) purchaseNotice.value = 'Could not open checkout. Check your balance before retrying.' }
   finally { if (generation === purchaseGeneration) purchasing.value = false }
 }
-/** Share of an allowance used, 0–100, or null when there is no cap (no bar is drawn). */
-const usedPct = (used: number, cap: number | null | undefined) => (cap ? Math.min(100, Math.max(0, (used / cap) * 100)) : null)
 const date = (value: string) => new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 </script>
 <template>
@@ -52,9 +46,6 @@ const date = (value: string) => new Date(value).toLocaleDateString(undefined, { 
       <button type="button" class="uf-link" :disabled="loading" @click="load">{{ loading ? (usage ? 'Refreshing…' : 'Loading…') : 'Refresh usage' }}</button>
     </div>
     <p v-if="error" role="status" class="uf-note is-bad">{{ error }}</p>
-    <div v-for="[label, line] in coachLines()" :key="label" class="uf-set-row">
-      <div class="uf-set-row-text"><p class="uf-t3">{{ label }}</p><p class="uf-t4">{{ line }}</p></div>
-    </div>
     <!-- First-ever load: placeholder rows in the shape of the usage rows (title + value, meter, note). -->
     <div v-if="!usage && !error" aria-busy="true" aria-label="Loading usage">
       <div v-for="i in 3" :key="i" class="uf-usage-row">
@@ -64,61 +55,31 @@ const date = (value: string) => new Date(value).toLocaleDateString(undefined, { 
       </div>
     </div>
     <template v-if="usage">
-      <div class="uf-usage-row">
-        <div class="uf-usage-head"><p class="uf-t3">Cloud storage</p>
-          <p v-if="usage.cloud_storage" class="uf-t3 uf-num">{{ cloudBytes(usage.cloud_storage.used_bytes) }}<span v-if="usage.cloud_storage.capacity_bytes !== null" class="uf-usage-of"> / {{ cloudBytes(usage.cloud_storage.capacity_bytes) }}</span></p>
-        </div>
-        <template v-if="usage.cloud_storage">
-          <div v-if="usedPct(usage.cloud_storage.used_bytes, usage.cloud_storage.capacity_bytes) !== null" class="uf-meter" :class="{ 'is-warn': (usedPct(usage.cloud_storage.used_bytes, usage.cloud_storage.capacity_bytes) ?? 0) >= 90 }">
-            <span class="uf-fill" :style="{ width: usedPct(usage.cloud_storage.used_bytes, usage.cloud_storage.capacity_bytes) + '%' }" />
-          </div>
-          <p class="uf-t4">Shared by clips and recordings across all games. Local files do not count.</p>
-        </template>
-        <p v-else class="uf-t4">Storage allowance unavailable.</p>
-        <div class="uf-set-actions">
-          <button type="button" class="uf-btn-secondary uf-set-btn" @click="router.push('/cloud-storage')">Manage storage and view prices</button>
-        </div>
-        <p class="uf-t4">Need more? Choose extra capacity in GB without changing your plan. Storage is billed monthly, separately from AI credits.</p>
-      </div>
-
-      <div class="uf-usage-row">
-        <div class="uf-usage-head"><p class="uf-t3">Full-match AI reports</p>
-          <p class="uf-t3 uf-num">{{ usage.reports.limit === null ? 'No cap (admin)' : `${usage.reports.remaining} of ${usage.reports.limit} left` }}</p>
-        </div>
-        <div v-if="usage.reports.limit" class="uf-meter" :class="{ 'is-warn': usage.reports.remaining === 0 }">
-          <span class="uf-fill" :style="{ width: (usedPct(usage.reports.limit - (usage.reports.remaining ?? 0), usage.reports.limit) ?? 0) + '%' }" />
-        </div>
-        <p v-if="usage.reports.period === 'lifetime'" class="uf-t4">Lifetime allowance. It does not reset each month.</p>
-        <p v-else-if="usage.reports.resets_at" class="uf-t4">Resets {{ date(usage.reports.resets_at) }}</p>
-        <p v-else-if="usage.reports.reset_on_next_use" class="uf-t4">Your next report starts a new monthly allowance.</p>
-        <p v-if="showPurchasedReports(usage.reports)" class="uf-t4">{{ plural(usage.reports.purchased, 'purchased report credit') }} · separate from your included allowance</p>
-        <template v-if="canBuyReports(usage.reports)">
-          <div class="uf-set-actions">
-            <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="purchasing" @click="buyReports">{{ purchasing ? 'Opening checkout…' : 'Buy 3 report credits' }}</button>
-          </div>
-          <p class="uf-t4">One-time purchase for full-match reports, separate from Ask AI coach questions. Review the price in Stripe before paying. Purchased reports do not expire.</p>
-          <p v-if="purchaseNotice" role="status" class="uf-note">{{ purchaseNotice }}</p>
-        </template>
-      </div>
-
-      <div class="uf-usage-row">
-        <div class="uf-usage-head"><p class="uf-t3">Ask AI coach</p><p class="uf-t3 uf-num">{{ plural(usage.coach_credits, 'Coach Credit') }}</p></div>
-        <p class="uf-t4">Included questions and match limits appear in Ask AI coach. Coach Credits are separate from full-match reports.</p>
-      </div>
-
-      <div class="uf-usage-row">
-        <div class="uf-usage-head"><p class="uf-t3">Review tools</p>
-          <p v-if="usage.review_access" class="uf-t3">{{ usage.review_access.comparison_access_reason === 'free_trial' ? 'Your first comparison is free' : usage.review_access.comparison ? 'Comparison included' : 'Comparison on Plus or Pro' }}</p>
-        </div>
-        <template v-if="usage.review_access">
-          <p class="uf-t4">Basic replay, personal notes and next-match focus stay free.</p>
-          <p v-if="usage.review_access.comparison_access_reason === 'existing_account'" class="uf-t4">Your existing account keeps comparison access.</p>
-          <p v-else-if="usage.review_access.comparison_access_reason === 'preview'" class="uf-t4">Comparison is available during the workspace preview.</p>
-          <p class="uf-t4">Saved comparisons remain readable if your plan changes. Your free trial comparison stays editable.</p>
-          <div v-if="!usage.review_access.comparison" class="uf-set-actions"><button type="button" class="uf-link" @click="emit('upgrade')">View comparison plans →</button></div>
-        </template>
-        <p v-else class="uf-t4">Review access is unavailable from this server.</p>
-      </div>
+      <!-- One table for every allowance: what's left, what uses it, when it comes back, how to get more. -->
+      <table class="uf-cap-table">
+        <caption class="uf-t4">Your allowances</caption>
+        <thead>
+          <tr><th scope="col">Allowance</th><th scope="col">Left</th><th scope="col">Used by</th><th scope="col">Resets</th><th scope="col">Get more</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in rows" :key="row.id">
+            <th scope="row" class="uf-t3">{{ row.name }}</th>
+            <td class="uf-num" :class="{ 'is-empty': row.empty }">{{ row.left }}<span v-if="row.empty"> · used up</span></td>
+            <td>{{ row.usedBy }}</td>
+            <td>{{ row.resets }}</td>
+            <td>
+              <button v-if="row.more === 'buy_reports'" type="button" class="uf-link" :disabled="purchasing" @click="buyReports">{{ purchasing ? 'Opening checkout…' : row.moreLabel }}</button>
+              <button v-else-if="row.more === 'storage'" type="button" class="uf-link" @click="router.push('/cloud-storage')">{{ row.moreLabel }}</button>
+              <button v-else-if="row.more === 'plans'" type="button" class="uf-link" @click="emit('upgrade')">{{ row.moreLabel }}</button>
+              <span v-else-if="row.moreLabel">{{ row.moreLabel }}</span>
+              <span v-else aria-label="Nothing to buy">–</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-if="!usage.cloud_storage" class="uf-t4">Storage allowance unavailable.</p>
+      <p class="uf-t4">Report credits are a one-time purchase (3 per pack). Review the price in Stripe before paying. Cloud storage counts clips and recordings across all games; files on this PC don't count.</p>
+      <p v-if="purchaseNotice" role="status" class="uf-note">{{ purchaseNotice }}</p>
 
       <div class="uf-set-row">
         <p class="uf-t4">Updated {{ new Date(usage.as_of).toLocaleTimeString() }}</p>
