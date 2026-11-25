@@ -4,7 +4,8 @@ vi.mock('electron', () => ({
   app: { isPackaged: false, getAppPath: () => process.cwd() },
 }))
 
-import { resolveClipTimeline } from './clip-coaching-context'
+import { buildClipUploadPayload, resolveClipTimeline } from './clip-coaching-context'
+import type { ClipRecord } from './clip-store'
 import type { MatchData } from './riot-types'
 
 function timeline(matchId: string | null): MatchData {
@@ -35,5 +36,13 @@ describe('resolveClipTimeline', () => {
   it('prefers the analysis-linked recording over matchId', () => {
     const t = resolveClipTimeline({ analysisJobId: 'job-1', matchId: 'match-B' }, recordings)
     expect(t?.matchId).toBe('match-A')
+  })
+})
+
+describe('buildClipUploadPayload game', () => {
+  it('sends the clip game so a published clip reaches the right game channel', () => {
+    expect(buildClipUploadPayload({ game: 'cs2' } as ClipRecord, null).game).toBe('cs2')
+    expect(buildClipUploadPayload({} as ClipRecord, { game: 'deadlock' } as MatchData).game).toBe('deadlock')
+    expect(buildClipUploadPayload({} as ClipRecord, null).game).toBeUndefined()
   })
 })

@@ -347,6 +347,7 @@ const api = {
     requestAnalysis: (id: string) => ipcRenderer.invoke('clips:request-analysis', { id }),
     share: (id: string) => ipcRenderer.invoke('clips:share', { id }),
     publish: (id: string, caption?: string) => ipcRenderer.invoke('clips:publish', { id, caption }),
+    unpublish: (id: string) => ipcRenderer.invoke('clips:unpublish', { id }),
     saveBookmark: () => ipcRenderer.invoke('clips:save-bookmark'),
     trim: (id: string, startSec: number, endSec: number) => ipcRenderer.invoke('clips:trim', { id, startSec, endSec }),
   },

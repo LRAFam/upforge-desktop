@@ -1554,7 +1554,8 @@ declare global {
         upload: (id: string) => Promise<{ ok: boolean; apiClipId?: number; error?: string; needsUpgrade?: boolean; message?: string; upgradeUrl?: string; uploadResolution?: 'hd' | '720p' }>
         requestAnalysis: (id: string) => Promise<{ ok: boolean; error?: string; needsUpgrade?: boolean; refused?: boolean; message?: string; upgradeUrl?: string }>
         share: (id: string) => Promise<{ ok: boolean; shareToken?: string; error?: string }>
-        publish: (id: string, caption?: string) => Promise<{ ok: boolean; error?: string }>
+        publish: (id: string, caption?: string) => Promise<{ ok: boolean; status?: 'live' | 'pending_review'; error?: string; code?: string }>
+        unpublish: (id: string) => Promise<{ ok: boolean; error?: string; code?: string }>
         saveBookmark: () => Promise<{ ok: boolean; bookmarkCount?: number; reason?: string }>
         trim: (id: string, startSec: number, endSec: number) => Promise<{ ok: boolean; error?: string }>
       }

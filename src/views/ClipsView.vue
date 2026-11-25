@@ -857,6 +857,15 @@
           </button>
           <button
             v-if="!cloudOnly && playingClip.uploadStatus === 'uploaded'"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors disabled:opacity-50"
+            :disabled="publishingClipId === playingClip.id"
+            :title="playingClip.published ? 'Remove from the community feed' : 'Post to the community feed and Discord'"
+            @click="togglePublishClip(playingClip)"
+          >
+            {{ publishingClipId === playingClip.id ? 'Saving…' : playingClip.published ? 'Unpublish' : 'Publish' }}
+          </button>
+          <button
+            v-if="!cloudOnly && playingClip.uploadStatus === 'uploaded'"
             class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors"
             @click="shareClip(playingClip)"
           >
@@ -1190,6 +1199,12 @@
         </template>
         <template v-if="playingClip" #actions>
           <UfButton v-if="!cloudOnly" icon="clip" @click="openTrim(playingClip)">Trim</UfButton>
+          <UfButton
+            v-if="!cloudOnly && playingClip.uploadStatus === 'uploaded'"
+            :disabled="publishingClipId === playingClip.id"
+            :title="playingClip.published ? 'Remove from the community feed' : 'Post to the community feed and Discord'"
+            @click="togglePublishClip(playingClip)"
+          >{{ publishingClipId === playingClip.id ? 'Saving…' : playingClip.published ? 'Unpublish' : 'Publish' }}</UfButton>
           <UfButton v-if="!cloudOnly && playingClip.uploadStatus === 'uploaded'" icon="share" @click="shareClip(playingClip)">Share</UfButton>
           <template v-else-if="!cloudOnly">
             <UfButton
@@ -2017,6 +2032,37 @@ async function uploadAndAnalyseClip(clip: ClipRecord): Promise<void> {
 function openUpgrade() {
   upgradeModal.value.show = false
   startUpgrade('clips')
+}
+
+const publishingClipId = ref<string | null>(null)
+
+/** Publish to (or remove from) the UpForge feed and the game's Discord channel. */
+async function togglePublishClip(clip: ClipRecord) {
+  if (publishingClipId.value) return
+  publishingClipId.value = clip.id
+  try {
+    if (clip.published) {
+      const result = await window.api.clips.unpublish(clip.id)
+      if (result.ok) {
+        clip.published = false
+        showToastMsg('Removed from the community feed', 'success')
+      } else {
+        showToastMsg(result.error || 'Could not unpublish this clip', 'error')
+      }
+      return
+    }
+    const result = await window.api.clips.publish(clip.id)
+    if (result.ok) {
+      clip.published = true
+      showToastMsg(result.status === 'pending_review'
+        ? 'Sent for review: it goes live once a moderator approves it'
+        : 'Published to the community feed', 'success')
+    } else {
+      showToastMsg(result.error || 'Could not publish this clip', 'error')
+    }
+  } finally {
+    publishingClipId.value = null
+  }
 }
 
 async function shareClip(clip: ClipRecord) {

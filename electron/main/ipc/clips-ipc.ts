@@ -27,6 +27,7 @@ import { exportMatchRecap } from '../recap-export'
 import { hasProAccess } from '../subscription'
 import { getApiBaseUrl } from '../api-base'
 import { clipReviewRequestFailure } from '../../../src/lib/clip-review-errors'
+import { publishError } from './clip-publish-error'
 
 export function setupClipHandlers(
   ipcMain: IpcMain,
@@ -317,12 +318,29 @@ export function setupClipHandlers(
     if (!token) return { ok: false, error: 'Not authenticated' }
 
     try {
-      await apiPost(apiBase, `/api/clips/${clip.apiClipId}/publish`,
-        JSON.stringify({ caption: caption ?? null }), token)
+      // POST publishes (safe to retry); status is 'live' or 'pending_review' (waits for moderators).
+      const res = await apiPost(apiBase, `/api/clips/${clip.apiClipId}/publish`,
+        JSON.stringify({ caption: caption ?? null }), token) as { status?: string }
       clipStore.update(id, { published: true })
+      return { ok: true, status: res?.status === 'pending_review' ? 'pending_review' : 'live' }
+    } catch (err) {
+      return publishError(err)
+    }
+  })
+
+  ipcMain.handle('clips:unpublish', async (_e, { id }: { id: string }) => {
+    const clip = clipStore.getById(id)
+    if (!clip?.apiClipId) return { ok: false, error: 'Upload clip first' }
+
+    const token = auth.getToken()
+    if (!token) return { ok: false, error: 'Not authenticated' }
+
+    try {
+      await apiPost(apiBase, `/api/clips/${clip.apiClipId}/publish`, '{}', token, 'DELETE')
+      clipStore.update(id, { published: false })
       return { ok: true }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return publishError(err)
     }
   })
 
