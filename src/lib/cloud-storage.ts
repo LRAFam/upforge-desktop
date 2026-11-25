@@ -12,6 +12,8 @@ export interface CloudFile {
   paid_storage?: boolean
   status: 'stored' | 'archived' | 'uploading' | 'failed'
   bytes: number | null; expires_at: string | null; created_at: string
+  /** When the match was played (recordings, newer APIs); created_at is the upload time. */
+  played_at?: string | null
   /** Analysed archives only (API round 7): the analysis id and its scoreboard summary when known. */
   analysis_id?: number
   /** Cloud retention (absent on older APIs; null on clips). Parse with `parseRetention`. */

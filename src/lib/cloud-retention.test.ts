@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  chooseVideoSource, daysLeft, expiringSoonLine, keepTimeLine, parseRetention, parseRetentionSummary, postGameCloudLine, retentionLine,
+  chooseVideoSource, daysLeft, expiringSoonLine, keepTimeLine, parseRetention, parseRetentionSummary, postGameCloudLine, retentionLine, retentionRulesLine,
 } from './cloud-retention'
 
 const NOW = Date.parse('2026-11-10T12:00:00Z')
@@ -150,5 +150,14 @@ describe('parseRetentionSummary free_keep_days', () => {
     expect(parseRetentionSummary({ started: true, free_keep_days: 21 }).free_keep_days).toBe(21)
     expect(parseRetentionSummary({ started: true }).free_keep_days).toBeNull()
     expect(parseRetentionSummary({ started: true, free_keep_days: -1 }).free_keep_days).toBeNull()
+  })
+})
+
+describe('retentionRulesLine', () => {
+  it('uses the API numbers for Free keep time and the plan/pack grace', () => {
+    expect(retentionRulesLine({ free_keep_days: 14, grace_days: 30 })).toBe("Free keeps each full video for 14 days. A paid plan or a storage pack keeps them while you're subscribed. If it ends, your full videos stay for 30 days, then Free rules apply. Each affected video shows its removal date, and you get a warning 7 days and 1 day before anything is removed.")
+  })
+  it('never guesses a number the API left out', () => {
+    expect(retentionRulesLine({ free_keep_days: null, grace_days: null })).not.toMatch(/\d+ days\./)
   })
 })

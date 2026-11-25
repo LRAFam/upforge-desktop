@@ -113,3 +113,12 @@ describe('drill list contract (API manifest)', () => {
     }
   })
 })
+
+describe('drillDisplayName', () => {
+  it('shows the display name, never the internal id', async () => {
+    const { drillDisplayName, trainerScenarioDef } = await import('./trainer-scenarios')
+    expect(drillDisplayName('flick')).toBe(trainerScenarioDef('flick')!.label)
+    expect(drillDisplayName('flick')).not.toBe('flick')
+    expect(drillDisplayName('some_new_drill')).toBe('Some New Drill')
+  })
+})

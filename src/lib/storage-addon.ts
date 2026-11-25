@@ -25,3 +25,42 @@ export function validStorageSnapshot(value: unknown): value is StorageAddonSnaps
 export function storagePaymentConfirmed(snapshot: StorageAddonSnapshot, targetGb: number): boolean {
   return snapshot.usage.active && snapshot.usage.status === 'active' && snapshot.usage.capacity_bytes === targetGb * 1e9
 }
+
+/**
+ * What happens when a storage pack ends. Once full-video retention has started, packs follow the
+ * same rule as plans: the retention summary's `grace_days`, then Free keep time. Before that the
+ * pack's own download window applies. Numbers always come from the API; a missing one is left out
+ * of the sentence rather than guessed.
+ */
+export function packEndLine(opts: {
+  retentionStarted: boolean
+  packGraceDays: number | null | undefined
+  retentionGraceDays?: number | null
+  freeKeepDays?: number | null
+}): string {
+  if (opts.retentionStarted) {
+    const grace = opts.retentionGraceDays ?? opts.packGraceDays
+    const ends = grace ? `If it ends, your full videos stay for ${grace} days, then Free rules apply` : 'If it ends, Free rules apply after a grace period'
+    const free = opts.freeKeepDays ? ` (each video kept ${opts.freeKeepDays} days)` : ''
+    return `A storage pack keeps every full video in the cloud while you're subscribed. ${ends}${free}. Each affected video shows its removal date. Clips, notes and stats are never removed.`
+  }
+  const window = opts.packGraceDays ? `you have ${opts.packGraceDays} days to download them before removal` : 'you have time to download them before removal'
+  return `New uploads use paid space when your plan allowance is full. Use Keep in paid storage for footage you want to retain longer. Files in paid storage stay while you keep paying. After paid access ends, ${window}.`
+}
+
+/**
+ * "Your cloud space: 10 GB → 60 GB" for the selected pack. Uses the plan's included space plus the
+ * pack (packs replace each other, they don't stack). Empty when the included space is unknown.
+ */
+export function packGain(includedBytes: number | null | undefined, currentPackBytes: number, selectedGb: number, format: (n: number) => string): string {
+  if (typeof includedBytes !== 'number') return ''
+  const now = includedBytes + currentPackBytes
+  const next = includedBytes + selectedGb * 1e9
+  if (now === next) return `Your cloud space: ${format(now)} (this is your current pack)`
+  return `Your cloud space: ${format(now)} → ${format(next)}`
+}
+
+/** No storage upsell for an account with no storage cap; an existing pack can still be managed. */
+export function hideStorageOffer(noCap: boolean, loaded: boolean, hasSubscription: boolean): boolean {
+  return noCap && (!loaded || !hasSubscription)
+}

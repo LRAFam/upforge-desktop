@@ -81,7 +81,10 @@ export interface OBSStatus {
   replayBufferActive: boolean
   outputPath: string | null
   lastError: string | null
+  /** obs-websocket version (kept under this name for older callers). */
   obsVersion: string | null
+  /** OBS Studio version from GetVersion. */
+  obsStudioVersion: string | null
   /** Last UpForge → OBS recording sync (resolution / fps). */
   lastApplied: {
     at: number
@@ -693,6 +696,7 @@ export class OBSRecorder {
       outputPath: this._outputPath,
       lastError: this._lastError,
       obsVersion: this._obsVersion,
+      obsStudioVersion: this._obsStudioVersion,
       lastApplied: this._lastApplied ? { ...this._lastApplied, warnings: [...this._lastApplied.warnings] } : null,
     }
   }

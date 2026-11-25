@@ -1744,7 +1744,10 @@ declare global {
           replayBufferActive: boolean
           outputPath: string | null
           lastError: string | null
+          /** obs-websocket version. */
           obsVersion: string | null
+          /** OBS Studio version (older builds may not send it). */
+          obsStudioVersion?: string | null
           lastApplied?: {
             at: number
             quality: string

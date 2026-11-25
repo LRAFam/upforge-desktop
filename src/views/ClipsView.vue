@@ -3,7 +3,8 @@
     <template v-if="uiV3">
       <MatchesTabsV3 active="clips" :count="v3CountLine">
         <button type="button" class="uf-link" @click="toggleAllGames">{{ showAllGames ? `${theme.shortName} only` : 'All games' }}</button>
-        <button type="button" class="uf-link" @click="router.push('/cloud-storage')">Manage storage</button>
+        <button type="button" class="uf-link" @click="router.push('/cloud-storage?kind=clip')">Cloud copies</button>
+        <button type="button" class="uf-link" @click="router.push({ path: '/settings', query: { tab: 'recording', section: 'storage' } })">Storage on this PC</button>
       </MatchesTabsV3>
       <div class="uf-cl-filters">
         <div class="uf-cl-row" role="group" aria-label="Clip type">
@@ -1466,7 +1467,7 @@ function showToastMsg(msg: string, type: 'success' | 'error' = 'success') {
 const filters = computed(() => {
   const base = [
     { label: 'All', value: 'all' },
-    { label: 'Favorites', value: 'favorites' },
+    { label: 'Favourites', value: 'favorites' },
     { label: 'Bookmarks', value: 'hotkey' },
   ]
   if (isValorant.value) {
