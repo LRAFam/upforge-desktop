@@ -32,6 +32,26 @@ describe('TrainerSessionQueue', () => {
   })
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }))
 
+  it.each([true, false])('preserves optional signed placement metadata across offline storage and retry (measured=%s)', async measured => {
+    const metadata = measured ? { placement_samples: 10, mean_signed_vertical_error_deg: -0.4, mean_signed_horizontal_error_deg: 0.25 } : {}
+    const payload = { ...run(), scenario: 'head_height', metadata }
+    const offline = make(vi.fn().mockRejectedValue(new Error('offline')))
+    await offline.submit(payload)
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'))[0].payload.metadata
+    expect(saved).toMatchObject(metadata)
+    const post = vi.fn().mockResolvedValue({})
+    const online = make(post)
+    now += HOUR
+    await online.flush()
+    const sent = JSON.parse(JSON.stringify(post.mock.calls[0][0]))
+    expect(sent.metadata).toEqual(saved)
+    if (measured) expect(typeof sent.metadata.mean_signed_vertical_error_deg).toBe('number')
+    else {
+      expect(sent.metadata).not.toHaveProperty('mean_signed_vertical_error_deg')
+      expect(sent.metadata).not.toHaveProperty('mean_signed_horizontal_error_deg')
+    }
+  })
+
   it('uploads once with a client run id and reports the drill state', async () => {
     const post = vi.fn().mockResolvedValue({ drill: { id: 4, title: 'Flick', status: 'completed', completed: true, attempt_count: 1, attempts_allowed: 3, pass_score: 70, next: { id: 5, title: 'Flick (Hard)', trainer_difficulty: 'hard', pass_score: 70 } } })
     const notify = vi.fn()

@@ -7,6 +7,7 @@ import { asSessionEnded, drillHasLesson, launchConfigFromInfo, launchTrainer, se
 import upforgeLogo from '../assets/upforge-logo.webp'
 import TrainingIcon from '../components/training/TrainingIcon.vue'
 import TrainingDrillMoments from '../components/training/TrainingDrillMoments.vue'
+import TrainerPlacementDirection from '../components/training/TrainerPlacementDirection.vue'
 import { useRouter } from 'vue-router'
 import { useTrainerResultStore } from '../stores/trainerResult'
 import type { CoachingDrill, TrainingHistory } from '../env'
@@ -469,6 +470,8 @@ onMounted(async () => {
             </div>
           </section>
 
+          <TrainerPlacementDirection :scenario="result.scenario" :metadata="result.metadata" class="uf-tr-block uf-rise uf-d3s" />
+
           <section v-if="showVerticalBlock" class="uf-tr-block uf-rise uf-d3s">
             <span class="uf-label">Crosshair placement</span>
             <span class="uf-t4">Average vertical correction when the head first became visible</span>
@@ -675,6 +678,8 @@ onMounted(async () => {
             {{ t.label }}, last {{ t.values.length }} {{ t.values.length === 1 ? 'run' : 'runs' }} (oldest first): {{ t.texts.join(' · ') }}
           </p>
         </div>
+
+        <TrainerPlacementDirection :scenario="result.scenario" :metadata="result.metadata" class="border border-white/10 rounded-lg p-4" />
 
         <div v-if="showVerticalBlock" class="border border-white/10 rounded-lg p-4 space-y-2 text-sm">
           <p class="font-semibold text-white">Crosshair placement</p>

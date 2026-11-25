@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ app: { isPackaged: false, getAppPath: () => '/tmp' }, BrowserWindow: class {} }))
 vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 
+import { buildTrainingSessionPayload, withLaunchGame } from './trainer-payload'
 import { getFreePort, parseTrainerLine, resolveTrainerSpawn, TrainerBridge, TrainerLaunchError, trainerLaunchErrorMessage, type DrillConfig, type TrainerSessionEnded } from './trainer-bridge'
 
 class FakeProc extends EventEmitter {
@@ -414,5 +415,25 @@ describe('the app closes the trainer for a game with a reason the player is told
     expect(src).not.toMatch(/trainerBridge\.kill\(\)/)
     expect(src).toMatch(/trainerBridge\.kill\('game_started'\)/)
     expect(src).toMatch(/trainerBridge\.kill\('match_started'\)/)
+  })
+})
+
+
+describe('signed placement metadata wire contract', () => {
+  it.each(['head_height', 'angle_clearing'])('preserves signed JSON numbers and existing scores from %s through the API payload', scenario => {
+    const raw = { scenario, duration_seconds: 60, score: 65, accuracy_pct: 50, avg_reaction_ms: 300, consistency_score: 70,
+      targets_hit: 10, targets_missed: 10, heatmap: [], completed_at: '2026-11-24T12:00:00Z',
+      metadata: { placement_samples: 10, mean_signed_vertical_error_deg: -0.123456789, mean_signed_horizontal_error_deg: 0.25,
+        mean_placement_error_deg: 2.5, mean_vertical_error_deg: 1.2, mean_horizontal_error_deg: 1.8 } }
+    const parsed = parseTrainerLine(JSON.stringify(raw))
+    expect(parsed?.kind).toBe('result')
+    if (parsed?.kind !== 'result') throw new Error('Expected trainer result')
+    const result = withLaunchGame(parsed.result, { mouse_settings: { game: 'valorant' } } as Pick<DrillConfig, 'mouse_settings'>)
+    const sent = JSON.parse(JSON.stringify(buildTrainingSessionPayload(result, null)))
+    expect(sent.score).toBe(65)
+    expect(sent.metadata).toEqual({ ...raw.metadata, game: 'valorant' })
+    expect(typeof sent.metadata.mean_signed_vertical_error_deg).toBe('number')
+    expect(typeof sent.metadata.mean_signed_horizontal_error_deg).toBe('number')
+    expect(raw.metadata).not.toHaveProperty('game')
   })
 })
