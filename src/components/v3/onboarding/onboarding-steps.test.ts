@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextSkipped, railSteps, stepNumber } from './onboarding-steps'
+import { alreadyDoneNote, nextSkipped, railSteps, stepNumber } from './onboarding-steps'
 
 const labels = ['Sign in', 'Your game', 'Game account', 'Capture check', 'Your first match'] as const
 
@@ -11,16 +11,22 @@ describe('railSteps', () => {
     expect(railSteps(labels, 1, true).every(s => s.state === 'todo')).toBe(true)
   })
   it('keeps labels and 1-based numbers', () => {
-    expect(railSteps(labels, 1, false)[4]).toEqual({ n: 5, pos: 5, label: 'Your first match', state: 'todo' })
+    expect(railSteps(labels, 1, false)[4]).toEqual({ n: 5, pos: 5, label: 'Your first match', state: 'todo', alreadyDone: false })
   })
-  it('counts only the steps shown when some were skipped (01/05 → 04/05 becomes 02/03)', () => {
+  it('keeps a fixed total: skipped steps are ticked as already done (01/05 → 04/05, UX1124-37)', () => {
+    const first = railSteps(labels, 1, false)
     const steps = railSteps(labels, 4, false, [2, 3])
-    expect(steps.map(s => s.label)).toEqual(['Sign in', 'Capture check', 'Your first match'])
+    expect(steps.length).toBe(first.length)
     const current = steps.find(s => s.state === 'current')!
-    expect(`${stepNumber(current.pos)} / ${stepNumber(steps.length)}`).toBe('02 / 03')
+    expect(`${stepNumber(current.pos)} / ${stepNumber(steps.length)}`).toBe('04 / 05')
+    expect(steps.filter(s => s.alreadyDone).map(s => s.label)).toEqual(['Your game', 'Game account'])
+    expect(alreadyDoneNote(steps)).toBe('2 steps already done')
+    expect(alreadyDoneNote(first)).toBeNull()
   })
-  it('always shows the current step even if it was marked skipped', () => {
-    expect(railSteps(labels, 2, false, [2, 3]).map(s => s.n)).toEqual([1, 2, 4, 5])
+  it('a skipped step shown again is current, not already done', () => {
+    const steps = railSteps(labels, 2, false, [2, 3])
+    expect(steps[1]).toMatchObject({ state: 'current', alreadyDone: false })
+    expect(steps.map(s => s.n)).toEqual([1, 2, 3, 4, 5])
   })
 })
 
