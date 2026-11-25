@@ -4,6 +4,8 @@ import { uiV3 } from '../../lib/ui-v3'
 import { useVodReview } from '../../composables/useVodReview'
 import { getAgentImage } from '../../lib/valorant'
 import VodTimelineEventIcon from './VodTimelineEventIcon.vue'
+import { ref } from 'vue'
+import { useRovingFocus } from '../../composables/useRovingFocus'
 
 const {
   activeRoundNumber,
@@ -31,6 +33,11 @@ const {
 } = useVodReview()
 
 const previewLimit = 6
+
+// One Tab stop for the whole log; ↑/↓ move between rounds (and open events), ←/→ along a round's buttons.
+const roveRoot = ref<HTMLElement | null>(null)
+const { focusList } = useRovingFocus(roveRoot)
+defineExpose({ focusList })
 
 function momentPreview(events: ReturnType<typeof visibleRoundEvents>) {
   return events.slice(0, previewLimit)
@@ -74,7 +81,9 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
       </div>
     </div>
 
+    <p id="rl3-keys" class="sr-only">One stop in the tab order. Use the up and down arrow keys to move between rounds and events, left and right for a round's other buttons.</p>
     <div ref="sidebarEl" class="rl3-list scrollbar-hide">
+      <div ref="roveRoot" role="group" aria-label="Rounds" aria-describedby="rl3-keys">
       <div
         v-for="round in roundGroups"
         :key="round.roundNumber"
@@ -83,8 +92,8 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
         :data-round-anchor="round.roundNumber"
       >
         <div class="rl3-row">
-          <button type="button" class="rl3-num uf-num" :aria-label="`Jump to round ${round.roundNumber + 1}`" :title="`Jump to round ${round.roundNumber + 1}`" @click="seekToRound(round)">{{ round.roundNumber + 1 }}</button>
-          <button type="button" class="rl3-what" :aria-expanded="expandedRoundNumber === round.roundNumber" @click="toggleRoundExpanded(round)">
+          <button type="button" class="rl3-num uf-num" data-rove="item" :data-rove-group="round.roundNumber" :aria-label="`Jump to round ${round.roundNumber + 1}`" :title="`Jump to round ${round.roundNumber + 1}`" @click="seekToRound(round)">{{ round.roundNumber + 1 }}</button>
+          <button type="button" class="rl3-what" data-rove="line" :data-rove-group="round.roundNumber" :data-rove-current="activeRoundNumber === round.roundNumber ? '' : undefined" :aria-expanded="expandedRoundNumber === round.roundNumber" @click="toggleRoundExpanded(round)">
             <span class="uf-t3">{{ roundOutcomeLabel(round) }}</span>
             <span class="uf-t4">{{ visibleRoundEvents(round).length }} {{ roundLogFilter === 'mine' ? 'moments' : 'events' }}</span>
           </button>
@@ -92,7 +101,7 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
         </div>
 
         <div v-if="visibleRoundEvents(round).length && expandedRoundNumber !== round.roundNumber" class="vod-round-moment-strip rl3-strip">
-          <button v-for="(event, ei) in momentPreview(visibleRoundEvents(round))" :key="`${event.type}-${event.videoOffsetMs}-preview-${ei}`" type="button" :aria-label="`Jump to ${formatMs(event.videoOffsetMs)}`" :title="`Jump to ${formatMs(event.videoOffsetMs)}`" @click.stop="seekToEvent(event)">
+          <button v-for="(event, ei) in momentPreview(visibleRoundEvents(round))" :key="`${event.type}-${event.videoOffsetMs}-preview-${ei}`" type="button" data-rove="item" :data-rove-group="round.roundNumber" :aria-label="`Jump to ${formatMs(event.videoOffsetMs)}`" :title="`Jump to ${formatMs(event.videoOffsetMs)}`" @click.stop="seekToEvent(event)">
             <VodTimelineEventIcon :type="event.type" :game="timeline?.game" :first-blood="event.isFirstBlood" :source-image="getEventSourceImage(event)" size="xs" />
           </button>
           <span v-if="extraMomentCount(visibleRoundEvents(round))" class="uf-t4 uf-num">+{{ extraMomentCount(visibleRoundEvents(round)) }}</span>
@@ -104,6 +113,8 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
             :key="`${event.type}-${event.videoOffsetMs}-${ei}`"
             type="button"
             :data-round-event="`${round.roundNumber}-${event.videoOffsetMs}`"
+            data-rove="line"
+            :data-rove-group="round.roundNumber"
             class="vod-round-event rl3-event"
             :class="nearEventHighlightClass(event)"
             @click="seekToEvent(event)"
@@ -129,6 +140,7 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
         </div>
       </div>
 
+      </div>
       <div v-if="!roundGroups.length" class="rl3-empty">
         <span class="uf-label">No timeline data</span>
         <p class="uf-t4">This match has no round events yet.</p>
@@ -391,6 +403,7 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
 .rl3-filter button:hover { color: var(--uf-bone); }
 .rl3-filter button.on { color: var(--uf-bone); border-bottom-color: var(--uf-red); }
 .rl3-list { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
+.rl3 [data-rove]:focus-visible { outline: 2px solid var(--uf-bone); outline-offset: -2px; }
 .rl3-round { border-bottom: 1px solid var(--uf-line); box-shadow: inset 3px 0 0 transparent; }
 .rl3-round--won { box-shadow: inset 3px 0 0 rgba(34, 169, 155, 0.35); }
 .rl3-round--lost { box-shadow: inset 3px 0 0 rgba(232, 80, 91, 0.35); }

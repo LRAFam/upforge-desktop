@@ -48,6 +48,25 @@ export function rowStatusText(status: string, hasLocalFile: boolean, inCloud: bo
   return [keepStatus ? status : '', storage].filter(Boolean).join(' · ')
 }
 
+const ANALYSIS_WORDS: Record<string, string> = {
+  Analysed: 'Analysed',
+  Analysing: 'Analysing',
+  Uploading: 'Uploading',
+  Failed: 'Analysis failed',
+  Paused: 'Stats sync paused',
+  Syncing: 'Syncing match data',
+}
+
+/**
+ * The row's state as two separate facts, the same shape on every row: where the video is, then the
+ * analysis ("Video on this PC · Not analysed", "Video in cloud · Analysed", "No video · Analysed").
+ * `badge` is recordingStatusBadge(rec).label.
+ */
+export function rowStateLine(badge: string, hasLocalFile: boolean, inCloud: boolean): string {
+  const capture = storageLine(hasLocalFile, inCloud) || 'No video'
+  return `${capture} · ${ANALYSIS_WORDS[badge] ?? 'Not analysed'}`
+}
+
 /** "Deletes from this PC in 3 days" for a local-only recording auto-delete will remove, or null. */
 export function localExpiryLine(localExpiresAt: number | null | undefined, now = Date.now()): string | null {
   if (!localExpiresAt) return null
@@ -72,10 +91,12 @@ export function relativeTime(ms: number, now = Date.now()): string {
 /**
  * The ONE quiet storage line under the Matches/Clips header:
  * "30 recordings · 36.10 GB cloud storage used" (+ "· 2.1 GB on this PC" only when there is some).
- * Cloud storage is account-wide (every game, clips and recordings), so it is named as such.
+ * When the list also holds matches that were not recorded, `recorded` says how many were:
+ * "79 matches · 61 recorded · …". Cloud storage is account-wide, so it is named as such.
  */
-export function storageSummary(opts: { count: number; noun: [string, string]; localBytes?: string | null; cloudUsed?: string | null; cloudCapacity?: string | null; full?: boolean }): string {
+export function storageSummary(opts: { count: number; noun: [string, string]; recorded?: number | null; localBytes?: string | null; cloudUsed?: string | null; cloudCapacity?: string | null; full?: boolean }): string {
   const parts = [`${opts.count} ${opts.count === 1 ? opts.noun[0] : opts.noun[1]}`]
+  if (opts.recorded != null) parts.push(`${opts.recorded} recorded`)
   if (opts.localBytes) parts.push(`${opts.localBytes} on this PC`)
   if (opts.full) parts.push('cloud storage full')
   else if (opts.cloudUsed) parts.push(`${opts.cloudUsed}${opts.cloudCapacity ? ` of ${opts.cloudCapacity}` : ''} cloud storage used`)
@@ -117,6 +138,6 @@ export function rowOpenAction(rec: { analysisId?: number | null; cloudOnly?: boo
   }
   const review = opts.unavailable || rec.cloudOnly || opts.timeline
   return review
-    ? { label: 'Review', icon: 'map', ai: false, title: 'Open the match timeline' }
-    : { label: 'Watch', icon: 'play', ai: false, title: 'Watch the recording' }
+    ? { label: 'Open timeline', icon: 'map', ai: false, title: 'Open the match timeline (no AI coaching yet)' }
+    : { label: 'Watch video', icon: 'play', ai: false, title: 'Watch the recording (no AI coaching yet)' }
 }

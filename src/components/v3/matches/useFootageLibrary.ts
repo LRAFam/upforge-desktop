@@ -24,6 +24,7 @@ import {
 } from '../../../lib/recording-library'
 import { recordingStatusBadge } from '../../../lib/recording-status'
 import { usePrimaryGame } from '../../../composables/usePrimaryGame'
+import { recordingDeleteMessage, recordingsBulkDeleteMessage } from '../../../lib/delete-copy'
 
 const STATUS_CHIPS = new Set<RecordingLibraryChip>(['all', 'action_required', 'ready', 'analysed', 'cloud', 'local'])
 function routeStatusChip(value: unknown): RecordingLibraryChip {
@@ -270,16 +271,12 @@ export function useFootageLibrary(options: FootageLibraryOptions = {}) {
 
   async function deleteRecording(rec: PendingRecording) {
     const options = recordingDeleteOptions(rec)
-    if (isRecordingInFlight(rec) && !(await confirmAction('This recording is still uploading or analysing. Abort and delete it from this PC?'))) return
+    if (isRecordingInFlight(rec) && !(await confirmAction('This recording is still uploading or analysing. Stop that and delete the recording from this PC?'))) return
     if (options.includes('localOnly')) {
       pendingDelete.value = { rec, variant: 'cloud' }
       return
     }
-    const hasLocal = Boolean(rec.hasLocalFile || rec.path)
-    const label = hasLocal
-      ? 'Delete this recording from your library and remove the local file?'
-      : 'Remove this recording from your library?'
-    if (!(await confirmAction(label))) return
+    if (!(await confirmAction(recordingDeleteMessage(rec)))) return
     await runDismiss(rec.id, 'remove')
   }
 
@@ -308,12 +305,7 @@ export function useFootageLibrary(options: FootageLibraryOptions = {}) {
   async function deleteSelected() {
     const selected = recordings.value.filter(r => selectedIds.value.has(r.id))
     if (!selected.length) return
-    const cloudBackedLocal = selected.filter(r => recordingDeleteOptions(r).includes('localOnly')).length
-    const ok = await confirmAction(
-      cloudBackedLocal > 0
-        ? `Remove ${selected.length} recording(s) from your library? Local files will be deleted. Cloud copies stay (${cloudBackedLocal} cloud-backed).`
-        : `Delete ${selected.length} recording(s) from your library and remove local files?`,
-    )
+    const ok = await confirmAction(recordingsBulkDeleteMessage(selected))
     if (!ok) return
     let freed = 0
     let failed = 0

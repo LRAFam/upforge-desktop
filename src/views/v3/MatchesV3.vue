@@ -13,9 +13,10 @@ import { useRoute, useRouter } from 'vue-router'
 import MatchesTabsV3 from '../../components/v3/matches/MatchesTabsV3.vue'
 import MatchRowV3 from '../../components/v3/matches/MatchRowV3.vue'
 import ReportRowV3 from '../../components/v3/matches/ReportRowV3.vue'
-import { matchListGroups, reportOnlyRows, showReportRows, type MatchReportRow } from '../../components/v3/matches/report-rows'
+import { matchListGroups, notRecordedReason, reportOnlyRows, showReportRows, type MatchReportRow, type RecordingSettingsLike } from '../../components/v3/matches/report-rows'
 import { statusFilters, useFootageLibrary } from '../../components/v3/matches/useFootageLibrary'
 import UfButton from '../../components/v3/UfButton.vue'
+import UfIcon from '../../components/v3/UfIcon.vue'
 import EmptyArt from '../../components/v3/empty/EmptyArt.vue'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import UfDialog from '../../components/v3/UfDialog.vue'
@@ -27,9 +28,19 @@ import { cloudBytes } from '../../lib/cloud-storage'
 import { useAccountUsage } from '../../composables/useAccountUsage'
 import { useCloudRetention } from '../../composables/useCloudRetention'
 import { matchDateMs } from '../../components/v3/matches/match-meta'
+
 import { storageSummary } from '../../components/v3/matches/match-row'
 import { ARCHIVE_DATES_KEY } from '../../components/v3/reviews/reviews-v3'
 import type { LibraryRecording } from '../../lib/footage-library'
+import { matchMapLabel } from '../../components/v3/matches/match-meta'
+import { matchRowSummary } from '../../components/v3/matches/match-row'
+import { recordingPlayerLabel } from '../../lib/recording-display'
+import { deadlockRecordingHero } from '../../lib/deadlock-hero-names'
+import { modeQueueLabel } from '../../lib/game-queue'
+import {
+  DEFAULT_MATCH_SEARCH, matchesSearch, periodItems, readMatchSearch, saveMatchSearch, searchActive,
+  type MatchSearchState, type SearchableRow,
+} from '../../components/v3/matches/match-search'
 
 const route = useRoute()
 const router = useRouter()
@@ -87,8 +98,11 @@ async function loadReports(): Promise<void> {
   if (res?.ok) reports.value = res.reports
 }
 let stopReports: (() => void) | null = null
+// Recorded modes, so a "Not recorded" row can say when its mode is switched off.
+const recordingSettings = ref<RecordingSettingsLike | null>(null)
 onMounted(() => {
   void loadReports()
+  void window.api?.settings?.get?.().then(s => { recordingSettings.value = s }).catch(() => {})
   // A new report arrives a couple of minutes after each match.
   stopReports = window.api?.app?.onFocusUpdated?.(() => { void loadReports() }) ?? null
 })
@@ -96,8 +110,53 @@ onBeforeUnmount(() => { stopReports?.() })
 const reportRows = computed(() => showReportRows({ game: gameFilter.value, status: statusChip.value, account: accountFilter.value, selecting: selecting.value })
   ? reportOnlyRows(reports.value, recordings.value)
   : [])
-const hasRows = computed(() => chipFiltered.value.length > 0 || reportRows.value.length > 0)
-const dateGroups = computed(() => matchListGroups(chipFiltered.value, reportRows.value, playedAt))
+
+// Search + filters (map, agent, mode, result, date words; played-date window; mode; recorded or not).
+// Kept for the app session, so coming back from a match finds the list as it was left.
+const session = typeof sessionStorage === 'undefined' ? null : sessionStorage
+const savedSearch = readMatchSearch(session)
+const search = ref<MatchSearchState>({ query: savedSearch.query, period: savedSearch.period, mode: savedSearch.mode, recorded: savedSearch.recorded })
+if (route.query.status == null && savedSearch.status) setStatus(savedSearch.status)
+watch([search, statusChip], () => saveMatchSearch(session, { ...search.value, status: statusChip.value }), { deep: true })
+function clearSearch() { search.value = { ...DEFAULT_MATCH_SEARCH } }
+
+function recordingFacts(rec: LibraryRecording): SearchableRow {
+  const analysis = rec.analysisId != null ? analysisById.value.get(rec.analysisId) ?? null : null
+  const result = matchRowSummary(rec, analysis).result
+  return {
+    map: matchMapLabel(rec.game, rec.map),
+    agent: rec.game === 'deadlock' ? deadlockRecordingHero(rec.agent) : recordingPlayerLabel(rec),
+    mode: modeQueueLabel(rec.game, rec.gameMode || analysis?.game_mode) || null,
+    result: result === 'win' ? 'victory win' : result === 'loss' ? 'defeat loss' : null,
+    game: recordingGameTitle(rec),
+    playedMs: playedAt(rec),
+  }
+}
+function reportFacts(r: MatchReportRow): SearchableRow {
+  const played = r.played_at ? Date.parse(r.played_at) : NaN
+  return {
+    map: matchMapLabel('valorant', r.map),
+    agent: r.agent,
+    mode: modeQueueLabel('valorant', r.game_mode) || null,
+    result: r.won === true ? 'victory win' : r.won === false ? 'defeat loss' : null,
+    game: 'Valorant',
+    playedMs: Number.isFinite(played) ? played : 0,
+  }
+}
+const searchedRecordings = computed(() => chipFiltered.value.filter(rec => matchesSearch({ ...recordingFacts(rec), recorded: true }, search.value)))
+const searchedReports = computed(() => reportRows.value.filter(r => matchesSearch({ ...reportFacts(r), recorded: false }, search.value)))
+/** Modes present in the current game/status view, for the Mode filter. */
+const modeItems = computed(() => {
+  const modes = new Set<string>()
+  for (const rec of chipFiltered.value) { const m = recordingFacts(rec).mode; if (m) modes.add(m) }
+  for (const r of reportRows.value) { const m = reportFacts(r).mode; if (m) modes.add(m) }
+  if (search.value.mode) modes.add(search.value.mode)
+  return [...modes].sort((a, b) => a.localeCompare(b))
+})
+const isSearching = computed(() => searchActive(search.value))
+
+const hasRows = computed(() => searchedRecordings.value.length > 0 || searchedReports.value.length > 0)
+const dateGroups = computed(() => matchListGroups(searchedRecordings.value, searchedReports.value, playedAt))
 
 // Coaching reviews (same header) dates each review by its match too: analysis id → archive upload time.
 provide(ARCHIVE_DATES_KEY, computed(() => {
@@ -123,8 +182,12 @@ const countLine = computed(() => {
   if (coaching.value) return ''
   const cloud = usage.value?.cloud_storage
   return storageSummary({
-    count: chipFiltered.value.length,
-    noun: gameName.value ? [`${gameName.value} recording`, `${gameName.value} recordings`] : ['recording', 'recordings'],
+    // The list can hold matches that weren't recorded: count what's shown, and say how many were recorded.
+    count: searchedRecordings.value.length + searchedReports.value.length,
+    noun: searchedReports.value.length
+      ? (gameName.value ? [`${gameName.value} match`, `${gameName.value} matches`] : ['match', 'matches'])
+      : (gameName.value ? [`${gameName.value} recording`, `${gameName.value} recordings`] : ['recording', 'recordings']),
+    recorded: searchedReports.value.length ? searchedRecordings.value.length : null,
     localBytes: recordingsBytes.value > 0 ? formatRecordingBytes(recordingsBytes.value) : null,
     cloudUsed: cloud ? cloudBytes(cloud.used_bytes) : null,
     cloudCapacity: cloud?.capacity_bytes != null ? cloudBytes(cloud.capacity_bytes) : null,
@@ -149,7 +212,24 @@ const countLine = computed(() => {
         <span style="flex: 1" />
         <span class="uf-filter-opt"><span class="uf-t4">Game</span><UfTabs :items="gameItems" :model-value="gameFilter" size="filter" label="Game" @update:model-value="gameFilter = $event" /></span>
         <span v-if="hasAltRows" class="uf-filter-opt"><span class="uf-t4">Account</span><UfTabs :items="accountItems" :model-value="accountFilter" size="filter" label="Account" @update:model-value="accountFilter = $event as 'all' | 'main' | 'alt'" /></span>
-        <button type="button" class="uf-link" @click="lib.toggleSelectMode()">{{ selecting ? 'Cancel' : 'Select' }}</button>
+        <button type="button" class="uf-link" @click="lib.toggleSelectMode()">{{ selecting ? 'Done selecting' : 'Select to delete' }}</button>
+      </div>
+      <!-- Find a known match: free text over map, agent, mode, result and date, plus date / mode / recorded filters. -->
+      <div v-if="recordings.length > 0 || reportRows.length > 0" class="uf-filters uf-search" role="search">
+        <input v-model="search.query" type="search" class="uf-input uf-search-box" placeholder="Search map, agent, mode or date (e.g. Bind Jett 22 Nov)" aria-label="Search matches" maxlength="120">
+        <select v-model="search.period" class="uf-select is-inline is-compact" aria-label="Played">
+          <option v-for="p in periodItems" :key="p.key" :value="p.key">{{ p.label }}</option>
+        </select>
+        <select v-if="modeItems.length > 1 || search.mode" v-model="search.mode" class="uf-select is-inline is-compact" aria-label="Mode">
+          <option value="">All modes</option>
+          <option v-for="m in modeItems" :key="m" :value="m">{{ m }}</option>
+        </select>
+        <select v-if="reportRows.length > 0 || search.recorded !== 'all'" v-model="search.recorded" class="uf-select is-inline is-compact" aria-label="Recording">
+          <option value="all">Recorded or not</option>
+          <option value="recorded">Recorded</option>
+          <option value="not_recorded">Not recorded</option>
+        </select>
+        <button v-if="isSearching" type="button" class="uf-link" @click="clearSearch">Clear search</button>
       </div>
 
       <div v-if="gameFilter === 'lol'" class="uf-note">
@@ -189,6 +269,11 @@ const countLine = computed(() => {
           <UfButton variant="primary" icon="matches" @click="router.push('/cloud-storage?kind=recording')">Browse cloud footage</UfButton>
           <UfButton v-if="obsConnected === false" variant="secondary" icon="settings" @click="router.push('/settings?tab=recording')">Open recording settings</UfButton>
         </EmptyArt>
+        <div v-else-if="!hasRows && isSearching" class="uf-state">
+          <p class="uf-t3">No matches found</p>
+          <p class="uf-t4">Nothing matches "{{ search.query || 'these filters' }}" here. Try fewer words, another date range, or All games.</p>
+          <button type="button" class="uf-link" @click="clearSearch">Clear search</button>
+        </div>
         <div v-else-if="!hasRows" class="uf-state">
           <p class="uf-t3">No footage matches this filter</p>
           <p class="uf-t4">Try another status or clear the game filter.</p>
@@ -202,7 +287,7 @@ const countLine = computed(() => {
             </button>
             <template v-if="lib.isGroupExpanded(group.label)">
               <template v-for="item in lib.groupVisibility(group).shown" :key="item.key">
-                <ReportRowV3 v-if="item.kind === 'report'" :report="item.report" @open="router.push(`/report/${item.report.match_id}`)" />
+                <ReportRowV3 v-if="item.kind === 'report'" :report="item.report" :reason="notRecordedReason(item.report.game_mode, recordingSettings)" @open="router.push(`/report/${item.report.match_id}`)" @fix="router.push($event)" />
                 <MatchRowV3
                   v-else
                   :rec="item.rec"
@@ -230,23 +315,24 @@ const countLine = computed(() => {
 
       <div v-if="selecting && selectedIds.size > 0" class="uf-bulk">
         <span class="uf-t3">{{ selectedIds.size }} selected</span>
-        <UfButton variant="secondary" :disabled="busyId === '__bulk__'" @click="lib.deleteSelected()">Delete</UfButton>
+        <button type="button" class="uf-btn-secondary uf-danger uf-bulk-del" :disabled="busyId === '__bulk__'" @click="lib.deleteSelected()"><UfIcon name="trash" :size="15" />Delete {{ selectedIds.size }} from this PC</button>
         <button type="button" class="uf-link" @click="lib.toggleSelectMode()">Cancel</button>
       </div>
 
-      <UfDialog :open="pendingDelete?.variant === 'cloud'" title="Delete recording" :width="460" @close="pendingDelete = null">
-        <p v-if="pendingDelete" class="uf-t2" style="margin: 0">
-            <template v-if="lib.isRecordingInFlight(pendingDelete.rec)">This recording is still uploading or analysing. Deleting will abort the current process.</template>
-            <template v-else>This recording is backed up to the cloud. Deleting the local copy also pauses automatic stats sync; Retry sync can restart it later.</template>
-        </p>
+      <UfDialog :open="pendingDelete?.variant === 'cloud'" title="Delete recording from this PC?" :width="480" @close="pendingDelete = null">
+        <template v-if="pendingDelete">
+          <p v-if="lib.isRecordingInFlight(pendingDelete.rec)" class="uf-t2" style="margin: 0">This recording is still uploading or analysing. Deleting stops that.</p>
+          <p class="uf-t2" style="margin: 0">This recording is on this PC and in the cloud. Both choices delete the video file on this PC. Neither deletes the cloud copy: manage that in Cloud storage.</p>
+          <p class="uf-t4" style="margin: 0">Keep in list: the match stays here and plays from the cloud. Automatic stats sync pauses until you press Retry sync.</p>
+        </template>
         <template v-if="pendingDelete" #actions>
           <button type="button" class="uf-link" :disabled="busyId === pendingDelete.rec.id" @click="pendingDelete = null">Cancel</button>
-          <UfButton variant="secondary" :disabled="busyId === pendingDelete.rec.id" @click="lib.runDismiss(pendingDelete.rec.id, 'localOnly')">Delete local only</UfButton>
-          <button type="button" class="uf-btn-secondary uf-danger" :disabled="busyId === pendingDelete.rec.id" @click="lib.runDismiss(pendingDelete.rec.id, 'remove')">Remove from library</button>
+          <UfButton variant="secondary" :disabled="busyId === pendingDelete.rec.id" @click="lib.runDismiss(pendingDelete.rec.id, 'localOnly')">Delete PC copy, keep in list</UfButton>
+          <button type="button" class="uf-btn-secondary uf-danger" :disabled="busyId === pendingDelete.rec.id" @click="lib.runDismiss(pendingDelete.rec.id, 'remove')">Delete PC copy and remove from list</button>
         </template>
       </UfDialog>
 
-      <UfDialog :open="!!confirmState" title="Are you sure?" :width="460" @close="answerConfirm(false)">
+      <UfDialog :open="!!confirmState" title="Confirm delete" :width="460" @close="answerConfirm(false)">
         <p class="uf-t2" style="margin: 0">{{ confirmState?.text }}</p>
         <template #actions>
           <button type="button" class="uf-link" @click="answerConfirm(false)">Cancel</button>
@@ -270,6 +356,8 @@ const countLine = computed(() => {
 .uf-skel-act { display: flex; justify-content: flex-end; padding-right: 54px; }
 .uf-matches { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; background: var(--uf-bg); }
 .uf-filters { flex: none; display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding: 14px 40px 4px; }
+.uf-search { gap: 12px; padding-top: 8px; }
+.uf-search-box { flex: 1 1 320px; max-width: 460px; height: 32px; font-size: 13px; }
 .uf-filter-opt { display: inline-flex; align-items: baseline; gap: 10px; }
 /* Filters are secondary to the view tabs above: muted, and the active one is bone with a thin bone line (no red). */
 .uf-note { margin: 12px 40px 0; padding: 12px 0; border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); }
@@ -281,4 +369,5 @@ const countLine = computed(() => {
 .uf-more { margin-top: 12px; }
 .uf-bulk { flex: none; display: flex; align-items: center; justify-content: center; gap: 18px; padding: 12px 40px; border-top: 1px solid var(--uf-line); background: var(--uf-chrome); }
 .uf-danger { color: var(--uf-loss); border-color: rgba(232, 80, 91, 0.5); }
+.uf-bulk-del { display: inline-flex; align-items: center; gap: 8px; }
 </style>

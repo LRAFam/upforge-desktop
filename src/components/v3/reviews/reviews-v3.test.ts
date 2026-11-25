@@ -57,3 +57,22 @@ describe('reviewPlayedAt with played_at (audit 2026-11-02)', () => {
     expect(ms).toBe(Date.parse('2026-09-05T18:00:00Z'))
   })
 })
+
+describe('Coaching reviews queues and counts (UX1124-16)', () => {
+  it('says when the list is the latest 50, and how many match a filter', async () => {
+    const { reviewCountLine } = await import('./reviews-v3')
+    expect(reviewCountLine({ shown: 50, loaded: 50 })).toBe('Showing your latest 50 reviews')
+    expect(reviewCountLine({ shown: 12, loaded: 50 })).toBe('12 of your latest 50 reviews match this filter')
+    expect(reviewCountLine({ shown: 7, loaded: 7 })).toBe('7 reviews')
+    expect(reviewCountLine({ shown: 1, loaded: 1 })).toBe('1 review')
+    expect(reviewCountLine({ shown: 2, loaded: 7 })).toBe('2 of 7 reviews match this filter')
+  })
+  it('shows the queue that holds the selected item', async () => {
+    const { queueFor } = await import('./reviews-v3')
+    expect(queueFor({ selectedReview: true, selectedWaiting: false, reviewed: 5, waiting: 5, current: 'waiting' })).toBe('reviewed')
+    expect(queueFor({ selectedReview: false, selectedWaiting: true, reviewed: 5, waiting: 5, current: 'reviewed' })).toBe('waiting')
+    expect(queueFor({ selectedReview: false, selectedWaiting: false, reviewed: 0, waiting: 3 })).toBe('waiting')
+    expect(queueFor({ selectedReview: false, selectedWaiting: false, reviewed: 2, waiting: 3 })).toBe('reviewed')
+    expect(queueFor({ selectedReview: false, selectedWaiting: false, reviewed: 2, waiting: 3, current: 'waiting' })).toBe('waiting')
+  })
+})

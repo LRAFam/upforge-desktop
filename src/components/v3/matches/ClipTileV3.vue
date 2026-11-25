@@ -3,6 +3,8 @@
 import { ref } from 'vue'
 import type { ClipRecord } from '../../../env.d'
 import UfIcon from '../UfIcon.vue'
+import { clipDeleteMessage } from '../../../lib/delete-copy'
+import { clipMomentFacts } from '../../../lib/clip-priority'
 
 defineProps<{
   clip: ClipRecord
@@ -42,7 +44,8 @@ const confirming = ref(false)
         <span class="uf-t3 uf-trunc">{{ title }}</span>
         <span class="uf-t4">{{ ago }}</span>
       </div>
-      <span v-if="clip.map || clip.agent" class="uf-t4">{{ [clip.map, clip.agent].filter(Boolean).join(' · ') }}</span>
+      <!-- Round and video time tell same-kind moments apart (length is on the thumbnail). -->
+      <span v-if="clip.map || clip.agent || clipMomentFacts({ ...clip, durationSeconds: null }).length" class="uf-t4">{{ [...clipMomentFacts({ ...clip, durationSeconds: null }), clip.map, clip.agent].filter(Boolean).join(' · ') }}</span>
       <span v-if="clip.suggestion" class="uf-t4 uf-clip-tip">{{ clip.suggestion }}</span>
       <span v-else-if="clip.analysisStatus === 'queued' || clip.analysisStatus === 'processing'" class="uf-t4"><span class="uf-live">●</span> Analysing…</span>
       <div v-if="!bulk" class="uf-clip-actions">
@@ -58,11 +61,15 @@ const confirming = ref(false)
         </button>
         <span v-else class="uf-t4">In the cloud</span>
         <span style="flex: 1" />
-        <template v-if="confirming">
-          <button type="button" class="uf-link uf-danger" @click="confirming = false; emit('delete')">Delete</button>
+        <button v-if="!confirming" type="button" class="uf-clip-del" @click="confirming = true"><UfIcon name="trash" :size="14" />Delete</button>
+      </div>
+      <!-- Says what goes and from where before anything is deleted. -->
+      <div v-if="confirming && !bulk" class="uf-clip-confirm" role="group" aria-label="Confirm delete">
+        <span class="uf-t4">{{ clipDeleteMessage(clip) }}</span>
+        <span class="uf-clip-confirm-acts">
+          <button type="button" class="uf-clip-del is-armed" @click="confirming = false; emit('delete')"><UfIcon name="trash" :size="14" />Delete from PC</button>
           <button type="button" class="uf-link" @click="confirming = false">Keep</button>
-        </template>
-        <button v-else type="button" class="uf-clip-del" aria-label="Delete clip" @click="confirming = true"><UfIcon name="close" :size="14" /></button>
+        </span>
       </div>
     </div>
   </article>
@@ -87,9 +94,14 @@ const confirming = ref(false)
 .uf-trunc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .uf-clip-tip { color: var(--uf-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .uf-clip-actions { display: flex; align-items: center; gap: 14px; padding-top: 6px; }
-.uf-clip-fav, .uf-clip-del { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: none; border: 1px solid var(--uf-line); color: var(--uf-faint); cursor: pointer; }
+.uf-clip-fav { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: none; border: 1px solid var(--uf-line); color: var(--uf-faint); cursor: pointer; }
+/* Delete reads as delete: trash + text in the loss colour, never a dismiss X. */
+.uf-clip-del { height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; background: none; border: 1px solid var(--uf-line); color: var(--uf-loss); cursor: pointer; font: 600 13px/1 var(--uf-body); }
+.uf-clip-del.is-armed { border-color: var(--uf-loss); }
+.uf-clip-confirm { display: flex; flex-direction: column; gap: 8px; padding: 8px 0 0; border-top: 1px solid var(--uf-line); }
+.uf-clip-confirm-acts { display: flex; align-items: center; gap: 14px; }
 .uf-clip-fav.is-on { color: var(--uf-gold); border-color: rgba(232, 194, 106, 0.5); }
 .uf-clip-fav:hover { color: var(--uf-gold); }
-.uf-clip-del:hover { color: var(--uf-loss); border-color: var(--uf-loss); }
+.uf-clip-del:hover, .uf-clip-del:focus-visible { border-color: var(--uf-loss); background: rgba(232, 80, 91, 0.08); }
 .uf-danger { color: var(--uf-loss); }
 </style>

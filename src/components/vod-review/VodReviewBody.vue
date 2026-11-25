@@ -15,6 +15,7 @@ import DuelMomentCards from '../analysis/DuelMomentCards.vue'
 import AnalysisReviewDetails from '../analysis/AnalysisReviewDetails.vue'
 import AskMatchPanelV3 from '../v3/matchpage/ask/AskMatchPanelV3.vue'
 import { askAnalysisId } from '../v3/matchpage/ask/ask-match'
+import { MAP_TAB_LABEL, NOTES_TAB_LABEL } from '../v3/matchpage/match-page-v3'
 import { askPanelState } from '../v3/matchpage/ask/ask-state'
 import { getAgentImage, getAbilityIcon } from '../../lib/valorant'
 import { valorantTierIcon } from '../../lib/player-identity'
@@ -24,6 +25,7 @@ import VodMatchTimelineSidebar from './VodMatchTimelineSidebar.vue'
 import VodDemoPendingPanel from './VodDemoPendingPanel.vue'
 import Cs2FaceitAttach from '../v3/games/Cs2FaceitAttach.vue'
 import VodTimelineEventIcon from './VodTimelineEventIcon.vue'
+import VodEventTimingControl from './VodEventTimingControl.vue'
 import { recordingTimelineReady, usesAsyncDemoSync } from '../../lib/recording-demo-status'
 import { extraCoachNotes as pickExtraCoachNotes, moreDetailSummary as describeMoreDetail, momentsToWatch } from '../analysis/review-panel'
 
@@ -171,8 +173,7 @@ function v3MarkerClass(kind: string) {
 // v3 "Ask about this match" (AI) tab. Local state on top of the notes panel: the composable only knows notes/map.
 const askId = computed(() => askAnalysisId(timeline.value?.analysisId))
 // Shared with the header's "Ask AI" tab (see ask-state.ts); mounted once so a draft survives tab switches.
-const { open: askOpen, mounted: askMounted, openAsk } = askPanelState(review)
-function showReview() { askOpen.value = false; setSidePanelTab('notes') }
+const { open: askOpen, mounted: askMounted } = askPanelState(review)
 
 const panelMoments = computed(() => momentsToWatch(hasDuelMoments.value ? duelMoments.value : []))
 const extraCoachNotes = computed(() => pickExtraCoachNotes(supplementalCoachingNotes.value, coachingDetail.value))
@@ -335,7 +336,7 @@ const noVideoHint = computed((): string => {
             >Retry cloud playback</button>
           </div>
 
-          <!-- Expand / fullscreen -->
+          <!-- Full screen (Focus video / theater lives in the header's View tools) -->
           <div
             v-if="timeline?.videoPath"
             class="absolute top-2 right-2 z-30 flex items-center gap-1"
@@ -344,21 +345,8 @@ const noVideoHint = computed((): string => {
             <button
               type="button"
               class="flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-black/60 text-gray-300 backdrop-blur-sm transition-colors hover:border-white/25 hover:bg-black/80 hover:text-white"
-              :class="theaterMode ? 'border-red-400/40 text-red-200' : ''"
-              :title="theaterMode ? 'Exit theater mode (T)' : 'Theater mode — maximize video (T)'"
-              @click="toggleTheaterMode"
-            >
-              <svg v-if="theaterMode" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 4H4v5M15 4h5v5M4 15v5h5M20 15v5h-5"/>
-              </svg>
-              <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/>
-              </svg>
-            </button>
-            <button
-              type="button"
-              class="flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-black/60 text-gray-300 backdrop-blur-sm transition-colors hover:border-white/25 hover:bg-black/80 hover:text-white"
-              :title="isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'"
+              :title="isFullscreen ? 'Exit full screen (F)' : 'Full screen (F)'"
+              :aria-label="isFullscreen ? 'Exit full screen' : 'Full screen'"
               @click="toggleFullscreen"
             >
               <svg v-if="isFullscreen" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -487,17 +475,18 @@ const noVideoHint = computed((): string => {
             v-else-if="hasSpatialIntel && displaySpatialSummary"
             type="button"
             class="absolute bottom-3 right-3 z-20 text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border border-white/10 bg-black/60 text-gray-400 hover:text-white pointer-events-auto"
+            title="Show the minimap on the video"
             @click.stop="spatialHudVisible = true"
-          >Show map</button>
+          >Show minimap</button>
 
           </div>
         </div>
 
-        <!-- Mobile / collapsed intel band — large map above scrubber -->
+        <!-- Narrow windows only: Map intel below the video (the side panel is hidden there). On wider
+             windows Map intel lives in the side panel, so the video keeps its height. -->
         <div
           v-if="hasSpatialIntel && !theaterMode"
-          class="flex-shrink-0 border-b border-white/[0.08] bg-[#131313] px-3 py-2"
-          :class="sidePanelOpen ? 'md:hidden' : ''"
+          class="flex-shrink-0 border-b border-white/[0.08] bg-[#131313] px-3 py-2 md:hidden"
           @click.stop
         >
           <div class="flex flex-col sm:flex-row gap-3 min-h-0">
@@ -520,7 +509,7 @@ const noVideoHint = computed((): string => {
             </div>
             <div class="flex-1 min-w-0 flex flex-col gap-2">
               <div class="flex flex-wrap items-center gap-2">
-                <span class="text-[9px] font-black uppercase tracking-[0.2em] text-red-400/85">Match Intel</span>
+                <span class="text-[9px] font-black uppercase tracking-[0.2em] text-red-400/85">{{ MAP_TAB_LABEL }}</span>
                 <button
                   type="button"
                   class="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md border transition-colors"
@@ -580,16 +569,7 @@ const noVideoHint = computed((): string => {
                 </button>
               </div>
               <div class="flex flex-wrap items-center gap-2 pt-0.5">
-                <div
-                  v-if="recordingId"
-                  class="flex items-center gap-1 rounded-md border border-white/[0.08] bg-black/30 px-1.5 py-0.5"
-                >
-                  <span class="text-[8px] text-gray-600">Sync</span>
-                  <button type="button" class="text-[9px] font-bold px-1 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white" title="Shift events 1s earlier" @click="nudgeTimelineSync(-1000)">−1s</button>
-                  <span class="text-[8px] tabular-nums text-gray-600 min-w-[2.25rem] text-center">{{ syncOffsetLabel }}</span>
-                  <button type="button" class="text-[9px] font-bold px-1 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white" title="Shift events 1s later" @click="nudgeTimelineSync(1000)">+1s</button>
-                  <button v-if="videoSyncOffsetMs" type="button" class="text-[8px] px-1 py-0.5 rounded text-gray-600 hover:text-gray-300" title="Reset sync offset" @click="resetTimelineSync">↺</button>
-                </div>
+                <VodEventTimingControl v-if="recordingId" compact />
                 <p v-if="!canSeekFromSpatial" class="text-[9px] text-amber-300/75">
                   <template v-if="spatialPreviewAvailable">1 free seek ·</template>
                   <button type="button" class="underline hover:text-amber-200" @click="openUpgrade">Plus</button>
@@ -602,6 +582,8 @@ const noVideoHint = computed((): string => {
         <!-- Slim intel strip when side panel is open (desktop) — removed; intel lives in side panel -->
 
 <template v-if="uiV3">
+        <!-- Timeline markers are mouse shortcuts only (tabindex -1): keyboard users have J / L for events and the
+             round log / notes lists, so the markers don't add dozens of Tab stops. -->
         <div class="vb3-transport">
           <div class="vb3-scrub" @click="onScrubberClick" @mousemove="onScrubberHover" @mouseleave="hoverTime = null">
             <div class="vb3-track">
@@ -611,10 +593,10 @@ const noVideoHint = computed((): string => {
               <template v-if="isRoundBased">
                 <div v-for="sep in roundSeparators" :key="sep.percent" class="vb3-sep" :style="{ left: sep.percent + '%' }" />
               </template>
-              <button v-for="marker in aiCoachingMarkers" :key="marker.key" type="button" class="vb3-mk vb3-mk--ai" :style="{ left: marker.percent + '%' }" :title="`AI note: ${marker.label}`" :aria-label="`AI note: ${marker.label}`" @click.stop="seekCoachingEvidence(marker.evidence)" />
-              <button v-for="marker in coachProgressMarkers" :key="marker.key" type="button" class="vb3-mk vb3-mk--coach" :style="{ left: marker.percent + '%' }" :title="`Coach note: ${marker.label}`" :aria-label="`Coach note: ${marker.label}`" @click.stop="jumpToCoachMarker(marker)" />
+              <button v-for="marker in aiCoachingMarkers" :key="marker.key" type="button" tabindex="-1" class="vb3-mk vb3-mk--ai" :style="{ left: marker.percent + '%' }" :title="`AI note: ${marker.label}`" :aria-label="`AI note: ${marker.label}`" @click.stop="seekCoachingEvidence(marker.evidence)" />
+              <button v-for="marker in coachProgressMarkers" :key="marker.key" type="button" tabindex="-1" class="vb3-mk vb3-mk--coach" :style="{ left: marker.percent + '%' }" :title="`Coach note: ${marker.label}`" :aria-label="`Coach note: ${marker.label}`" @click.stop="jumpToCoachMarker(marker)" />
               <template v-for="marker in progressMarkers" :key="marker.key">
-                <button v-if="marker.kind !== 'round' || isRoundBased" type="button" :class="v3MarkerClass(marker.kind)" :style="{ left: marker.percent + '%' }" :title="marker.label" :aria-label="marker.label" @click.stop="jumpToMarker(marker)" />
+                <button v-if="marker.kind !== 'round' || isRoundBased" type="button" tabindex="-1" :class="v3MarkerClass(marker.kind)" :style="{ left: marker.percent + '%' }" :title="marker.label" :aria-label="marker.label" @click.stop="jumpToMarker(marker)" />
               </template>
               <div v-if="hoverTime !== null" class="vb3-hover" :style="{ left: (hoverTime / duration * 100) + '%' }" />
             </div>
@@ -645,17 +627,9 @@ const noVideoHint = computed((): string => {
             <span class="uf-hair-v" />
             <button v-if="selectedRound && isRoundBased" type="button" class="vb3-tb" :class="{ 'vb3-tb--on': roundDetailExpanded }" :aria-expanded="roundDetailExpanded" @click="roundDetailExpanded = !roundDetailExpanded">R{{ selectedRound.roundNumber + 1 }} events <span class="uf-num" style="color: var(--uf-faint)">{{ selectedRound.events.length }}</span></button>
             <button type="button" class="vb3-tb" :class="{ 'vb3-tb--on': showScoreboard }" :aria-pressed="showScoreboard" @click="showScoreboard = !showScoreboard">Scoreboard</button>
-            <button type="button" class="vb3-tb" @click="showShortcuts = true">Shortcuts</button>
           </div>
         </div>
-        <div v-if="recordingId && timeline && !theaterMode" class="vb3-sync">
-          <span class="uf-label">Event timing</span>
-          <button type="button" class="vb3-tb uf-num" title="Move all events five seconds earlier in this recording" @click="nudgeTimelineSync(-5000)">−5s</button>
-          <button type="button" class="vb3-tb uf-num" title="Move all events one second earlier" @click="nudgeTimelineSync(-1000)">−1s</button>
-          <span class="uf-t3 uf-num" style="min-width: 44px; text-align: center">{{ syncOffsetLabel }}</span>
-          <button type="button" class="vb3-tb uf-num" title="Move all events one second later" @click="nudgeTimelineSync(1000)">+1s</button>
-          <span class="uf-t4">Events late? Move them earlier. Saved for this recording.</span>
-        </div>
+        <VodEventTimingControl v-if="recordingId && timeline && !theaterMode" />
 </template>
 <template v-else>
         <!-- Transport deck -->
@@ -1113,10 +1087,9 @@ const noVideoHint = computed((): string => {
         @click.stop
       >
 <template v-if="uiV3">
-        <div class="vb3-sidetabs" role="tablist" aria-label="Review panel">
-          <button type="button" role="tab" class="vb3-sidetab" :class="{ 'vb3-sidetab--on': showInsightsPanel && !askOpen }" :aria-selected="showInsightsPanel && !askOpen" @click="showReview">Review</button>
-          <button v-if="hasSpatialIntel" type="button" role="tab" class="vb3-sidetab" :class="{ 'vb3-sidetab--on': spatialMapVisible }" :aria-selected="spatialMapVisible" @click="setSidePanelTab('map')">Map intel</button>
-          <button v-if="askId" type="button" role="tab" class="vb3-sidetab" :class="{ 'vb3-sidetab--on': askOpen }" :aria-selected="askOpen" title="Ask the AI about this match" @click="openAsk">Ask AI</button>
+        <!-- The header's section tabs switch this panel; here it only says what is showing. -->
+        <div class="vb3-sidetabs">
+          <span class="vb3-sidetitle">{{ askOpen ? 'Ask AI' : spatialMapVisible ? MAP_TAB_LABEL : NOTES_TAB_LABEL }}</span>
           <span style="flex: 1" />
           <button v-if="spatialMapVisible && hasSpatialIntel" type="button" class="vb3-ib" :aria-label="spatialMapLarge ? 'Standard map size' : 'Larger map'" :title="spatialMapLarge ? 'Standard map size' : 'Larger map'" @click="spatialMapLarge = !spatialMapLarge">{{ spatialMapLarge ? '−' : '+' }}</button>
           <button type="button" class="vb3-ib" aria-label="Close panel" title="Close panel (N / M)" @click="setSidePanelTab(null)"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 20 20"><path stroke-width="1.75" d="m12.5 5.5-5 4.5 5 4.5"/></svg></button>
@@ -1161,7 +1134,7 @@ const noVideoHint = computed((): string => {
         </div>
 
 </template>
-        <div v-show="showInsightsPanel && !askOpen" class="vod-notes-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-4">
+        <div v-show="showInsightsPanel && !askOpen" tabindex="-1" aria-label="Coach notes" class="vod-notes-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-4">
           <!-- One notebook instance for both UIs (an unsaved note must survive panel toggles). In v3 it is
                moved below the coach's lead blocks with CSS order, not by remounting it. -->
           <VodPersonalReview class="vb3-notebook" />
@@ -1390,16 +1363,7 @@ const noVideoHint = computed((): string => {
             </div>
           </div>
 
-          <div
-            v-if="recordingId"
-            class="flex flex-wrap items-center gap-2 rounded-lg border border-white/[0.08] bg-black/25 px-2.5 py-2"
-          >
-            <span class="text-[9px] font-semibold uppercase tracking-wider text-gray-600">Video sync</span>
-            <button type="button" class="text-[10px] font-bold px-2 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white" @click="nudgeTimelineSync(-1000)">−1s</button>
-            <span class="text-[10px] tabular-nums text-gray-400 min-w-[2.5rem] text-center">{{ syncOffsetLabel }}</span>
-            <button type="button" class="text-[10px] font-bold px-2 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white" @click="nudgeTimelineSync(1000)">+1s</button>
-            <button v-if="videoSyncOffsetMs" type="button" class="text-[9px] px-1.5 py-0.5 rounded text-gray-600 hover:text-gray-300" @click="resetTimelineSync">Reset</button>
-          </div>
+          <VodEventTimingControl v-if="recordingId" compact />
 
           <p v-if="!canSeekFromSpatial" class="text-[10px] text-amber-300/80">
             <template v-if="spatialPreviewAvailable">1 free death seek ·</template>
@@ -1469,7 +1433,6 @@ const noVideoHint = computed((): string => {
 .vb3-key-dot--kill { background: var(--uf-win); }
 .vb3-key-dot--death { background: var(--uf-loss); }
 .vb3-key-dot--ai { width: 7px; height: 7px; background: var(--uf-bone); transform: rotate(45deg); }
-.vb3-sync { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 24px; border-top: 1px solid var(--uf-line); }
 .vb3-board { flex-shrink: 0; max-height: 260px; overflow-y: auto; border-top: 1px solid var(--uf-line); padding: 0 24px 8px; }
 .vb3-board table { width: 100%; border-collapse: collapse; }
 .vb3-board th { text-align: right; padding: 10px 0 8px 16px; position: sticky; top: 0; background: var(--uf-bg); }
@@ -1489,6 +1452,7 @@ const noVideoHint = computed((): string => {
 .vb3-sidetab { height: 44px; padding: 0 12px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--uf-faint); cursor: pointer; font: 600 12px/1 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; }
 .vb3-sidetab:hover { color: var(--uf-bone); }
 .vb3-sidetab--on { color: var(--uf-bone); border-bottom-color: var(--uf-red); }
+.vb3-sidetitle { align-self: center; color: var(--uf-bone); font: 600 12px/1 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; }
 .vb3-sidetabs .vb3-ib { align-self: center; }
 .vb3-habit { display: flex; flex-direction: column; gap: 2px; }
 .vb3-habit .uf-t4 { color: var(--uf-muted); line-height: 1.45; }

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * UI v3 match page header: compact hero (map art, result, score, K/D/A), one row of
- * section tabs + every action the old command bar offered, the coach's sentence and the
- * rounds line. All data comes from the injected review context.
+ * section tabs + every action the old command bar offered, and the coach's sentence. The rounds
+ * strip lives in the collapsible match summary (MatchRoundsStripV3). All data comes from the injected review context.
  */
 import { computed, ref } from 'vue'
 import { useVodReview } from '../../../composables/useVodReview'
@@ -10,13 +10,12 @@ import UfHeroBand from '../UfHeroBand.vue'
 import UfTabs from '../UfTabs.vue'
 import UfButton from '../UfButton.vue'
 import UfIcon from '../UfIcon.vue'
-import UfRoundsLine from '../UfRoundsLine.vue'
 import UfSkeleton from '../UfSkeleton.vue'
 import { deadlockRecordingHero, loadDeadlockHeroesOnce } from '../../../lib/deadlock-hero-names'
 import { matchReportPath } from '../../../lib/match-report'
 import { mapDisplayName } from '../games/display-names'
 import { matchMapArt } from '../matches/match-meta'
-import { coachLine, coachReplied, firstDeathEvent, matchResult, NOTES_TAB_LABEL, roundsForLine, showRoundRecord, statsOnlyNotice } from './match-page-v3'
+import { coachLine, coachReplied, firstDeathEvent, MAP_TAB_LABEL, matchResult, NOTES_TAB_LABEL, roundsForLine, showRoundRecord, statsOnlyNotice } from './match-page-v3'
 import { askAnalysisId } from './ask/ask-match'
 import { askPanelState, headerTab, type MatchHeaderTab } from './ask/ask-state'
 
@@ -25,13 +24,11 @@ const emit = defineEmits<{ 'toggle-workspace': []; 'reset-layout': []; compare: 
 
 const review = useVodReview()
 const {
-  activeRoundNumber,
   agentImageUrl,
   allTimelineEvents,
   canTrimLocalVod,
   coachingDetail,
   coachReview,
-  currentTime,
   detailLoading,
   displayGameMode,
   hasSpatialIntel,
@@ -44,7 +41,6 @@ const {
   roundRecord,
   router,
   seekToEvent,
-  seekToRound,
   showInsightsPanel,
   showShortcuts,
   spatialMapVisible,
@@ -82,7 +78,7 @@ const tab = computed<MatchHeaderTab>(() => headerTab({
 const tabs = computed(() => [
   { key: 'replay', label: 'Replay' },
   { key: 'notes', label: NOTES_TAB_LABEL, count: coachReplied(coachReview.value) && !showInsightsPanel.value ? 'new' : null },
-  ...(hasSpatialIntel.value ? [{ key: 'map', label: 'Map' }] : []),
+  ...(hasSpatialIntel.value ? [{ key: 'map', label: MAP_TAB_LABEL }] : []),
   ...(askId.value ? [{ key: 'ask', label: 'Ask AI' }] : []),
 ])
 function onTab(key: string) {
@@ -90,16 +86,6 @@ function onTab(key: string) {
 }
 
 const roundBars = computed(() => (isRoundBased.value ? roundsForLine(roundGroups.value, allTimelineEvents.value) : []))
-// No highlight at 0:00 before anything played: R1 isn't "selected" just because the video starts there.
-const selectedRound = computed(() => {
-  if (activeRoundNumber.value == null || currentTime.value <= 0) return null
-  const i = roundGroups.value.findIndex(r => r.roundNumber === activeRoundNumber.value)
-  return i >= 0 ? i + 1 : null
-})
-function onRoundSelect(n: number) {
-  const g = roundGroups.value[n - 1]
-  if (g) seekToRound(g)
-}
 const markedCount = computed(() => roundBars.value.filter(r => r.marked).length)
 
 const coach = computed(() => coachLine(coachingDetail.value, roundGroups.value, allTimelineEvents.value, isRoundBased.value))
@@ -110,16 +96,15 @@ function watchFirstDeath() {
 }
 
 const layoutOpen = ref(false)
-const theaterLabel = computed(() => props.workspace
-  ? (theaterMode.value ? 'Restore panels' : 'Focus video')
-  : (theaterMode.value ? 'Exit theater' : 'Theater mode'))
+// One name in both layouts (the shortcut list and tooltips use it too).
+const theaterLabel = computed(() => (theaterMode.value ? 'Show panels' : 'Focus video'))
 function back() { router.back() }
 const workspaceOn = computed(() => props.workspace)
 </script>
 
 <template>
   <header class="uf-mp-head" @keydown.stop>
-    <UfHeroBand :art="heroArt" :result="result?.word" :tone="result?.tone ?? 'none'" :meta="meta" :height="150" art-position="center 45%">
+    <UfHeroBand :art="heroArt" :result="result?.word" :tone="result?.tone ?? 'none'" :meta="meta" :height="112" art-position="center 45%">
       <div class="uf-mp-score">
         <img v-if="agentImageUrl" :src="agentImageUrl" alt="" class="uf-mp-agent">
         <span v-if="matchScoreline" class="uf-d2 uf-num">{{ matchScoreline.ally }}<span class="uf-mp-dash">–</span>{{ matchScoreline.enemy }}</span>
@@ -137,41 +122,43 @@ const workspaceOn = computed(() => props.workspace)
       <UfTabs :items="tabs" :model-value="tab" label="Match sections" @update:model-value="onTab" />
       <button v-if="reportPath" type="button" class="uf-link" title="Free data report for this match" @click="router.push(reportPath)">Match report</button>
       <div class="uf-mp-spacer" />
-      <!-- View tools: secondary, icon-only, grouped apart from the section tabs. -->
-      <div class="uf-mp-tools" role="toolbar" aria-label="View options">
+      <!-- View: how the review is laid out. Icon + text so each tool says what it does. Playback lives
+           under the video; analysis actions (trim, compare, first death) sit to the right. -->
+      <div class="uf-mp-tools" role="toolbar" aria-label="View">
         <button v-if="!theaterMode && roundGroups.length" type="button" class="uf-mp-tool" :aria-pressed="!roundLogCollapsed"
-          :aria-label="`${roundLogCollapsed ? 'Show' : 'Hide'} ${isRoundBased ? 'round log' : 'match timeline'}`"
-          :title="`${roundLogCollapsed ? 'Show' : 'Hide'} ${isRoundBased ? 'round log' : 'match timeline'} (B)`" @click="roundLogCollapsed = !roundLogCollapsed">
-          <UfIcon name="list" />
+          :title="`${roundLogCollapsed ? 'Show' : 'Hide'} the ${isRoundBased ? 'round log' : 'match timeline'} (B)`" @click="roundLogCollapsed = !roundLogCollapsed">
+          <UfIcon name="list" :size="16" /><span>{{ isRoundBased ? 'Round log' : 'Timeline' }}</span>
         </button>
-        <button v-if="canTrimLocalVod" type="button" class="uf-mp-tool" aria-label="Trim local recording file" title="Trim local recording file" @click="openVodTrim">
-          <UfIcon name="trim" />
-        </button>
-        <button v-if="timeline?.videoPath" type="button" class="uf-mp-tool" :aria-pressed="theaterMode" :aria-label="theaterLabel"
-          :title="`${theaterLabel} (T)`" @click="toggleTheaterMode">
-          <UfIcon name="expand" />
-        </button>
-        <button type="button" class="uf-mp-tool" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" @click="showShortcuts = true">
-          <UfIcon name="keyboard" />
+        <button v-if="timeline?.videoPath" type="button" class="uf-mp-tool" :aria-pressed="theaterMode"
+          :title="`${theaterLabel}: hide the side panels (T). Full screen is on the video (F).`" @click="toggleTheaterMode">
+          <UfIcon name="expand" :size="16" /><span>{{ theaterLabel }}</span>
         </button>
         <div v-if="workspaceOn" class="uf-mp-layout">
-          <button type="button" class="uf-mp-tool" aria-label="Layout options" title="Layout options" aria-haspopup="menu" :aria-expanded="layoutOpen" @click="layoutOpen = !layoutOpen" @keydown.esc="layoutOpen = false">
-            <UfIcon name="columns" />
+          <button type="button" class="uf-mp-tool" title="Layout options" aria-haspopup="menu" :aria-expanded="layoutOpen" @click="layoutOpen = !layoutOpen" @keydown.esc="layoutOpen = false">
+            <UfIcon name="columns" :size="16" /><span>Layout</span>
           </button>
           <div v-if="layoutOpen" class="uf-mp-menu" role="menu" @click="layoutOpen = false">
             <button type="button" role="menuitem" @click="emit('reset-layout')">Reset layout</button>
             <button type="button" role="menuitem" @click="emit('toggle-workspace')">Use classic layout</button>
           </div>
         </div>
-        <button v-else type="button" class="uf-mp-tool" aria-label="Try the workspace layout" title="Try the workspace layout" @click="emit('toggle-workspace')">
-          <UfIcon name="columns" />
+        <button v-else type="button" class="uf-mp-tool" title="Resizable panels for the round log and notes" @click="emit('toggle-workspace')">
+          <UfIcon name="columns" :size="16" /><span>Layout</span>
+        </button>
+        <button type="button" class="uf-mp-tool" title="Keyboard shortcuts (?)" @click="showShortcuts = true">
+          <UfIcon name="keyboard" :size="16" /><span>Shortcuts</span>
         </button>
       </div>
-      <UfButton v-if="canCompare" icon="swap" @click="emit('compare')">Compare moments</UfButton>
-      <UfButton v-if="firstDeath" variant="primary" icon="play" @click="watchFirstDeath">Watch first death</UfButton>
+      <div class="uf-mp-tools" role="toolbar" aria-label="Analysis">
+        <button v-if="canTrimLocalVod" type="button" class="uf-mp-tool" title="Cut the start or end off the recording file on this PC" @click="openVodTrim">
+          <UfIcon name="trim" :size="16" /><span>Trim file</span>
+        </button>
+        <UfButton v-if="canCompare" icon="swap" @click="emit('compare')">Compare moments</UfButton>
+        <UfButton v-if="firstDeath" variant="primary" icon="play" @click="watchFirstDeath">Watch first death</UfButton>
+      </div>
     </div>
 
-    <div v-if="coach || roundBars.length || detailLoading" class="uf-mp-story">
+    <div v-if="coach || statsOnly || detailLoading" class="uf-mp-story">
       <!-- Hold the sentence until coaching detail lands, so a data-only line never swaps for the coach's. -->
       <p v-if="coach && !detailLoading" class="uf-mp-coach uf-reveal">
         <UfIcon name="chat" :size="15" />
@@ -187,17 +174,6 @@ const workspaceOn = computed(() => props.workspace)
         <span style="color: var(--uf-gold); font-weight: 600">{{ statsOnly.title }}.</span>
         {{ statsOnly.message }}<template v-if="statsOnly.limitation"> {{ statsOnly.limitation }}</template>
       </p>
-      <div v-if="roundBars.length" class="uf-mp-rounds">
-        <div class="uf-mp-rounds-head">
-          <span class="uf-label">Rounds</span>
-          <span class="uf-mp-legend">
-            <span><i class="uf-mp-key uf-mp-key--win" />Won</span>
-            <span><i class="uf-mp-key" />Lost</span>
-            <span v-if="markedCount > 0"><i class="uf-mp-key uf-mp-key--mark" />You died first</span>
-          </span>
-        </div>
-        <UfRoundsLine :rounds="roundBars" :selected="selectedRound" :height="22" @select="onRoundSelect" />
-      </div>
     </div>
   </header>
 </template>
@@ -211,25 +187,17 @@ const workspaceOn = computed(() => props.workspace)
 .uf-mp-bar { display: flex; align-items: center; gap: 18px; padding: 10px 40px; border-top: 1px solid var(--uf-line); flex-wrap: wrap; }
 .uf-mp-back { flex: none; }
 .uf-mp-spacer { flex: 1; }
-.uf-mp-tools { display: flex; align-items: center; gap: 2px; padding-left: 14px; border-left: 1px solid var(--uf-line); }
-.uf-mp-tool { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: none; border: 0; color: var(--uf-faint); cursor: pointer; }
+.uf-mp-tools { display: flex; align-items: center; gap: 8px; padding-left: 14px; border-left: 1px solid var(--uf-line); }
+.uf-mp-tool { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; background: none; border: 0; color: var(--uf-faint); cursor: pointer; font: 500 13px/1 var(--uf-body); white-space: nowrap; }
+.uf-mp-tools:empty { display: none; }
 .uf-mp-tool:hover, .uf-mp-tool:focus-visible { color: var(--uf-bone); background: var(--uf-hover); }
 .uf-mp-tool[aria-pressed='true'] { color: var(--uf-bone); }
 .uf-mp-layout { position: relative; }
 .uf-mp-menu { position: absolute; top: 100%; right: 0; z-index: 40; display: grid; min-width: 180px; padding: 4px 0; background: var(--uf-raised); border: 1px solid var(--uf-line-2); }
 .uf-mp-menu button { padding: 10px 14px; text-align: left; background: none; border: 0; color: var(--uf-bone); font: 400 13px/1.4 var(--uf-body); cursor: pointer; }
 .uf-mp-menu button:hover { background: var(--uf-hover); }
-.uf-mp-story { display: flex; flex-direction: column; gap: 12px; padding: 12px 40px 14px; border-top: 1px solid var(--uf-line); }
+.uf-mp-story { display: flex; flex-direction: column; gap: 8px; padding: 10px 40px; border-top: 1px solid var(--uf-line); }
 .uf-mp-coach { margin: 0; display: flex; align-items: baseline; gap: 10px; color: var(--uf-faint); }
 .uf-mp-coach svg { align-self: center; }
 .uf-mp-coach--loading { align-items: center; }
-/* Lost rounds read as muted loss red, not an empty track; the current round is marked by its number,
-   not an outline box. (Asked the lead to make this UfRoundsLine's default — see notes-audit-matchpage.md.) */
-.uf-mp-rounds { display: flex; flex-direction: column; gap: 8px; max-width: 760px; }
-.uf-mp-rounds-head { display: flex; justify-content: space-between; align-items: center; }
-.uf-mp-legend { display: flex; gap: 16px; font: 400 13px/1.4 var(--uf-body); color: var(--uf-faint); }
-.uf-mp-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.uf-mp-key { display: inline-block; width: 9px; height: 9px; background: var(--uf-mp-lost); }
-.uf-mp-key--win { background: var(--uf-win); }
-.uf-mp-key--mark { width: 12px; height: 3px; background: var(--uf-red); }
 </style>

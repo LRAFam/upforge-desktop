@@ -149,6 +149,7 @@ const api = {
   notifications: {
     inbox: () => ipcRenderer.invoke('notifications:inbox'),
     markRead: (id: number) => ipcRenderer.invoke('notifications:mark-read', id) as Promise<{ ok: boolean }>,
+    markAllRead: () => ipcRenderer.invoke('notifications:mark-all-read') as Promise<{ ok: boolean }>,
   },
   billing: {
     openPortal: () => ipcRenderer.invoke('billing:open-portal') as Promise<{ ok: boolean; error?: string }>,
