@@ -124,3 +124,42 @@ describe('modeSkippedMessage', () => {
     expect(modeSkippedMessage('lol', 'ARAM')).toMatch(/^ARAM is not in your recorded modes/)
   })
 })
+
+describe('Other modes switch', () => {
+  const named = ['COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'TEAMDEATHMATCH', 'SPIKERUSH', 'SWIFTPLAY', 'SHOOTING_RANGE']
+
+  it('records Skirmish 2v2 when Other modes is on', () => {
+    expect(isModeFilteredOut(['COMPETITIVE', 'OTHER'], 'SKIRMISH2V2', VALORANT_RECORDABLE_MODES)).toBe(false)
+  })
+
+  it('skips Skirmish 2v2 when every named mode is on but Other modes is off', () => {
+    expect(isModeFilteredOut(named, 'SKIRMISH2V2', VALORANT_RECORDABLE_MODES)).toBe(true)
+  })
+
+  it('does not let Other modes record a named mode that is off', () => {
+    expect(isModeFilteredOut(['COMPETITIVE', 'OTHER'], 'DEATHMATCH', VALORANT_RECORDABLE_MODES)).toBe(true)
+  })
+
+  it('every mode the settings list offers has a matching switch in the recorder', () => {
+    expect([...VALORANT_RECORDABLE_MODES].sort()).toEqual([...named, 'OTHER'].sort())
+  })
+
+  it('tells the player which switch to turn on for a mode without its own switch', () => {
+    expect(modeSkippedMessage('valorant', 'SKIRMISH2V2')).toBe(
+      'Skirmish 2v2 was not recorded because Other modes is off. Turn on Other modes in Settings → Recording to capture it.',
+    )
+    expect(modeSkippedMessage('cs2', 'ARMS_RACE')).toMatch(/^Arms Race was not recorded because Other modes is off/)
+  })
+
+  it('keeps recording everything for players who had every old mode ticked', () => {
+    const oldAll = ['COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'TEAMDEATHMATCH', 'SPIKERUSH', 'SWIFTPLAY', 'SNOWBALL', 'SHOOTING_RANGE']
+    const migrated = migrateRecordedModesByGame(undefined, { valorant: oldAll, cs2: ['COMPETITIVE', 'PREMIER', 'WINGMAN', 'CASUAL', 'DEATHMATCH'] })
+    expect(migrated.valorant).toContain('OTHER')
+    expect(migrated.cs2).toContain('OTHER')
+    expect(isModeFilteredOut(migrated.valorant, 'SKIRMISH2V2', VALORANT_RECORDABLE_MODES)).toBe(false)
+  })
+
+  it('does not widen a partial choice', () => {
+    expect(migrateRecordedModesByGame(undefined, { valorant: named }).valorant).not.toContain('OTHER')
+  })
+})
