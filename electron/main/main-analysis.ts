@@ -503,17 +503,19 @@ export function createMainAnalysis(mainProcess: MainAnalysisContext) {
           effectivePath = videoPath
         }
       }
+      // Enforce the cap on the actual file, including a rejected sibling falling back to the source.
+      const effectiveSizeBytes = fs.statSync(effectivePath).size
       if (recordingId) {
         mainProcess.recordingsStore.updatePath(recordingId, effectivePath)
         mainProcess.notifyRecordingsUpdated()
       }
       if (resolved.compressed && effectivePath !== videoPath) {
-        const newGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(2)
+        const newGB = (effectiveSizeBytes / (1024 ** 3)).toFixed(2)
         mainProcess.logActivity(`Compressed recording to ${newGB} GB — uploading`)
       }
-      if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
-        const sizeGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(1)
-        const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, true)
+      if (effectiveSizeBytes > MAX_RECORDING_FILE_BYTES) {
+        const sizeGB = (effectiveSizeBytes / (1024 ** 3)).toFixed(1)
+        const errorMsg = formatRecordingTooLargeMessage(effectiveSizeBytes, true)
         log.warn(`[Upload] Still too large after compression (${sizeGB} GB) — clips only`)
         mainProcess.logActivity(`Recording still too large (${sizeGB} GB) — saving highlight clips only`)
         if (enrichPromise) {
