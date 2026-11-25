@@ -359,3 +359,34 @@ describe('Results rows: legacy runs and order (UX1124-21)', () => {
     expect(view).toContain('v-for="r in visibleRows"')
   })
 })
+
+describe('drill link and brief before launch (UX1124-22)', () => {
+  it('links a coaching drill to the differently named trainer drill', async () => {
+    const { trainsLink } = await import('./practice-v3')
+    expect(trainsLink('Head Height Pre-Aim on Dry Peeks', 'Angle Clearing')).toBe('Trains: Head Height Pre-Aim on Dry Peeks · Drill: Angle Clearing')
+    expect(trainsLink('Angle Clearing', 'angle clearing')).toBeNull()
+    expect(trainsLink('Something', null)).toBeNull()
+  })
+
+  it('gives the goal, what to do and what a run records', async () => {
+    const { drillBrief } = await import('./practice-v3')
+    const b = drillBrief('angle_clearing')!
+    expect(b.goal).toBe('Clear cover before taking a headshot.')
+    expect(b.how).toBe('Move sideways until the head clears cover, then click.')
+    expect(b.scored).toContain('records accuracy and')
+    expect(drillBrief('tracking')!.scored).toContain('records time on target.')
+    expect(drillBrief('nope')).toBeNull()
+  })
+
+  it('the launch dialog, the hero and the match rows show it', () => {
+    const dialog = readFileSync(join(__dirname, '..', '..', 'training', 'TrainingManualLaunchDialog.vue'), 'utf8')
+    expect(dialog).toContain('drillBrief(props.request.scenario)')
+    expect(dialog).toMatch(/<dt class="uf-t4">Goal<\/dt>[\s\S]*<dt class="uf-t4">Scoring<\/dt>/)
+    const page = readFileSync(join(__dirname, '..', '..', '..', 'views', 'v3', 'PracticeV3.vue'), 'utf8')
+    expect(page).toContain('trainsLink(nextDrill.value?.title, nextDrillLabel.value)')
+    expect(page).toContain('Practised in the trainer with {{ scenarioLabel(r.trainerScenario) }}')
+    const tile = readFileSync(join(__dirname, 'PracticeDrillTileV3.vue'), 'utf8')
+    expect(tile).toContain(':title="drill.description"')
+    expect(tile).toContain('-webkit-line-clamp: 2')
+  })
+})

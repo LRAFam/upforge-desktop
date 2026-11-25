@@ -31,6 +31,8 @@ import {
   routineFromDrills,
   routineFromSession,
   sessionMinutes,
+  drillBrief,
+  trainsLink,
   type DrillGroupId,
   type MatchDrillRow,
   type PracticeCategory,
@@ -129,6 +131,9 @@ const route = useRoute() as ReturnType<typeof useRoute> | undefined
 const router = useRouter() as ReturnType<typeof useRouter> | undefined
 const nextDrill = computed(() => pickNextDrill(route?.query ?? {}, props.matchDrills, props.drills.map(d => d.scenario)))
 const nextDrillLabel = computed(() => props.drills.find(d => d.scenario === nextDrill.value?.scenario)?.label ?? null)
+// A coaching drill can be practised with a differently named trainer drill: say which, and what it asks.
+const nextDrillLink = computed(() => trainsLink(nextDrill.value?.title, nextDrillLabel.value))
+const nextDrillBrief = computed(() => (nextDrill.value?.scenario ? drillBrief(nextDrill.value.scenario) : null))
 function playNextDrill() {
   const n = nextDrill.value
   if (!n?.scenario) return
@@ -301,6 +306,7 @@ function thumb(scenario: string | null | undefined) {
           <p class="uf-t1 uf-hero-say">{{ nextDrill.title }}</p>
           <p v-if="nextDrill.why" class="uf-t2 uf-hero-why">{{ nextDrill.why }}</p>
           <p v-else-if="nextDrill.goal" class="uf-t2 uf-hero-why">Goal: {{ nextDrill.goal }}</p>
+          <p v-if="nextDrillLink" class="uf-t4 uf-hero-why">{{ nextDrillLink }}<template v-if="nextDrillBrief">. {{ nextDrillBrief.goal }} {{ nextDrillBrief.how }}</template></p>
           <template v-if="!nextDrill.scenario">
             <p v-if="nextDrill.steps" class="uf-t4 uf-hero-why" style="color: var(--uf-bone); line-height: 1.5">{{ nextDrill.steps }}</p>
             <p v-if="nextDrill.goal && nextDrill.why" class="uf-t4 uf-hero-why">Goal: {{ nextDrill.goal }}</p>
@@ -386,10 +392,13 @@ function thumb(scenario: string | null | undefined) {
                   <span class="uf-t3">{{ r.title }}<span v-if="r.beta" class="uf-mrow-tag">Beta</span></span>
                   <span class="uf-t4">{{ r.fromMatches ? `From your match stats · ${r.meta}` : r.meta }}</span>
                   <span v-if="r.why" class="uf-t4" style="color: var(--uf-bone)">{{ r.why }}</span>
+                  <span v-if="r.trainerScenario && trainsLink(r.title, scenarioLabel(r.trainerScenario))" class="uf-t4">
+                    Practised in the trainer with {{ scenarioLabel(r.trainerScenario) }}<template v-if="drillBrief(r.trainerScenario)">: {{ drillBrief(r.trainerScenario)!.goal }}</template>
+                  </span>
                   <span v-if="r.stat" class="uf-t4 uf-mrow-stat" :style="r.stat.trend === 'better' ? 'color: var(--uf-win)' : undefined">{{ r.stat.text }}</span>
                   <TrainingDrillMoments v-if="r.hasMoments" :drill-id="r.id" />
                 </div>
-                <UfButton v-if="r.steps || r.goal" variant="link" :aria-expanded="openSteps === r.id"
+                <UfButton v-if="r.steps || r.goal || r.trainerScenario" variant="link" :aria-expanded="openSteps === r.id"
                   @click="openSteps = openSteps === r.id ? null : r.id">{{ openSteps === r.id ? 'Hide steps' : 'Steps' }}</UfButton>
                 <UfButton v-if="r.trainerScenario" variant="link" :disabled="busy" @click="emit('play-match-drill', r.id)">Play</UfButton>
                 <button type="button" class="uf-link" :aria-label="`Not now: ${r.title}`" @click="emit('dismiss-match-drill', r.id)">Not now</button>
@@ -397,6 +406,9 @@ function thumb(scenario: string | null | undefined) {
               <div v-if="openSteps === r.id" class="uf-mrow-steps">
                 <p v-if="r.steps" class="uf-t4" style="margin: 0; color: var(--uf-bone); line-height: 1.5">{{ r.steps }}</p>
                 <p v-if="r.goal" class="uf-t4" style="margin: 0; line-height: 1.5">Goal: {{ r.goal }}</p>
+                <p v-if="r.trainerScenario && drillBrief(r.trainerScenario)" class="uf-t4" style="margin: 0; line-height: 1.5">
+                  In the trainer: {{ scenarioLabel(r.trainerScenario) }}. {{ drillBrief(r.trainerScenario)!.goal }} {{ drillBrief(r.trainerScenario)!.how }}
+                </p>
               </div>
             </li>
           </ul>

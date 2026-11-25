@@ -2,9 +2,9 @@
  * Pure helpers for the UI v3 Practice screen (no Vue, no IPC) so they can be unit-tested.
  * All numbers come from the training API via TrainingHubView; nothing here invents data.
  */
-import { isBetaScenario, type TrainerScenarioKey } from '../../../lib/trainer-scenarios'
+import { isBetaScenario, TRAINER_SCENARIOS, type TrainerScenarioKey } from '../../../lib/trainer-scenarios'
 import { coachingStatLine, isMatchStatsDrill, type CoachingDrillSourceFields, type CoachingStatLine } from '../../../lib/coaching-drill-stat'
-import { isCurrentScoringRun } from '../../../lib/training-result-metrics'
+import { accuracyMetricLabel, isCurrentScoringRun, isTrackingScenario, reactionMetricLabel } from '../../../lib/training-result-metrics'
 import { drillHasMoments } from '../../../lib/drill-moments'
 
 export type PracticeTab = 'train' | 'drills' | 'analytics' | 'leaderboards' | 'loadouts'
@@ -171,6 +171,32 @@ export function radarCoverage(
 /** Drills with any runs (current or old) come first, in catalogue order; drills never played after. */
 export function activeDrillsFirst<T extends { hasActivity: boolean }>(rows: readonly T[]): T[] {
   return [...rows.filter(r => r.hasActivity), ...rows.filter(r => !r.hasActivity)]
+}
+
+/** What a drill asks of you, what to do, and what each run records: shown before the trainer opens. */
+export interface DrillBrief { goal: string; how: string; scored: string }
+export function drillBrief(scenario: string): DrillBrief | null {
+  const def = TRAINER_SCENARIOS.find(s => s.key === scenario)
+  if (!def) return null
+  const measures = isTrackingScenario(scenario)
+    ? accuracyMetricLabel(scenario).toLowerCase()
+    : `${accuracyMetricLabel(scenario).toLowerCase()} and ${reactionMetricLabel(scenario).toLowerCase()}`
+  return {
+    goal: def.description,
+    how: def.tip,
+    scored: `Each run gets a score and records ${measures}. Your best is kept per difficulty and length.`,
+  }
+}
+
+/**
+ * The factual link between a coaching drill and the trainer drill that practises it, when their names differ:
+ * "Trains: Head Height Pre-Aim on Dry Peeks · Drill: Angle Clearing". Null when the names match or no drill.
+ */
+export function trainsLink(title: string | null | undefined, drillLabel: string | null | undefined): string | null {
+  const t = title?.trim()
+  const d = drillLabel?.trim()
+  if (!t || !d || t.toLowerCase() === d.toLowerCase()) return null
+  return `Trains: ${t} · Drill: ${d}`
 }
 
 /** Short caption for a drill with no current best: "Old best 53" or "Not played". */
