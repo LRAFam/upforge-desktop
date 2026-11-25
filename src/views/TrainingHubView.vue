@@ -2461,7 +2461,9 @@ const CATEGORY_ICON: Record<string, string> = {
 
       <!-- ── LEADERBOARDS TAB ───────────────────────────────────────── -->
       <template v-if="activeTab === 'leaderboards'">
-        <TrainingLeaderboardsTab />
+        <TrainingLeaderboardsTab
+          @play="(p) => launchDrill({ scenario: p.scenario, difficulty: p.difficulty as AssignedDrill['difficulty'], duration_seconds: p.duration_seconds, weakness: '', weakness_score: 0, reason: '' })"
+        />
       </template>
 
       <!-- ── LOADOUTS TAB ────────────────────────────────────────────── -->

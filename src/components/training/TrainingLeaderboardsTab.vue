@@ -14,10 +14,21 @@ import { uiV3 } from '../../lib/ui-v3'
 import UfTabs from '../v3/UfTabs.vue'
 import UfSkeleton from '../v3/UfSkeleton.vue'
 import EmptyArt from '../v3/empty/EmptyArt.vue'
+import UfButton from '../v3/UfButton.vue'
 import { isBest, leaderboardYouRow, type LeaderboardYouRow } from '../v3/practice/practice-session-v3'
 import { CURRENT_SCORING_ONLY } from '../v3/practice/practice-v3'
 import { currentScoringVersion, trainingTimestamp } from '../../lib/training-result-metrics'
 import '../v3/practice/practice-v3.css'
+
+/** Play the drill with exactly the difficulty and length the board is filtered to. */
+export interface LeaderboardPlay { scenario: TrainerScenarioKey; difficulty: string; duration_seconds: number }
+const emit = defineEmits<{ play: [settings: LeaderboardPlay] }>()
+function playTheseSettings() {
+  emit('play', { scenario: activeScenario.value, difficulty: difficulty.value, duration_seconds: durationSeconds.value })
+}
+const playLabel = 'Play these settings'
+// How the board ranks (the API order): best score for these settings, then accuracy, then the earlier run.
+const RANKING_RULE = 'Ranked by each player’s best score with these settings. Ties go to higher accuracy, then the earlier run.'
 
 const PERIOD_TABS = [{ key: 'week', label: 'This week' }, { key: 'month', label: 'This month' }, { key: 'all', label: 'All time' }]
 
@@ -134,7 +145,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
       <UfTabs :items="PERIOD_TABS" :model-value="activePeriod" size="filter" label="Leaderboard period" class="uf-lb-period"
         @update:model-value="activePeriod = $event as 'week' | 'month' | 'all'" />
     </div>
-    <p class="uf-t4" style="margin: 0">{{ CURRENT_SCORING_ONLY }}</p>
+    <p class="uf-t4" style="margin: 0">{{ RANKING_RULE }} {{ CURRENT_SCORING_ONLY }}</p>
 
     <p v-if="boardVisibilityLine" class="uf-t4 uf-lb-visibility">
       {{ boardVisibilityLine }}
@@ -145,7 +156,9 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
       <li v-for="i in 6" :key="i"><UfSkeleton :w="36" :h="26" /><UfSkeleton :w="32" :h="32" /><span class="uf-lb-name"><UfSkeleton w="34%" :h="15" /><UfSkeleton w="22%" :h="13" /></span><UfSkeleton :w="40" :h="26" /></li>
     </ol>
     <EmptyArt v-else-if="!entries.length" size="section" :art="TRAINING_ARTWORK.leaderboardEmpty"
-      title="No scores yet this period" text="Finish a drill with these settings to appear here." />
+      title="No scores yet this period" text="Finish a drill with these settings to appear here.">
+      <UfButton variant="primary" icon="play" @click="playTheseSettings">{{ playLabel }}</UfButton>
+    </EmptyArt>
     <ol v-else class="uf-lb-rows uf-rise uf-d1s" :class="{ 'uf-refreshing': loading }">
       <li v-for="e in entries" :key="`${e.user_id}-${e.rank}`" :class="{ me: e.is_current_user }">
         <span class="uf-d4 uf-lb-rank" :style="isBest(e.rank) ? 'color: var(--uf-gold)' : 'color: var(--uf-faint)'">
@@ -168,6 +181,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
         <span class="uf-t3">You</span>
         <span class="uf-t4">{{ youNote(you.note, boardVisible) }}</span>
       </span>
+      <UfButton v-if="you.score == null" variant="secondary" icon="play" @click="playTheseSettings">{{ playLabel }}</UfButton>
       <span class="uf-d4" :style="you.score == null ? 'color: var(--uf-faint)' : undefined">{{ you.score ?? '—' }}</span>
     </div>
   </div>
@@ -211,6 +225,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
       />
       <p class="text-sm font-semibold text-gray-400">No scores yet this period</p>
       <p class="text-[11px] text-gray-600 mt-1">Complete a drill to appear on the board.</p>
+      <button type="button" class="mt-3 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/5" @click="playTheseSettings">{{ playLabel }}</button>
     </div>
 
     <div v-else class="dash-panel overflow-hidden divide-y divide-white/[0.06]">

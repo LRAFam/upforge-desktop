@@ -55,3 +55,19 @@ describe('leaderboard public names', () => {
     expect(tab).not.toMatch(/\{\{ e\.name \}\}/)
   })
 })
+
+describe('leaderboard empty state: Play these settings (UX1124-24)', () => {
+  const tab = readFileSync(join(__dirname, 'TrainingLeaderboardsTab.vue'), 'utf8')
+  it('emits the exact drill, difficulty and length shown in the filters', () => {
+    expect(tab).toContain("emit('play', { scenario: activeScenario.value, difficulty: difficulty.value, duration_seconds: durationSeconds.value })")
+    // Empty board, the "You" row with no run, and the legacy empty state all offer it.
+    expect(tab.match(/@click="playTheseSettings"/g)?.length).toBe(3)
+  })
+  it('names the ranking rule beside the board', () => {
+    expect(tab).toContain('Ranked by each player’s best score with these settings. Ties go to higher accuracy, then the earlier run.')
+  })
+  it('the hub launches those settings unchanged', () => {
+    const hub = readFileSync(join(__dirname, '..', '..', 'views', 'TrainingHubView.vue'), 'utf8')
+    expect(hub).toMatch(/<TrainingLeaderboardsTab\s+@play="\(p\) => launchDrill\(\{ scenario: p\.scenario, difficulty: p\.difficulty as AssignedDrill\['difficulty'\], duration_seconds: p\.duration_seconds,/)
+  })
+})
