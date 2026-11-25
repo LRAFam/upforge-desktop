@@ -16,6 +16,7 @@ import ReportRowV3 from '../../components/v3/matches/ReportRowV3.vue'
 import { matchListGroups, notRecordedReason, reportOnlyRows, showReportRows, type MatchReportRow, type RecordingSettingsLike } from '../../components/v3/matches/report-rows'
 import { statusFilters, useFootageLibrary } from '../../components/v3/matches/useFootageLibrary'
 import UfButton from '../../components/v3/UfButton.vue'
+import UfIcon from '../../components/v3/UfIcon.vue'
 import EmptyArt from '../../components/v3/empty/EmptyArt.vue'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import UfDialog from '../../components/v3/UfDialog.vue'
@@ -211,7 +212,7 @@ const countLine = computed(() => {
         <span style="flex: 1" />
         <span class="uf-filter-opt"><span class="uf-t4">Game</span><UfTabs :items="gameItems" :model-value="gameFilter" size="filter" label="Game" @update:model-value="gameFilter = $event" /></span>
         <span v-if="hasAltRows" class="uf-filter-opt"><span class="uf-t4">Account</span><UfTabs :items="accountItems" :model-value="accountFilter" size="filter" label="Account" @update:model-value="accountFilter = $event as 'all' | 'main' | 'alt'" /></span>
-        <button type="button" class="uf-link" @click="lib.toggleSelectMode()">{{ selecting ? 'Cancel' : 'Select' }}</button>
+        <button type="button" class="uf-link" @click="lib.toggleSelectMode()">{{ selecting ? 'Done selecting' : 'Select to delete' }}</button>
       </div>
       <!-- Find a known match: free text over map, agent, mode, result and date, plus date / mode / recorded filters. -->
       <div v-if="recordings.length > 0 || reportRows.length > 0" class="uf-filters uf-search" role="search">
@@ -314,23 +315,24 @@ const countLine = computed(() => {
 
       <div v-if="selecting && selectedIds.size > 0" class="uf-bulk">
         <span class="uf-t3">{{ selectedIds.size }} selected</span>
-        <UfButton variant="secondary" :disabled="busyId === '__bulk__'" @click="lib.deleteSelected()">Delete</UfButton>
+        <button type="button" class="uf-btn-secondary uf-danger uf-bulk-del" :disabled="busyId === '__bulk__'" @click="lib.deleteSelected()"><UfIcon name="trash" :size="15" />Delete {{ selectedIds.size }} from this PC</button>
         <button type="button" class="uf-link" @click="lib.toggleSelectMode()">Cancel</button>
       </div>
 
-      <UfDialog :open="pendingDelete?.variant === 'cloud'" title="Delete recording" :width="460" @close="pendingDelete = null">
-        <p v-if="pendingDelete" class="uf-t2" style="margin: 0">
-            <template v-if="lib.isRecordingInFlight(pendingDelete.rec)">This recording is still uploading or analysing. Deleting will abort the current process.</template>
-            <template v-else>This recording is backed up to the cloud. Deleting the local copy also pauses automatic stats sync; Retry sync can restart it later.</template>
-        </p>
+      <UfDialog :open="pendingDelete?.variant === 'cloud'" title="Delete recording from this PC?" :width="480" @close="pendingDelete = null">
+        <template v-if="pendingDelete">
+          <p v-if="lib.isRecordingInFlight(pendingDelete.rec)" class="uf-t2" style="margin: 0">This recording is still uploading or analysing. Deleting stops that.</p>
+          <p class="uf-t2" style="margin: 0">This recording is on this PC and in the cloud. Both choices delete the video file on this PC. Neither deletes the cloud copy: manage that in Cloud storage.</p>
+          <p class="uf-t4" style="margin: 0">Keep in list: the match stays here and plays from the cloud. Automatic stats sync pauses until you press Retry sync.</p>
+        </template>
         <template v-if="pendingDelete" #actions>
           <button type="button" class="uf-link" :disabled="busyId === pendingDelete.rec.id" @click="pendingDelete = null">Cancel</button>
-          <UfButton variant="secondary" :disabled="busyId === pendingDelete.rec.id" @click="lib.runDismiss(pendingDelete.rec.id, 'localOnly')">Delete local only</UfButton>
-          <button type="button" class="uf-btn-secondary uf-danger" :disabled="busyId === pendingDelete.rec.id" @click="lib.runDismiss(pendingDelete.rec.id, 'remove')">Remove from library</button>
+          <UfButton variant="secondary" :disabled="busyId === pendingDelete.rec.id" @click="lib.runDismiss(pendingDelete.rec.id, 'localOnly')">Delete PC copy, keep in list</UfButton>
+          <button type="button" class="uf-btn-secondary uf-danger" :disabled="busyId === pendingDelete.rec.id" @click="lib.runDismiss(pendingDelete.rec.id, 'remove')">Delete PC copy and remove from list</button>
         </template>
       </UfDialog>
 
-      <UfDialog :open="!!confirmState" title="Are you sure?" :width="460" @close="answerConfirm(false)">
+      <UfDialog :open="!!confirmState" title="Confirm delete" :width="460" @close="answerConfirm(false)">
         <p class="uf-t2" style="margin: 0">{{ confirmState?.text }}</p>
         <template #actions>
           <button type="button" class="uf-link" @click="answerConfirm(false)">Cancel</button>
@@ -367,4 +369,5 @@ const countLine = computed(() => {
 .uf-more { margin-top: 12px; }
 .uf-bulk { flex: none; display: flex; align-items: center; justify-content: center; gap: 18px; padding: 12px 40px; border-top: 1px solid var(--uf-line); background: var(--uf-chrome); }
 .uf-danger { color: var(--uf-loss); border-color: rgba(232, 80, 91, 0.5); }
+.uf-bulk-del { display: inline-flex; align-items: center; gap: 8px; }
 </style>

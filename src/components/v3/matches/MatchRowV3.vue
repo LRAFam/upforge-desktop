@@ -174,8 +174,8 @@ async function startReview() {
       <button type="button" class="uf-btn-secondary uf-open" :class="{ 'uf-open--ai': openAction.ai }" :title="openAction.title" :disabled="!canOpen || busy" @click="emit('open')">
         <UfIcon :name="openAction.icon" :size="15" /><span v-if="isNew" class="uf-open-new" title="Not opened yet"><span class="uf-sr">New: </span></span>{{ openLabel }}
       </button>
-      <button v-if="!rec.cloudOnly" type="button" class="uf-del" title="Delete recording" aria-label="Delete recording" :disabled="busy" @click="emit('delete')">
-        <UfIcon name="close" :size="15" />
+      <button v-if="!rec.cloudOnly" type="button" class="uf-del" title="Delete this recording from this PC (asks first)" aria-label="Delete recording" :disabled="busy" @click="emit('delete')">
+        <UfIcon name="trash" :size="15" />
       </button>
       <span v-else class="uf-del-slot" aria-hidden="true" />
     </div>
@@ -257,6 +257,6 @@ async function startReview() {
 .uf-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .uf-score .uf-t4 { white-space: nowrap; }
 .uf-open:disabled { opacity: 0.4; cursor: not-allowed; }
-.uf-del { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: none; border: 1px solid var(--uf-line); color: var(--uf-faint); cursor: pointer; }
-.uf-del:hover { color: var(--uf-loss); border-color: var(--uf-loss); }
+.uf-del { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: none; border: 1px solid var(--uf-line); color: var(--uf-loss); cursor: pointer; }
+.uf-del:hover, .uf-del:focus-visible { border-color: var(--uf-loss); background: rgba(232, 80, 91, 0.08); }
 </style>

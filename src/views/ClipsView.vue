@@ -168,13 +168,13 @@
           <template v-if="bulkMode && selectedIds.size > 0">
             <button type="button" class="uf-link" @click="selectAll">Select all</button>
             <template v-if="confirmBulkDelete">
-              <span class="uf-t4" style="color: var(--uf-loss)">Delete {{ selectedIds.size }}?</span>
-              <button type="button" class="uf-link" style="color: var(--uf-loss)" @click="bulkDelete">Delete</button>
+              <span class="uf-t4" style="color: var(--uf-loss)">{{ clipsBulkDeleteMessage(clips.filter(c => selectedIds.has(c.id))) }}</span>
+              <button type="button" class="uf-link" style="color: var(--uf-loss)" @click="bulkDelete">Delete from PC</button>
               <button type="button" class="uf-link" @click="confirmBulkDelete = false">Keep</button>
             </template>
-            <button v-else type="button" class="uf-link" @click="confirmBulkDelete = true">Delete {{ selectedIds.size }}</button>
+            <button v-else type="button" class="uf-link uf-cl-del" @click="confirmBulkDelete = true"><UfIcon name="trash" :size="14" />Delete {{ selectedIds.size }}</button>
           </template>
-          <button type="button" class="uf-link" @click="toggleBulkMode">{{ bulkMode ? 'Cancel' : 'Select' }}</button>
+          <button type="button" class="uf-link" @click="toggleBulkMode">{{ bulkMode ? 'Done selecting' : 'Select clips' }}</button>
         </div>
 
         <!-- First-ever load: placeholder tiles in the grid's real shape (16:9 thumb, title, meta). -->
@@ -225,16 +225,17 @@
                 <button type="button" class="uf-link" @click="matchGroupForKey(section.matchKey!) && selectRoutineKillsInMatch(matchGroupForKey(section.matchKey!)!)">Select routine kills</button>
                 <button type="button" class="uf-link" @click="matchGroupForKey(section.matchKey!) && keepHighlightsInMatch(matchGroupForKey(section.matchKey!)!)">Keep highlights</button>
                 <template v-if="confirmKeepHighlightsKey === section.matchKey">
-                  <span class="uf-t4">Delete unstarred kills?</span>
+                  <span class="uf-t4">Delete the unstarred kill clips from this PC? Starred clips stay.</span>
                   <button type="button" class="uf-link" style="color: var(--uf-loss)" @click="matchGroupForKey(section.matchKey!) && confirmKeepHighlightsDelete(matchGroupForKey(section.matchKey!)!)">Yes</button>
                   <button type="button" class="uf-link" @click="confirmKeepHighlightsKey = null">No</button>
                 </template>
-                <template v-if="confirmMatchDeleteKey === section.matchKey">
-                  <span class="uf-t4" style="color: var(--uf-loss)">Delete all {{ section.clips.length }}?</span>
-                  <button type="button" class="uf-link" style="color: var(--uf-loss)" @click="matchGroupForKey(section.matchKey!) && deleteMatchClips(matchGroupForKey(section.matchKey!)!)">Delete</button>
+                <!-- Deleting a whole match's clips lives in Select mode, away from Keep / View. -->
+                <template v-if="bulkMode && confirmMatchDeleteKey === section.matchKey">
+                  <span class="uf-t4" style="color: var(--uf-loss)">{{ clipsBulkDeleteMessage(section.clips) }}</span>
+                  <button type="button" class="uf-link" style="color: var(--uf-loss)" @click="matchGroupForKey(section.matchKey!) && deleteMatchClips(matchGroupForKey(section.matchKey!)!)">Delete from PC</button>
                   <button type="button" class="uf-link" @click="confirmMatchDeleteKey = null">Keep</button>
                 </template>
-                <button v-else type="button" class="uf-link" @click="confirmMatchDeleteKey = section.matchKey">Delete match clips</button>
+                <button v-else-if="bulkMode" type="button" class="uf-link uf-cl-del" @click="confirmMatchDeleteKey = section.matchKey"><UfIcon name="trash" :size="14" />Delete all {{ section.clips.length }} from this match</button>
               </div>
             </div>
             <div v-if="!section.matchKey || isMatchExpanded(section.matchKey)" class="uf-cl-grid">
@@ -1300,6 +1301,8 @@ import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { formatAnalysisFailureMessage } from '../lib/analysis-failure-messages'
 import { CLIP_REVIEW_FAILED_MESSAGE, clipReviewPrecheck } from '../lib/clip-review-errors'
 import { smartClipTitle } from '../lib/ideas/smart-clip-title'
+import { clipsBulkDeleteMessage } from '../lib/delete-copy'
+import UfIcon from '../components/v3/UfIcon.vue'
 import {
   buildClipMatchGroups,
   formatMatchGroupLabel,
@@ -2258,6 +2261,7 @@ function timeAgo(ts: number): string {
 .uf-cl-head-text { display: flex; flex-direction: column; gap: 6px; }
 .uf-cl-match { display: flex; flex-direction: column; gap: 10px; padding-bottom: 16px; }
 .uf-cl-moments { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
+.uf-cl-del { display: inline-flex; align-items: center; gap: 6px; color: var(--uf-loss); }
 .uf-cl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 28px 22px; }
 .uf-cl-skel-tile { display: flex; flex-direction: column; gap: 10px; }
 .uf-cl-skel-thumb { aspect-ratio: 16 / 9; }
