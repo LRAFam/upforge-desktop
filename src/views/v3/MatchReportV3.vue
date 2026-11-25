@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useAppointmentReportVisit } from '../../composables/useAppointmentReportVisit'
 /**
  * Match report (v3): the free, data-only coaching page for one match. Opening it uses no credit.
  * Headline (result, score, what decided it) · facts · focus check · coach notes · next steps.
@@ -7,6 +8,7 @@
  * Never generates an AI report on its own. Valorant: when this match was recorded, the page links
  * its rounds to the footage and offers video coaching, which the player starts (uses 1 analysis).
  */
+import { useRecoveryReportVisit } from '../../composables/useRecoveryReportVisit'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UfHeroBand from '../../components/v3/UfHeroBand.vue'
@@ -238,7 +240,7 @@ const videoAction = computed(() => reportVideoAction(recording.value, {
 }))
 const videoCopy = computed(() => reportVideoCopy(videoAction.value, reportAllowanceLabel(profileUser.value?.analysis_stats)))
 function trackReport(kind: 'opened' | 'video_clicked'): void {
-  void window.api?.funnel?.trackMatchReport?.(kind, { game: game.value, video: videoAction.value.kind })?.catch(() => {})
+  void window.api?.funnel?.trackMatchReport?.(kind, { game: game.value, video: videoAction.value.kind, ...(game.value === 'cs2' ? { result_id: matchId.value } : {}) })?.catch(() => {})
 }
 async function videoPress(): Promise<void> {
   const action = videoAction.value
@@ -290,6 +292,8 @@ const notFoundText = computed(() => {
 })
 
 const view = computed(() => (state.value?.kind === 'ready' ? state.value.view : null))
+useRecoveryReportVisit(computed(() => view.value && game.value === 'valorant' && recordingChecked.value ? { result: 'match_report', result_id: matchId.value } : null))
+useAppointmentReportVisit(computed(() => view.value && game.value === 'valorant' && recordingChecked.value ? { result: 'match_report', result_id: matchId.value } : null))
 // One "opened" per match per app session, sent once the page knows what it offers for the recording.
 watch([view, recordingChecked], () => {
   if (view.value && recordingChecked.value && firstReportView(game.value, matchId.value)) trackReport('opened')

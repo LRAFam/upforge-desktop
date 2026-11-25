@@ -50,7 +50,9 @@ export type SaveToCloudResult =
 
 /** Launch that a trainer result / session-ended belongs to (sent by main as the 2nd arg of `trainer:session-result`). */
 export interface TrainerLaunchInfo {
+  distances_m?: [number, number]
   launchId: number
+  game?: string
   scenario: string
   duration_seconds: number
   difficulty: 'easy' | 'medium' | 'hard' | 'pro'
@@ -119,6 +121,7 @@ export interface TrainingHistory {
 }
 
 export interface SharedTrainingPlanStep {
+  distances_m?: [number, number]
   phase: 'warmup' | 'focus' | 'cooldown'
   phase_label: string
   scenario: string
@@ -156,6 +159,7 @@ export interface CoachingDrill {
   status: string
   attempt_count?: number
   godot_config?: {
+    distances_m?: [number, number]
     scenario?: string
     difficulty?: string
     duration_seconds?: number
@@ -884,6 +888,20 @@ export interface DeadlockProfileStats {
 declare global {
   interface Window {
     api: {
+      firstSessionRecovery: {
+        current: () => Promise<import('../electron/main/first-session-recovery').RecoveryTile | null>
+        exposed: (id: string) => Promise<void>
+        enter: (id: string) => Promise<{ ok: boolean; recordingId?: string }>
+        dismiss: (id: string) => Promise<void>
+        reportView: (input: { result: string; result_id: string; foreground_ms: number; event_id: string }) => Promise<'accepted' | 'ignored' | 'retry'>
+      }
+      practiceAppointment: {
+        current: () => Promise<import('./lib/practice-appointment').PracticeAppointment | null>
+        choose: (id: number) => Promise<{ ok: boolean }>
+        change: (id: string, action: 'schedule' | 'skip' | 'stop', data?: import('./lib/practice-appointment').AppointmentSchedule) => Promise<import('./lib/practice-appointment').PracticeAppointment | null>
+        boundary: () => Promise<void>
+        reportView: (input: { match_id: string; foreground_ms: number; event_id: string }) => Promise<'accepted' | 'retry'>
+      }
       workspaceCoach: {
         history: (id: number) => Promise<import('./lib/review-notebook').NotebookResult<import('./lib/workspace-coach').CoachHistory>>
         ask: (id: number, body: import('./lib/workspace-coach').CoachQuestion) => Promise<import('./lib/review-notebook').NotebookResult<import('./lib/workspace-coach').CoachAnswer>>
@@ -1079,6 +1097,9 @@ declare global {
           }
         }) => Promise<{ ok: boolean; error?: string }>
       }
+      achievements: {
+        sync: (userId: number, list: Record<string, string>) => Promise<Record<string, string> | null>
+      }
       productUsage: {
         sample: (payload: { feature: string | null; active: boolean; visit: boolean }) => Promise<void>
       }
@@ -1087,7 +1108,7 @@ declare global {
       }
       funnel: {
         trackReportOpened: (props?: Record<string, unknown>) => Promise<{ ok: boolean }>
-        trackMatchReport: (kind: 'opened' | 'video_clicked', props: { game: string; video: string }) => Promise<{ ok: boolean }>
+        trackMatchReport: (kind: 'opened' | 'video_clicked', props: { game: string; video: string; result_id?: string }) => Promise<{ ok: boolean }>
       }
       archives: {
         review: (id: string, analyse?: boolean) => Promise<{ ok: true; timeline: import('./composables/useVodReview').RecordingTimeline } | { ok: false; error: string }>

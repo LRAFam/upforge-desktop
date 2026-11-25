@@ -1,6 +1,20 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
+  firstSessionRecovery: {
+    current: () => ipcRenderer.invoke('first-session-recovery:current'),
+    exposed: (id: string) => ipcRenderer.invoke('first-session-recovery:exposed', id),
+    enter: (id: string) => ipcRenderer.invoke('first-session-recovery:enter', id),
+    dismiss: (id: string) => ipcRenderer.invoke('first-session-recovery:dismiss', id),
+    reportView: (input: { result: string; result_id: string; foreground_ms: number; event_id: string }) => ipcRenderer.invoke('first-session-recovery:report-view', input),
+  },
+  practiceAppointment: {
+    current: () => ipcRenderer.invoke('practice-appointment:current'),
+    choose: (id: number) => ipcRenderer.invoke('practice-appointment:choose', id),
+    change: (id: string, action: 'schedule' | 'skip' | 'stop', data?: unknown) => ipcRenderer.invoke('practice-appointment:change', id, action, data),
+    boundary: () => ipcRenderer.invoke('practice-appointment:boundary'),
+    reportView: (input: unknown) => ipcRenderer.invoke('practice-appointment:report-view', input),
+  },
   storageAddon: { request: (request: import('../../src/lib/storage-addon').StorageAddonRequest) => ipcRenderer.invoke('storage-addon:request', request) },
   cloudClip: { review: (id: number, analyse = false) => ipcRenderer.invoke('cloud-clip:review', id, analyse) },
   cloudStorage: { download: (file: { kind: 'clip' | 'recording' | 'analysis_video'; id: string }) => ipcRenderer.invoke('cloud-storage:download', file), playback: (file: { kind: 'clip' | 'recording' | 'analysis_video'; id: string }) => ipcRenderer.invoke('cloud-storage:playback', file), retention: () => ipcRenderer.invoke('cloud-storage:retention'), list: (query: import('../../src/lib/cloud-storage').CloudQuery) => ipcRenderer.invoke('cloud-storage:list', query) },
@@ -178,6 +192,9 @@ const api = {
       }
     }) => ipcRenderer.invoke('analyses:submit-feedback', opts),
   },
+  achievements: {
+    sync: (userId: number, list: Record<string, string>) => ipcRenderer.invoke('achievements:sync', userId, list) as Promise<Record<string, string> | null>,
+  },
   productUsage: {
     sample: (payload: { feature: string | null; active: boolean; visit: boolean }) => ipcRenderer.invoke('product-usage:sample', payload) as Promise<void>,
   },
@@ -189,7 +206,7 @@ const api = {
     trackReportOpened: (props?: Record<string, unknown>) =>
       ipcRenderer.invoke('funnel:track-report-opened', props) as Promise<{ ok: boolean }>,
     /** Free match report: shown ('opened') or a video action pressed in it ('video_clicked'). */
-    trackMatchReport: (kind: 'opened' | 'video_clicked', props: { game: string; video: string }) =>
+    trackMatchReport: (kind: 'opened' | 'video_clicked', props: { game: string; video: string; result_id?: string }) =>
       ipcRenderer.invoke('funnel:track-match-report', kind, props) as Promise<{ ok: boolean }>,
   },
   archives: {

@@ -1,3 +1,4 @@
+import { trackPracticeAppointmentStart } from '../practice-appointment-start'
 /**
  * gaming-ipc.ts
  * IPC handlers for performance boost, aim trainer, Deadlock replays, CS2 detection,
@@ -6,6 +7,9 @@
 
 import { app, BrowserWindow, IpcMain } from 'electron'
 import fs from 'fs'
+import { randomUUID } from 'node:crypto'
+import { trackDrillStarted } from '../funnel-events'
+import { trackDiscordPracticeTaskStart } from '../discord-practice-task-start'
 import path from 'path'
 import log from 'electron-log'
 import { AuthManager } from '../auth-manager'
@@ -181,6 +185,11 @@ export function setupGamingHandlers(
     setLaunchOwner(launch.launchId, repeated !== undefined && launchOwners.has(repeated)
       ? launchOwners.get(repeated) ?? null
       : auth.getUser()?.id ?? null)
+    const milestoneLaunchId = randomUUID()
+    const owner = launchOwners.get(launch.launchId) ?? null
+    trackDrillStarted(launch.game, launch.scenario, milestoneLaunchId, owner)
+    trackDiscordPracticeTaskStart(auth, owner, launch.user_drill_id, milestoneLaunchId)
+    trackPracticeAppointmentStart(auth, owner, launch.user_drill_id, milestoneLaunchId)
     sendOverlayData('overlay:trainer-started', {
       scenario: launch.scenario,
       difficulty: launch.difficulty,
@@ -213,11 +222,15 @@ export function setupGamingHandlers(
       const saved = settingsManager.get()
       const enrichedConfig = drillConfigFromRequest(config ?? {}, saved, TRAINER_VERSION, { keepOpen: opts.keepOpen !== false })
       const ownerAtLaunch = auth.getUser()?.id ?? null
+      const milestoneLaunchId = randomUUID()
       // Before the await: a game-started during the launch must already see it.
       trainerLaunchGame = gameDetector.currentGame()
       await trainerBridge.launch(enrichedConfig, trainerSpawnOptions(saved.trainerMouse))
       const launchId = trainerBridge.lastLaunch?.launchId
       if (launchId != null) setLaunchOwner(launchId, ownerAtLaunch)
+      trackDrillStarted(enrichedConfig.mouse_settings?.game, enrichedConfig.scenario, milestoneLaunchId, ownerAtLaunch)
+      trackDiscordPracticeTaskStart(auth, ownerAtLaunch, enrichedConfig.user_drill_id, milestoneLaunchId)
+      trackPracticeAppointmentStart(auth, ownerAtLaunch, enrichedConfig.user_drill_id, milestoneLaunchId)
       sendOverlayData('overlay:trainer-started', {
         scenario: enrichedConfig.scenario,
         difficulty: enrichedConfig.difficulty,
