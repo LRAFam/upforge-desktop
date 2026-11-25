@@ -1046,6 +1046,8 @@ declare global {
         /** Last /api/notifications answer from the coach poller; null before the first poll. */
         inbox: () => Promise<import('./components/v3/shell/notification-inbox').InboxSnapshot | null>
         markRead: (id: number) => Promise<{ ok: boolean }>
+        /** POST /api/notifications/mark-all-as-read, then the cached inbox matches. */
+        markAllRead: () => Promise<{ ok: boolean }>
       }
       billing: {
         openPortal: () => Promise<{ ok: boolean; error?: string }>

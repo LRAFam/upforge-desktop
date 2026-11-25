@@ -125,3 +125,73 @@ export function inboxAge(createdAt: string | null, now: number): string {
   if (days < 7) return `${days}d`
   return new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
+
+const GAME_LABELS: Record<string, string> = { valorant: 'Valorant', cs2: 'CS2', deadlock: 'Deadlock', lol: 'League of Legends' }
+/** The API's old fixed title for every finished analysis (before match context was added). */
+const GENERIC_ANALYSIS_TITLE = /^your vod analysis is ready/i
+
+function mapName(raw: unknown): string {
+  let m = str(raw)
+  if (!m || /^unknown$/i.test(m)) return ''
+  if (m.includes('/')) m = m.split('/').filter(Boolean).pop() ?? ''
+  m = m.replace(/^(de|cs|ar)_/i, '').replace(/_/g, ' ')
+  return m ? m.charAt(0).toUpperCase() + m.slice(1) : ''
+}
+
+function shortDate(iso: unknown, now: number): string {
+  const at = Date.parse(str(iso))
+  if (!Number.isFinite(at)) return ''
+  const d = new Date(at)
+  const sameYear = d.getFullYear() === new Date(now).getFullYear()
+  return d.toLocaleDateString('en-GB', sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+/**
+ * What the bell shows for an item. Finished analyses name the match ("Valorant · Bind · 22 Nov —
+ * match coaching ready"): newer API rows already do; older rows all said "Your VOD Analysis is
+ * Ready", so they are rebuilt from the map / agent / game the API stored with them.
+ */
+export function inboxDisplay(item: Pick<InboxItem, 'type' | 'title' | 'message' | 'data'>, now: number): { title: string; message: string } {
+  if (item.type !== 'analysis_complete' || !GENERIC_ANALYSIS_TITLE.test(item.title)) return { title: item.title, message: item.message }
+  const d = item.data ?? {}
+  const game = GAME_LABELS[str(d.game_type).toLowerCase()] ?? 'Valorant'
+  const map = mapName(d.map)
+  const date = shortDate(d.played_at, now)
+  const agent = str(d.agent)
+  const as = agent && !agent.startsWith('hero_') ? ` as ${agent}` : ''
+  return {
+    title: `${[game, map, date].filter(Boolean).join(' · ')} — match coaching ready`,
+    message: map ? `Your AI coaching for ${map}${as} is ready.` : `Your AI coaching for this ${game} match${as} is ready.`,
+  }
+}
+
+export interface InboxGroup {
+  key: string
+  /** Newest item (opens on click). */
+  item: InboxItem
+  /** Every id in the group, so opening it marks them all read. */
+  ids: number[]
+  count: number
+  unread: boolean
+}
+
+/** Repeats of the same event (same type and same analysis or review) collapse to one row with a count. */
+export function groupInbox(items: readonly InboxItem[]): InboxGroup[] {
+  const groups: InboxGroup[] = []
+  const byKey = new Map<string, InboxGroup>()
+  for (const item of items) {
+    const ref = idOf(item.data?.analysis_log_id) ?? idOf(item.data?.analysis_id) ?? idOf(item.data?.review_id) ?? idOf(item.data?.job_id)
+    const key = ref ? `${item.type}:${ref}` : `id:${item.id}`
+    const hit = byKey.get(key)
+    if (hit) {
+      hit.ids.push(item.id)
+      hit.count++
+      hit.unread = hit.unread || !item.read
+      continue
+    }
+    const g: InboxGroup = { key, item, ids: [item.id], count: 1, unread: !item.read }
+    byKey.set(key, g)
+    groups.push(g)
+  }
+  return groups
+}

@@ -74,3 +74,33 @@ describe('inboxTarget · cloud retention', () => {
     expect(inboxTarget({ type: 'cloud_video_expiring', data: {} })).toEqual({ kind: 'app', path: '/cloud-storage' })
   })
 })
+
+describe('bell rows name the match (UX1124-19)', () => {
+  const NOW = Date.parse('2026-11-25T12:00:00Z')
+  const base = { id: 1, type: 'analysis_complete', title: 'Your VOD Analysis is Ready 🎯', message: 'Your AI coaching report has been generated. Click to view your insights.', read: false, createdAt: null }
+  it('rebuilds old generic analysis rows from their stored fields', async () => {
+    const { inboxDisplay } = await import('./notification-inbox')
+    expect(inboxDisplay({ ...base, data: { game_type: 'valorant', map: 'Bind', agent: 'Jett' } }, NOW))
+      .toEqual({ title: 'Valorant · Bind — match coaching ready', message: 'Your AI coaching for Bind as Jett is ready.' })
+    expect(inboxDisplay({ ...base, data: { game_type: 'cs2', map: 'de_mirage', played_at: '2026-11-22T18:00:00Z' } }, NOW).title)
+      .toBe('CS2 · Mirage · 22 Nov — match coaching ready')
+    expect(inboxDisplay({ ...base, data: {} }, NOW).message).toBe('Your AI coaching for this Valorant match is ready.')
+  })
+  it('keeps titles the API already wrote', async () => {
+    const { inboxDisplay } = await import('./notification-inbox')
+    const t = { ...base, title: 'Valorant · Summit · 22 Nov — match coaching ready', message: 'x', data: {} }
+    expect(inboxDisplay(t, NOW)).toEqual({ title: t.title, message: 'x' })
+    expect(inboxDisplay({ ...base, type: 'review_completed', data: {} }, NOW).title).toBe(base.title)
+  })
+  it('collapses repeats of the same event and keeps every id to mark read', async () => {
+    const { groupInbox } = await import('./notification-inbox')
+    const items = [
+      { ...base, id: 3, data: { analysis_log_id: 7 } },
+      { ...base, id: 2, read: true, data: { analysis_log_id: 7 } },
+      { ...base, id: 1, data: { analysis_log_id: 8 } },
+      { ...base, id: 9, type: 'review_requested', data: {} },
+    ]
+    const g = groupInbox(items)
+    expect(g.map(x => [x.item.id, x.ids, x.count, x.unread])).toEqual([[3, [3, 2], 2, true], [1, [1], 1, true], [9, [9], 1, true]])
+  })
+})
