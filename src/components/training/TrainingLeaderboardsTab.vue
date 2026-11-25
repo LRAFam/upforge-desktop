@@ -9,7 +9,7 @@ import { playerIdentity, type PlayerIdentity } from '../../lib/player-identity'
 import { readCache } from '../../lib/stale-cache'
 import { leaderboardStatLine } from '../../lib/training-result-metrics'
 import PlayerAvatar from '../v3/identity/PlayerAvatar.vue'
-import { leaderboardDisplayName, visibilityLine, youNote } from './leaderboard-visibility'
+import { leaderboardDisplayName, safeBoardName, visibilityLine, youNote } from './leaderboard-visibility'
 import { uiV3 } from '../../lib/ui-v3'
 import UfTabs from '../v3/UfTabs.vue'
 import UfSkeleton from '../v3/UfSkeleton.vue'
@@ -65,7 +65,7 @@ async function loadYou(rows: TrainerLeaderboardEntry[]): Promise<LeaderboardYouR
 
 /** UI v3 rows: player card → letter, with the rank icon (same identity model as everywhere). */
 function rowIdentity(e: TrainerLeaderboardEntry): PlayerIdentity {
-  return playerIdentity({ name: e.name, playerCardId: e.player_card_id, rank: e.current_rank })
+  return playerIdentity({ name: safeBoardName(e.name, e.user_id), playerCardId: e.player_card_id, rank: e.current_rank })
 }
 /** Your own identity for the "You" row (profile Home cached, refreshed read-only). */
 const meStats = ref(readCache<ProfileData | null>('home:profile')?.value?.latest_stats ?? null)
@@ -153,7 +153,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
         </span>
         <PlayerAvatar :identity="rowIdentity(e)" :size="32" badge />
         <span class="uf-lb-name">
-          <span class="uf-t3">{{ e.name }}<span v-if="e.tag" style="color: var(--uf-faint); font-weight: 400">#{{ e.tag }}</span>
+          <span class="uf-t3">{{ safeBoardName(e.name, e.user_id) }}<span v-if="e.tag" style="color: var(--uf-faint); font-weight: 400">#{{ e.tag }}</span>
             <span v-if="e.is_current_user" class="uf-label" style="color: var(--uf-red); margin-left: 8px">You</span>
           </span>
           <span class="uf-t4 uf-num">{{ leaderboardStatLine(activeScenario, e) }}</span>
@@ -226,7 +226,7 @@ watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
         >{{ e.rank }}</span>
         <div class="flex-1 min-w-0">
           <p class="text-[13px] font-semibold text-white truncate">
-            {{ e.name }}<span v-if="e.tag" class="text-gray-500">#{{ e.tag }}</span>
+            {{ safeBoardName(e.name, e.user_id) }}<span v-if="e.tag" class="text-gray-500">#{{ e.tag }}</span>
             <span v-if="e.is_current_user" class="ml-1 text-[9px] font-bold uppercase text-red-400">You</span>
           </p>
           <p class="text-[10px] text-gray-600 tabular-nums">{{ leaderboardStatLine(activeScenario, e) }}</p>
