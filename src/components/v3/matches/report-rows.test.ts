@@ -101,7 +101,7 @@ describe('MatchesV3 lists unrecorded matches', () => {
     expect(page).toMatch(/listMatchReports\?\.\(50, \{ everyQueue: true \}\)/)
   })
   it('draws report rows in the same dated groups and opens the report', () => {
-    expect(page).toMatch(/matchListGroups\(chipFiltered\.value, reportRows\.value, playedAt\)/)
+    expect(page).toMatch(/matchListGroups\(searchedRecordings\.value, searchedReports\.value, playedAt\)/)
     expect(page).toMatch(/<ReportRowV3 v-if="item\.kind === 'report'"/)
     expect(page).toMatch(/router\.push\(`\/report\/\$\{item\.report\.match_id\}`\)/)
   })
