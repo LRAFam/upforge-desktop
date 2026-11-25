@@ -4,6 +4,8 @@
  * that cached answer, so opening it never spends the API's 60/hour list budget).
  */
 
+import { formatMapLabel } from '../../../lib/valorant'
+
 export interface InboxItem {
   id: number
   type: string
@@ -130,9 +132,11 @@ const GAME_LABELS: Record<string, string> = { valorant: 'Valorant', cs2: 'CS2', 
 /** The API's old fixed title for every finished analysis (before match context was added). */
 const GENERIC_ANALYSIS_TITLE = /^your vod analysis is ready/i
 
-function mapName(raw: unknown): string {
+function mapName(raw: unknown, gameType: string): string {
   let m = str(raw)
   if (!m || /^unknown$/i.test(m)) return ''
+  // Valorant stores Riot codenames ("/Game/Maps/Duality/Duality" is Bind).
+  if (gameType === 'valorant' || gameType === '') return formatMapLabel(m)
   if (m.includes('/')) m = m.split('/').filter(Boolean).pop() ?? ''
   m = m.replace(/^(de|cs|ar)_/i, '').replace(/_/g, ' ')
   return m ? m.charAt(0).toUpperCase() + m.slice(1) : ''
@@ -155,7 +159,7 @@ export function inboxDisplay(item: Pick<InboxItem, 'type' | 'title' | 'message' 
   if (item.type !== 'analysis_complete' || !GENERIC_ANALYSIS_TITLE.test(item.title)) return { title: item.title, message: item.message }
   const d = item.data ?? {}
   const game = GAME_LABELS[str(d.game_type).toLowerCase()] ?? 'Valorant'
-  const map = mapName(d.map)
+  const map = mapName(d.map, str(d.game_type).toLowerCase())
   const date = shortDate(d.played_at, now)
   const agent = str(d.agent)
   const as = agent && !agent.startsWith('hero_') ? ` as ${agent}` : ''

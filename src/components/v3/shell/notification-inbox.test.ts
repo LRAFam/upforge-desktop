@@ -82,6 +82,8 @@ describe('bell rows name the match (UX1124-19)', () => {
     const { inboxDisplay } = await import('./notification-inbox')
     expect(inboxDisplay({ ...base, data: { game_type: 'valorant', map: 'Bind', agent: 'Jett' } }, NOW))
       .toEqual({ title: 'Valorant · Bind — match coaching ready', message: 'Your AI coaching for Bind as Jett is ready.' })
+    expect(inboxDisplay({ ...base, data: { game_type: 'valorant', map: '/Game/Maps/Duality/Duality' } }, NOW).title)
+      .toBe('Valorant · Bind — match coaching ready')
     expect(inboxDisplay({ ...base, data: { game_type: 'cs2', map: 'de_mirage', played_at: '2026-11-22T18:00:00Z' } }, NOW).title)
       .toBe('CS2 · Mirage · 22 Nov — match coaching ready')
     expect(inboxDisplay({ ...base, data: {} }, NOW).message).toBe('Your AI coaching for this Valorant match is ready.')
