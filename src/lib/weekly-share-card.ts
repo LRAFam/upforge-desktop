@@ -23,7 +23,7 @@ export interface WeeklyCardData {
   runCount: number
   /** Average over the window's runs on the newest run's drill + settings. */
   avg: WeeklyCardNumber | null
-  /** That average minus the same average for the 7 days before the window. */
+  /** That average minus the previous window's average; needs three comparable runs in each. */
   vsPrevious: WeeklyCardNumber | null
   /** Best current-scoring score in the window, with its drill. */
   best: WeeklyCardNumber | null
@@ -68,10 +68,14 @@ export function weeklyShareCardData(
   let vsPrevious: WeeklyCardNumber | null = null
   if (comparisonRun) {
     const covers = `${labelOf(comparisonRun.scenario)} · ${comparisonRun.metadata?.difficulty} · ${comparisonRun.duration_seconds}s`
-    const thisAvg = average(inWindow.filter(r => comparableTrainingRuns(r, comparisonRun)))
-    const prevAvg = average(inPrevious.filter(r => comparableTrainingRuns(r, comparisonRun)))
+    const thisRuns = inWindow.filter(r => comparableTrainingRuns(r, comparisonRun))
+    const prevRuns = inPrevious.filter(r => comparableTrainingRuns(r, comparisonRun))
+    const thisAvg = average(thisRuns)
+    const prevAvg = average(prevRuns)
     if (thisAvg !== null) avg = { value: thisAvg, covers }
-    if (thisAvg !== null && prevAvg !== null) vsPrevious = { value: thisAvg - prevAvg, covers }
+    if (thisRuns.length >= 3 && prevRuns.length >= 3 && thisAvg !== null && prevAvg !== null) {
+      vsPrevious = { value: thisAvg - prevAvg, covers }
+    }
   }
 
   const bestRun = inWindow.filter(isCurrentScoringRun).reduce<WeeklyCardRun | null>((b, r) => (!b || r.score > b.score ? r : b), null)
