@@ -50,3 +50,48 @@ export function topMomentClips<T extends ClipPrioritySource>(clips: T[], limit =
   }
   return out
 }
+
+/** Fields that tell two moments of the same kind apart (round, when in the video, length). */
+export interface ClipMomentSource {
+  trigger: string
+  killCount?: number | null
+  round?: number | null
+  momentOffsetMs?: number | null
+  durationSeconds?: number | null
+  game?: string | null
+}
+
+function clock(totalSeconds: number): string {
+  const s = Math.max(0, Math.round(totalSeconds))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = String(s % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`
+}
+
+/**
+ * "R14 · at 12:41 · 0:18": the facts that tell moments apart, from what the clip measured only
+ * (no outcome: clips don't store whether the round was won). Round numbers only for round-based games.
+ */
+export function clipMomentFacts(clip: ClipMomentSource): string[] {
+  const out: string[] = []
+  const roundBased = clip.game == null || clip.game === 'valorant' || clip.game === 'cs2'
+  if (roundBased && typeof clip.round === 'number' && clip.round >= 0) out.push(`R${clip.round + 1}`)
+  if (typeof clip.momentOffsetMs === 'number' && Number.isFinite(clip.momentOffsetMs) && clip.momentOffsetMs >= 0) out.push(`at ${clock(clip.momentOffsetMs / 1000)}`)
+  if (typeof clip.durationSeconds === 'number' && clip.durationSeconds > 0) out.push(clock(clip.durationSeconds))
+  return out
+}
+
+/** Top moments label: "Clutch · 2 kills · R14 · at 12:41 · 0:18" (same facts as the tiles below it). */
+export function clipMomentLabel(clip: ClipMomentSource): string {
+  const k = clip.killCount && clip.killCount > 0 ? clip.killCount : null
+  const head = clip.trigger === 'ace' ? 'Ace'
+    : clip.trigger === 'multikill' ? (k && k > 1 ? `${k}K` : 'Multi-kill')
+      : clip.trigger === 'clutch' ? (k ? `Clutch · ${k} ${k === 1 ? 'kill' : 'kills'}` : 'Clutch')
+        : clip.trigger === 'kill' ? 'Kill'
+          : clip.trigger === 'death' ? 'Death'
+            : clip.trigger === 'objective' ? 'Objective'
+              : clip.trigger === 'hotkey' ? 'Bookmark'
+                : 'Clip'
+  return [head, ...clipMomentFacts(clip)].join(' · ')
+}

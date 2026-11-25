@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import type { ClipRecord } from '../../../env.d'
 import UfIcon from '../UfIcon.vue'
 import { clipDeleteMessage } from '../../../lib/delete-copy'
+import { clipMomentFacts } from '../../../lib/clip-priority'
 
 defineProps<{
   clip: ClipRecord
@@ -43,7 +44,8 @@ const confirming = ref(false)
         <span class="uf-t3 uf-trunc">{{ title }}</span>
         <span class="uf-t4">{{ ago }}</span>
       </div>
-      <span v-if="clip.map || clip.agent" class="uf-t4">{{ [clip.map, clip.agent].filter(Boolean).join(' · ') }}</span>
+      <!-- Round and video time tell same-kind moments apart (length is on the thumbnail). -->
+      <span v-if="clip.map || clip.agent || clipMomentFacts({ ...clip, durationSeconds: null }).length" class="uf-t4">{{ [...clipMomentFacts({ ...clip, durationSeconds: null }), clip.map, clip.agent].filter(Boolean).join(' · ') }}</span>
       <span v-if="clip.suggestion" class="uf-t4 uf-clip-tip">{{ clip.suggestion }}</span>
       <span v-else-if="clip.analysisStatus === 'queued' || clip.analysisStatus === 'processing'" class="uf-t4"><span class="uf-live">●</span> Analysing…</span>
       <div v-if="!bulk" class="uf-clip-actions">

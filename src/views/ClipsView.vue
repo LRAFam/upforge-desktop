@@ -217,8 +217,8 @@
             <div v-if="section.matchKey && isMatchExpanded(section.matchKey)" class="uf-cl-match">
               <div v-if="section.topMoments.length" class="uf-cl-moments">
                 <span class="uf-t4">Top moments</span>
-                <button v-for="moment in section.topMoments" :key="moment.id" type="button" class="uf-link" @click="openPlayer(moment)">
-                  {{ triggerLabel(moment.trigger) }} · {{ moment.title || defaultTitle(moment) }}
+                <button v-for="moment in section.topMoments" :key="moment.id" type="button" class="uf-link" :title="v3ClipTitle(moment)" @click="openPlayer(moment)">
+                  {{ clipMomentLabel(moment) }}
                 </button>
               </div>
               <div class="uf-cl-moments">
@@ -771,7 +771,7 @@
             </button>
           </div>
           <div v-else class="flex items-center gap-1.5 group/title">
-            <p class="text-xs font-semibold text-white truncate">{{ playingClip.title || defaultTitle(playingClip) }}</p>
+            <p class="text-xs font-semibold text-white truncate">{{ uiV3 ? v3ClipTitle(playingClip) : (playingClip.title || defaultTitle(playingClip)) }}</p>
             <button
               class="opacity-0 group-hover/title:opacity-100 transition-opacity text-gray-600 hover:text-gray-300 flex-shrink-0"
               v-if="!cloudOnly"
@@ -783,7 +783,8 @@
               </svg>
             </button>
           </div>
-          <p v-if="playingClip.trigger" class="text-xs text-gray-600 mt-0.5 capitalize">{{ playingClip.trigger }} clip · <span class="font-mono">{{ formatDuration(playingClip.durationSeconds) }}</span></p>
+          <p v-if="playingClip.trigger && uiV3" class="text-xs text-gray-600 mt-0.5">{{ clipMomentLabel(playingClip) }}</p>
+          <p v-else-if="playingClip.trigger" class="text-xs text-gray-600 mt-0.5 capitalize">{{ playingClip.trigger }} clip · <span class="font-mono">{{ formatDuration(playingClip.durationSeconds) }}</span></p>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
           <!-- Favourite toggle -->
@@ -1302,6 +1303,7 @@ import { formatAnalysisFailureMessage } from '../lib/analysis-failure-messages'
 import { CLIP_REVIEW_FAILED_MESSAGE, clipReviewPrecheck } from '../lib/clip-review-errors'
 import { smartClipTitle } from '../lib/ideas/smart-clip-title'
 import { clipsBulkDeleteMessage } from '../lib/delete-copy'
+import { clipMomentLabel } from '../lib/clip-priority'
 import UfIcon from '../components/v3/UfIcon.vue'
 import {
   buildClipMatchGroups,
