@@ -157,3 +157,23 @@ describe('cloudArchiveReadinessMessage', () => {
     expect(cloudArchiveReadinessMessage({ ready: false, state: 'blocked' as never, message: 'x' }, 0, now)).toBe('x')
   })
 })
+
+describe('remakes', () => {
+  const remakeTimeline = (rounds: number, completionState: string | null = 'VoteDraw'): MatchData => ({
+    ...sparseTimeline(),
+    completionState,
+    finalStats: { kills: 1, deaths: 1, assists: 0 } as MatchData['finalStats'],
+    roundSummaries: Array.from({ length: rounds }, (_, i) => ({ round: i })) as unknown as MatchData['roundSummaries'],
+  })
+
+  it('a match voted off in the first rounds is a terminal remake, never ready to analyse', () => {
+    const r = getAnalysisReadiness(baseRecording({ timeline: remakeTimeline(1) }))
+    expect(r).toMatchObject({ ready: false, state: 'remake' })
+    expect(r.message).toMatch(/Remake/)
+  })
+
+  it('a short surrender is not a remake', () => {
+    const r = getAnalysisReadiness(baseRecording({ timeline: remakeTimeline(2, 'Surrendered') }))
+    expect(r.state).not.toBe('remake')
+  })
+})

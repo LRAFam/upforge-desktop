@@ -38,6 +38,7 @@ export function analyseBlockedMessage(rec: AnalyseGateRecording): string {
   if (state === 'file_missing') return 'Recording file missing'
   if (state === 'mode_unsupported') return 'Mode not supported for coaching'
   if (state === 'file_unreadable') return 'Recording unreadable'
+  if (state === 'remake') return 'Remake: nothing to analyse'
   return 'Not ready to analyse'
 }
 

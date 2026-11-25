@@ -1161,6 +1161,7 @@ function createDashboard(opts: DashboardOptions = {}) {
       return state === 'waiting_match_data' ? 'Still fetching match stats…' : 'Syncing stats…'
     }
     if (state === 'finalizing') return 'Finalizing…'
+    if (state === 'remake') return 'Remake'
     if (state === 'no_deaths' || state === 'mode_unsupported' || state === 'file_missing' || state === 'file_unreadable' || state === 'unavailable') {
       return 'Not ready'
     }

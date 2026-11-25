@@ -2,6 +2,7 @@ import { duelMomentsForUpload } from '../moment-picker'
 import { demoSyncMaxMsForGame, hasRichMatchData } from '../match-data-quality'
 import type { AnalyseReadiness, GameAnalyseModule, ReadinessRecording } from './types'
 import { recordingAgeMs, resolveGameMode } from './types'
+import { isValorantRemake } from '../valorant-remake'
 
 export const COACHING_UNSUPPORTED_MODES = new Set(['DEATHMATCH', 'TEAMDEATHMATCH'])
 
@@ -43,6 +44,16 @@ export const valorantModule: GameAnalyseModule = {
         ready: false,
         state: 'unavailable',
         message: 'Could not link this recording to a Riot match — keep UpForge open while you play',
+        duelMomentCount: 0,
+      }
+    }
+
+    // A remake (match voted off in round 1-2) has nothing to coach: never auto-analyse or offer it.
+    if (isValorantRemake({ game: rec.game, gameMode: resolveGameMode(rec), completionState: timeline?.completionState, roundSummaries: timeline?.roundSummaries })) {
+      return {
+        ready: false,
+        state: 'remake',
+        message: 'Remake: this match ended in the first rounds, so there is nothing to analyse. It does not count towards your stats.',
         duelMomentCount: 0,
       }
     }

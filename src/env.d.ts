@@ -435,7 +435,7 @@ export interface PendingRecording {
   localExpiresAt?: number | null
   analysisReadiness?: {
     ready: boolean
-    state: 'ready' | 'syncing' | 'waiting_match_data' | 'no_deaths' | 'unavailable' | 'file_missing' | 'finalizing' | 'mode_unsupported' | 'file_unreadable'
+    state: 'ready' | 'syncing' | 'waiting_match_data' | 'no_deaths' | 'unavailable' | 'file_missing' | 'finalizing' | 'mode_unsupported' | 'file_unreadable' | 'remake'
     message: string
     duelMomentCount: number
   }

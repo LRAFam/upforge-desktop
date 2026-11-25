@@ -248,6 +248,7 @@ export function isTerminalAnalysisReadinessState(state: AnalysisReadinessState):
     || state === 'file_missing'
     || state === 'mode_unsupported'
     || state === 'file_unreadable'
+    || state === 'remake'
 }
 
 export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness {
