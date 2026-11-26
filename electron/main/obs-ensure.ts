@@ -13,6 +13,7 @@ import { broadcastObsConnection } from './obs-health'
 import { launchObsStudio, obsLaunchDelayMs, restartObsStudioElevated } from './obs-launcher'
 import { isObsProcessRunning, obsProcessSleep, terminateObsProcess } from './obs-process'
 import type { OBSRecorder } from './obs-recorder'
+import { noteObsClosedByUpForge, noteObsLaunchedByUpForge } from './obs-lifecycle-stamps'
 
 export interface EnsureObsConnectedOptions {
   password: string
@@ -131,6 +132,7 @@ async function ensureObsConnectedOnce(
 
   const connectAfterLaunch = async (): Promise<EnsureObsConnectedResult> => {
     lastObsLaunchAt = Date.now()
+    noteObsLaunchedByUpForge(lastObsLaunchAt)
     opts.onActivity?.('Starting OBS — connecting…')
     const connected = await connectWithRetries(
       obsRecorder,
@@ -220,6 +222,7 @@ async function ensureObsConnectedOnce(
 
     log.warn('[OBS Ensure] Process running but WebSocket failed — restarting OBS')
     opts.onActivity?.('OBS stuck after crash — restarting recording engine…')
+    noteObsClosedByUpForge()
     const killed = await terminateObsProcess()
     if (!killed.ok) {
       if (killed.requiresElevation) {

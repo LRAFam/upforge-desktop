@@ -52,6 +52,7 @@ import {
   shouldReclaimAfterProcessDeath,
 } from './obs-watchdog-policy'
 import { isObsProcessRunning } from './obs-process'
+import { obsLifecycleAges } from './obs-lifecycle-stamps'
 import type { RecorderConfig } from './recorder'
 import { assessCaptureFrame, type CaptureFrameQuality } from './capture-frame-quality'
 import { withTimeout } from './promise-timeout'
@@ -134,6 +135,9 @@ type RecordingDiagnostics = {
   output_sample_age_ms: number | null; output_sample_failed: boolean | null;
   /** WebSocket close details from the last OBS disconnect (code 1006 = socket lost, 1001 = OBS closing). */
   obs_close_code: number | null; obs_close_reason: string | null;
+  /** How long the WebSocket had been up, and when UpForge last launched or closed OBS (null = never). */
+  obs_connected_for_ms: number | null;
+  obs_launched_by_upforge_ms_ago: number | null; obs_closed_by_upforge_ms_ago: number | null;
 }
 
 function emptyRecordingDiagnostics(game: string | null): RecordingDiagnostics {
@@ -141,6 +145,7 @@ function emptyRecordingDiagnostics(game: string | null): RecordingDiagnostics {
     game, stage: game === null ? null : 'preflight', output_active: null, output_bytes: null, verify_ms: null,
     output_paused: null, no_progress_ms: null, output_sample_age_ms: null, output_sample_failed: null,
     obs_close_code: null, obs_close_reason: null,
+    obs_connected_for_ms: null, obs_launched_by_upforge_ms_ago: null, obs_closed_by_upforge_ms_ago: null,
   }
 }
 
@@ -341,7 +346,13 @@ export class OBSRecorder {
       if (this._suppressConnectionEvents) return
       const close = describeObsClose(closeError)
       // Close code tells socket loss (1006) from OBS shutting down (1001) in the error report.
-      Object.assign(this._startDiagnostics, { obs_close_code: close.code, obs_close_reason: close.reason })
+      Object.assign(this._startDiagnostics, {
+        obs_close_code: close.code,
+        obs_close_reason: close.reason,
+        obs_connected_for_ms: this._connectedAt === null ? null : Math.max(0, Date.now() - this._connectedAt),
+        ...obsLifecycleAges(),
+      })
+      this._connectedAt = null
       log.warn('[OBSRecorder] OBS disconnected', close.code ?? '', close.reason ?? '')
       const wasConnected = this._connected
       this._connected = false
@@ -405,6 +416,7 @@ export class OBSRecorder {
         )
         const versionInfo = await waitForObsReady(() => this._obs.call('GetVersion'))
         this._connected = true
+        this._connectedAt = Date.now()
         this._obsVersion = obsWebSocketVersion
         this._obsStudioVersion = versionInfo.obsVersion
         this._lastError = null
@@ -498,6 +510,7 @@ export class OBSRecorder {
 
   isConnected(): boolean { return this._connected }
   private _startDiagnostics: RecordingDiagnostics = emptyRecordingDiagnostics(null)
+  private _connectedAt: number | null = null
 
   resetRecordingDiagnostics(game: string): void {
     this._startDiagnostics = emptyRecordingDiagnostics(game)
@@ -1120,6 +1133,21 @@ export class OBSRecorder {
     }
   }
 
+  /** One verified stop of a match output a failed stop left running; the caller re-checks OBS. */
+  private async _stopStuckOwnedOutput(): Promise<void> {
+    log.warn('[OBSRecorder] Previous match output is still active — stopping it before the next match')
+    const attempt = this._stopAttempt(undefined, true).catch((err) => {
+      log.warn('[OBSRecorder] Could not stop the stuck OBS output:', describeObsError(err))
+      return null
+    })
+    this._stopInFlight = attempt
+    try {
+      await attempt
+    } finally {
+      if (this._stopInFlight === attempt) this._stopInFlight = null
+    }
+  }
+
   private _startInFlight: Promise<void> | null = null
   private _startContext: { cancelled: boolean; isCancelled: () => boolean } | null = null
 
@@ -1157,8 +1185,16 @@ export class OBSRecorder {
 
     if (this._stopInFlight) throw new Error('OBS is still stopping the previous recording.')
     if (this._recordingFailure) {
-      const status = await withTimeout(this._obs.call('GetRecordStatus'), 3000, this._recordingFailure)
+      let status = await withTimeout(this._obs.call('GetRecordStatus'), 3000, this._recordingFailure)
       checkCancelled()
+      if (status.outputActive !== false && this._matchOwnedRecording) {
+        // An earlier stop gave up while OBS kept writing our match file. Stop it here
+        // rather than refusing every later match until the player restarts OBS.
+        await this._stopStuckOwnedOutput()
+        checkCancelled()
+        status = await withTimeout(this._obs.call('GetRecordStatus'), 3000, this._recordingFailure)
+        checkCancelled()
+      }
       if (status.outputActive !== false) throw new Error(this._recordingFailure)
       this._recordingFailure = null
       this._matchOwnedRecording = false
@@ -1231,7 +1267,27 @@ export class OBSRecorder {
         sceneName: previousScene,
       })
       checkCancelled()
-      await retargetUpForgeCapture(this._obs, game, { ...sceneOptions, switchScene: !live && sceneOptions.switchScene !== false })
+      const retargetOptions = { ...sceneOptions, switchScene: !live && sceneOptions.switchScene !== false }
+      try {
+        await retargetUpForgeCapture(this._obs, game, retargetOptions)
+      } catch (err) {
+        // A missing scene or a source OBS will not add back can usually be repaired.
+        // Rebuild the UpForge scene and capture once, then fail with OBS's own detail.
+        // Timeouts and socket errors carry no OBS status code: a repair would hang too.
+        const code = (err as { code?: unknown } | null)?.code
+        if (typeof code !== 'number' || code < 200 || code >= 1000) throw err
+        checkCancelled()
+        log.warn('[OBSRecorder] Capture setup failed — repairing the UpForge scene and retrying once:', describeObsError(err))
+        const repair = await setupUpForgeScene(this._obs, game, {
+          switchScene: retargetOptions.switchScene,
+          writeProfile: false,
+          allowRecreate: retargetOptions.allowRecreate,
+        })
+        this._registerGameplayScene(repair.sceneIdentity)
+        if (!repair.ok) log.warn('[OBSRecorder] UpForge scene repair incomplete:', repair.error)
+        checkCancelled()
+        await retargetUpForgeCapture(this._obs, game, retargetOptions)
+      }
       checkCancelled()
       this._lastCaptureGame = game
       if (
@@ -1707,11 +1763,23 @@ export class OBSRecorder {
       this._outputPath = null
     } else {
       const status = await withTimeout(this._obs.call('GetRecordStatus'), 3000, 'OBS recording status timed out')
-      if (status.outputActive && !shutdownRequest) {
+      const sendStop = async (): Promise<void> => {
         const response = await withTimeout(this._obs.call('StopRecord'), 5000, 'OBS stop request timed out. Restart OBS.')
         if (response.outputPath) this._outputPath = response.outputPath
       }
-      await waitForRecordingStopped(() => this._obs.call('GetRecordStatus'))
+      if (status.outputActive && !shutdownRequest) await sendStop()
+      await waitForRecordingStopped(() => this._obs.call('GetRecordStatus'), undefined, {
+        resendStop: shutdownRequest ? undefined : sendStop,
+        // A start failure keeps the stage it failed at; only a plain stop reports its own samples.
+        onSample: (sample) => {
+          if (this._verifyingStart) return
+          Object.assign(this._startDiagnostics, {
+            stage: 'stop_confirm',
+            output_active: typeof sample.outputActive === 'boolean' ? sample.outputActive : null,
+            output_bytes: Number.isFinite(sample.outputBytes) ? sample.outputBytes : null,
+          })
+        },
+      })
     }
     if (ownsMatchFile) markOwnedRecordingFile(this._outputPath)
     // It is now safe to release ownership. File finalization is a separate success condition.
