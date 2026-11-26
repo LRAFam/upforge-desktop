@@ -20,6 +20,7 @@ import { normalizeValorantCoachingStats, enforceValorantCoachingQuality, type Co
 import { hasCompleteRiotKillEvents } from './valorant-kill-completeness'
 import { videoOffsetProvenance } from './video-offset-provenance'
 import { capturedCs2PlayerSteamId } from './cs2-upload-identity'
+import { isValorantRemake } from './valorant-remake'
 
 /** Slim Riot MatchDetails subset for coaching prompts (avoids multi‑MB raw JSON). */
 export interface MatchDetailsLite {
@@ -29,6 +30,8 @@ export interface MatchDetailsLite {
     mapId?: string
     queueID?: string
     gameMode?: string
+    completionState?: string
+    isCompleted?: boolean
   }
   players?: Array<{
     subject?: string | null
@@ -116,6 +119,8 @@ export function slimRoundDetails(raw: Record<string, unknown> | null | undefined
 }
 
 export type UploadMatchData = Omit<MatchData, 'events' | 'matchDetails'> & {
+  /** Valorant remake (valorant-remake.ts): the API leaves it out of stats and won't analyse it. */
+  remake?: boolean
   /** Legacy duplicate of killEvents — omitted on upload. */
   events?: never
   matchDetails?: never
@@ -149,6 +154,8 @@ function slimMatchDetails(raw: Record<string, unknown> | null | undefined): Matc
           mapId: matchInfo.mapId as string | undefined,
           queueID: matchInfo.queueID as string | undefined,
           gameMode: matchInfo.gameMode as string | undefined,
+          completionState: typeof matchInfo.completionState === 'string' ? matchInfo.completionState : undefined,
+          isCompleted: typeof matchInfo.isCompleted === 'boolean' ? matchInfo.isCompleted : undefined,
         }
       : undefined,
     players: players?.map((p) => {
@@ -320,6 +327,8 @@ export function prepareMatchDataForUpload(
       vision_score: timeline.vision_score,
     } : {}),
     teamSnapshot: timeline.teamSnapshot,
+    completionState: timeline.completionState ?? null,
+    remake: isValorantRemake(timeline) || undefined,
     matchDetailsLite: slimMatchDetails(timeline.matchDetails),
     spatialSummary: timeline.spatialSummary,
     roundPlants,

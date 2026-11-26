@@ -10,6 +10,7 @@ export type AnalyseReadyState =
   | 'finalizing'
   | 'mode_unsupported'
   | 'file_unreadable'
+  | 'remake'
 
 export interface AnalyseReadiness {
   ready: boolean

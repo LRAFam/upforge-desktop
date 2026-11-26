@@ -395,6 +395,8 @@ export interface MatchData {
    * zero). When set it replaces the loading-time estimate; manual sync nudges still apply on top.
    */
   roundTimerOffsetMs?: number
+  /** Riot matchInfo.completionState ("Completed", "Surrendered", …); null when not reported. */
+  completionState?: string | null
   roundTimerEvidence?: TimerOffsetEvidence
   /** Why the last round-timer read fell back to the estimate; cleared once a read succeeds. */
   roundTimerFailure?: TimerSyncFailure

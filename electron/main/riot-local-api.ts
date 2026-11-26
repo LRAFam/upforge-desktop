@@ -1486,6 +1486,9 @@ export class RiotLocalApi {
     this.matchData.spikeDetonations = []
     this.matchData.firstBloods = []
 
+    // Surrender / remake detection needs Riot's completion state (it used to be dropped here).
+    this.matchData.completionState = typeof matchInfo?.completionState === 'string' ? matchInfo.completionState : null
+
     if (matchInfo?.mapId) {
       this.matchData.map = resolveMapName(matchInfo.mapId as string)
     }
