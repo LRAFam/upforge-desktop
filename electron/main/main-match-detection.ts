@@ -1228,7 +1228,11 @@ export function createMainMatchDetection(mainProcess: MainMatchDetectionContext)
           if (game !== 'valorant' || !timeline) return
           const synced = await alignValorantTimelineByRoundTimer(timeline, readyPath, ffmpegFrameReader(ffmpegPath()), log)
             .catch((err) => { log.warn('[TimerSync] Skipped:', err); return null })
-          if (!synced) return
+          if (!synced) {
+            // Keep why it fell back, so the upload's videoOffsetProvenance carries the reason.
+            if (timeline.roundTimerFailure) captureStore.updateTimeline(savedRecording.id, timeline)
+            return
+          }
           mainProcess.finalizeTimelineOffsetsForClips(timeline)
           captureStore.updateTimeline(savedRecording.id, timeline)
           mainProcess.notifyRecordingsUpdated()

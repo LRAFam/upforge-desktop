@@ -24,6 +24,16 @@ describe('video offset evidence', () => {
     cs2.cs2DemoSyncEvidence = { pairs: 4, livePoints: 5 }
     expect(videoOffsetProvenance(cs2)).toMatchObject({ status: 'measured', source: 'cs2_demo_anchor', uncertaintyMs: null })
   })
+  it('says why a Valorant timer read fell back, only while no timer offset is set', () => {
+    const failed = timeline({ roundTimerFailure: { reason: 'inconsistent', samples: 3, rounds: 1, spreadMs: 400, outliers: NaN } })
+    expect(videoOffsetProvenance(failed)).toMatchObject({
+      status: 'estimated', source: 'loading_estimate', timerFailure: { reason: 'inconsistent', samples: 3, rounds: 1, spreadMs: 400 },
+    })
+    expect(videoOffsetProvenance(failed).timerFailure).not.toHaveProperty('outliers')
+    expect(videoOffsetProvenance(timeline({ roundTimerOffsetMs: -4000, roundTimerFailure: { reason: 'timed_out' } })).timerFailure).toBeUndefined()
+    expect(videoOffsetProvenance(timeline({ game: 'cs2', roundTimerFailure: { reason: 'timed_out' } } as never)).timerFailure).toBeUndefined()
+    expect(videoOffsetProvenance(timeline({ roundTimerFailure: { reason: 'bogus' } as never })).timerFailure).toBeUndefined()
+  })
   it('does not manufacture evidence for missing or non-finite clocks', () => {
     expect(videoOffsetProvenance(timeline({ matchStartTime: null, gameplayStartTime: null, recordingStartTime: NaN })))
       .toMatchObject({ status: 'unknown', source: 'unavailable' })
