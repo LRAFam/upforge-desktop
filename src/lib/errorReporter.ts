@@ -34,6 +34,15 @@ function normalizeComponent(component: string | undefined): string | undefined {
   }
 }
 
+/**
+ * Chromium fires this when a ResizeObserver callback changes layout and the next
+ * notification waits for the following frame. It is a browser warning, not a fault,
+ * and the spec says nothing is lost, so it is not reported.
+ */
+export function isBenignRendererWarning(message: string | undefined): boolean {
+  return /^ResizeObserver loop (completed with undelivered notifications|limit exceeded)/i.test(message ?? '')
+}
+
 export async function reportError(payload: {
   message: string
   stack?: string
@@ -110,6 +119,7 @@ export function setupRendererErrorReporter(app: App): void {
   // Unhandled JS errors
   window.addEventListener('error', (event) => {
     if (event.target && (event.target as HTMLElement).tagName) return
+    if (isBenignRendererWarning(event.message)) return
     reportError({
       message: event.message || 'Unknown error',
       stack: event.error?.stack,
