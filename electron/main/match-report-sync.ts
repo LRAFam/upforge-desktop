@@ -9,6 +9,7 @@ import type { RecentMatchFetchResult } from './recent-match-export'
 import { serializeRecentMatch } from './recent-match-export'
 import type { FocusSyncResult, FocusUpdate } from '../../src/lib/focus'
 import { deriveRoundFacts } from '../../src/lib/focus'
+import { roundDetailFields } from './match-report-round-detail'
 import { sanitizeUpforgeScore, sanitizeUpforgeScoreBreakdown } from '../../src/lib/upforge-score-breakdown'
 
 export interface SyncState {
@@ -105,7 +106,10 @@ export async function syncMatchReports(deps: SyncDeps, limit = 20): Promise<Sync
     }
     let res: { status: number; data: any }
     try {
-      res = await deps.post({ match_id: p.matchId, played_at_ms: p.startMs, history: p.history, match_data: matchData })
+      res = await deps.post({
+        match_id: p.matchId, played_at_ms: p.startMs, history: p.history, match_data: matchData,
+        ...roundDetailFields(matchData),
+      })
     } catch {
       reason = 'network_error'
       break // network: retry next sync

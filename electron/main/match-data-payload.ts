@@ -32,6 +32,8 @@ export interface MatchDetailsLite {
     gameMode?: string
     completionState?: string
     isCompleted?: boolean
+    /** Riot build the match was played on (e.g. "release-09.10-shipping-…"). */
+    gameVersion?: string
   }
   players?: Array<{
     subject?: string | null
@@ -156,6 +158,9 @@ function slimMatchDetails(raw: Record<string, unknown> | null | undefined): Matc
           gameMode: matchInfo.gameMode as string | undefined,
           completionState: typeof matchInfo.completionState === 'string' ? matchInfo.completionState : undefined,
           isCompleted: typeof matchInfo.isCompleted === 'boolean' ? matchInfo.isCompleted : undefined,
+          gameVersion: typeof matchInfo.gameVersion === 'string' && matchInfo.gameVersion.trim()
+            ? matchInfo.gameVersion.trim().slice(0, 64)
+            : undefined,
         }
       : undefined,
     players: players?.map((p) => {
