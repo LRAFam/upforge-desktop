@@ -6,7 +6,7 @@ import upforgeLogo from '../assets/upforge-logo.webp'
 import StorageAddonPicker from '../components/shared/StorageAddonPicker.vue'
 import type { StorageAddonSnapshot } from '../lib/storage-addon'
 import { useAccountUsage } from '../composables/useAccountUsage'
-import { cloudGames, type CloudGame, cloudBytes, cloudKindLabel, cloudRetention, cloudFileTitle, validCloudPage, type CloudFile, type CloudKind, type CloudSort, type CloudPage } from '../lib/cloud-storage'
+import { cloudGames, type CloudGame, cloudBytes, cloudKindLabel, cloudRetention, cloudFileTitle, validCloudPage, cloudSearch, cloudPageAnswers, CLOUD_SEARCH_MAX, type CloudFile, type CloudKind, type CloudSort, type CloudPage } from '../lib/cloud-storage'
 import type { PendingRecording, ClipRecord } from '../env.d.ts'
 import { uiV3 } from '../lib/ui-v3'
 import UfButton from '../components/v3/UfButton.vue'
@@ -53,6 +53,11 @@ const gameLabel = computed(() => cloudGames.find(item => item.value === game.val
 const routeKind = useRoute().query.kind, keepQuery = useRoute().query.keep
 const kind = ref<CloudKind>(routeKind === 'recording' || routeKind === 'clip' ? routeKind : 'all'), sort = ref<CloudSort>('newest'), page = ref(1)
 const library = ref<CloudPage | null>(null), error = ref(''), loading = ref(false)
+/** Server-side search across every page (API #1097): map, agent or title, plus an inclusive date window. */
+const searchText = ref(''), fromDay = ref(''), toDay = ref('')
+const search = computed(() => cloudSearch(searchText.value, fromDay.value, toDay.value))
+const searching = computed(() => !!search.value && Object.keys(search.value).length > 0)
+let searchTimer: ReturnType<typeof setTimeout> | undefined
 const recordings = ref<PendingRecording[]>([]), clips = ref<ClipRecord[]>([]), queueError = ref('')
 let generation = 0, queueGeneration = 0
 let updateTimer: ReturnType<typeof setTimeout> | undefined
@@ -73,10 +78,12 @@ const queue = computed(() => [
   ...clips.value.filter(c => c.uploadStatus === 'uploading' || c.uploadStatus === 'failed').map(c => ({ id: `c:${c.id}`, title: c.title || 'Clip', status: c.uploadStatus === 'uploading' ? 'Uploading' : 'Upload failed', progress: null, path: '/clips' })),
 ])
 let lastLoaded = 0
-function cloudCacheKey() { return `cloud:${game.value}:${kind.value}:${sort.value}:${page.value}` }
+function cloudCacheKey() { const s = search.value ?? {}; return `cloud:${game.value}:${kind.value}:${sort.value}:${page.value}:${s.q ?? ''}:${s.from ?? ''}:${s.to ?? ''}` }
 async function load() {
   const request = ++generation
   retentionNow.value = Date.now()
+  const query = search.value
+  if (!query) { error.value = 'Check the search: up to 100 characters, and the start date must not be after the end date.'; loading.value = false; return }
   // v3: draw this filter's last page at once (rows are re-verified before use), then refresh quietly.
   if (uiV3.value) {
     const hit = readCache<unknown>(cloudCacheKey())
@@ -84,11 +91,12 @@ async function load() {
   }
   loading.value = true; error.value = ''
   try {
-    const result = await window.api.cloudStorage.list({ game: game.value, kind: kind.value, sort: sort.value, page: page.value })
+    const result = await window.api.cloudStorage.list({ game: game.value, kind: kind.value, sort: sort.value, page: page.value, ...query })
     if (request !== generation) return
     if (!result.ok) { error.value = result.error; return }
     if (!validCloudPage(result.data)) { error.value = 'Cloud library could not be verified. Please retry.'; return }
     if (game.value !== 'all' && result.data.game_filter !== game.value) { error.value = 'Game filtering is not available on the server yet.'; return }
+    if (!cloudPageAnswers(result.data, query)) { error.value = 'Search is not available on the server yet.'; return }
     library.value = result.data
     if (uiV3.value) writeCache(cloudCacheKey(), result.data)
     lastLoaded = Date.now()
@@ -178,6 +186,11 @@ async function downloadFile() {
 }
 watch([kind, sort, game], () => { if (page.value !== 1) page.value = 1; else void load() })
 watch(page, () => { void load() })
+// Typing waits a moment; a new search starts again from page 1.
+watch([searchText, fromDay, toDay], () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { if (page.value !== 1) page.value = 1; else void load() }, 350)
+})
 const cleanups = ['session:user-changed', 'auth:session-expired'].map(event => window.api.on(event, resetAccount))
 cleanups.push(...['recordings:updated', 'clips:updated', 'clips:new'].map(event => window.api.on(event, () => {
   void loadQueue()
@@ -189,7 +202,7 @@ onMounted(() => {
   // "Keep it in the cloud" from Matches / the match page / post-game lands on the storage options.
   if (uiV3.value && keepQuery === '1') void nextTick(() => setTimeout(showKeepOptions, 300))
 })
-onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++; queueGeneration++; cleanups.forEach(fn => fn()); window.removeEventListener('focus', focusRefresh) })
+onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); clearTimeout(searchTimer); generation++; queueGeneration++; cleanups.forEach(fn => fn()); window.removeEventListener('focus', focusRefresh) })
 </script>
 
 <template>
@@ -257,6 +270,9 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
           <div class="uf-cs-toolbar">
             <UfTabs :items="filters.map(f => ({ key: f.value, label: f.label }))" :model-value="kind" size="filter" label="File type" @update:model-value="kind = $event as CloudKind" />
             <span style="flex: 1" />
+            <label class="uf-cs-select"><span class="uf-label">Search</span><input v-model="searchText" type="search" class="uf-input is-compact" :maxlength="CLOUD_SEARCH_MAX" placeholder="Map, agent or title" aria-label="Search cloud files by map, agent or title"></label>
+            <label class="uf-cs-select"><span class="uf-label">From</span><input v-model="fromDay" type="date" class="uf-input is-compact" :max="toDay || undefined" aria-label="Uploaded from"></label>
+            <label class="uf-cs-select"><span class="uf-label">To</span><input v-model="toDay" type="date" class="uf-input is-compact" :min="fromDay || undefined" aria-label="Uploaded to"></label>
             <label class="uf-cs-select"><span class="uf-label">Game</span><select v-model="game" class="uf-select is-inline is-compact"><option v-for="option in cloudGames" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
             <label class="uf-cs-select"><span class="uf-label">Sort</span><select v-model="sort" class="uf-select is-inline is-compact"><option value="newest">Newest first</option><option value="largest">Largest first</option><option value="expiry">Expiring first</option></select></label>
           </div>
@@ -275,7 +291,11 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
           </div>
           <div v-else-if="error" class="uf-cs-empty" role="alert"><p class="uf-t2" style="margin: 0">{{ error }}</p><UfButton @click="load">Retry</UfButton></div>
           <template v-else-if="library">
-            <div v-if="!library.items.length" class="uf-cs-empty">
+            <div v-if="!library.items.length && searching" class="uf-cs-empty">
+              <p class="uf-t3" style="margin: 0">No files match this search</p>
+              <UfButton @click="searchText = ''; fromDay = ''; toDay = ''">Clear search</UfButton>
+            </div>
+            <div v-else-if="!library.items.length" class="uf-cs-empty">
               <p class="uf-t3" style="margin: 0">No {{ kind === 'all' ? 'cloud files' : kind === 'clip' ? 'cloud clips' : 'cloud recordings' }}{{ game === 'all' ? '' : ` for ${gameLabel}` }} yet</p>
               <p class="uf-t4" style="margin: 0">Upload from Clips or Matches to keep your gameplay available on other devices.</p>
               <UfButton @click="router.push(kind === 'clip' ? '/clips' : '/recordings')">Open {{ kind === 'clip' ? 'Clips' : 'Matches' }}</UfButton>
@@ -391,9 +411,9 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
         <section v-if="pendingRemoval" class="retention-notice" role="alert"><div><strong>Remove {{ cloudFileTitle(pendingRemoval) }} from the cloud?</strong><p>This permanently removes the cloud video. Your local files and notebook notes stay saved.</p></div><button :disabled="!!keeping" @click="keep(pendingRemoval, 'remove')">Remove cloud copy</button><button :disabled="!!keeping" @click="pendingRemoval=null">Cancel</button></section><p v-if="keepError" role="alert">{{ keepError }}</p><section class="files-panel" aria-label="Cloud files" :aria-busy="loading">
           <div v-if="attentionCount" class="retention-notice"><div><strong>{{ attentionCount }} {{ attentionCount === 1 ? 'file needs' : 'files need' }} a retention check</strong><p>On this page: expiring within 7 days or past the retention date. Open a file to check playback. Files past their retention date may be removed; your notes stay saved.</p></div><button v-if="sort !== 'expiry'" @click="sort = 'expiry'">Sort by expiry</button></div>
           <div class="library-heading"><h2>Saved to cloud · {{ gameLabel }}</h2><span v-if="library">{{ library.total }} files</span><span v-else>Clips &amp; recordings</span></div>
-          <div class="file-toolbar"><label class="sort">Game <select v-model="game"><option v-for="option in cloudGames" :key="option.value" :value="option.value">{{ option.label }}</option></select></label><div class="filters" aria-label="File type"><button v-for="filter in filters" :key="filter.value" :aria-pressed="kind === filter.value" :class="{ selected: kind === filter.value }" @click="kind = filter.value">{{ filter.label }}</button></div><label class="sort">Sort <select v-model="sort"><option value="newest">Newest first</option><option value="largest">Largest first</option><option value="expiry">Expiring first</option></select></label></div>
+          <div class="file-toolbar"><label class="sort">Game <select v-model="game"><option v-for="option in cloudGames" :key="option.value" :value="option.value">{{ option.label }}</option></select></label><div class="filters" aria-label="File type"><button v-for="filter in filters" :key="filter.value" :aria-pressed="kind === filter.value" :class="{ selected: kind === filter.value }" @click="kind = filter.value">{{ filter.label }}</button></div><label class="sort">Search <input v-model="searchText" type="search" :maxlength="CLOUD_SEARCH_MAX" placeholder="Map, agent or title" aria-label="Search cloud files by map, agent or title"></label><label class="sort">From <input v-model="fromDay" type="date" :max="toDay || undefined" aria-label="Uploaded from"></label><label class="sort">To <input v-model="toDay" type="date" :min="fromDay || undefined" aria-label="Uploaded to"></label><label class="sort">Sort <select v-model="sort"><option value="newest">Newest first</option><option value="largest">Largest first</option><option value="expiry">Expiring first</option></select></label></div>
           <p v-if="loading && !library" class="empty" role="status">Loading cloud files…</p><div v-else-if="error" class="empty" role="alert"><p>{{ error }}</p><button @click="load">Retry</button></div>
-          <template v-else-if="library"><div v-if="!library.items.length" class="empty"><h3>No {{ kind === 'all' ? 'cloud files' : kind === 'clip' ? 'cloud clips' : 'cloud recordings' }}{{ game === 'all' ? '' : ` for ${gameLabel}` }} yet</h3><p>Upload from Clips or Footage to keep your gameplay available on other devices.</p><button @click="router.push(kind === 'clip' ? '/clips' : '/recordings')">Open {{ kind === 'clip' ? 'Clips' : 'Footage' }}</button></div>
+          <template v-else-if="library"><div v-if="!library.items.length && searching" class="empty"><h3>No files match this search</h3><button @click="searchText = ''; fromDay = ''; toDay = ''">Clear search</button></div><div v-else-if="!library.items.length" class="empty"><h3>No {{ kind === 'all' ? 'cloud files' : kind === 'clip' ? 'cloud clips' : 'cloud recordings' }}{{ game === 'all' ? '' : ` for ${gameLabel}` }} yet</h3><p>Upload from Clips or Footage to keep your gameplay available on other devices.</p><button @click="router.push(kind === 'clip' ? '/clips' : '/recordings')">Open {{ kind === 'clip' ? 'Clips' : 'Footage' }}</button></div>
             <div v-for="file in library.items" :key="`${file.kind}:${file.id}`" class="file-row" :class="{ 'retention-ended': retention(file.expires_at).state === 'expired' }"><div class="file-icon" :style="{ backgroundImage: getMapListViewImage(file.map) ? `url(${getMapListViewImage(file.map)})` : undefined }" :class="[file.kind, { 'map-thumbnail': getMapListViewImage(file.map) && !failedMapImages.has(file.map!) }]" aria-hidden="true"><img v-if="getAgentImage(file.agent) && !failedAgents.has(file.agent!)" class="file-agent" :src="getAgentImage(file.agent)" alt="" loading="lazy" @error="failedAgents.add(file.agent!)" /><img v-else-if="getMapListViewImage(file.map) && !failedMapImages.has(file.map!)" :src="getMapListViewImage(file.map)" alt="" loading="lazy" @error="hideMapImage(file.map!)" /><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 8 6 4-6 4z"/></svg></div><div class="file-description"><h3><button class="file-open" :disabled="file.status === 'uploading'" @click="openFile(file)">{{ cloudFileTitle(file) }}</button></h3><p>{{ cloudGames.find(item => item.value === file.game)?.label || 'Game not recorded' }} · {{ file.kind === 'clip' ? 'Clip' : 'Recording' }}<span v-if="file.agent"> · {{ file.agent }}</span> · {{ date(file.created_at) }}<span v-if="file.status === 'uploading'"> · Uploading</span><span v-if="file.status === 'failed'"> · Upload failed</span></p></div><div class="file-storage"><strong :title="file.bytes === null ? 'This older file has no verified size yet. Its size has not been counted as zero.' : undefined">{{ cloudBytes(file.bytes) }}</strong><p class="retention-label" :class="retention(file.expires_at).state" :title="file.expires_at ? `Retention date: ${date(file.expires_at)}` : undefined">{{ file.paid_storage && addon?.usage.active ? 'Kept in paid storage' : retention(file.expires_at).label }}</p><button @click="openFile(file)" :disabled="file.status === 'uploading'">{{ file.status === 'uploading' ? 'Uploading…' : retention(file.expires_at).state === 'expired' ? 'Recovery options' : 'Open file' }}</button><button v-if="addon?.usage.active && !file.paid_storage && ['stored','archived'].includes(file.status) && retention(file.expires_at).state !== 'expired'" :disabled="!!keeping" @click="keep(file)">{{ keeping === `${file.kind}:${file.id}` ? 'Moving…' : 'Keep in paid storage' }}</button><button v-if="file.paid_storage || usage?.cloud_storage" :disabled="!!keeping" @click="pendingRemoval=file">Remove cloud copy</button></div></div>
             <footer v-if="library.total" class="pagination"><span>{{ library.total }} files · Page {{ library.page }} of {{ library.last_page }}</span><div><button :disabled="page <= 1" @click="page--">Previous</button><button :disabled="page >= library.last_page" @click="page++">Next</button></div></footer>
           </template>

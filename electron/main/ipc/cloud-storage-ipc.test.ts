@@ -141,3 +141,16 @@ it('shows friendly text for clip review refusals instead of a generic error', as
   expect(await handlers['cloud-clip:review']({}, 12, true)).toMatchObject({ ok: false, error: expect.stringContaining('up to 120 seconds') })
   expect(get).not.toHaveBeenCalled()
 })
+it('passes the server-side search and refuses a bad search before calling the API', async () => {
+  let handler: (...args: any[]) => Promise<any> = async () => null
+  const get = vi.fn().mockResolvedValue({ data: { items: [] } })
+  setupCloudStorageHandlers({ handle: (name: string, fn: typeof handler) => { if (name === 'cloud-storage:list') handler = fn } } as unknown as IpcMain, { getToken: () => 'token-1', getUser: () => ({ id: 1 }), getApi: () => ({ get }) } as unknown as AuthManager)
+  const query = { kind: 'all', sort: 'newest', page: 1 }
+  expect(await handler({}, { ...query, q: '  bind ', from: '2026-11-01', to: '2026-11-25' })).toMatchObject({ ok: true })
+  expect(get).toHaveBeenLastCalledWith('/api/account/cloud-storage', { params: { ...query, q: 'bind', from: '2026-11-01', to: '2026-11-25' } })
+  get.mockClear()
+  for (const bad of [{ q: 'x'.repeat(101) }, { q: 42 }, { from: '2026-13-01' }, { from: '2026-11-25', to: '2026-11-01' }]) {
+    expect(await handler({}, { ...query, ...bad })).toMatchObject({ ok: false })
+  }
+  expect(get).not.toHaveBeenCalled()
+})
