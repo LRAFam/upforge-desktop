@@ -3,7 +3,7 @@ import { clipReviewRefusalMessage } from '../../../src/lib/clip-review-errors'
 import { shell, type IpcMain } from 'electron'
 import { validStorageRequest, validStorageSnapshot, type StorageAddonRequest } from '../../../src/lib/storage-addon'
 import type { AuthManager } from '../auth-manager'
-import { cloudGames, validCloudFileId, type CloudQuery } from '../../../src/lib/cloud-storage'
+import { cloudGames, cloudSearch, validCloudFileId, type CloudQuery } from '../../../src/lib/cloud-storage'
 import { parseRetentionSummary } from '../../../src/lib/cloud-retention'
 
 /** Contract copy for a removed full video (HTTP 410 `video_removed`). */
@@ -94,10 +94,14 @@ export function setupCloudStorageHandlers(ipc: IpcMain, auth: AuthManager, remov
   })
   ipc.handle('cloud-storage:list', async (_event, query: CloudQuery) => {
     if (!query || (query.game !== undefined && !cloudGames.some(game => game.value === query.game)) || !['all', 'clip', 'recording'].includes(query.kind) || !['newest', 'largest', 'expiry'].includes(query.sort) || !Number.isInteger(query.page) || query.page < 1 || query.page > 100000) return { ok: false, error: 'Choose a valid storage filter.' }
+    const text = (field: unknown) => field === undefined || typeof field === 'string'
+    if (!text(query.q) || !text(query.from) || !text(query.to)) return { ok: false, error: 'Choose a valid storage filter.' }
+    const search = cloudSearch(query.q ?? '', query.from ?? '', query.to ?? '')
+    if (!search) return { ok: false, error: 'Choose a valid search and date range.' }
     const token = auth.getToken(), owner = auth.getUser()?.id
     if (!token || !owner) return { ok: false, error: 'Sign in to view cloud storage.' }
     try {
-      const response = await auth.getApi().get('/api/account/cloud-storage', { params: query })
+      const response = await auth.getApi().get('/api/account/cloud-storage', { params: { ...(query.game !== undefined ? { game: query.game } : {}), kind: query.kind, sort: query.sort, page: query.page, ...search } })
       if (auth.getToken() !== token || auth.getUser()?.id !== owner) return { ok: false, error: 'Your account changed. Reload cloud storage.' }
       return { ok: true, data: response.data }
     } catch { return { ok: false, error: 'Cloud library is unavailable. Please try again later.' } }

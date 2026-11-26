@@ -2,7 +2,26 @@ export const cloudGames = [{ value: 'all', label: 'All games' }, { value: 'valor
 export type CloudGame = typeof cloudGames[number]['value']
 export type CloudKind = 'all' | 'clip' | 'recording'
 export type CloudSort = 'newest' | 'largest' | 'expiry'
-export interface CloudQuery { game?: CloudGame; kind: CloudKind; sort: CloudSort; page: number }
+/** q, from and to are the optional server-side search (API #1097): map, agent or title text, and inclusive UTC days (YYYY-MM-DD). */
+export interface CloudQuery { game?: CloudGame; kind: CloudKind; sort: CloudSort; page: number; q?: string; from?: string; to?: string }
+export type CloudSearch = Pick<CloudQuery, 'q' | 'from' | 'to'>
+export const CLOUD_SEARCH_MAX = 100
+/** A real calendar day written YYYY-MM-DD (what a date input gives and the API accepts). */
+export function validCloudDay(day: unknown): day is string {
+  if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return false
+  const time = Date.parse(`${day}T00:00:00Z`)
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === day
+}
+/** The search to send, with only the fields that are set; null when the text is too long or the dates are not a valid range. */
+export function cloudSearch(text: string, from: string, to: string): CloudSearch | null {
+  const q = text.trim()
+  if (q.length > CLOUD_SEARCH_MAX || (from && !validCloudDay(from)) || (to && !validCloudDay(to)) || (from && to && from > to)) return null
+  return { ...(q ? { q } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}) }
+}
+/** True when a page answers this search. The API echoes q/from/to; an older API echoes nothing, so it never answers a set search. */
+export function cloudPageAnswers(page: CloudPage, search: CloudSearch): boolean {
+  return (page.q ?? undefined) === search.q && (page.from ?? undefined) === search.from && (page.to ?? undefined) === search.to
+}
 export interface CloudFile {
   game?: string | null
   /** `analysis_video` (API cloud retention): the full video kept by an analysis upload. */
@@ -20,7 +39,7 @@ export interface CloudFile {
   retention?: unknown
   analysis?: { won: boolean | null; rounds_won: number | null; rounds_lost: number | null; kills: number | null; deaths: number | null; assists: number | null } | null
 }
-export interface CloudPage { version: 1; game_filter?: CloudGame; items: CloudFile[]; page: number; last_page: number; total: number }
+export interface CloudPage { version: 1; game_filter?: CloudGame; q?: string | null; from?: string | null; to?: string | null; items: CloudFile[]; page: number; last_page: number; total: number }
 /** Clip ids are numeric, recording archives are UUIDs, analysis videos use the job id (numeric or UUID). */
 export function validCloudFileId(kind: unknown, id: unknown): boolean {
   if (typeof id !== 'string') return false
