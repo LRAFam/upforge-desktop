@@ -62,13 +62,13 @@ export function consumePendingCaptureSourceId(): string | null {
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 
-/** POST JSON to an API endpoint with Bearer auth. */
-export function apiPost(base: string, pathname: string, body: string, token: string): Promise<unknown> {
+/** POST (or another method, e.g. DELETE) JSON to an API endpoint with Bearer auth. */
+export function apiPost(base: string, pathname: string, body: string, token: string, method: 'POST' | 'DELETE' = 'POST'): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const url = new URL(`${base}${pathname}`)
     const proto = url.protocol === 'https:' ? https : http
     const req = proto.request({
-      method: 'POST',
+      method,
       hostname: url.hostname,
       port: url.port || (url.protocol === 'https:' ? 443 : 80),
       path: url.pathname + url.search,

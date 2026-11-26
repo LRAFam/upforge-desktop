@@ -21,6 +21,8 @@ export function buildClipUploadPayload(
   const roundContext = roundSummaryForClip(timeline, clip.round)
 
   const payload: Record<string, unknown> = {
+    // Lets the API route a published clip to the right game's feed / Discord channel.
+    game: clip.game ?? timeline?.game ?? undefined,
     trigger: clip.trigger,
     map: clip.map ?? timeline?.map ?? undefined,
     agent: clip.agent ?? timeline?.agent ?? undefined,
