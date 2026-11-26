@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.mock('./desktop-api', () => ({ hasDesktopApi: () => true }))
-import { reportError } from './errorReporter'
+import type { App } from 'vue'
+import { isBenignRendererWarning, reportError, setupRendererErrorReporter } from './errorReporter'
 
 beforeEach(() => vi.stubGlobal('__APP_VERSION__', '2.14.3'))
 afterEach(() => vi.unstubAllGlobals())
@@ -45,4 +46,31 @@ it('groups the same renderer warning across installation paths and VOD IDs witho
   await reportError({ message: 'A different renderer failure', component: 'VodReview' })
   await reportError({ message, component: 'file:///C:/Users/Alice/upforge/resources/app.asar/out/renderer/index.html#/settings:0:0' })
   expect(fetchMock).toHaveBeenCalledTimes(3)
+})
+
+it('does not report the benign ResizeObserver loop warning from window errors, but still reports real errors', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+  vi.stubGlobal('fetch', fetchMock)
+  const listeners: Record<string, (event: unknown) => void> = {}
+  vi.stubGlobal('window', {
+    location: { hash: '#/vod-review' },
+    fetch: fetchMock,
+    addEventListener: (type: string, handler: (event: unknown) => void) => { listeners[type] = handler },
+  })
+  setupRendererErrorReporter({ config: {} } as unknown as App)
+
+  listeners['error']!({ message: 'ResizeObserver loop completed with undelivered notifications.', filename: 'file:///a/index.html', lineno: 0, colno: 0 })
+  listeners['error']!({ message: 'ResizeObserver loop limit exceeded', filename: 'file:///a/index.html', lineno: 0, colno: 0 })
+  await Promise.resolve()
+  expect(fetchMock).not.toHaveBeenCalled()
+
+  listeners['error']!({ message: 'Cannot read properties of undefined (vod review)', filename: 'file:///a/index.html', lineno: 1, colno: 2 })
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+})
+
+it('only treats the ResizeObserver loop warning as benign', () => {
+  expect(isBenignRendererWarning('ResizeObserver loop completed with undelivered notifications.')).toBe(true)
+  expect(isBenignRendererWarning('ResizeObserver loop limit exceeded')).toBe(true)
+  expect(isBenignRendererWarning('Uncaught TypeError: ResizeObserver is not a constructor')).toBe(false)
+  expect(isBenignRendererWarning(undefined)).toBe(false)
 })
