@@ -6,6 +6,7 @@ import { buildQuitActivity, createQuitGuard } from './quit-guard'
 import { askQuitChoice } from './quit-dialog'
 import { canUseDeveloperTools, devOnly } from './dev-access'
 import { createCoalescedNotifier, createVodProbeSweep } from './vod-probe-sweep'
+import { markRecordingsChanged } from './recordings-list-all-cache'
 import { createRecordingFileFinalizer } from './recording-file-finalizer'
 import { submissionFocusAreas } from '../../src/lib/submission-focus'
 import { insightText as insightTextFrom } from '../../src/lib/last-insight'
@@ -769,9 +770,13 @@ let mainWindow: BrowserWindow | null = null
  * timelines). Bursts after a match used to feed a reload storm that froze the app, so sends are
  * coalesced: many calls inside 400 ms become one event.
  */
-const notifyRecordingsUpdated = createCoalescedNotifier(() => {
+const sendRecordingsUpdated = createCoalescedNotifier(() => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('recordings:updated')
 }, 400)
+const notifyRecordingsUpdated = (): void => {
+  markRecordingsChanged()
+  sendRecordingsUpdated()
+}
 let postGameWindow: BrowserWindow | null = null
 let isQuitting = false
 /** False until setupIpcHandlers runs — windows must not load before IPC is wired. */

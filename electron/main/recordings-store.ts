@@ -191,6 +191,10 @@ export class RecordingsStore {
   private libraries = new Map<number | null, PendingRecording[]>()
   private timelineLoads = new Map<number | null, Promise<void>>()
   private userId: number | null = null
+  private changeRevision = 0
+
+  /** Changes whenever this catalogue (or the active user's catalogue) changes. Used to cache list reads. */
+  get revision(): string { return `${this.userId ?? 'guest'}:${this.changeRevision}` }
 
   private get recordings(): PendingRecording[] { return this.libraries.get(this.userId)! }
   private set recordings(items: PendingRecording[]) { this.libraries.set(this.userId, items) }
@@ -199,6 +203,7 @@ export class RecordingsStore {
 
   /** A row's timeline was replaced (setter) — write that timeline file and the index. */
   private timelineChanged(userId: number | null, id: string): void {
+    this.changeRevision++
     const writer = catalogueWriter(RecordingsStore.indexPathFor(userId))
     writer.markTimelineDirty(id)
     writer.schedule(() => this.libraries.get(userId) ?? [])
@@ -228,6 +233,7 @@ export class RecordingsStore {
   }
 
   setUserScope(userId: number | null, searchDirs: string[] = []): void {
+    this.changeRevision++
     this.userId = userId
     if (!this.libraries.has(userId)) this.recordings = this.load(searchDirs)
     if (searchDirs.length) this.healMissingPaths(searchDirs)
@@ -333,6 +339,7 @@ export class RecordingsStore {
 
   /** Debounced async write of this catalogue (index + changed timelines). Never blocks. */
   private persist(): void {
+    this.changeRevision++
     const userId = this.userId
     catalogueWriter(this.filePath).schedule(() => this.libraries.get(userId) ?? [])
   }

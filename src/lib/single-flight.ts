@@ -27,3 +27,18 @@ export function singleFlight(fn: () => Promise<void>): () => Promise<void> {
     return start()
   }
 }
+
+/**
+ * Event-driven reload: waits `waitMs` after the last call, then runs `fn` through singleFlight.
+ * For `recordings:updated` listeners, so a burst of pushes becomes one list fetch per view.
+ */
+export function debouncedSingleFlight(fn: () => Promise<void>, waitMs = 300): { (): void; cancel(): void } {
+  const run = singleFlight(fn)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const trigger = () => {
+    clearTimeout(timer)
+    timer = setTimeout(() => { timer = undefined; void run() }, waitMs)
+  }
+  trigger.cancel = () => { clearTimeout(timer); timer = undefined }
+  return trigger
+}
