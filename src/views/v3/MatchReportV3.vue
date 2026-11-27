@@ -18,6 +18,7 @@ import { focusMetricScenario } from '../../components/v3/practice/focus-drills'
 import { useDrillRulebook } from '../../lib/drill-rulebook'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import { formatMapLabel, getAgentImage, getMapImage } from '../../lib/valorant'
+import { singleFlight } from '../../lib/single-flight'
 import { matchReportView, reportPracticeMetric, type MatchReportState } from '../../lib/match-report'
 import {
   applyGameNotes, applyMatchChecks, cs2NotesFacts, type GameNotesResult,
@@ -273,7 +274,9 @@ const canWatchRounds = computed(() => !!reportWatchQuery(recording.value, 1))
 const stopVideoWatch: Array<() => void> = []
 onMounted(() => {
   // The recording's state moves on its own (upload, analysis, a failure): keep the action current.
-  const off = window.api?.on?.('recordings:updated', () => { void loadRecording() })
+  // Single-flight: a burst of pushes runs one list fetch plus one follow-up, never a stack of them.
+  const reloadOnUpdate = singleFlight(async () => { await loadRecording() })
+  const off = window.api?.on?.('recordings:updated', () => { void reloadOnUpdate() })
   const offFailed = window.api?.on?.('dashboard:analysis-failed', () => { holdStarted(null); void loadRecording() })
   for (const stop of [off, offFailed]) if (typeof stop === 'function') stopVideoWatch.push(stop)
   void window.api?.profile?.get?.().then((p) => { if (p?.user) profileUser.value = p.user }).catch(() => {})

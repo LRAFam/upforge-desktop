@@ -182,21 +182,52 @@ function captureSetupError(err: unknown, inputName: string): Error {
   return Object.assign(new Error(`${describeObsError(err)} (${detail})`, { cause: err }), { code })
 }
 
+const SCENE_ITEM_RETRY_MS = 250
+const SCENE_ITEM_ATTEMPTS = 3
+
+/**
+ * Add the capture input to the UpForge scene. A just-created or just-updated input can be refused
+ * for a moment ("Failed to create the scene item."), so retry a few times before giving up.
+ */
 async function ensureCaptureSceneItem(obs: OBSWebSocket, inputName: string): Promise<void> {
-  const items = await obs.call('GetSceneItemList', { sceneName: UPFORGE_SCENE_NAME }) as {
-    sceneItems?: { sourceName: string }[]
+  let lastErr: unknown
+  for (let attempt = 0; attempt < SCENE_ITEM_ATTEMPTS; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, SCENE_ITEM_RETRY_MS))
+    const items = await obs.call('GetSceneItemList', { sceneName: UPFORGE_SCENE_NAME }) as {
+      sceneItems?: { sourceName: string }[]
+    }
+    if (items.sceneItems?.some((item) => item.sourceName === inputName)) return
+    try {
+      await obs.call('CreateSceneItem', {
+        sceneName: UPFORGE_SCENE_NAME,
+        sourceName: inputName,
+        sceneItemEnabled: true,
+      })
+      return
+    } catch (err) {
+      lastErr = err
+    }
   }
-  if (items.sceneItems?.some((item) => item.sourceName === inputName)) return
-  try {
-    await obs.call('CreateSceneItem', {
-      sceneName: UPFORGE_SCENE_NAME,
-      sourceName: inputName,
-      sceneItemEnabled: true,
-    })
-  } catch (err) {
-    throw captureSetupError(err, inputName)
-  }
+  throw captureSetupError(lastErr, inputName)
 }
+
+/**
+ * The existing input with our name will not join the scene (typically a removed copy OBS has not
+ * released yet). Remove it by name and create a fresh one once OBS frees the name.
+ */
+async function replaceUnattachableInput(
+  obs: OBSWebSocket,
+  inputName: string,
+  inputKind: string,
+  inputSettings: Record<string, string | number | boolean>,
+  sceneItemError: unknown,
+): Promise<void> {
+  log.warn('[OBS Setup] Capture input cannot join the scene — replacing it:', describeObsError(sceneItemError))
+  await obs.call('RemoveInput', { inputName }).catch(() => { /* already removed */ })
+  await createInputAfterRemovedCopy(obs, inputKind, inputSettings, (sceneItemError as { cause?: unknown }).cause ?? sceneItemError)
+}
+
+const isNameCollision = (err: unknown): boolean => /source already exists by that input name/i.test(describeObsError(err))
 
 const REMOVED_INPUT_RETRY_MS = 250
 const REMOVED_INPUT_RETRIES = 12
@@ -221,9 +252,11 @@ async function createInputAfterRemovedCopy(
         inputSettings: inputSettings as never,
         sceneItemEnabled: true,
       })
+      // CreateInput adds the scene item itself; confirm it landed (retries if OBS was not ready).
+      await ensureCaptureSceneItem(obs, UPFORGE_INPUT_NAME)
       return
     } catch (err) {
-      if (!/source already exists by that input name/i.test(describeObsError(err))) throw captureSetupError(err, UPFORGE_INPUT_NAME)
+      if (!isNameCollision(err)) throw err instanceof Error && /\(OBS code|scene "/.test(err.message) ? err : captureSetupError(err, UPFORGE_INPUT_NAME)
     }
   }
   throw captureSetupError(sceneItemError, UPFORGE_INPUT_NAME)
@@ -258,17 +291,13 @@ async function createOrReuseCaptureInput(
   } catch (err) {
     // Another connection may have created it, or RemoveInput may have left it
     // behind. Reuse only a compatible game/window capture, never a display input.
-    if (!/source already exists by that input name/i.test(describeObsError(err))) throw err
+    if (!isNameCollision(err)) throw err
     if (await getInputKind(obs, UPFORGE_INPUT_NAME) !== inputKind) {
-      // OBS frees a removed input only once nothing holds it; give that a moment, then create.
-      if (!await waitForInputRemoved(obs, UPFORGE_INPUT_NAME)) throw err
-      await obs.call('CreateInput', {
-        sceneName: UPFORGE_SCENE_NAME,
-        inputName: UPFORGE_INPUT_NAME,
-        inputKind,
-        inputSettings: inputSettings as never,
-        sceneItemEnabled: true,
-      })
+      // Our name, wrong (or unreadable) kind: never repurpose it. Remove it by name, then create
+      // once OBS frees the name (it does so only when nothing holds the old input any more).
+      await obs.call('RemoveInput', { inputName: UPFORGE_INPUT_NAME }).catch(() => { /* already removed */ })
+      await waitForInputRemoved(obs, UPFORGE_INPUT_NAME)
+      await createInputAfterRemovedCopy(obs, inputKind, inputSettings, err)
       log.info('[OBS Setup] Created capture input after OBS released the old one')
       return true
     }
@@ -280,8 +309,7 @@ async function createOrReuseCaptureInput(
     try {
       await ensureCaptureSceneItem(obs, UPFORGE_INPUT_NAME)
     } catch (itemErr) {
-      log.warn('[OBS Setup] Colliding capture input cannot join the scene — waiting for OBS to release it:', describeObsError(itemErr))
-      await createInputAfterRemovedCopy(obs, inputKind, inputSettings, (itemErr as { cause?: unknown }).cause ?? itemErr)
+      await replaceUnattachableInput(obs, UPFORGE_INPUT_NAME, inputKind, inputSettings, itemErr)
       log.info('[OBS Setup] Created capture input after OBS released a removed copy')
       return true
     }
@@ -357,7 +385,15 @@ async function ensureUpForgeCaptureSerial(
         inputSettings: inputSettings as never,
         overlay: true,
       })
-      if (allowRecreate) await ensureCaptureSceneItem(obs, targetName)
+      if (allowRecreate) {
+        try {
+          await ensureCaptureSceneItem(obs, targetName)
+        } catch (itemErr) {
+          await replaceUnattachableInput(obs, targetName, inputKind, inputSettings, itemErr)
+          log.info('[OBS Setup] Replaced capture input that could not join the scene for', game, '→', captureWindow)
+          return { inputCreated: true, inputUpgraded: false, captureWindow }
+        }
+      }
       log.info('[OBS Setup] Updated capture target for', game, '→', captureWindow)
       return { inputCreated: false, inputUpgraded: false, captureWindow }
     }

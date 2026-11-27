@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { AUTO_SAVE_LABEL, createAutoSaver, type AutoSaveState } from '../../lib/auto-save'
+import { AUTO_SAVE_LABEL, createAutoSaver, plainCopy, type AutoSaveState } from '../../lib/auto-save'
 import type { CoachingPreferences } from '../../lib/coaching-preferences'
 import { coachingSkipMessage, coachingSkipNeedsDiscord } from '../../lib/coaching-preferences'
 import { useRouter } from 'vue-router'
@@ -19,7 +19,7 @@ function openDiscordRow() { router.push(DISCORD_LINK_ROUTE).catch(() => {}) }
 const saveState = ref<AutoSaveState>('idle')
 const validLimit = (p: CoachingPreferences) => Number.isInteger(p.daily_limit) && p.daily_limit >= 1 && p.daily_limit <= 5
 const saver = createAutoSaver<CoachingPreferences>({
-  save: value => window.api.coaching.savePreferences({ ...value }),
+  save: value => window.api.coaching.savePreferences(plainCopy(value)),
   onState: state => { saveState.value = state },
   delayMs: 600,
   valid: validLimit,
@@ -38,7 +38,7 @@ async function save() {
   busy.value = true
   needsDiscord.value = false
   try {
-    preferences.value = await window.api.coaching.savePreferences({ ...preferences.value })
+    preferences.value = await window.api.coaching.savePreferences(plainCopy(preferences.value))
     message.value = 'Coaching preferences saved.'
   } catch { message.value = 'Could not save preferences. Your previous settings still apply.' }
   finally { busy.value = false }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { singleFlight } from './single-flight'
+import { debouncedSingleFlight, singleFlight } from './single-flight'
 
 describe('singleFlight', () => {
   it('collapses a burst into the running call plus one follow-up', async () => {
@@ -23,5 +23,30 @@ describe('singleFlight', () => {
     await run()
     await run()
     expect(fn).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('debouncedSingleFlight', () => {
+  it('turns a burst of update events into one reload', async () => {
+    vi.useFakeTimers()
+    try {
+      const fn = vi.fn(async () => {})
+      const trigger = debouncedSingleFlight(fn, 300)
+      for (let i = 0; i < 11; i++) { trigger(); await vi.advanceTimersByTimeAsync(50) }
+      expect(fn).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(300)
+      expect(fn).toHaveBeenCalledTimes(1)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('cancel drops a pending reload (view unmounted)', async () => {
+    vi.useFakeTimers()
+    try {
+      const fn = vi.fn(async () => {})
+      const trigger = debouncedSingleFlight(fn, 300)
+      trigger(); trigger.cancel()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(fn).not.toHaveBeenCalled()
+    } finally { vi.useRealTimers() }
   })
 })

@@ -3,6 +3,19 @@
  * as the switches beside it that save instantly: no Save button, and a word next to the controls
  * saying whether the change has landed.
  */
+import { toRaw } from 'vue'
+
+/**
+ * Plain, IPC-safe copy of a settings value. Callers pass Vue reactive state (a `ref`'s value
+ * seen by a deep `watch` is a Proxy), and `structuredClone` throws "could not be cloned" on
+ * a Proxy. Settings values are JSON data, so a JSON round-trip of the raw object is exact
+ * and also strips any nested Proxy.
+ */
+export function plainCopy<T>(value: T): T {
+  if (value === undefined) return value
+  return JSON.parse(JSON.stringify(toRaw(value))) as T
+}
+
 export type AutoSaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'failed' | 'invalid'
 
 export interface AutoSaver<T> {
@@ -34,7 +47,7 @@ export function createAutoSaver<T>(opts: {
     clearTimeout(timer)
     timer = undefined
     if (disposed || latest === undefined) return
-    const value = latest
+    const value = plainCopy(latest)
     if (key(value) === lastSaved) { opts.onState('saved'); return }
     if (opts.valid && !opts.valid(value)) { opts.onState('invalid'); return }
     opts.onState('saving')
@@ -53,7 +66,7 @@ export function createAutoSaver<T>(opts: {
   }
 
   function schedule(value: T): void {
-    latest = structuredClone(value)
+    latest = plainCopy(value)
     if (key(latest) === lastSaved) { clearTimeout(timer); timer = undefined; return }
     opts.onState('pending')
     clearTimeout(timer)
@@ -63,7 +76,7 @@ export function createAutoSaver<T>(opts: {
   return {
     schedule,
     flush: run,
-    markSaved(value) { lastSaved = key(value); latest = structuredClone(value) },
+    markSaved(value) { lastSaved = key(value); latest = plainCopy(value) },
     dispose() { disposed = true; clearTimeout(timer) },
   }
 }

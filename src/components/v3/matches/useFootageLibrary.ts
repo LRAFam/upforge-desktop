@@ -24,6 +24,7 @@ import {
 } from '../../../lib/recording-library'
 import { recordingStatusBadge } from '../../../lib/recording-status'
 import { usePrimaryGame } from '../../../composables/usePrimaryGame'
+import { debouncedSingleFlight } from '../../../lib/single-flight'
 import { recordingDeleteMessage, recordingsBulkDeleteMessage } from '../../../lib/delete-copy'
 
 const STATUS_CHIPS = new Set<RecordingLibraryChip>(['all', 'action_required', 'ready', 'analysed', 'cloud', 'local'])
@@ -326,7 +327,10 @@ export function useFootageLibrary(options: FootageLibraryOptions = {}) {
 
   let cleanup: (() => void) | null = null
   onMounted(async () => {
-    cleanup = window.api.on('recordings:updated', () => { void load() })
+    // A burst of `recordings:updated` pushes becomes one list fetch (ERR1127-09 reload bursts).
+    const reloadOnUpdate = debouncedSingleFlight(load, 300)
+    const off = window.api.on('recordings:updated', reloadOnUpdate)
+    cleanup = () => { reloadOnUpdate.cancel(); off() }
     const s = await window.api.app.getStatus().catch(() => null)
     obsConnected.value = s?.obsConnected ?? null
     void load()

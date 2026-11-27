@@ -79,10 +79,17 @@ it('recovers a compatible source left behind when OBS refuses removal', async ()
 })
 
 it('does not repurpose a colliding desktop capture source', async () => {
-  const obs = existingInputServer({ raceOnCreate: true, wrongKind: true })
-  await expect(ensureUpForgeCapture(obs as never, 'valorant')).rejects.toThrow('already exists')
-  expect(obs.call).not.toHaveBeenCalledWith('SetInputSettings', expect.anything())
-  expect(obs.call).not.toHaveBeenCalledWith('CreateSceneItem', expect.anything())
+  vi.useFakeTimers()
+  try {
+    const obs = existingInputServer({ raceOnCreate: true, wrongKind: true })
+    const setup = expect(ensureUpForgeCapture(obs as never, 'valorant')).rejects.toThrow('already exists')
+    await vi.advanceTimersByTimeAsync(10_000)
+    await setup
+    expect(obs.call).not.toHaveBeenCalledWith('SetInputSettings', expect.anything())
+    expect(obs.call).not.toHaveBeenCalledWith('CreateSceneItem', expect.anything())
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 it('creates the new capture kind once OBS finishes releasing an old incompatible input', async () => {
@@ -107,7 +114,7 @@ it('creates the new capture kind once OBS finishes releasing an old incompatible
   }) }
   await expect(ensureUpForgeCapture(obs as never, 'valorant', { forceRecreate: true })).resolves.toMatchObject({ inputCreated: true })
   expect(createCalls).toBe(2)
-  expect(obs.call).toHaveBeenLastCalledWith('CreateInput', expect.objectContaining({ inputKind: config.inputKind }))
+  expect((obs.call.mock.calls as unknown[][]).filter(([method]) => method === 'CreateInput').at(-1)?.[1]).toMatchObject({ inputKind: config.inputKind })
 })
 
 /**
@@ -158,6 +165,93 @@ it('names the OBS error code, scene and input when the capture item still cannot
     )
     await vi.advanceTimersByTimeAsync(10_000)
     await setup
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+// ERR1127-10: start failed with "Failed to create the scene item" and "A source already exists by
+// that input name" even after the 3.4.32 retry. Fake OBS below models the remaining cases.
+
+/** Our input is listed with the right kind but OBS refuses to add it (a removed copy not yet freed). */
+function unattachableListedInputServer(opts: { sceneItemFailures?: number; nameFreesAfterCreates?: number } = {}) {
+  const config = getUpForgeCaptureConfig('valorant', 'Valorant')
+  let listed = true
+  let removedByName = false
+  let attached = false
+  let sceneItemFailures = opts.sceneItemFailures ?? Infinity
+  let createAttempts = 0
+  const obs = { call: vi.fn(async (method: string, args?: Record<string, unknown>) => {
+    if (method === 'GetInputList') return { inputs: listed ? [{ inputName: 'UpForge Capture' }] : [] }
+    if (method === 'GetInputSettings') return { inputKind: config.inputKind, inputSettings: config.inputSettings }
+    if (method === 'GetSceneItemList') return { sceneItems: attached ? [{ sourceName: 'UpForge Capture', sceneItemId: 7 }] : [] }
+    if (method === 'CreateSceneItem') {
+      if (sceneItemFailures-- > 0) throw Object.assign(new Error('Failed to create the scene item.'), { code: 700 })
+      attached = true
+    }
+    if (method === 'RemoveInput' && args?.inputName === 'UpForge Capture') { removedByName = true; listed = false }
+    if (method === 'CreateInput') {
+      createAttempts++
+      if (!removedByName || createAttempts <= (opts.nameFreesAfterCreates ?? 0)) {
+        throw Object.assign(new Error('A source already exists by that input name.'), { code: 601 })
+      }
+      attached = true
+    }
+    return {}
+  }) }
+  return obs
+}
+
+it('retries adding the capture to the scene once OBS is ready, without recreating it', async () => {
+  vi.useFakeTimers()
+  try {
+    const obs = unattachableListedInputServer({ sceneItemFailures: 1 })
+    const setup = ensureUpForgeCapture(obs as never, 'valorant')
+    await vi.advanceTimersByTimeAsync(2_000)
+    await expect(setup).resolves.toMatchObject({ inputCreated: false })
+    expect(obs.call.mock.calls.filter(([m]) => m === 'CreateSceneItem')).toHaveLength(2)
+    expect(obs.call).not.toHaveBeenCalledWith('RemoveInput', expect.anything())
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('replaces a listed capture input that OBS will not add to the scene', async () => {
+  vi.useFakeTimers()
+  try {
+    const obs = unattachableListedInputServer({ nameFreesAfterCreates: 2 })
+    const setup = ensureUpForgeCapture(obs as never, 'valorant')
+    await vi.advanceTimersByTimeAsync(10_000)
+    await expect(setup).resolves.toMatchObject({ inputCreated: true })
+    expect(obs.call).toHaveBeenCalledWith('RemoveInput', { inputName: 'UpForge Capture' })
+    expect(obs.call.mock.calls.filter(([m]) => m === 'CreateInput')).toHaveLength(3)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('removes an incompatible colliding input by name and waits for OBS to free the name', async () => {
+  vi.useFakeTimers()
+  try {
+    let removed = false
+    let creates = 0
+    const obs = { call: vi.fn(async (method: string, args?: Record<string, unknown>) => {
+      // OBS keeps listing the old input well past the release poll window.
+      if (method === 'GetInputList') return { inputs: [{ inputName: 'UpForge Capture' }] }
+      if (method === 'GetInputSettings') return { inputKind: 'monitor_capture', inputSettings: {} }
+      if (method === 'GetSceneItemList') return { sceneItems: creates >= 4 ? [{ sourceName: 'UpForge Capture', sceneItemId: 1 }] : [] }
+      if (method === 'RemoveInput' && args?.inputName === 'UpForge Capture') removed = true
+      if (method === 'CreateInput') {
+        creates++
+        if (!removed || creates < 4) throw Object.assign(new Error('A source already exists by that input name.'), { code: 601 })
+      }
+      return {}
+    }) }
+    const setup = ensureUpForgeCapture(obs as never, 'valorant', { forceRecreate: true })
+    await vi.advanceTimersByTimeAsync(10_000)
+    await expect(setup).resolves.toMatchObject({ inputCreated: true })
+    expect(obs.call).toHaveBeenCalledWith('RemoveInput', { inputName: 'UpForge Capture' })
+    expect(obs.call).not.toHaveBeenCalledWith('SetInputSettings', expect.anything())
   } finally {
     vi.useRealTimers()
   }

@@ -7,6 +7,7 @@ import { getApiBaseUrl } from './api-base'
 import { openExternalSafe } from './shell-open'
 import { canUseDeveloperTools, devOnly } from './dev-access'
 import { createVodProbeSweep } from './vod-probe-sweep'
+import { createListAllLoader, recordingsChangeCount } from './recordings-list-all-cache'
 import { submissionFocusAreas } from '../../src/lib/submission-focus'
 import { createCallRateLogger, startMainLoopLagMonitor } from './main-loop-lag'
 import { saveReplay } from './valorant-replay-download'
@@ -1380,37 +1381,52 @@ export function createMainStartup(mainProcess: MainStartupContext) {
       }))
     })
 
+    /** Local file check off the main thread (one existsSync per row added up on big libraries). */
+    const fileExists = (p: string | null | undefined): Promise<boolean> =>
+      p ? fs.promises.access(p).then(() => true, () => false) : Promise.resolve(false)
+
+    // Concurrent and repeated list-all calls share one build; see recordings-list-all-cache.ts.
+    const listAllLoader = createListAllLoader({
+      revision: () => `${mainProcess.recordingsStore.revision}:${recordingsChangeCount()}`,
+      build: async (key, rescan) => {
+        const allAccounts = key.startsWith('all|')
+        await mainProcess.recordingsStore.timelinesReady()
+        // The earlier dashboard scan may have run before OBS finished writing the file.
+        // Re-scan when the user opens the library so interrupted finalisation self-heals
+        // (throttled: the folder scan is synchronous and stalled the main process in bursts).
+        if (rescan) mainProcess.scanForOrphanedRecordings(true)
+        mainProcess.prepareLegacyOrphanRecoveryRows()
+        // UI v3 asks for every linked account (main + alts) and tags each Valorant row.
+        const linkedAccounts = mainProcess.linkedRiotAccountsFromAuth()
+        // League alts: tag from the cached /api/lol-accounts list (refreshed in the background, at most once a minute).
+        const linkedLolAccounts = mainProcess.linkedLolAccountsFromAuth()
+        const all = allAccounts
+          ? mainProcess.recordingsStore.getAllLinked(linkedAccounts)
+          : mainProcess.recordingsStore.getAll(mainProcess.linkedRiotFromAuth())
+        const fixture = mainProcess.productionVodFixtures.getActive()
+        if (fixture) all.unshift(fixture)
+        for (const rec of all) {
+          if (rec.orphanedImport && rec.timeline && !hasRichMatchData(rec.timeline)) {
+            mainProcess.scheduleAnalysisReadinessRefresh(rec.id, rec.game)
+          }
+        }
+        const local = await Promise.all(all.map((rec) => fileExists(rec.path)))
+        // Cheap read: use cached probe/readiness only — the Recordings tab is for
+        // browsing, not the actionable dashboard queue, so never block on ffmpeg.
+        return all.map((rec, i) => ({
+          ...withAnalysisReadiness(rec),
+          timeline: rowTimelineSummary(rec),
+          hasLocalFile: local[i],
+          cloudUploaded: Boolean(rec.jobId || rec.analysisId || rec.archiveId),
+          localExpiresAt: mainProcess.rowLocalExpiresAt(rec),
+          ...(allAccounts ? { riotAccountRole: riotAccountRole(rec, linkedAccounts, linkedLolAccounts) } : {}),
+        }))
+      },
+    })
+
     ipcMain.handle('recordings:list-all', async (_e, opts?: { allAccounts?: boolean }) => {
       countRecordingsListAll()
-      await mainProcess.recordingsStore.timelinesReady()
-      // The earlier dashboard scan may have run before OBS finished writing the file.
-      // Re-scan when the user opens the library so interrupted finalisation self-heals.
-      mainProcess.scanForOrphanedRecordings(true)
-      mainProcess.prepareLegacyOrphanRecoveryRows()
-      // UI v3 asks for every linked account (main + alts) and tags each Valorant row.
-      const linkedAccounts = mainProcess.linkedRiotAccountsFromAuth()
-      // League alts: tag from the cached /api/lol-accounts list (refreshed in the background, at most once a minute).
-      const linkedLolAccounts = mainProcess.linkedLolAccountsFromAuth()
-      const all = opts?.allAccounts === true
-        ? mainProcess.recordingsStore.getAllLinked(linkedAccounts)
-        : mainProcess.recordingsStore.getAll(mainProcess.linkedRiotFromAuth())
-      const fixture = mainProcess.productionVodFixtures.getActive()
-      if (fixture) all.unshift(fixture)
-      for (const rec of all) {
-        if (rec.orphanedImport && rec.timeline && !hasRichMatchData(rec.timeline)) {
-          mainProcess.scheduleAnalysisReadinessRefresh(rec.id, rec.game)
-        }
-      }
-      // Cheap read: use cached probe/readiness only — the Recordings tab is for
-      // browsing, not the actionable dashboard queue, so never block on ffmpeg.
-      return all.map((rec) => ({
-        ...withAnalysisReadiness(rec),
-        timeline: rowTimelineSummary(rec),
-        hasLocalFile: Boolean(rec.path && fs.existsSync(rec.path)),
-        cloudUploaded: Boolean(rec.jobId || rec.analysisId || rec.archiveId),
-        localExpiresAt: mainProcess.rowLocalExpiresAt(rec),
-        ...(opts?.allAccounts === true ? { riotAccountRole: riotAccountRole(rec, linkedAccounts, linkedLolAccounts) } : {}),
-      }))
+      return listAllLoader.get(`${opts?.allAccounts === true ? 'all' : 'active'}|${getActiveUserId() ?? 'guest'}`)
     })
 
     ipcMain.handle('analysis:reconcile-stuck', async () => {
