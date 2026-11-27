@@ -140,6 +140,19 @@ describe('recent match timelines', () => {
       .toEqual([{ x: 100, y: 200 }, { x: 900, y: 950 }])
   })
 
+  it('keeps the Riot build the match was played on in matchDetailsLite, and omits it when absent', async () => {
+    const { api, fetch } = setup()
+    const raw = details()
+    Object.assign(raw.matchInfo, { gameVersion: ' release-11.10-shipping-12-3456789 ' })
+    fetch.mockResolvedValue(raw)
+    const withVersion = JSON.parse(serializeRecentMatch((await api.fetchRecentMatchTimelines(1)).matches[0].timeline!))
+    expect(withVersion.match_data.matchDetailsLite.matchInfo.gameVersion).toBe('release-11.10-shipping-12-3456789')
+
+    fetch.mockResolvedValue(details())
+    const without = JSON.parse(serializeRecentMatch((await api.fetchRecentMatchTimelines(1)).matches[0].timeline!))
+    expect('gameVersion' in without.match_data.matchDetailsLite.matchInfo).toBe(false)
+  })
+
   it('falls back to history timing, never the export time', async () => {
     const { api, history, fetch } = setup()
     const raw = details()
