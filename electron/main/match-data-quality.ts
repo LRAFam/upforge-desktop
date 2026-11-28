@@ -175,7 +175,7 @@ export function deadlockDemoSyncMessage(elapsedMs: number): string {
   if (elapsedMin < 30) {
     return `Still waiting for Deadlock replay (${elapsedMin}m). Choose Review replay on this match if needed`
   }
-  return `Deadlock replay not linked (${elapsedMin}m). Choose Review replay on this match to unlock Analyse`
+  return `Deadlock replay not linked (${elapsedMin}m). Choose Review replay on this match for coaching`
 }
 
 export function cs2RecordingSavedDashboardMessage(map: string | null | undefined): string {

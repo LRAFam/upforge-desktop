@@ -3,7 +3,8 @@
  *
  * API MatchDataQualityService::isReadyForCs2Desktop requires at least one kill row
  * (killEvents OR playerKills) for CS2 and Deadlock — K/D/A totals alone stay locked.
- * Desktop is stricter on Deadlock: live console-log kill rows never unlock a demo review. LoL uses isReadyForLolDesktop
+ * Desktop is stricter on Deadlock: it never offers video Analyse at all (Review replay is its one
+ * analysis path, card #600), and live console-log kill rows never count as reviewed. LoL uses isReadyForLolDesktop
  * (Match-V5 enrich + combat stats). Desktop must never mark Analyse ready
  * without the same bar, or jobs fail after upload.
  *
@@ -153,18 +154,29 @@ describe('desktop/API match-data readiness contract', () => {
         playerKills: [{ EventID: 1 } as MatchData['playerKills'][number]],
       }
       expect(hasDemoKillRows(tl)).toBe(true)
-      expect(getAnalysisReadiness(baseRec(game, { timeline: tl })).ready).toBe(true)
-    })
-
-    it(`${game}: Analyse unlocks only when demo stats are rich`, () => {
-      const rich = baseRec(game, { timeline: richTimeline(game) })
-      expect(hasRichMatchData(rich.timeline)).toBe(true)
-
-      const readiness = getAnalysisReadiness(rich)
-      expect(readiness.ready).toBe(true)
-      expect(readiness.state).toBe('ready')
+      // Deadlock never unlocks video Analyse; its replay review is the coaching (card #600).
+      expect(getAnalysisReadiness(baseRec(game, { timeline: tl })).ready).toBe(game === 'cs2')
     })
   }
+
+  it('cs2: Analyse unlocks only when demo stats are rich', () => {
+    const rich = baseRec('cs2', { timeline: richTimeline('cs2') })
+    expect(hasRichMatchData(rich.timeline)).toBe(true)
+
+    const readiness = getAnalysisReadiness(rich)
+    expect(readiness.ready).toBe(true)
+    expect(readiness.state).toBe('ready')
+  })
+
+  it('deadlock: one analysis path — rich replay stats mark it reviewed, never Analyse-ready', () => {
+    const rich = baseRec('deadlock', { timeline: richTimeline('deadlock') })
+    expect(hasRichMatchData(rich.timeline)).toBe(true)
+
+    const readiness = getAnalysisReadiness(rich)
+    expect(readiness.ready).toBe(false)
+    expect(readiness.state).toBe('mode_unsupported')
+    expect(readiness.message).toMatch(/Review replay/)
+  })
 
   it('deadlock: live console-log kill rows alone do not unlock a demo review', () => {
     const tl: MatchData = { ...richTimeline('deadlock'), killRowsSource: 'live_log' }

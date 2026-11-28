@@ -15,6 +15,14 @@ export type PendingMatchPrimaryAction =
   | 'attach_replay'
   | null
 
+/**
+ * Deadlock: main reports a recording with real replay kill rows as `mode_unsupported` (video Analyse
+ * is not offered; the replay review is the coaching). Live console-log rows don't count (contract).
+ */
+export function deadlockReplayReviewed(rec: { game: string; analysisReadiness?: { state?: string } | null }): boolean {
+  return rec.game === 'deadlock' && rec.analysisReadiness?.state === 'mode_unsupported'
+}
+
 export function pendingMatchLifecycleState(rec: PendingRecording): PendingMatchLifecycleState {
   if (rec.pipelineStatus === 'uploading') return 'uploading'
   if (rec.pipelineStatus === 'analysing') return 'analysing'
@@ -30,6 +38,8 @@ export function pendingMatchPrimaryAction(rec: PendingRecording): PendingMatchPr
   if (rec.clipsOnly || rec.analysisId != null) return null
   if (rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') return null
   if (rec.pipelineDeferReason === 'recording') return null
+  // Deadlock's only analysis is "Review replay" on the row (card #600): no Analyse, no .dem attach.
+  if (rec.game === 'deadlock') return null
   if (rec.lastAnalysisError) return 'retry_analysis'
   if (recordingDemoPending(rec)) return 'attach_replay'
   if (rec.matchStatsSyncPaused) return 'retry_stats'
@@ -43,6 +53,10 @@ export function pendingMatchStatusLabel(rec: PendingRecording): string {
   if (action === 'retry_analysis') return 'Analysis needs retry'
   if (action === 'retry_stats') return 'Stats sync paused'
   if (action === 'attach_replay') return rec.game === 'deadlock' ? 'Replay required' : 'Demo required'
+  if (rec.game === 'deadlock' && !rec.pipelineStatus && rec.analysisId == null) {
+    if (deadlockReplayReviewed(rec)) return 'Replay reviewed'
+    return rec.deadlockReviewJobId ? 'Replay review in progress' : 'Replay not reviewed'
+  }
 
   const state = pendingMatchLifecycleState(rec)
   if (state === 'uploading') return 'Uploading footage'

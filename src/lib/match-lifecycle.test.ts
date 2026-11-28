@@ -22,6 +22,20 @@ function rec(overrides: Partial<PendingRecording> = {}): PendingRecording {
   } as PendingRecording
 }
 
+describe('deadlock has one analysis path (Review replay)', () => {
+  const ready = { ready: true, state: 'ready' as const, message: '', duelMomentCount: 0 }
+  it('never offers Analyse or a .dem attach for Deadlock', () => {
+    expect(pendingMatchPrimaryAction(rec({ game: 'deadlock', timeline: null, analysisReadiness: ready }))).toBeNull()
+    expect(pendingMatchPrimaryAction(rec({ game: 'deadlock', lastAnalysisError: 'x' }))).toBeNull()
+    expect(pendingMatchActionLabel(rec({ game: 'deadlock' }))).toBeNull()
+  })
+  it('labels the replay state instead', () => {
+    expect(pendingMatchStatusLabel(rec({ game: 'deadlock' }))).toBe('Replay not reviewed')
+    expect(pendingMatchStatusLabel(rec({ game: 'deadlock', deadlockReviewJobId: 'job-1' }))).toBe('Replay review in progress')
+    expect(pendingMatchStatusLabel(rec({ game: 'deadlock', analysisReadiness: { ready: false, state: 'mode_unsupported', message: '', duelMomentCount: 0 } }))).toBe('Replay reviewed')
+  })
+})
+
 describe('pending match lifecycle', () => {
   it('separates background work from action-required matches', () => {
     const preparing = rec({
