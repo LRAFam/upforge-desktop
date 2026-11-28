@@ -135,12 +135,12 @@ describe('getAnalysisReadiness cs2/deadlock without demo', () => {
     expect(readiness.state).toBe('ready')
   })
 
-  it('unlocks Deadlock Analyse once replay stats are rich', () => {
+  it('marks a Deadlock replay reviewed once stats are rich, without unlocking video Analyse', () => {
     const readiness = getAnalysisReadiness(cs2Recording({
       game: 'deadlock',
       timeline: richDemoTimeline('deadlock'),
     }))
-    expect(readiness.ready).toBe(true)
-    expect(readiness.state).toBe('ready')
+    expect(readiness.ready).toBe(false)
+    expect(readiness.state).toBe('mode_unsupported')
   })
 })

@@ -77,6 +77,17 @@ describe('scoring versions: a run is only compared with runs scored by the same 
     expect(currentScoringVersion('jiggle_peek')).toBe(4)
   })
 
+  it('compares Hold the Angle and Flash & Swing version-eight runs only with each other', () => {
+    for (const [scenario, old] of [['hold_angle', 4], ['flash_swing', 7]] as const) {
+      const next = run(scenario, { scoring_version: 8 }, '2026-11-28T12:00:00Z')
+      const same = run(scenario, { scoring_version: 8 }, '2026-11-27T12:00:00Z')
+      const previousRules = run(scenario, { scoring_version: old }, '2026-11-26T12:00:00Z')
+      expect(trainingComparisonRequest(next)?.scoring_version).toBe(8)
+      expect(priorTrainingSessions([same, previousRules], next)).toEqual([same])
+      expect(currentScoringVersion(scenario)).toBe(old)
+    }
+  })
+
   it('Practice keeps a best and a rank only when they are on this app’s rules for the drill', () => {
     const group = (scenario: string, version: number) => ({ best_score: 80, trend: 2, sessions: [],
       comparison: { difficulty: 'medium', duration_seconds: 60, scoring_version: version } })
