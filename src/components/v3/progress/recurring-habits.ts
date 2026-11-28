@@ -9,6 +9,10 @@ export interface RecurringInsightLike {
   analysisCount?: number | null
   severity?: string | null
   exampleAnalysisId?: number | null
+  /** Polarity the API stored (risk / neutral); null or absent = guess from the text. */
+  polarity?: HabitPolarity | null
+  /** The coach's whole note from the API; absent on older servers (the note is read from `text`). */
+  note?: string | null
   status: string | null
   trend: string | null
   lastSeenAt: string | null
@@ -109,11 +113,15 @@ export function recurringHabitRows(rows: readonly RecurringInsightLike[] | null 
     .sort((a, b) => b.occurrences - a.occurrences)
     .slice(0, MAX_ROWS)
     .map(r => {
-      const { note, maps } = parseHabitText(r.text)
+      const parsed = parseHabitText(r.text)
+      const maps = parsed.maps
+      // The API's whole note beats the merged text, which it cuts at 200 characters.
+      const note = r.note?.trim() ? r.note.trim().replace(/\s+/g, ' ') : parsed.note
       const title = r.label?.trim() || firstSentence(note)
       const detail = r.label && note ? firstSentence(note, MAX_DETAIL) : null
       const shown = detail && detail.toLowerCase() !== title.toLowerCase() ? detail : null
-      const polarity = habitPolarity({ label: r.label, note: note || r.text, severity: r.severity })
+      // The stored polarity wins; only rows the API recorded none for are read from the text.
+      const polarity = r.polarity ?? habitPolarity({ label: r.label, note: note || r.text, severity: r.severity })
       return {
         id: r.id,
         title,
