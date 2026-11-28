@@ -123,3 +123,21 @@ describe('habitSeen (audit 2026-11-02)', () => {
     expect(habitSeen(133, null)).toBe('Flagged 133 times')
   })
 })
+
+describe('recurringHabitRows with API polarity and note (#1098)', () => {
+  it('uses the stored polarity over the text guess', () => {
+    const praise = 'Great entry timing and clean trades on A.'
+    expect(recurringHabitRows([row({ text: praise })], NOW)[0].polarity).toBe('strength')
+    expect(recurringHabitRows([row({ text: praise, polarity: 'risk' })], NOW)[0].polarity).toBe('risk')
+    expect(recurringHabitRows([row({ text: 'Plays Jett on attack.', polarity: 'neutral' })], NOW)[0].polarity).toBe('neutral')
+    expect(recurringHabitRows([row({ text: praise, polarity: null })], NOW)[0].polarity).toBe('strength')
+  })
+
+  it('shows the whole API note under "Show more" instead of the cut merged text', () => {
+    const whole = 'Died alone on B long without a trade in round 4. Again in round 9 after swinging wide, and in round 15 on retake. Hold for your duelist.'
+    const [r] = recurringHabitRows([row({ label: 'Untraded deaths', text: 'Untraded deaths — flagged 3 times. Died alone on B long without a trade in round 4. Again in ro... Maps: Bind.', note: whole })], NOW)
+    expect(r.more).toBe(whole)
+    expect(r.maps).toEqual(['Bind'])
+  })
+})
+
