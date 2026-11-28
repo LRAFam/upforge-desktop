@@ -638,7 +638,7 @@ details { position: relative; } details > button { position: absolute; right: 0;
 .ui-v3 .comparison button[aria-pressed="true"] { border-color: var(--uf-bone); background: var(--uf-raised); }
 .ui-v3 .comparison select { background: var(--uf-chrome); }
 .ui-v3 .comparison .back { border-color: transparent; color: var(--uf-muted); padding-left: 0; }
-.ui-v3 .comparison .transport .cmp3-play { height: 40px; padding: 0 18px; border: 0; background: var(--uf-red); color: #fff; }
+.ui-v3 .comparison .transport .cmp3-play { height: 40px; padding: 0 18px; border: 0; background: var(--uf-red); color: var(--uf-chrome); }
 .ui-v3 .comparison .transport .cmp3-play:hover:not(:disabled) { background: #ff5a68; }
 .ui-v3 .comparison .transport .cmp3-play:disabled { opacity: 0.45; cursor: default; }
 .ui-v3 .comparison-header { padding-bottom: 16px; margin-bottom: 0; border-bottom: 1px solid var(--uf-line); }
