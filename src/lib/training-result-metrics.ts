@@ -31,6 +31,10 @@ export interface TrainingComparisonRequest {
 // 8: corrected Jiggle Peek visibility accounting; explicit result stamp only until a compatible release is pinned.
 export const COMPARED_SCORING_VERSIONS: readonly number[] = [3, 4, 5, 6, 7, 8]
 
+/** Drills with version-8 rules (mirrors API TrainingComparison::VERSION_8_SCENARIOS): Jiggle Peek's sight, Hold the
+ * Angle's live-lane cue, Flash & Swing's blind from the turn only. Each 8 is compared only with itself. */
+export const VERSION_8_SCENARIOS: ReadonlySet<string> = new Set(['jiggle_peek', 'hold_angle', 'flash_swing'])
+
 /**
  * Gridshot and Sixshot time to hit (and consistency), Tracking's turns below 360 fps, Strafe Aim's lane-edge
  * shots and Defuse Decision's consistency changed after trainer 1.13.0.
@@ -96,7 +100,7 @@ export function scoringVersionOf(run: { metadata?: Record<string, unknown> } | n
 /** On a version the app compares (each only with itself); older runs stay in history uncompared. */
 export function isComparableScoringRun(run: { scenario?: string; metadata?: Record<string, unknown> } | null | undefined): boolean {
   const v = scoringVersionOf(run)
-  return v !== null && COMPARED_SCORING_VERSIONS.includes(v) && (v !== 8 || run?.scenario === 'jiggle_peek')
+  return v !== null && COMPARED_SCORING_VERSIONS.includes(v) && (v !== 8 || VERSION_8_SCENARIOS.has(run?.scenario ?? ''))
 }
 
 /** On the rules this app's trainer scores the drill by: only these runs make personal bests. */
