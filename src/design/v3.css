@@ -56,7 +56,7 @@
 /* ---- Buttons: one primary per screen ---- */
 .ui-v3 .uf-btn-primary {
   display: inline-flex; align-items: center; height: 44px; padding: 0 22px; border: 0; cursor: pointer;
-  background: var(--uf-red); transform: skewX(-8deg); color: #fff;
+  background: var(--uf-red); transform: skewX(-8deg); color: var(--uf-chrome); /* dark label: white on red is 3.4:1, chrome is 5.8:1 (AA) */
 }
 .ui-v3 .uf-btn-primary > span { transform: skewX(8deg); display: inline-flex; gap: 8px; align-items: center;
   font: 800 16px/1 var(--uf-display); letter-spacing: 0.08em; text-transform: uppercase; } /* type scale: 16 (audit 2026-11-02) */

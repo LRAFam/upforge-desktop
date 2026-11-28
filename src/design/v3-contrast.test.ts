@@ -38,6 +38,15 @@ describe('v3 colour contrast', () => {
       expect(contrast(token('red'), token(surface))).toBeGreaterThanOrEqual(3)
     })
   }
+  it('primary button label (--uf-chrome on --uf-red) is at least 4.5:1', () => {
+    expect(css).toMatch(/\.uf-btn-primary \{[^}]*color: var\(--uf-chrome\)/)
+    expect(contrast(token('chrome'), token('red'))).toBeGreaterThanOrEqual(4.5)
+  })
+  it('primary button hover label is at least 4.5:1', () => {
+    const hover = css.match(/\.uf-btn-primary:hover \{ background: (#[0-9a-fA-F]{6})/)
+    if (!hover) throw new Error('.uf-btn-primary:hover background not found')
+    expect(contrast(token('chrome'), hover[1])).toBeGreaterThanOrEqual(4.5)
+  })
   it('faint text stays visibly quieter than muted text', () => {
     expect(contrast(token('muted'), token('faint'))).toBeGreaterThan(1.2)
   })
